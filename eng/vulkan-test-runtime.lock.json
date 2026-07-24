@@ -1,0 +1,33 @@
+{
+  "$schemaVersion": 1,
+  "loaderPackage": {
+    "id": "Silk.NET.Vulkan.Loader.Native",
+    "version": "2025.9.12"
+  },
+  "driverPackage": {
+    "id": "Stride.Dependencies.SwiftShader",
+    "version": "2026.4.14",
+    "upstreamCommitPrefix": "8955613"
+  },
+  "apiVersion": "1.3.0",
+  "runtimes": {
+    "win-x64": {
+      "loader": "vulkan-1.dll",
+      "loaderSha256": "2CB843CFA9EE9586D2C863FF33454B8CE352A8A96DFE1021B492DFD237ECF8AF",
+      "driver": "vk_swiftshader.dll",
+      "driverSha256": "C2F407F9D53552219B667A69E4A26B7DA2B8D6D454BE3847DB0A5A76B2C70CE5"
+    },
+    "linux-x64": {
+      "loader": "libvulkan.so",
+      "loaderSha256": "8321BFBE86EF5FA270B1FDDFEF0435CAA4994321D5D29547D050A8F9A6EC84C4",
+      "driver": "libvk_swiftshader.so",
+      "driverSha256": "6D9855A42C3C57B7E4C5F9AE3D6945DE4B9C532C3CD3EDD33AE544F30B81D408"
+    },
+    "osx-arm64": {
+      "loader": "libvulkan.dylib",
+      "loaderSha256": "765C8FA399DFC53EEDBD814D89FF87128C4B966E233CD9E9FB2071531846A901",
+      "driver": "libvk_swiftshader.dylib",
+      "driverSha256": "636A92AF702B95D68414B1FBD94D593441744D5B095E135F6367282D1E4D8A29"
+    }
+  }
+}

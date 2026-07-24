@@ -1,0 +1,364 @@
+name: shader platform validation
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [ master, main ]
+    paths:
+      - '.github/workflows/shaders.yml'
+      - '.github/workflows/performance.yml'
+      - 'docs/shader-pipeline.md'
+      - 'docs/rendering.md'
+      - 'docs/testing.md'
+      - 'eng/shaders/**'
+      - 'src/OpenUsd.Rendering.Silk.Metal/**'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/Metal*.cs'
+      - 'tests/OpenUsd.Rendering.Tests/Metal*.cs'
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - '.github/workflows/shaders.yml'
+      - '.github/workflows/performance.yml'
+      - 'docs/shader-pipeline.md'
+      - 'docs/rendering.md'
+      - 'docs/testing.md'
+      - 'eng/shaders/**'
+      - 'src/OpenUsd.Rendering.Silk.Metal/**'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/Metal*.cs'
+      - 'tests/OpenUsd.Rendering.Tests/Metal*.cs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shaders-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-authoritative:
+    name: Windows x64 authoritative
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      SHADER_LOG_ROOT: eng/shaders/out/logs/windows
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Validate checked input line endings
+        shell: pwsh
+        run: ./eng/shaders/test-checked-input-line-endings.ps1
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+      - name: Cache pinned shader archives
+        id: shader-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: eng/shaders/.cache/downloads
+          key: shaders-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('eng/shaders/toolchain.lock.json') }}
+      - name: Initialize logs
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force $env:SHADER_LOG_ROOT
+      - name: Validate portable archive extraction
+        shell: pwsh
+        run: ./eng/shaders/test-expand-verified-archive.ps1
+      - name: Fetch pinned inputs
+        if: steps.shader-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          ./eng/shaders/fetch-toolchain.ps1 -Rid win-x64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/fetch-online.log"
+      - name: Prove offline rehydration
+        shell: pwsh
+        run: |
+          ./eng/shaders/fetch-toolchain.ps1 -Rid win-x64 -Offline -Force *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/fetch-offline.log"
+      - name: Build pinned SPIR-V validator
+        shell: pwsh
+        run: |
+          ./eng/shaders/build-toolchain.ps1 -Rid win-x64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/build-toolchain.log"
+      - name: Build and validate shader targets
+        shell: pwsh
+        run: |
+          ./eng/shaders/build-shaders.ps1 `
+            -Rid win-x64 `
+            -OutputRoot eng/shaders/out/ci-windows *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/build-shaders.log"
+      - name: Record Windows host toolchain
+        shell: pwsh
+        run: |
+          ./eng/shaders/write-host-toolchain.ps1 `
+            -Rid win-x64 `
+            -OutputPath eng/shaders/out/ci-windows/host-toolchain.json
+      - name: Verify checked authoritative artifacts
+        shell: pwsh
+        run: |
+          ./eng/shaders/verify-checked.ps1 -Rid win-x64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/verify-checked.log"
+      - name: Verify same-host reproducibility
+        shell: pwsh
+        run: |
+          ./eng/shaders/verify-reproducibility.ps1 -Rid win-x64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/reproducibility.log"
+      - name: Run shader Python tests
+        shell: pwsh
+        run: |
+          python -m unittest discover eng/shaders/tests 2>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/python-tests.log"
+      - name: Prove Metal pack rejects invalid staged pairs
+        shell: pwsh
+        run: ./eng/shaders/test-metal-pack-validation.ps1
+      - name: Validate local workflow script paths
+        shell: pwsh
+        run: ./eng/shaders/validate-workflow-paths.ps1
+      - name: Upload Windows shader evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: shaders-windows-x64-${{ github.run_id }}
+          path: |
+            eng/shaders/checked/manifest.json
+            eng/shaders/out/ci-windows/artifact-manifest.json
+            eng/shaders/out/ci-windows/executed-commands.json
+            eng/shaders/out/ci-windows/host-toolchain.json
+            eng/shaders/out/logs/windows
+          if-no-files-found: warn
+
+  linux-validation:
+    name: Linux x64 validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SHADER_LOG_ROOT: eng/shaders/out/logs/linux
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Validate checked input line endings
+        shell: pwsh
+        run: ./eng/shaders/test-checked-input-line-endings.ps1
+      - name: Install tool build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build build-essential
+      - name: Cache pinned shader archives
+        id: shader-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: eng/shaders/.cache/downloads
+          key: shaders-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('eng/shaders/toolchain.lock.json') }}
+      - name: Initialize logs
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force $env:SHADER_LOG_ROOT
+      - name: Validate portable archive extraction
+        shell: pwsh
+        run: ./eng/shaders/test-expand-verified-archive.ps1
+      - name: Fetch pinned inputs
+        if: steps.shader-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          ./eng/shaders/fetch-toolchain.ps1 -Rid linux-x64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/fetch-online.log"
+      - name: Prove offline rehydration
+        shell: pwsh
+        run: |
+          ./eng/shaders/fetch-toolchain.ps1 -Rid linux-x64 -Offline -Force *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/fetch-offline.log"
+      - name: Build pinned SPIR-V validator
+        shell: pwsh
+        run: |
+          ./eng/shaders/build-toolchain.ps1 -Rid linux-x64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/build-toolchain.log"
+      - name: Generate and validate ten Linux SPIR-V targets
+        shell: pwsh
+        run: |
+          ./eng/shaders/build-shaders.ps1 `
+            -Rid linux-x64 `
+            -ArtifactScope Spirv `
+            -OutputRoot eng/shaders/out/ci-linux *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/build-shaders.log"
+      - name: Structurally validate full committed checked payload
+        shell: pwsh
+        run: |
+          ./eng/shaders/validate-checked-payload.ps1 `
+            -Rid linux-x64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/checked-payload.log"
+      - name: Prove checked SPIR-V corruption is rejected
+        shell: pwsh
+        run: |
+          ./eng/shaders/test-checked-corruption.ps1 `
+            -Rid linux-x64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/corruption-test.log"
+      - name: Record Linux host toolchain
+        shell: pwsh
+        run: |
+          ./eng/shaders/write-host-toolchain.ps1 `
+            -Rid linux-x64 `
+            -OutputPath eng/shaders/out/ci-linux/host-toolchain.json
+      - name: Verify Linux SPIR-V same-host reproducibility
+        shell: pwsh
+        run: |
+          ./eng/shaders/verify-reproducibility.ps1 `
+            -Rid linux-x64 `
+            -ArtifactScope Spirv *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/reproducibility.log"
+      - name: Run shader Python tests
+        shell: pwsh
+        run: |
+          python -m unittest discover eng/shaders/tests 2>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/python-tests.log"
+      - name: Upload Linux shader evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: shaders-linux-x64-${{ github.run_id }}
+          path: |
+            eng/shaders/out/ci-linux/artifact-manifest.json
+            eng/shaders/out/ci-linux/executed-commands.json
+            eng/shaders/out/ci-linux/host-toolchain.json
+            eng/shaders/out/logs/linux
+          if-no-files-found: warn
+
+  macos-arm64:
+    name: macOS arm64 Metal validation
+    runs-on: macos-15-arm64
+    timeout-minutes: 120
+    env:
+      SHADER_LOG_ROOT: eng/shaders/out/logs/macos
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Validate checked input line endings
+        shell: pwsh
+        run: ./eng/shaders/test-checked-input-line-endings.ps1
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - name: Select locked Xcode
+        shell: pwsh
+        run: ./eng/shaders/select-xcode.ps1
+      - name: Install tool build prerequisites
+        run: brew install cmake ninja
+      - name: Cache pinned shader archives
+        id: shader-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: eng/shaders/.cache/downloads
+          key: shaders-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('eng/shaders/toolchain.lock.json') }}
+      - name: Initialize logs
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force $env:SHADER_LOG_ROOT
+      - name: Validate portable archive extraction
+        shell: pwsh
+        run: ./eng/shaders/test-expand-verified-archive.ps1
+      - name: Fetch pinned inputs
+        if: steps.shader-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          ./eng/shaders/fetch-toolchain.ps1 -Rid osx-arm64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/fetch-online.log"
+      - name: Prove offline rehydration
+        shell: pwsh
+        run: |
+          ./eng/shaders/fetch-toolchain.ps1 -Rid osx-arm64 -Offline -Force *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/fetch-offline.log"
+      - name: Build pinned SPIR-V validator
+        shell: pwsh
+        run: |
+          ./eng/shaders/build-toolchain.ps1 -Rid osx-arm64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/build-toolchain.log"
+      - name: Build Metal libraries and shader targets
+        shell: pwsh
+        run: |
+          ./eng/shaders/build-shaders.ps1 `
+            -Rid osx-arm64 `
+            -OutputRoot eng/shaders/out/ci-macos *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/build-shaders.log"
+      - name: Validate ten-entry combined Metal library
+        shell: pwsh
+        run: |
+          ./eng/shaders/prepare-metal-library.ps1 `
+            -OutputRoot eng/shaders/out/checked-payload/osx-arm64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/checked-payload.log"
+      - name: Validate Metal staging, conformance, and package
+        shell: pwsh
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project `
+            -c Release `
+            -f net10.0 `
+            -p:OpenUsdRequireMetalShaderLibrary=true
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/MetalSelectionOutlineConformanceTests/*')
+          dotnet pack `
+            src/OpenUsd.Rendering.Silk.Metal/OpenUsd.Rendering.Silk.Metal.csproj `
+            -c Release `
+            -p:OpenUsdRequireMetalShaderLibrary=true `
+            -p:OpenUsdMetalPythonExecutable=python `
+            -o eng/shaders/out/metal-package
+          python eng/shaders/scripts/verify-metal-package.py `
+            --package-root eng/shaders/out/metal-package `
+            --library eng/shaders/checked/mesh.metallib `
+            --manifest eng/shaders/checked/mesh.metallib.manifest.json
+      - name: Prove checked MSL corruption is rejected
+        shell: pwsh
+        run: |
+          ./eng/shaders/test-checked-corruption.ps1 `
+            -Rid osx-arm64 *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/corruption-test.log"
+      - name: Record macOS host toolchain
+        shell: pwsh
+        run: |
+          ./eng/shaders/write-host-toolchain.ps1 `
+            -Rid osx-arm64 `
+            -OutputPath eng/shaders/out/ci-macos/host-toolchain.json
+      - name: Verify deterministic intermediate reproducibility
+        shell: pwsh
+        run: |
+          ./eng/shaders/verify-reproducibility.ps1 `
+            -Rid osx-arm64 `
+            -DeterministicIntermediatesOnly *>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/reproducibility.log"
+      - name: Run shader Python tests
+        shell: pwsh
+        run: |
+          python -m unittest discover eng/shaders/tests 2>&1 |
+            Tee-Object "$env:SHADER_LOG_ROOT/python-tests.log"
+      - name: Upload macOS shader evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: shaders-macos-arm64-${{ github.run_id }}
+          path: |
+            eng/shaders/out/ci-macos/artifact-manifest.json
+            eng/shaders/out/ci-macos/executed-commands.json
+            eng/shaders/out/ci-macos/host-toolchain.json
+            eng/shaders/out/checked-payload/osx-arm64/metallib-manifest.json
+            eng/shaders/out/checked-payload/osx-arm64/mesh.metallib
+            eng/shaders/out/checked-payload/osx-arm64/mesh.symbols.txt
+            eng/shaders/out/metal-package/*.nupkg
+            eng/shaders/out/logs/macos
+          if-no-files-found: warn

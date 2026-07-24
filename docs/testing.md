@@ -1,0 +1,364 @@
+# Testing
+
+Use this guide to choose the smallest local gate for a change and to understand how reusable
+workflows combine managed, native, shader, package, render, and performance evidence for release.
+
+**On this page:** [Workflow graph](#workflow-and-evidence-graph) ·
+[Managed runner](#managed-test-runner) · [Performance](#performance-safety-gates) ·
+[Fuzzing](#native-stagelayer-fuzzing) · [Windows Storm](#windows-native-storm-child) ·
+[Linux Storm](#linux-native-storm-child) ·
+[macOS and Metal](#macos-native-storm-child-and-metal-shell) ·
+[Shared-stage soak](#shared-stage-soak) · [Related documentation](#related-documentation)
+
+## Workflow and evidence graph
+
+```mermaid
+flowchart TD
+    release["release.yml"] --> ci["ci.yml"]
+    release --> shaders["shaders.yml"]
+    release --> native["native.yml"]
+    release --> perf["performance.yml"]
+    ci --> packages["package.yml"]
+    shaders --> packages
+    native -->|"RID archives"| packages
+    packages --> render["render.yml"]
+    ci --> aggregate["Aggregate job"]
+    shaders --> aggregate
+    native --> aggregate
+    perf --> aggregate
+    packages --> aggregate
+    render --> aggregate
+    aggregate --> evidence["release-gate.json"]
+```
+
+The dependency arrows show reusable workflow ordering and native artifact flow. Every workflow
+result also feeds the aggregate job, which records one release decision without duplicating each
+workflow's detailed evidence contract.
+
+Managed tests use TUnit on Microsoft.Testing.Platform. The current pre-alpha baseline includes
+managed data, interop, package, rendering, and viewer suites; native ABI and OpenUSD compatibility
+CTest coverage; clean-package and NativeAOT consumers; and backend-neutral plus platform render
+conformance gates.
+
+Interactive render paths may not use CPU readback. Headless image tests compare against pinned
+Storm references with perceptual tolerances rather than exact cross-driver pixels.
+
+## Managed test runner
+
+With the pinned .NET SDK 10.0.301 global Microsoft.Testing.Platform runner and TUnit
+1.59, `dotnet test` can launch test DLLs through the wrong path, report zero executed
+tests, and exit with code 5. Build first and run the generated test applications
+directly instead:
+
+```powershell
+dotnet build OpenUsd.slnx -c Release
+./eng/run-managed-tests.ps1 -Configuration Release
+```
+
+The runner discovers repository test projects by default, evaluates their declared
+target frameworks, assembly names, and output DLLs through MSBuild, and executes every
+framework with `dotnet <test.dll> --minimum-expected-tests 1`. Missing binaries,
+non-test projects, unsupported frameworks, zero executed tests, and non-zero test
+application exits fail the run.
+
+On Windows and Linux, the rendering conformance project defaults to its packaged
+SwiftShader ICD so repeated device-lifecycle tests use the deterministic software
+backend they name and gate. `eng/vulkan-test-runtime.lock.json` pins the loader and
+driver bytes; `eng/prepare-vulkan-test-runtime.ps1` verifies them and writes an
+absolute Vulkan 1.3 ICD manifest because the upstream package manifest advertises an
+obsolete Vulkan 1.0 API. Set either `VK_DRIVER_FILES` or `VK_ICD_FILENAMES` before
+invoking the runner to preserve an explicit system or hosted-runner ICD instead.
+
+Projects and frameworks can be selected explicitly. Test application arguments are
+passed as a PowerShell array so filters and paths remain single arguments:
+
+```powershell
+./eng/run-managed-tests.ps1 `
+  -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+  -Framework net10.0 `
+  -Configuration Release `
+  -TestArguments @(
+    '--treenode-filter',
+    '/*/*/VulkanCompositionPresentationTests/D3D11BridgeImportsPixelsAndReusesKeyedMutex')
+```
+
+Coverage also runs the built DLL directly:
+
+```powershell
+./eng/run-managed-tests.ps1 `
+  -Project tests/OpenUsd.Tests/OpenUsd.Tests.csproj `
+  -Framework net10.0 `
+  -TestArguments @(
+    '--results-directory', (Join-Path $PWD 'TestResults'),
+    '--coverage',
+    '--coverage-settings', (Join-Path $PWD 'eng/coverage.config'),
+    '--coverage-output-format', 'cobertura',
+    '--coverage-output', 'coverage.cobertura.xml')
+```
+
+After a Release build, run the Pester-free runner contract checks with:
+
+```powershell
+./eng/test-run-managed-tests.ps1
+```
+
+## Performance safety gates
+
+The native-independent performance gate builds the focused TUnit safety project, repeats allocation,
+retained-resource, batching, and P/Invoke-boundary contracts, then runs a BenchmarkDotNet smoke:
+
+```powershell
+./eng/run-performance.ps1
+```
+
+The default smoke uses BenchmarkDotNet's `Dry` job for a low-flake correctness check. Use a short
+measurement locally when validating the workflow:
+
+```powershell
+./eng/run-performance.ps1 -Mode Smoke -BenchmarkJob Short -Repeat 3
+```
+
+Full benchmark artifacts are opt-in and remain informational until release-machine baselines are
+calibrated. Ordinary CI fails only on deterministic allocation, resource, source-boundary, build, or
+benchmark execution regressions; it does not assert wall-clock timings:
+
+```powershell
+./eng/run-performance.ps1 `
+  -Mode Artifacts `
+  -BenchmarkJob Short `
+  -ArtifactsPath artifacts/performance
+```
+
+The suite requires .NET SDK 10.0.301 but no native OpenUSD installation. Results include
+BenchmarkDotNet Markdown, CSV, and full JSON reports under the selected artifact directory.
+
+Workflow and native-input contracts are also executable without a platform build:
+
+```powershell
+./eng/test-linux-native-prerequisites.ps1
+./eng/test-native-artifact-workflow.ps1
+./eng/test-continuous-safety-workflow.ps1
+./eng/test-render-native-archive.ps1
+./eng/run-native-fuzz.ps1 -SelfTest
+./eng/shaders/test-expand-verified-archive.ps1
+```
+
+## Native stage/layer fuzzing
+
+The project-owned stage/layer C ABI has an opt-in Linux Clang libFuzzer target.
+It writes each bounded input to an isolated temporary USDA file, opens it through
+`openusd_stage_open`, and exercises layer identifiers plus packed prim and layer-stack
+results after successful parses. Ordinary native builds and CTest do not create or run
+the fuzzer.
+
+After the locked `native/install/linux-x64` build exists, run a bounded ASAN/UBSAN pass:
+
+```powershell
+./eng/run-native-fuzz.ps1 -MaxTotalTime 60 -TimeoutSeconds 10
+```
+
+The runner copies the deterministic corpus from `test-assets/fuzz-seeds/stage-layer`,
+first requires the known-good USDA seed to register plugins and parse successfully,
+then uses libFuzzer seed 1337 for the bounded mutation campaign. It cleans its mutable
+corpus and temporary files and retains reproducible crash artifacts under
+`artifacts/native-fuzz/linux-x64`. The native artifact workflow runs this only on its
+Linux source-build producer; archive-only package and render consumers do not run
+fuzzing.
+
+The `release.yml` reusable-workflow graph is the aggregate release check. It runs
+managed CI, deterministic performance safety, shader reproducibility, verified native
+archive production, package-only consumers, and platform render evidence on the same
+commit and artifact set.
+
+## Windows native Storm child
+
+The native child-host CTest proves the application-owned `WS_CHILD`, parent/process/creator-thread
+identity, worker-thread destroy rejection followed by successful UI-thread destruction, WGL
+4.6/4.5 compatibility profile and procedure-pointer sentinel checks, dedicated render-thread
+affinity, exact shared-stage retention, first/live-edit frames, and context-loss recreation. It
+also covers 150%/200% DPI transitions, focus/input delivery, a 10,000-request bounded coalescing
+burst, concurrent render/request/resize/diagnostics/focus versus Stop, stale handles, and retryable
+Storm destroy/abandon, WGL unbind/context deletion, DC release, and `DestroyWindow` failures.
+The ABI v7 framebuffer/navigation gate rejects invalid camera sizes, modes, NaN/Inf matrices,
+invalid navigation layouts, and capture before a
+frame and after destruction, reads a real
+shared-stage Storm frame, verifies dimensions/DPI and non-background pixels, proves a
+render-relevant live visibility edit changes the hash, and checks an exact centered test pattern
+with a stable hash and 12,288 non-background pixels at 256 by 192. It also proves latest-camera
+coalescing, sequenced pointer/button/modifier/wheel/command snapshots, concurrent polling, and
+camera/input persistence across context recreation. Platform probes verify that held F/Home/P keys
+advance each counter once, release/repress advances it again, and focus loss clears pressed state.
+The macOS source/native gates additionally pin non-precise detents, fractional precise deltas,
+40 points per step, four-step bounds, direction inversion, sign, and magnitude. Managed tests also prove a
+disposed session rejects diagnostic capture without entering native code.
+
+```powershell
+ctest --test-dir native/build/shim/win-x64 -C Release --output-on-failure
+```
+
+The complete Viewer gate classifies ANGLE/D3D11 only after successful runtime
+`D3D11TextureNtHandle` imports with keyed-mutex synchronization and a compositor device LUID.
+It performs 100 in-process
+Storm/D3D12/Vulkan switches while preserving the exact render-state object, survives at least
+90 seconds, simulates one Storm context loss, checks native pixel and composition draw evidence,
+runs fifteen fresh processes, executes one authored stage-camera scenario, forces automatic
+Storm-to-D3D12 fallback, and persistently fails Storm cleanup to prove its backend kind stays
+quarantined until cleanup recovers. The Windows aggregate therefore contains exactly 22 scenarios
+(15 fresh processes plus seven named/special runs):
+
+```powershell
+./eng/run-storm-native-child.ps1
+```
+
+Each run requires zero live child wrappers, managed/native Storm and Silk sessions, pages, GPU
+scenes, and GPU meshes after shutdown. A context-loss run requires exactly one abandoned GL engine;
+normal current-context destruction requires none. Windows evidence also records routed Avalonia
+and native-child input deltas after real resize/input paths, plus enumerated Storm HWND visibility,
+class, parent, process, thread, and retirement transitions. Configured-only compositor strings,
+fabricated counters, and Avalonia control counts are rejected. The quarantine proof records candidate,
+factory, attach, retired-owner, native-child peak/live, and hidden retained-HWND measurements.
+Viewer evidence schema 8 additionally records canonical automatic/explicit/restored camera payloads
+and SHA-256 signatures, binds all three non-background pixel artifacts, and proves the explicit frame
+differs on Storm, D3D12, and Vulkan. Storm transitions must match child ABI v7 latest-requested
+revision and latest requested/rendered camera signatures. Windows Storm runs also bind OS-routed
+Alt-left input, ABI-7 navigation sequence/state provenance, the changed Viewer camera, and a changed
+pixel artifact while requiring zero duplicate Avalonia routed events. Managed and PowerShell
+adversarial tests reject schema 7, altered payloads/signatures, stale pixels, unbound camera
+artifacts, and malformed native-navigation proof. The `stage-camera-backend-smoke` run additionally
+binds the repository-authored USD file, selected camera path, initial/sampled snapshot hashes,
+per-backend camera revisions/native signatures, changed initial-versus-sampled pixels, and automatic
+reset pixels. Missing/non-camera source outcomes, stale path/time/state, missing hashes or pixels,
+and source identities that omit either the asset or its short runner are rejected.
+
+Run the bounded Windows picking and selection-outline proof with
+`./eng/run-viewer-picking-smoke.ps1 -SmokeSeconds 180`. Its schema-2 artifact requires the same
+`/World/Cube` hit and an empty-space miss on Storm, D3D12, and Vulkan, exactly one stale retry, exact
+Storm selected-to-baseline restoration, rendered D3D12/Vulkan mask and composite passes, no
+additional outline pass after clear, source/shader/test hashes, and zero final Viewer resources.
+Real pixel shape, physical width, occlusion, resize, device-loss, and cleanup are additionally
+enforced by `D3D12SelectionOutlineTests` on WARP and `VulkanSelectionOutlineTests` on SwiftShader;
+Metal uses the equivalent hosted Xcode 16.4 conformance class.
+
+Run only the bounded headed Windows authored-camera proof with:
+
+```powershell
+./eng/run-viewer-stage-camera-smoke.ps1
+```
+
+This short proof renders Storm, D3D12, and Vulkan once at each authored camera sample and also runs
+the existing schema-8 camera/input contract transitions. It does not run the 100-switch soak or the
+15-process aggregate.
+
+## Linux native Storm child
+
+Linux builds the parallel ABI as `libopenusd_storm_child.so`. Its CTest creates an
+application-owned child XID, a dedicated GLX 4.6/4.5 compatibility render thread, and an
+exact-stage Storm session. It verifies first frame, live edit, diagnostic capture, resize/DPI,
+X11 input, request coalescing, wrong-thread destruction, context recreation, and zero live child
+wrappers after teardown.
+
+```shell
+ctest --test-dir native/build/shim/linux-x64 --output-on-failure
+bash ./eng/run-storm-native-child-linux.sh x11
+bash ./eng/run-storm-native-child-linux.sh xwayland
+bash ./eng/test-storm-native-child-linux.sh
+```
+
+The X11 gate uses Xvfb. The Wayland gate uses Weston's compositor-managed XWayland/XWM and runs the
+entire mapped Avalonia shell through it so Storm and Vulkan can switch without restarting the
+process. The native probe serializes process-global X error traps, injects a GLX 4.6 X error and
+proves clean 4.5 fallback, rejects destroyed parent XIDs, and proves capture still returns the exact
+pre-swap frame after the post-swap backbuffer is corrupted. Viewer evidence requires native
+focus/pointer/wheel/key counter deltas and mapped-shell `XGetImage` pixels. Vulkan opaque-FD support
+produces 100 Storm/Vulkan switches; only a schema-valid typed unavailable diagnostic permits the
+Storm-only proof. Runner crashes, timeouts, missing/malformed artifacts, and zero native counters
+fail.
+
+## macOS native Storm child and Metal shell
+
+The macOS child is an application-owned `NSView` hosted by Avalonia `NativeControlHost` while
+Avalonia remains fixed to its Metal renderer. Cocoa creates, attaches, sizes, focuses, hides, and
+detaches the view and creates/attaches the `NSOpenGLContext` drawable on the main thread. A dedicated
+owner thread exclusively makes the context current, updates, renders, preserves exact pre-flush RGBA
+bytes, flushes, recreates Storm from the retained stage, and clears current ownership. Cocoa input
+evidence uses NSEvent/NSView injection, never user32. macOS exposes OpenGL 4.1 core, not a
+compatibility profile. The probe requires `openusd_hydra` itself to report exactly `Storm / Metal`;
+the child preserves that name and appends only `OpenGL 4.1 core presentation`.
+
+The `macos-15-arm64` render job selects Xcode 16.4, validates the ten-entry metallib and sidecar,
+runs the same native first/edit/preserved-capture probe for build or archive input, runs the signed
+package-only launch and real `IOSurfaceRef`/`MetalSharedEvent` tests, then performs 100 Storm/Metal
+switches in one Avalonia process:
+
+```powershell
+./eng/run-silk-probe.ps1 -Rid osx-arm64 -MetalComposition
+./eng/run-storm-native-child-macos.ps1 -SwitchCount 100 -SurvivalSeconds 90 -NativeSource build
+```
+
+The shader workflow is also the required hosted Metal picking gate. After staging the real
+ten-entry library, it runs Metal conformance for nearest-depth overlap, physical top-left coordinate
+mapping, token-zero miss, stale resize and simulated command-failure generation, nullable hit
+geometry, persistent three-slot ring saturation/reuse, and warm zero-churn resource counts. Windows
+runs the same multi-TFM source and contract tests, but cannot satisfy this execution gate because it
+has neither Xcode 16.4 nor a real `mesh.metallib`.
+
+The gate requires Cocoa input counters, main/render thread ownership, first/edit hash changes,
+preserved-frame identity after diagnostic capture, resize/DPI evidence, context generation two,
+safe-abandon teardown, actual `Storm / Metal` Hgi identity, non-zero Metal stage draws and triangles,
+live display-color and transform IOSurface hash changes, ring reuse, no `STAGE_DRAW_BLOCKED`
+diagnostic, and zero final resources.
+The native probe also starts concurrent coalesced frame requests behind a barrier and performs 64
+main-thread resizes. Every completed resize generation must have a matching context-update generation
+before a frame with its exact width, height, and DPI is preserved.
+Its recovery barrier pauses after the render thread has staged the old context and cleared renderer/
+preserved-frame state, but before Cocoa-main replacement. The main thread resizes, detaches and
+reattaches the NSView, and reads diagnostics in that phase, then releases recovery while pumping the
+run loop. The gate requires monotonic context generation, renderer/context generation identity, no
+half-published state, and exact dimensions/DPI on the first post-recovery preserved frame.
+Native staging rejects a macOS runtime that omits the child library or installed probe.
+The hardening implementation is complete when cross-build and source-contract tests pass; the
+original macOS hosted proof remains blocked until this exact job succeeds on `macos-15-arm64`.
+
+## Shared-stage soak
+
+The NativeAOT hdSilk gate runs the deterministic 10,000-edit plus 2,500-read same-stage workload and writes a JSON
+artifact:
+
+```powershell
+./eng/run-silk-probe.ps1 -Rid win-x64 -SharedStageSoak
+```
+
+The Windows WGL gate runs the same scheduler/source concurrently through Storm and hdSilk, simulates one
+Storm context-loss abandon/recreate, survives for at least 90 seconds, and exits only after renderer,
+source, and scheduler teardown:
+
+```powershell
+./eng/run-platform-smoke.ps1 -Platform windows-wgl -SharedStageSoak -SoakSeconds 90
+```
+
+The workload deterministically interleaves two property edits, one topology edit, one composition edit,
+and one read in each five-operation cycle. It authors two meshes, changes render-relevant points and
+canonical display color, and proves a controlled color edit upserts only the target mesh. Exact
+invalidation counts, monotonic stage serials, page revisions, stable mesh IDs, removals, and steady pages
+are required. The final gate compares the complete sorted hdSilk mesh ID/path set with the initialized
+steady set, proves both soak meshes were removed and restored under their original IDs, and checks the
+default-time Mesh A display color exactly as `(0.92, 0.752, 0.416, 1)`.
+
+Artifacts report source/build identity, ABI versions, timestamps, operation counts, serial and
+notification coalescing, Storm pre/post-loss frames and faults, hdSilk pages/upserts/removals, and
+baseline/peak/final native and managed resource counters. Forced-GC checkpoints every 500 operations
+after warmup record retained bytes and working set; later-window least-squares slopes must remain below
+the deterministic ceilings. `render.yml` runs the NativeAOT soak plus Windows WGL and Linux X11/XWayland
+soaks as blocking steps. `eng/shared-stage-soak-identity.ps1` causes each runner to reject stale source,
+executable hash, or executable timestamp evidence. The source identity covers all production `src`
+projects (including every Silk backend), native shim sources/CMake/resources, tests/probes/assets,
+root build/version/package inputs, rendering workflow, and engineering scripts while excluding generated
+build/install/download outputs. Viewer evidence is finalized only after the GL render pump reports
+shutdown completion and fresh post-teardown renderer fault and resource diagnostics are read.
+
+## Related documentation
+
+- [Rendering](rendering.md) defines the backend paths exercised by render evidence.
+- [Native build](native-build.md) defines the verified archives reused by package and render jobs.
+- [Packaging](packaging.md) defines clean-feed and package-only execution gates.
+- [Shader pipeline](shader-pipeline.md) defines authoritative and platform shader validation.

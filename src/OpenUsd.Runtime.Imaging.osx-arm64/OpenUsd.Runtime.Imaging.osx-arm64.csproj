@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenUsd.Runtime.Core.osx-arm64/OpenUsd.Runtime.Core.osx-arm64.csproj" IncludeAssets="all" PrivateAssets="none" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackageId>OpenUsd.Runtime.Imaging.osx-arm64</PackageId>
+    <Description>OpenUSD Hydra, renderer, and hdSilk native runtime resources for macOS Arm64.</Description>
+    <PackageTags>openusd;usd;hydra;rendering;native;runtime;macos;arm64</PackageTags>
+    <RuntimePackageKind>Imaging</RuntimePackageKind>
+    <RuntimePackageRid>osx-arm64</RuntimePackageRid>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <Import Project="../OpenUsd.Runtime.Packaging/OpenUsd.Runtime.Packaging.targets" />
+
+</Project>

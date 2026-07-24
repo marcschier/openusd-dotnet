@@ -1,0 +1,71 @@
+{
+  "version": 8,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/shim/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT}"
+      }
+    },
+    {
+      "name": "win-x64",
+      "inherits": "base",
+      "cacheVariables": {
+        "OPENUSD_WITH_VULKAN": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-x64",
+      "inherits": "base",
+      "cacheVariables": {
+        "OPENUSD_WITH_VULKAN": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "osx-arm64",
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "win-x64",
+      "configurePreset": "win-x64"
+    },
+    {
+      "name": "linux-x64",
+      "configurePreset": "linux-x64"
+    },
+    {
+      "name": "osx-arm64",
+      "configurePreset": "osx-arm64"
+    }
+  ]
+}

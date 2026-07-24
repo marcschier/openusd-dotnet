@@ -1,0 +1,70 @@
+#usda 1.0
+
+def Xform "World"
+{
+    def Xform "Hierarchy"
+    {
+        matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (5, 6, 7, 1) )
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+
+        def Mesh "Mesh"
+        {
+            float3[] extent = [(-2, -1, 0), (2, 1, 0)]
+        }
+    }
+
+    def Xform "Purposes"
+    {
+        def Mesh "Default"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 1)]
+        }
+
+        def Mesh "Proxy"
+        {
+            float3[] extent = [(10, 10, 10), (11, 11, 11)]
+            uniform token purpose = "proxy"
+        }
+
+        def Mesh "Render"
+        {
+            float3[] extent = [(20, 20, 20), (21, 21, 21)]
+            uniform token purpose = "render"
+        }
+
+        def Mesh "Guide"
+        {
+            float3[] extent = [(30, 30, 30), (31, 31, 31)]
+            uniform token purpose = "guide"
+        }
+    }
+
+    def Mesh "Animated"
+    {
+        float3[] extent = [(-1, -1, -1), (1, 1, 1)]
+        float3[] extent.timeSamples = {
+            10: [(-3, -2, -1), (3, 2, 1)],
+        }
+    }
+
+    def Mesh "Inactive" (
+        active = false
+    )
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 1)]
+    }
+
+    def Xform "Instance" (
+        instanceable = true
+        prepend references = @D:/git/marcschier/openusd/native/../test-assets\native-bounds-model.usda@</Model>
+    )
+    {
+    }
+
+    def Xform "Payload" (
+        prepend payload = @D:/git/marcschier/openusd/native/../test-assets\native-bounds-model.usda@</Model>
+    )
+    {
+    }
+}
+

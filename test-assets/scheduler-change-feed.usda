@@ -1,0 +1,12 @@
+#usda 1.0
+
+def "World"
+{
+    def Xform "Signal"
+    {
+        custom double custom:invoke = 1
+        custom double custom:invokeFailed = 2
+        custom double custom:value = 999
+    }
+}
+

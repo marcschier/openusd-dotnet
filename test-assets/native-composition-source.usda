@@ -1,0 +1,11 @@
+#usda 1.0
+
+def Xform "Model"
+{
+    custom double custom:sourceValue = 33
+
+    def Xform "Child"
+    {
+    }
+}
+

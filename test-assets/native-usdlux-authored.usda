@@ -1,0 +1,39 @@
+#usda 1.0
+
+def "World"
+{
+    def "Lights"
+    {
+        def DistantLight "Sun"
+        {
+            float inputs:angle = 0.75
+            color3f inputs:color = (1, 0.8, 0.6)
+            float inputs:exposure = 2
+            float inputs:intensity = 4.5
+        }
+
+        def SphereLight "Bulb" (
+            prepend apiSchemas = ["ShapingAPI"]
+        )
+        {
+            bool inputs:normalize = 1
+            float inputs:radius = 0.25
+            float inputs:shaping:cone:angle = 35
+            float inputs:shaping:cone:softness = 0.2
+            float inputs:shaping:focus = 2.5
+        }
+
+        def RectLight "Panel"
+        {
+            float inputs:height = 2
+            asset inputs:texture:file = @textures/panel.exr@
+            float inputs:width = 3
+        }
+
+        def DomeLight "Environment"
+        {
+            asset inputs:texture:file = @textures/studio.hdr@
+        }
+    }
+}
+

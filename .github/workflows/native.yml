@@ -1,0 +1,248 @@
+name: native artifact pipeline
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [ master, main ]
+    paths:
+      - '.github/workflows/native.yml'
+      - 'eng/openusd.lock.json'
+      - 'eng/fetch-native.ps1'
+      - 'eng/build-native.ps1'
+      - 'eng/build-vulkan-sdk.ps1'
+      - 'eng/check-linux-native-prerequisites.ps1'
+      - 'eng/test-linux-native-prerequisites.ps1'
+      - 'eng/native-install-metadata.ps1'
+      - 'eng/prepare-render-native.ps1'
+      - 'eng/create-native-archive.ps1'
+      - 'eng/test-render-native-archive.ps1'
+      - 'eng/run-native-probe.ps1'
+      - 'eng/run-native-fuzz.ps1'
+      - 'eng/run-silk-probe.ps1'
+      - 'native/**'
+      - 'test-assets/fuzz-seeds/**'
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - '.github/workflows/native.yml'
+      - 'eng/openusd.lock.json'
+      - 'eng/fetch-native.ps1'
+      - 'eng/build-native.ps1'
+      - 'eng/build-vulkan-sdk.ps1'
+      - 'eng/check-linux-native-prerequisites.ps1'
+      - 'eng/test-linux-native-prerequisites.ps1'
+      - 'eng/native-install-metadata.ps1'
+      - 'eng/prepare-render-native.ps1'
+      - 'eng/create-native-archive.ps1'
+      - 'eng/test-render-native-archive.ps1'
+      - 'eng/run-native-probe.ps1'
+      - 'eng/run-native-fuzz.ps1'
+      - 'eng/run-silk-probe.ps1'
+      - 'native/**'
+      - 'test-assets/fuzz-seeds/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.rid }} verified native archive
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 420
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+          - rid: linux-x64
+            runner: ubuntu-latest
+          - rid: osx-arm64
+            runner: macos-15-arm64
+    env:
+      OpenUsdRequireMetalShaderLibrary: >-
+        ${{ matrix.rid == 'osx-arm64' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Select Xcode 16.4
+        if: runner.os == 'macOS'
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
+          xcodebuild -version
+      - name: Install Linux native prerequisites
+        if: runner.os == 'Linux'
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y
+          build-essential clang cmake ninja-build pkg-config
+          libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxcursor-dev
+          libxi-dev libxinerama-dev libxrandr-dev libxt-dev libxtst-dev
+          libwayland-dev x11-utils xvfb zlib1g-dev
+      - name: Install macOS native prerequisites
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+      - name: Validate Linux prerequisite contract
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: |
+          ./eng/test-linux-native-prerequisites.ps1
+          ./eng/check-linux-native-prerequisites.ps1
+      - name: Validate archive producer and consumer
+        shell: pwsh
+        run: ./eng/test-render-native-archive.ps1
+      - name: Validate native fuzz source contract
+        shell: pwsh
+        run: ./eng/run-native-fuzz.ps1 -SelfTest
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: native-cache
+        with:
+          path: |
+            native/install/${{ matrix.rid }}
+            native/install/shim/${{ matrix.rid }}
+            native/install/vulkan-sdk-1.4.321.0
+            native/build/shim/${{ matrix.rid }}
+          key: >-
+            native-${{ matrix.rid }}-${{ hashFiles(
+              'eng/openusd.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/check-linux-native-prerequisites.ps1',
+              'eng/native-install-metadata.ps1',
+              'native/CMakeLists.txt',
+              'native/CMakePresets.json',
+              'native/**/CMakeLists.txt',
+              'native/**/*.cmake',
+              'native/**/*.json',
+              'native/**/*.in',
+              'native/**/resources/**',
+              'native/**/*.c',
+              'native/**/*.cc',
+              'native/**/*.cpp',
+              'native/**/*.cxx',
+              'native/**/*.m',
+              'native/**/*.mm',
+              'native/**/*.h',
+              'native/**/*.hh',
+              'native/**/*.hpp',
+              'native/**/*.hxx',
+              'native/**/*.inc',
+              'native/**/*.inl',
+              '!native/build/**',
+              '!native/install/**',
+              '!native/downloads/**',
+              '!native/src/**',
+              '!native/.cache/**'
+            ) }}
+      - name: Fetch locked native sources
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./eng/fetch-native.ps1 -Rid ${{ matrix.rid }}
+      - name: Build locked native install
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./eng/build-native.ps1 -Rid ${{ matrix.rid }}
+      - name: Verify native install metadata
+        shell: pwsh
+        run: |
+          ./eng/native-install-metadata.ps1 `
+            -Operation Verify `
+            -Rid ${{ matrix.rid }} `
+            -RequireVulkanRuntime:$IsWindows
+      - name: Run bounded native fuzzers
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./eng/run-native-fuzz.ps1 -MaxTotalTime 60
+      - name: Upload native fuzz crash artifacts
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openusd-native-fuzz-linux-x64
+          path: artifacts/native-fuzz/linux-x64/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Build and validate Metal shader library
+        if: runner.os == 'macOS'
+        shell: pwsh
+        run: |
+          ./eng/shaders/fetch-toolchain.ps1 -Rid osx-arm64
+          ./eng/shaders/build-toolchain.ps1 -Rid osx-arm64
+          ./eng/shaders/build-shaders.ps1 `
+            -Rid osx-arm64 `
+            -OutputRoot eng/shaders/out/native-macos
+          ./eng/shaders/prepare-metal-library.ps1 `
+            -OutputRoot eng/shaders/out/checked-payload/osx-arm64
+      - name: Run Windows native CTest
+        if: runner.os == 'Windows'
+        run: >
+          ctest
+          --test-dir native/build/shim/win-x64
+          -C Release
+          --output-on-failure
+      - name: Run Linux native CTest under Xvfb
+        if: runner.os == 'Linux'
+        run: |
+          export DISPLAY=:94
+          Xvfb "$DISPLAY" -screen 0 1280x720x24 -ac -nolisten tcp \
+            >artifacts/native-ctest-xvfb.log 2>&1 &
+          xvfb_pid=$!
+          trap 'kill "$xvfb_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 100); do
+            xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break
+            sleep 0.05
+          done
+          ctest --test-dir native/build/shim/linux-x64 --output-on-failure
+      - name: Run macOS native CTest
+        if: runner.os == 'macOS'
+        run: ctest --test-dir native/build/shim/osx-arm64 --output-on-failure
+      - name: Execute staged NativeAOT probes
+        shell: pwsh
+        run: |
+          ./eng/run-native-probe.ps1 `
+            -Rid ${{ matrix.rid }} `
+            -SkipNativeAbiProbe
+          ./eng/run-silk-probe.ps1 -Rid ${{ matrix.rid }}
+      - name: Create immutable native archive
+        shell: pwsh
+        run: |
+          $root = 'artifacts/native-archive/${{ matrix.rid }}'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          ./eng/create-native-archive.ps1 `
+            -Rid ${{ matrix.rid }} `
+            -OutputPath (Join-Path $root 'openusd-native-${{ matrix.rid }}.tar.gz') `
+            -MetadataOutputPath (Join-Path $root 'native-artifact.json')
+      - name: Upload verified native archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openusd-native-${{ matrix.rid }}
+          path: artifacts/native-archive/${{ matrix.rid }}/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload native diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openusd-native-diagnostics-${{ matrix.rid }}
+          path: |
+            artifacts/native-ctest-xvfb.log
+            artifacts/native-probe/${{ matrix.rid }}
+            artifacts/silk-probe/${{ matrix.rid }}
+          if-no-files-found: warn
+          retention-days: 14

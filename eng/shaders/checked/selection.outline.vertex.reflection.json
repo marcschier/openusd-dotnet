@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 2,
+  "source": "eng/shaders/sources/selection.outline.vertex.slang",
+  "entryPoint": {
+    "name": "selectionOutlineVertexMain",
+    "stage": "vertex",
+    "profile": "vs_6_0",
+    "threadGroupSize": null
+  },
+  "resources": [],
+  "stageInputs": [
+    {
+      "name": "vertexId",
+      "semantic": {
+        "name": "SV_VERTEXID",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "uint32"
+      }
+    }
+  ],
+  "stageOutputs": [
+    {
+      "name": "position",
+      "semantic": {
+        "name": "SV_POSITION",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "textureCoordinate",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 0,
+        "systemValue": false
+      },
+      "location": 0,
+      "type": {
+        "kind": "vector",
+        "elementCount": 2,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    }
+  ]
+}

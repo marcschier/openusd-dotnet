@@ -1,0 +1,51 @@
+#usda 1.0
+
+def "World"
+{
+    def SkelRoot "Character" (
+        prepend apiSchemas = ["SkelBindingAPI"]
+    )
+    {
+        rel skel:skeleton = </World/Character/Skeleton>
+
+        def Skeleton "Skeleton" (
+            prepend apiSchemas = ["SkelBindingAPI"]
+        )
+        {
+            uniform matrix4d[] bindTransforms = [( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ), ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 1, 0, 1) )]
+            uniform token[] joints = ["Root", "Root/Arm"]
+            uniform matrix4d[] restTransforms = [( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ), ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 1, 0, 1) )]
+            rel skel:animationSource = </World/Character/Animation>
+        }
+
+        def SkelAnimation "Animation"
+        {
+            uniform token[] joints = ["Root", "Root/Arm"]
+            quatf[] rotations = [(1, 0, 0, 0), (1, 0, 0, 0)]
+            quatf[] rotations.timeSamples = {
+                10: [(1, 0, 0, 0), (0.70710677, 0, 0, 0.70710677)],
+            }
+            half3[] scales = [(1, 1, 1), (1, 1, 1)]
+            float3[] translations = [(0, 0, 0), (0, 1, 0)]
+            float3[] translations.timeSamples = {
+                10: [(0, 0, 0), (0, 2, 0)],
+            }
+        }
+
+        def Mesh "Mesh" (
+            prepend apiSchemas = ["SkelBindingAPI"]
+        )
+        {
+            matrix4d primvars:skel:geomBindTransform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+            int[] primvars:skel:jointIndices = [0, 1, 0, 1, 0, 1] (
+                elementSize = 2
+                interpolation = "vertex"
+            )
+            float[] primvars:skel:jointWeights = [1, 0, 0.5, 0.5, 0, 1] (
+                elementSize = 2
+                interpolation = "vertex"
+            )
+        }
+    }
+}
+

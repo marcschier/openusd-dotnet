@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenUsd\OpenUsd.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.LiveAuthoring</AssemblyName>
+    <RootNamespace>OpenUsd.LiveAuthoring</RootNamespace>
+    <Description>Package-consumer live-authoring adapter sample for scheduler-owned OpenUSD stages.</Description>
+    <IsSampleProject>true</IsSampleProject>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+  </PropertyGroup>
+
+</Project>

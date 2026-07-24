@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd.Rendering\OpenUsd.Rendering.csproj" />
+    <ProjectReference Include="..\OpenUsd.Interop\OpenUsd.Interop.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Rendering.Storm</AssemblyName>
+    <RootNamespace>OpenUsd.Rendering.Storm</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Hydra and Storm rendering backend for OpenUsd.</Description>
+    <PackageTags>openusd;usd;hydra;storm;rendering</PackageTags>
+  </PropertyGroup>
+
+</Project>

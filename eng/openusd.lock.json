@@ -1,0 +1,308 @@
+{
+  "$schemaVersion": 1,
+  "openUsd": {
+    "version": "26.05",
+    "tag": "v26.05",
+    "commit": "2095fafafd033fa23386d7ec6d58c7cc33974518",
+    "archiveUrl": "https://codeload.github.com/PixarAnimationStudios/OpenUSD/tar.gz/2095fafafd033fa23386d7ec6d58c7cc33974518",
+    "archiveName": "OpenUSD-2095fafafd033fa23386d7ec6d58c7cc33974518.tar.gz",
+    "archiveSha256": "694274F5B5751BA49C229F8413B4437E83AD8CD9472FCCE943DE577D42D7DE31",
+    "extractDirectory": "OpenUSD-2095fafafd033fa23386d7ec6d58c7cc33974518",
+    "buildScript": "build_scripts/build_usd.py",
+    "buildScriptSha256": "258C2BD80974154C00B8CB7D6CA19257D6E1878BDBDCE6501DDF18A5E230C629",
+    "patchedBuildScriptSha256": "D1ADFB3E014FF92B5234DD0D3106507CDB5DBABF6DD84EFE6ABEFF130E12F609",
+    "patches": [
+      {
+        "id": "windows-python-3.13-batch-launch",
+        "description": "Run Boost bootstrap through cmd.exe with the vc143 toolset and restore batch lookup in the configured build directory."
+      },
+      {
+        "id": "windows-vs18-boost-toolset",
+        "description": "Bind Boost's vc143 toolset to the cl.exe already configured by the developer shell when Visual Studio is newer than Boost's discovery table."
+      }
+    ],
+    "license": "Apache-2.0"
+  },
+  "abi": {
+    "data": 8,
+    "dataCapabilities": 511,
+    "renderCommands": 2
+  },
+  "vulkanSdk": {
+    "version": "1.4.321.0",
+    "windowsConfigUrl": "https://sdk.lunarg.com/sdk/download/1.4.321.0/windows/config.json",
+    "windowsConfigSha256": "D3DCE5C4CDCFBAA298FD1F70511A942B27331F45F05C877D10484AE882765CAE",
+    "repositories": [
+      {
+        "name": "Vulkan-Headers",
+        "url": "https://github.com/KhronosGroup/Vulkan-Headers.git",
+        "commit": "2cd90f9d20df57eac214c148f3aed885372ddcfe"
+      },
+      {
+        "name": "Vulkan-Loader",
+        "url": "https://github.com/KhronosGroup/Vulkan-Loader.git",
+        "commit": "da8d2caad9341ca8c5a7c3deba217d7da50a7c24"
+      },
+      {
+        "name": "shaderc-source-manifest",
+        "url": "https://github.com/google/shaderc.git",
+        "commit": "a298b382ea7af052b549c08a799a56e9ec4bf471"
+      },
+      {
+        "name": "VulkanMemoryAllocator",
+        "url": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git",
+        "commit": "1d8f600fd424278486eade7ed3e877c99f0846b1"
+      },
+      {
+        "name": "Vulkan-Utility-Libraries",
+        "url": "https://github.com/KhronosGroup/Vulkan-Utility-Libraries.git",
+        "commit": "ec329e2721921f79743b90307ee047d08e057788"
+      }
+    ]
+  },
+  "profile": {
+    "name": "viewer-standard",
+    "configuration": "Release",
+    "sharedMonolithic": true,
+    "enabled": [
+      "usdValidation",
+      "imaging",
+      "usdImaging",
+      "storm",
+      "materialX",
+      "openImageIO",
+      "openColorIO",
+      "oneTBB",
+      "openGL"
+    ],
+    "disabled": [
+      "python",
+      "usdview",
+      "tests",
+      "examples",
+      "tutorials",
+      "tools",
+      "documentation",
+      "ptex",
+      "openVDB",
+      "embree",
+      "prman",
+      "alembic",
+      "draco"
+    ],
+    "platforms": {
+      "win-x64": {
+        "graphics": [
+          "OpenGL",
+          "Vulkan"
+        ],
+        "zlib": "bundled",
+        "compiler": "Visual Studio 2022 17.14",
+        "cmake": "3.30.4",
+        "vulkanSdk": "1.4.321.0"
+      },
+      "linux-x64": {
+        "graphics": [
+          "OpenGL",
+          "Vulkan"
+        ],
+        "zlib": "system",
+        "compiler": "GCC 11.5.0",
+        "cmake": "3.30.4",
+        "vulkanSdk": "1.4.321.0",
+        "compatibilityTarget": "glibc 2.28"
+      },
+      "osx-arm64": {
+        "graphics": [
+          "OpenGL",
+          "Metal"
+        ],
+        "zlib": "system",
+        "compiler": "Apple clang 16.0.0 (Xcode 16)",
+        "cmake": "3.30.4",
+        "deploymentTarget": "13.0"
+      }
+    }
+  },
+  "dependencies": [
+    {
+      "name": "oneTBB",
+      "version": "2021.12.0",
+      "tag": "v2021.12.0",
+      "commit": "9afd759b72c0c233cd5ea3c3c06b0894c9da9c54",
+      "url": "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.12.0.zip",
+      "archiveName": "v2021.12.0.zip",
+      "sha256": "FE6CA052B5BDD2C6E0616B360C9B0DCBCC46E01BBD0AA8FD0517C17FC58931DB",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "zlib",
+      "version": "1.2.13",
+      "tag": "v1.2.13",
+      "commit": "04f42ceca40f73e2978b50e93806c2a18c1281fc",
+      "url": "https://github.com/madler/zlib/archive/v1.2.13.zip",
+      "archiveName": "v1.2.13.zip",
+      "sha256": "C2856951BBF30E30861ACE3765595D86BA13F2CF01279D901F6C62258C57F4FF",
+      "platforms": [
+        "win-x64"
+      ]
+    },
+    {
+      "name": "Boost",
+      "version": "1.86.0",
+      "url": "https://archives.boost.io/release/1.86.0/source/boost_1_86_0.zip",
+      "archiveName": "boost_1_86_0.zip",
+      "sha256": "CD20A5694E753683E1DC2EE10E2D1BB11704E65893EBCC6CED234BA68E5D8646",
+      "platforms": [
+        "win-x64"
+      ]
+    },
+    {
+      "name": "Boost",
+      "version": "1.80.0",
+      "url": "https://archives.boost.io/release/1.80.0/source/boost_1_80_0.zip",
+      "archiveName": "boost_1_80_0.zip",
+      "sha256": "E34756F63ABE8AC34B35352743F17D061FCC825969A2DD8458264EDB38781782",
+      "platforms": [
+        "linux-x64"
+      ]
+    },
+    {
+      "name": "Boost",
+      "version": "1.82.0",
+      "url": "https://archives.boost.io/release/1.82.0/source/boost_1_82_0.zip",
+      "archiveName": "boost_1_82_0.zip",
+      "sha256": "F7C9E28D242ABCD7A2C1B962039FCDD463CA149D1883C3A950BBCC0CE6F7C6D9",
+      "platforms": [
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "libjpeg-turbo",
+      "version": "2.0.1",
+      "tag": "2.0.1",
+      "commit": "bb3d325624526c91646bb9af9578d7198c082d51",
+      "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.1.zip",
+      "archiveName": "2.0.1.zip",
+      "sha256": "DAB9F12655D244B9F8E6C88FCEDF4B109560B7B2C5429B85E92792008A28954B",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "libtiff",
+      "version": "4.0.7",
+      "tag": "v4.0.7",
+      "commit": "884f973652b8b020e533b1e340da3ef4bcd1d925",
+      "url": "https://gitlab.com/libtiff/libtiff/-/archive/v4.0.7/libtiff-v4.0.7.zip",
+      "archiveName": "libtiff-v4.0.7.zip",
+      "sha256": "53531D33D1FD3B4303520D53FDC146FBD117AB39BA8B6C6359483AF0064276FF",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "libpng",
+      "version": "1.6.47",
+      "tag": "v1.6.47",
+      "commit": "872555f4ba910252783af1507f9e7fe1653be252",
+      "url": "https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.47.zip",
+      "archiveName": "v1.6.47.zip",
+      "sha256": "D7EFC089968972FB79A4AB71BD9311F56C58A51B858A17BAB85D806EC48CC77A",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "OpenEXR",
+      "version": "3.1.13",
+      "tag": "v3.1.13",
+      "commit": "fad1d1a9dc188aceabbea1313580d73b7236b79b",
+      "url": "https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v3.1.13.zip",
+      "archiveName": "v3.1.13.zip",
+      "sha256": "28CD733DBF1E25B942BD31594FFD29C85929822C85116EEDA9A67B71FA0B13E8",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "OpenImageIO",
+      "version": "2.5.16.0",
+      "tag": "v2.5.16.0",
+      "commit": "73acd658769be18eeb618791a11ecbfad8c2372c",
+      "url": "https://github.com/OpenImageIO/oiio/archive/refs/tags/v2.5.16.0.zip",
+      "archiveName": "v2.5.16.0.zip",
+      "sha256": "867C32FC6FC4ACF286B0018A8582DC799779CEDCA41549BF5D19C5BE004DD207",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "OpenColorIO",
+      "version": "2.2.1",
+      "tag": "v2.2.1",
+      "commit": "d1ef24cbf8021f642e42f45f50c2cd4cc77141ce",
+      "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v2.2.1.zip",
+      "archiveName": "v2.2.1",
+      "sha256": "BE58D991A9449631D14C605F24ECC0FAC9CB7E03A289A9D289359C7A7BAE945F",
+      "platforms": [
+        "win-x64",
+        "linux-x64"
+      ]
+    },
+    {
+      "name": "OpenColorIO",
+      "version": "2.4.2",
+      "tag": "v2.4.2",
+      "commit": "6918fad3f5d22ac3ef2397c754bf4268c2b58dd0",
+      "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v2.4.2.zip",
+      "archiveName": "v2.4.2",
+      "sha256": "0A30F0BB8DD2E436B0751CD9DA1B67A4186FF36AB41A7114B662E02F87E0D1F0",
+      "platforms": [
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "OpenSubdiv",
+      "version": "3.6.1",
+      "tag": "v3_6_1",
+      "commit": "f26d0dedeaf846ea321865a527bb4489691c2f04",
+      "url": "https://github.com/PixarAnimationStudios/OpenSubdiv/archive/v3_6_1.zip",
+      "archiveName": "v3_6_1.zip",
+      "sha256": "F2A42D8AF5B3E1D51B9D6B243C1C3BAC9D6044E3715CD19968723B49231039CC",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "MaterialX",
+      "version": "1.39.4",
+      "tag": "v1.39.4",
+      "commit": "270b5cf2ae2be24a3b6ef4b0569f1c93038dda1d",
+      "url": "https://github.com/AcademySoftwareFoundation/MaterialX/archive/v1.39.4.zip",
+      "archiveName": "v1.39.4.zip",
+      "sha256": "3910B2498D7DA6C8E5AC150B9E6A74E530626044309EDB077829C024ED691E0E",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    }
+  ]
+}

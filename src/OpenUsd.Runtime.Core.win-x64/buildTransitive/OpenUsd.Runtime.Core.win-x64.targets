@@ -1,0 +1,15 @@
+<Project>
+
+  <PropertyGroup>
+    <_OpenUsdCoreWinX64ResourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/win-x64/resources'))</_OpenUsdCoreWinX64ResourceRoot>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == 'win-x64'">
+    <Content Include="$(_OpenUsdCoreWinX64ResourceRoot)/**/*">
+      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

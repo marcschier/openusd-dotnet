@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenUsd\OpenUsd.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Interop\OpenUsd.Interop.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Rendering\OpenUsd.Rendering.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Rendering.Silk\OpenUsd.Rendering.Silk.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>OpenUsd.Benchmarks</AssemblyName>
+    <RootNamespace>OpenUsd.Benchmarks</RootNamespace>
+    <IsBenchmarkProject>true</IsBenchmarkProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+</Project>

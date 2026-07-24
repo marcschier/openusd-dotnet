@@ -1,0 +1,25 @@
+<Project>
+
+  <PropertyGroup>
+    <_OpenUsdImagingLinuxX64ResourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/linux-x64/resources'))</_OpenUsdImagingLinuxX64ResourceRoot>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == 'linux-x64'">
+    <Content Include="$(_OpenUsdImagingLinuxX64ResourceRoot)/**/*">
+      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Target
+    Name="RehydrateOpenUsdStormChildPublishLinks"
+    AfterTargets="CopyFilesToPublishDirectory"
+    Condition="'$(RuntimeIdentifier)' == 'linux-x64' and $([MSBuild]::IsOSPlatform('Linux'))">
+    <Exec
+      Command="rm -f &quot;$(PublishDir)libopenusd_storm_child.so&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7&quot; &quot;$(PublishDir)libopenusd_storm_child.so&quot;" />
+    <Exec
+      Command="test -f &quot;$(PublishDir)libopenusd_storm_child.so.7.0.0&quot; &amp;&amp; rm -f &quot;$(PublishDir)libopenusd_storm_child.so.7&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7.0.0&quot; &quot;$(PublishDir)libopenusd_storm_child.so.7&quot;" />
+  </Target>
+
+</Project>

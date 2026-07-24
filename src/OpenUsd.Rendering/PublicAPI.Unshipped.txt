@@ -1,0 +1,621 @@
+#nullable enable
+OpenUsd.Rendering.CameraMode
+OpenUsd.Rendering.CameraMode.Automatic = 0 -> OpenUsd.Rendering.CameraMode
+OpenUsd.Rendering.CameraMode.Matrices = 1 -> OpenUsd.Rendering.CameraMode
+OpenUsd.Rendering.CameraState
+OpenUsd.Rendering.CameraState.CameraState() -> void
+OpenUsd.Rendering.CameraState.CameraState(System.Numerics.Matrix4x4 view, System.Numerics.Matrix4x4 projection) -> void
+OpenUsd.Rendering.CameraState.Deconstruct(out System.Numerics.Matrix4x4 view, out System.Numerics.Matrix4x4 projection) -> void
+OpenUsd.Rendering.CameraState.Equals(OpenUsd.Rendering.CameraState other) -> bool
+OpenUsd.Rendering.CameraState.Mode.get -> OpenUsd.Rendering.CameraMode
+OpenUsd.Rendering.CameraState.Projection.get -> System.Numerics.Matrix4x4
+OpenUsd.Rendering.CameraState.View.get -> System.Numerics.Matrix4x4
+OpenUsd.Rendering.CompositionExternalHandleOwnership
+OpenUsd.Rendering.CompositionExternalHandleOwnership.BorrowedUntilImportCompleted = 0 -> OpenUsd.Rendering.CompositionExternalHandleOwnership
+OpenUsd.Rendering.CompositionExternalHandleOwnership.TransferOnSuccessfulImport = 1 -> OpenUsd.Rendering.CompositionExternalHandleOwnership
+OpenUsd.Rendering.CompositionExternalHandleValidityPolicy
+OpenUsd.Rendering.CompositionExternalHandleValidityPolicy.NonNegativeFileDescriptor = 1 -> OpenUsd.Rendering.CompositionExternalHandleValidityPolicy
+OpenUsd.Rendering.CompositionExternalHandleValidityPolicy.NonZero = 0 -> OpenUsd.Rendering.CompositionExternalHandleValidityPolicy
+OpenUsd.Rendering.CompositionExternalImage
+OpenUsd.Rendering.CompositionExternalImage.CompositionExternalImage() -> void
+OpenUsd.Rendering.CompositionExternalImage.CompositionExternalImage(string! handleType, OpenUsd.Rendering.ViewportDimensions size, OpenUsd.Rendering.CompositionExternalImageFormat format, ulong memoryOffset = 0, ulong memorySize = 0, bool topLeftOrigin = true) -> void
+OpenUsd.Rendering.CompositionExternalImage.Equals(OpenUsd.Rendering.CompositionExternalImage other) -> bool
+OpenUsd.Rendering.CompositionExternalImage.Format.get -> OpenUsd.Rendering.CompositionExternalImageFormat
+OpenUsd.Rendering.CompositionExternalImage.HandleType.get -> string!
+OpenUsd.Rendering.CompositionExternalImage.MemoryOffset.get -> ulong
+OpenUsd.Rendering.CompositionExternalImage.MemorySize.get -> ulong
+OpenUsd.Rendering.CompositionExternalImage.Size.get -> OpenUsd.Rendering.ViewportDimensions
+OpenUsd.Rendering.CompositionExternalImage.TopLeftOrigin.get -> bool
+OpenUsd.Rendering.CompositionExternalImageFormat
+OpenUsd.Rendering.CompositionExternalImageFormat.B8G8R8A8UNorm = 1 -> OpenUsd.Rendering.CompositionExternalImageFormat
+OpenUsd.Rendering.CompositionExternalImageFormat.R8G8B8A8UNorm = 0 -> OpenUsd.Rendering.CompositionExternalImageFormat
+OpenUsd.Rendering.CompositionExternalSemaphore
+OpenUsd.Rendering.CompositionExternalSemaphore.CompositionExternalSemaphore() -> void
+OpenUsd.Rendering.CompositionExternalSemaphore.CompositionExternalSemaphore(long resourceId, string! handleType) -> void
+OpenUsd.Rendering.CompositionExternalSemaphore.Equals(OpenUsd.Rendering.CompositionExternalSemaphore other) -> bool
+OpenUsd.Rendering.CompositionExternalSemaphore.HandleType.get -> string!
+OpenUsd.Rendering.CompositionExternalSemaphore.ResourceId.get -> long
+OpenUsd.Rendering.CompositionFrameRenderResult
+OpenUsd.Rendering.CompositionFrameRenderResult.CompositionFrameRenderResult() -> void
+OpenUsd.Rendering.CompositionFrameRenderResult.CompositionFrameRenderResult(OpenUsd.Rendering.CompositionFrameRenderStatus Status, bool ContinueRendering, OpenUsd.Rendering.CompositionFrameSynchronization! Synchronization) -> void
+OpenUsd.Rendering.CompositionFrameRenderResult.ContinueRendering.get -> bool
+OpenUsd.Rendering.CompositionFrameRenderResult.ContinueRendering.init -> void
+OpenUsd.Rendering.CompositionFrameRenderResult.Deconstruct(out OpenUsd.Rendering.CompositionFrameRenderStatus Status, out bool ContinueRendering, out OpenUsd.Rendering.CompositionFrameSynchronization! Synchronization) -> void
+OpenUsd.Rendering.CompositionFrameRenderResult.Equals(OpenUsd.Rendering.CompositionFrameRenderResult other) -> bool
+OpenUsd.Rendering.CompositionFrameRenderResult.Status.get -> OpenUsd.Rendering.CompositionFrameRenderStatus
+OpenUsd.Rendering.CompositionFrameRenderResult.Status.init -> void
+OpenUsd.Rendering.CompositionFrameRenderResult.Synchronization.get -> OpenUsd.Rendering.CompositionFrameSynchronization!
+OpenUsd.Rendering.CompositionFrameRenderResult.Synchronization.init -> void
+OpenUsd.Rendering.CompositionFrameRenderStatus
+OpenUsd.Rendering.CompositionFrameRenderStatus.DeviceLost = 2 -> OpenUsd.Rendering.CompositionFrameRenderStatus
+OpenUsd.Rendering.CompositionFrameRenderStatus.NoFrame = 1 -> OpenUsd.Rendering.CompositionFrameRenderStatus
+OpenUsd.Rendering.CompositionFrameRenderStatus.Presented = 0 -> OpenUsd.Rendering.CompositionFrameRenderStatus
+OpenUsd.Rendering.CompositionFrameSynchronization
+OpenUsd.Rendering.CompositionFrameSynchronization.Kind.get -> OpenUsd.Rendering.CompositionFrameSynchronizationKind
+OpenUsd.Rendering.CompositionFrameSynchronization.SignalSemaphoreId.get -> long?
+OpenUsd.Rendering.CompositionFrameSynchronization.SignalValue.get -> ulong
+OpenUsd.Rendering.CompositionFrameSynchronization.WaitSemaphoreId.get -> long?
+OpenUsd.Rendering.CompositionFrameSynchronization.WaitValue.get -> ulong
+OpenUsd.Rendering.CompositionFrameSynchronizationKind
+OpenUsd.Rendering.CompositionFrameSynchronizationKind.Automatic = 0 -> OpenUsd.Rendering.CompositionFrameSynchronizationKind
+OpenUsd.Rendering.CompositionFrameSynchronizationKind.KeyedMutex = 1 -> OpenUsd.Rendering.CompositionFrameSynchronizationKind
+OpenUsd.Rendering.CompositionFrameSynchronizationKind.Semaphores = 2 -> OpenUsd.Rendering.CompositionFrameSynchronizationKind
+OpenUsd.Rendering.CompositionFrameSynchronizationKind.TimelineSemaphores = 3 -> OpenUsd.Rendering.CompositionFrameSynchronizationKind
+OpenUsd.Rendering.CompositionPresentationTarget
+OpenUsd.Rendering.CompositionPresentationTarget.CompositionPresentationTarget(System.Collections.Generic.IEnumerable<string!>! imageHandleTypes, System.Collections.Generic.IEnumerable<string!>! semaphoreHandleTypes, byte[]? deviceLuid, byte[]? deviceUuid) -> void
+OpenUsd.Rendering.CompositionPresentationTarget.DeviceLuid.get -> System.Collections.Generic.IReadOnlyList<byte>!
+OpenUsd.Rendering.CompositionPresentationTarget.DeviceUuid.get -> System.Collections.Generic.IReadOnlyList<byte>!
+OpenUsd.Rendering.CompositionPresentationTarget.ImageHandleTypes.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Rendering.CompositionPresentationTarget.SemaphoreHandleTypes.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Rendering.CompositionPresenterProbeResult
+OpenUsd.Rendering.CompositionPresenterProbeResult.CompositionPresenterProbeResult() -> void
+OpenUsd.Rendering.CompositionPresenterProbeResult.Equals(OpenUsd.Rendering.CompositionPresenterProbeResult other) -> bool
+OpenUsd.Rendering.CompositionPresenterProbeResult.IsAvailable.get -> bool
+OpenUsd.Rendering.CompositionPresenterProbeResult.Status.get -> string!
+OpenUsd.Rendering.ICompositionExternalHandleLease
+OpenUsd.Rendering.ICompositionExternalHandleLease.CommitTransfer() -> void
+OpenUsd.Rendering.ICompositionExternalHandleLease.Handle.get -> nint
+OpenUsd.Rendering.ICompositionExternalHandleLease.HandleType.get -> string!
+OpenUsd.Rendering.ICompositionExternalHandleLease.IsInvalid.get -> bool
+OpenUsd.Rendering.ICompositionExternalHandleLease.Ownership.get -> OpenUsd.Rendering.CompositionExternalHandleOwnership
+OpenUsd.Rendering.ICompositionExternalHandleLease.ValidityPolicy.get -> OpenUsd.Rendering.CompositionExternalHandleValidityPolicy
+OpenUsd.Rendering.ICompositionPresentationFrame
+OpenUsd.Rendering.ICompositionPresentationFrame.AllocationId.get -> long
+OpenUsd.Rendering.ICompositionPresentationFrame.Image.get -> OpenUsd.Rendering.CompositionExternalImage
+OpenUsd.Rendering.ICompositionPresentationFrame.LeaseImageHandleAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.ICompositionExternalHandleLease!>
+OpenUsd.Rendering.ICompositionPresentationFrame.LeaseSemaphoreHandleAsync(long resourceId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.ICompositionExternalHandleLease!>
+OpenUsd.Rendering.ICompositionPresentationFrame.Semaphores.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.CompositionExternalSemaphore>!
+OpenUsd.Rendering.ICompositionPresentationGeneration
+OpenUsd.Rendering.ICompositionPresentationGeneration.Frames.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.ICompositionPresentationFrame!>!
+OpenUsd.Rendering.ICompositionPresentationGeneration.Size.get -> OpenUsd.Rendering.ViewportDimensions
+OpenUsd.Rendering.ICompositionViewportPresenter
+OpenUsd.Rendering.ICompositionViewportPresenter.CreateGenerationAsync(OpenUsd.Rendering.ViewportDimensions size, int frameCount, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.ICompositionPresentationGeneration!>
+OpenUsd.Rendering.ICompositionViewportPresenter.ProbeAsync(OpenUsd.Rendering.CompositionPresentationTarget! target, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.CompositionPresenterProbeResult>
+OpenUsd.Rendering.ICompositionViewportPresenter.RenderAsync(OpenUsd.Rendering.ICompositionPresentationFrame! frame, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.CompositionFrameRenderResult>
+OpenUsd.Rendering.IRenderBackend
+OpenUsd.Rendering.IRenderBackend.Capabilities.get -> OpenUsd.Rendering.RenderBackendCapabilities
+OpenUsd.Rendering.IRenderBackend.Identity.get -> OpenUsd.Rendering.RenderBackendIdentity!
+OpenUsd.Rendering.IRenderBackend.InitializeAsync(OpenUsd.Rendering.StageRenderState! initialState, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.RenderBackendInitializationResult!>
+OpenUsd.Rendering.IRenderBackend.ProbeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.RenderBackendProbeResult!>
+OpenUsd.Rendering.IRenderBackend.RenderAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.RenderFrameResult!>
+OpenUsd.Rendering.IRenderBackend.ResizeAsync(OpenUsd.Rendering.ViewportDimensions viewport, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+OpenUsd.Rendering.IRenderBackend.UpdateStateAsync(OpenUsd.Rendering.StageRenderState! state, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+OpenUsd.Rendering.IRenderBackendActivationControl
+OpenUsd.Rendering.IRenderBackendActivationControl.ActivateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+OpenUsd.Rendering.IRenderBackendActivationControl.DeactivateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+OpenUsd.Rendering.IRenderBackendFactory
+OpenUsd.Rendering.IRenderBackendFactory.Create() -> OpenUsd.Rendering.IRenderBackend!
+OpenUsd.Rendering.IRenderBackendFactory.Kind.get -> OpenUsd.Rendering.RenderBackendKind
+OpenUsd.Rendering.IRenderPickingBackend
+OpenUsd.Rendering.IRenderPickingBackend.PickAsync(OpenUsd.Rendering.RenderPickRequest request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.RenderPickResult>
+OpenUsd.Rendering.ManagedRenderFrameResult
+OpenUsd.Rendering.ManagedRenderFrameResult.<Clone>$() -> OpenUsd.Rendering.ManagedRenderFrameResult!
+OpenUsd.Rendering.ManagedRenderFrameResult.ActiveBackend.get -> OpenUsd.Rendering.RenderBackendIdentity?
+OpenUsd.Rendering.ManagedRenderFrameResult.Diagnostics.get -> OpenUsd.Rendering.RenderBackendDiagnostics!
+OpenUsd.Rendering.ManagedRenderFrameResult.DidFailOver.get -> bool
+OpenUsd.Rendering.ManagedRenderFrameResult.Equals(OpenUsd.Rendering.ManagedRenderFrameResult? other) -> bool
+OpenUsd.Rendering.ManagedRenderFrameResult.Failure.get -> OpenUsd.Rendering.RenderBackendManagerFailureKind
+OpenUsd.Rendering.ManagedRenderFrameResult.Frame.get -> OpenUsd.Rendering.RenderFrameResult?
+OpenUsd.Rendering.ManagedRenderFrameResult.IsSuccess.get -> bool
+OpenUsd.Rendering.RenderBackendCapabilities
+OpenUsd.Rendering.RenderBackendCapabilities.Equals(OpenUsd.Rendering.RenderBackendCapabilities other) -> bool
+OpenUsd.Rendering.RenderBackendCapabilities.Features.get -> OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendCapabilities.IsSoftware.get -> bool
+OpenUsd.Rendering.RenderBackendCapabilities.MaxSamplesPerPixel.get -> int
+OpenUsd.Rendering.RenderBackendCapabilities.RenderBackendCapabilities() -> void
+OpenUsd.Rendering.RenderBackendCapabilities.RenderBackendCapabilities(OpenUsd.Rendering.RenderBackendCapability features, int maxSamplesPerPixel, bool isSoftware) -> void
+OpenUsd.Rendering.RenderBackendCapabilities.Supports(OpenUsd.Rendering.RenderBackendCapability capabilities) -> bool
+OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendCapability.Compute = 4 -> OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendCapability.DeviceLossDetection = 32 -> OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendCapability.Multisampling = 8 -> OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendCapability.None = 0 -> OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendCapability.Offscreen = 2 -> OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendCapability.Picking = 64 -> OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendCapability.Presentation = 1 -> OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendCapability.Shadows = 16 -> OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendDiagnostic
+OpenUsd.Rendering.RenderBackendDiagnostic.<Clone>$() -> OpenUsd.Rendering.RenderBackendDiagnostic!
+OpenUsd.Rendering.RenderBackendDiagnostic.Backend.get -> OpenUsd.Rendering.RenderBackendKind?
+OpenUsd.Rendering.RenderBackendDiagnostic.Category.get -> OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnostic.Code.get -> string!
+OpenUsd.Rendering.RenderBackendDiagnostic.Equals(OpenUsd.Rendering.RenderBackendDiagnostic? other) -> bool
+OpenUsd.Rendering.RenderBackendDiagnostic.ExceptionMessage.get -> string?
+OpenUsd.Rendering.RenderBackendDiagnostic.ExceptionType.get -> string?
+OpenUsd.Rendering.RenderBackendDiagnostic.InitializationFailure.get -> OpenUsd.Rendering.RenderBackendInitializationFailureKind?
+OpenUsd.Rendering.RenderBackendDiagnostic.Message.get -> string!
+OpenUsd.Rendering.RenderBackendDiagnostic.ProbeFailure.get -> OpenUsd.Rendering.RenderBackendProbeFailureKind?
+OpenUsd.Rendering.RenderBackendDiagnostic.RenderBackendDiagnostic(OpenUsd.Rendering.RenderBackendKind? backend, OpenUsd.Rendering.RenderDiagnosticSeverity severity, OpenUsd.Rendering.RenderBackendDiagnosticCategory category, string! code, string! message) -> void
+OpenUsd.Rendering.RenderBackendDiagnostic.RenderBackendDiagnostic(OpenUsd.Rendering.RenderBackendKind? backend, OpenUsd.Rendering.RenderDiagnosticSeverity severity, OpenUsd.Rendering.RenderBackendDiagnosticCategory category, string! code, string! message, OpenUsd.Rendering.RenderBackendProbeFailureKind? probeFailure, OpenUsd.Rendering.RenderBackendInitializationFailureKind? initializationFailure, string? exceptionType, string? exceptionMessage) -> void
+OpenUsd.Rendering.RenderBackendDiagnostic.Severity.get -> OpenUsd.Rendering.RenderDiagnosticSeverity
+OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnosticCategory.Cleanup = 7 -> OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnosticCategory.DeviceLoss = 4 -> OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnosticCategory.Fallback = 6 -> OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnosticCategory.General = 0 -> OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnosticCategory.Initialization = 2 -> OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnosticCategory.Picking = 8 -> OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnosticCategory.Probe = 1 -> OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnosticCategory.Rendering = 3 -> OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnosticCategory.Selection = 5 -> OpenUsd.Rendering.RenderBackendDiagnosticCategory
+OpenUsd.Rendering.RenderBackendDiagnostics
+OpenUsd.Rendering.RenderBackendDiagnostics.Entries.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderBackendDiagnostic!>!
+OpenUsd.Rendering.RenderBackendDiagnostics.Equals(OpenUsd.Rendering.RenderBackendDiagnostics? other) -> bool
+OpenUsd.Rendering.RenderBackendDiagnostics.RenderBackendDiagnostics(System.Collections.Generic.IEnumerable<OpenUsd.Rendering.RenderBackendDiagnostic!>! entries) -> void
+OpenUsd.Rendering.RenderBackendIdentity
+OpenUsd.Rendering.RenderBackendIdentity.<Clone>$() -> OpenUsd.Rendering.RenderBackendIdentity!
+OpenUsd.Rendering.RenderBackendIdentity.Equals(OpenUsd.Rendering.RenderBackendIdentity? other) -> bool
+OpenUsd.Rendering.RenderBackendIdentity.Kind.get -> OpenUsd.Rendering.RenderBackendKind
+OpenUsd.Rendering.RenderBackendIdentity.Name.get -> string!
+OpenUsd.Rendering.RenderBackendIdentity.RenderBackendIdentity(OpenUsd.Rendering.RenderBackendKind kind, string! name) -> void
+OpenUsd.Rendering.RenderBackendInitializationFailureKind
+OpenUsd.Rendering.RenderBackendInitializationFailureKind.DeviceCreationFailed = 2 -> OpenUsd.Rendering.RenderBackendInitializationFailureKind
+OpenUsd.Rendering.RenderBackendInitializationFailureKind.DeviceLost = 5 -> OpenUsd.Rendering.RenderBackendInitializationFailureKind
+OpenUsd.Rendering.RenderBackendInitializationFailureKind.None = 0 -> OpenUsd.Rendering.RenderBackendInitializationFailureKind
+OpenUsd.Rendering.RenderBackendInitializationFailureKind.ResourceCreationFailed = 4 -> OpenUsd.Rendering.RenderBackendInitializationFailureKind
+OpenUsd.Rendering.RenderBackendInitializationFailureKind.SurfaceCreationFailed = 3 -> OpenUsd.Rendering.RenderBackendInitializationFailureKind
+OpenUsd.Rendering.RenderBackendInitializationFailureKind.Unknown = 6 -> OpenUsd.Rendering.RenderBackendInitializationFailureKind
+OpenUsd.Rendering.RenderBackendInitializationFailureKind.UnsupportedConfiguration = 1 -> OpenUsd.Rendering.RenderBackendInitializationFailureKind
+OpenUsd.Rendering.RenderBackendInitializationResult
+OpenUsd.Rendering.RenderBackendInitializationResult.<Clone>$() -> OpenUsd.Rendering.RenderBackendInitializationResult!
+OpenUsd.Rendering.RenderBackendInitializationResult.Diagnostics.get -> OpenUsd.Rendering.RenderBackendDiagnostics!
+OpenUsd.Rendering.RenderBackendInitializationResult.Equals(OpenUsd.Rendering.RenderBackendInitializationResult? other) -> bool
+OpenUsd.Rendering.RenderBackendInitializationResult.Failure.get -> OpenUsd.Rendering.RenderBackendInitializationFailureKind
+OpenUsd.Rendering.RenderBackendInitializationResult.IsSuccess.get -> bool
+OpenUsd.Rendering.RenderBackendKind
+OpenUsd.Rendering.RenderBackendKind.D3D12 = 1 -> OpenUsd.Rendering.RenderBackendKind
+OpenUsd.Rendering.RenderBackendKind.Metal = 3 -> OpenUsd.Rendering.RenderBackendKind
+OpenUsd.Rendering.RenderBackendKind.Storm = 0 -> OpenUsd.Rendering.RenderBackendKind
+OpenUsd.Rendering.RenderBackendKind.Vulkan = 2 -> OpenUsd.Rendering.RenderBackendKind
+OpenUsd.Rendering.RenderBackendManager
+OpenUsd.Rendering.RenderBackendManager.ActiveBackend.get -> OpenUsd.Rendering.RenderBackendIdentity?
+OpenUsd.Rendering.RenderBackendManager.CurrentState.get -> OpenUsd.Rendering.StageRenderState?
+OpenUsd.Rendering.RenderBackendManager.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.Rendering.RenderBackendManager.GetCandidateSelectionCount(OpenUsd.Rendering.RenderBackendKind kind) -> int
+OpenUsd.Rendering.RenderBackendManager.GetFactoryCreationCount(OpenUsd.Rendering.RenderBackendKind kind) -> int
+OpenUsd.Rendering.RenderBackendManager.InitializeAsync(OpenUsd.Rendering.StageRenderState! initialState, OpenUsd.Rendering.RenderBackendKind? requestedBackend = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.RenderBackendManagerResult!>
+OpenUsd.Rendering.RenderBackendManager.RenderAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.ManagedRenderFrameResult!>
+OpenUsd.Rendering.RenderBackendManager.RenderBackendManager(OpenUsd.Rendering.RenderPlatform platform, System.Collections.Generic.IEnumerable<OpenUsd.Rendering.IRenderBackendFactory!>! factories) -> void
+OpenUsd.Rendering.RenderBackendManager.ResizeAsync(OpenUsd.Rendering.ViewportDimensions viewport, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.RenderBackendManagerResult!>
+OpenUsd.Rendering.RenderBackendManager.RetiredCleanupCount.get -> int
+OpenUsd.Rendering.RenderBackendManager.SwitchAsync(OpenUsd.Rendering.RenderBackendKind? requestedBackend = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.RenderBackendManagerResult!>
+OpenUsd.Rendering.RenderBackendManager.UpdateStateAsync(OpenUsd.Rendering.StageRenderState! state, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.RenderBackendManagerResult!>
+OpenUsd.Rendering.RenderBackendManagerFailureKind
+OpenUsd.Rendering.RenderBackendManagerFailureKind.BackendOperationFailed = 5 -> OpenUsd.Rendering.RenderBackendManagerFailureKind
+OpenUsd.Rendering.RenderBackendManagerFailureKind.CleanupPending = 4 -> OpenUsd.Rendering.RenderBackendManagerFailureKind
+OpenUsd.Rendering.RenderBackendManagerFailureKind.NoBackendAvailable = 3 -> OpenUsd.Rendering.RenderBackendManagerFailureKind
+OpenUsd.Rendering.RenderBackendManagerFailureKind.None = 0 -> OpenUsd.Rendering.RenderBackendManagerFailureKind
+OpenUsd.Rendering.RenderBackendManagerFailureKind.NotInitialized = 1 -> OpenUsd.Rendering.RenderBackendManagerFailureKind
+OpenUsd.Rendering.RenderBackendManagerFailureKind.SelectionFailed = 2 -> OpenUsd.Rendering.RenderBackendManagerFailureKind
+OpenUsd.Rendering.RenderBackendManagerResult
+OpenUsd.Rendering.RenderBackendManagerResult.<Clone>$() -> OpenUsd.Rendering.RenderBackendManagerResult!
+OpenUsd.Rendering.RenderBackendManagerResult.ActiveBackend.get -> OpenUsd.Rendering.RenderBackendIdentity?
+OpenUsd.Rendering.RenderBackendManagerResult.Diagnostics.get -> OpenUsd.Rendering.RenderBackendDiagnostics!
+OpenUsd.Rendering.RenderBackendManagerResult.Equals(OpenUsd.Rendering.RenderBackendManagerResult? other) -> bool
+OpenUsd.Rendering.RenderBackendManagerResult.Failure.get -> OpenUsd.Rendering.RenderBackendManagerFailureKind
+OpenUsd.Rendering.RenderBackendManagerResult.IsSuccess.get -> bool
+OpenUsd.Rendering.RenderBackendProbeFailureKind
+OpenUsd.Rendering.RenderBackendProbeFailureKind.DeviceUnavailable = 3 -> OpenUsd.Rendering.RenderBackendProbeFailureKind
+OpenUsd.Rendering.RenderBackendProbeFailureKind.IncompatibleDriver = 4 -> OpenUsd.Rendering.RenderBackendProbeFailureKind
+OpenUsd.Rendering.RenderBackendProbeFailureKind.None = 0 -> OpenUsd.Rendering.RenderBackendProbeFailureKind
+OpenUsd.Rendering.RenderBackendProbeFailureKind.PermissionDenied = 5 -> OpenUsd.Rendering.RenderBackendProbeFailureKind
+OpenUsd.Rendering.RenderBackendProbeFailureKind.RuntimeUnavailable = 2 -> OpenUsd.Rendering.RenderBackendProbeFailureKind
+OpenUsd.Rendering.RenderBackendProbeFailureKind.Unknown = 6 -> OpenUsd.Rendering.RenderBackendProbeFailureKind
+OpenUsd.Rendering.RenderBackendProbeFailureKind.UnsupportedPlatform = 1 -> OpenUsd.Rendering.RenderBackendProbeFailureKind
+OpenUsd.Rendering.RenderBackendProbeResult
+OpenUsd.Rendering.RenderBackendProbeResult.<Clone>$() -> OpenUsd.Rendering.RenderBackendProbeResult!
+OpenUsd.Rendering.RenderBackendProbeResult.Diagnostics.get -> OpenUsd.Rendering.RenderBackendDiagnostics!
+OpenUsd.Rendering.RenderBackendProbeResult.Equals(OpenUsd.Rendering.RenderBackendProbeResult? other) -> bool
+OpenUsd.Rendering.RenderBackendProbeResult.Failure.get -> OpenUsd.Rendering.RenderBackendProbeFailureKind
+OpenUsd.Rendering.RenderBackendProbeResult.IsAvailable.get -> bool
+OpenUsd.Rendering.RenderBackendSelectionFailureKind
+OpenUsd.Rendering.RenderBackendSelectionFailureKind.NoBackendAvailable = 4 -> OpenUsd.Rendering.RenderBackendSelectionFailureKind
+OpenUsd.Rendering.RenderBackendSelectionFailureKind.None = 0 -> OpenUsd.Rendering.RenderBackendSelectionFailureKind
+OpenUsd.Rendering.RenderBackendSelectionFailureKind.RequestedBackendUnavailable = 3 -> OpenUsd.Rendering.RenderBackendSelectionFailureKind
+OpenUsd.Rendering.RenderBackendSelectionFailureKind.RequestedBackendUnsupported = 2 -> OpenUsd.Rendering.RenderBackendSelectionFailureKind
+OpenUsd.Rendering.RenderBackendSelectionFailureKind.UnsupportedPlatform = 1 -> OpenUsd.Rendering.RenderBackendSelectionFailureKind
+OpenUsd.Rendering.RenderBackendSelectionMode
+OpenUsd.Rendering.RenderBackendSelectionMode.Automatic = 0 -> OpenUsd.Rendering.RenderBackendSelectionMode
+OpenUsd.Rendering.RenderBackendSelectionMode.Manual = 1 -> OpenUsd.Rendering.RenderBackendSelectionMode
+OpenUsd.Rendering.RenderBackendSelectionPolicy
+OpenUsd.Rendering.RenderBackendSelectionRequest
+OpenUsd.Rendering.RenderBackendSelectionRequest.Deconstruct(out OpenUsd.Rendering.RenderPlatform Platform, out OpenUsd.Rendering.RenderBackendKind? RequestedBackend) -> void
+OpenUsd.Rendering.RenderBackendSelectionRequest.Equals(OpenUsd.Rendering.RenderBackendSelectionRequest other) -> bool
+OpenUsd.Rendering.RenderBackendSelectionRequest.Mode.get -> OpenUsd.Rendering.RenderBackendSelectionMode
+OpenUsd.Rendering.RenderBackendSelectionRequest.Platform.get -> OpenUsd.Rendering.RenderPlatform
+OpenUsd.Rendering.RenderBackendSelectionRequest.Platform.init -> void
+OpenUsd.Rendering.RenderBackendSelectionRequest.RenderBackendSelectionRequest() -> void
+OpenUsd.Rendering.RenderBackendSelectionRequest.RenderBackendSelectionRequest(OpenUsd.Rendering.RenderPlatform Platform, OpenUsd.Rendering.RenderBackendKind? RequestedBackend) -> void
+OpenUsd.Rendering.RenderBackendSelectionRequest.RequestedBackend.get -> OpenUsd.Rendering.RenderBackendKind?
+OpenUsd.Rendering.RenderBackendSelectionRequest.RequestedBackend.init -> void
+OpenUsd.Rendering.RenderBackendSelectionResult
+OpenUsd.Rendering.RenderBackendSelectionResult.Candidates.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderBackendKind>!
+OpenUsd.Rendering.RenderBackendSelectionResult.Equals(OpenUsd.Rendering.RenderBackendSelectionResult? other) -> bool
+OpenUsd.Rendering.RenderBackendSelectionResult.Failure.get -> OpenUsd.Rendering.RenderBackendSelectionFailureKind
+OpenUsd.Rendering.RenderBackendSelectionResult.IsSuccess.get -> bool
+OpenUsd.Rendering.RenderBackendSelectionResult.Mode.get -> OpenUsd.Rendering.RenderBackendSelectionMode
+OpenUsd.Rendering.RenderDeviceLossKind
+OpenUsd.Rendering.RenderDeviceLossKind.DriverFailure = 4 -> OpenUsd.Rendering.RenderDeviceLossKind
+OpenUsd.Rendering.RenderDeviceLossKind.Hung = 3 -> OpenUsd.Rendering.RenderDeviceLossKind
+OpenUsd.Rendering.RenderDeviceLossKind.None = 0 -> OpenUsd.Rendering.RenderDeviceLossKind
+OpenUsd.Rendering.RenderDeviceLossKind.Removed = 1 -> OpenUsd.Rendering.RenderDeviceLossKind
+OpenUsd.Rendering.RenderDeviceLossKind.Reset = 2 -> OpenUsd.Rendering.RenderDeviceLossKind
+OpenUsd.Rendering.RenderDeviceLossKind.Unknown = 5 -> OpenUsd.Rendering.RenderDeviceLossKind
+OpenUsd.Rendering.RenderDiagnostic
+OpenUsd.Rendering.RenderDiagnostic.<Clone>$() -> OpenUsd.Rendering.RenderDiagnostic!
+OpenUsd.Rendering.RenderDiagnostic.Code.get -> string!
+OpenUsd.Rendering.RenderDiagnostic.Equals(OpenUsd.Rendering.RenderDiagnostic? other) -> bool
+OpenUsd.Rendering.RenderDiagnostic.Message.get -> string!
+OpenUsd.Rendering.RenderDiagnostic.RenderDiagnostic(OpenUsd.Rendering.RenderDiagnosticSeverity severity, string! code, string! message) -> void
+OpenUsd.Rendering.RenderDiagnostic.Severity.get -> OpenUsd.Rendering.RenderDiagnosticSeverity
+OpenUsd.Rendering.RenderDiagnosticSeverity
+OpenUsd.Rendering.RenderDiagnosticSeverity.Error = 2 -> OpenUsd.Rendering.RenderDiagnosticSeverity
+OpenUsd.Rendering.RenderDiagnosticSeverity.Information = 0 -> OpenUsd.Rendering.RenderDiagnosticSeverity
+OpenUsd.Rendering.RenderDiagnosticSeverity.Warning = 1 -> OpenUsd.Rendering.RenderDiagnosticSeverity
+OpenUsd.Rendering.RenderDiagnosticsState
+OpenUsd.Rendering.RenderDiagnosticsState.Entries.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderDiagnostic!>!
+OpenUsd.Rendering.RenderDiagnosticsState.Equals(OpenUsd.Rendering.RenderDiagnosticsState? other) -> bool
+OpenUsd.Rendering.RenderDiagnosticsState.RenderDiagnosticsState(System.Collections.Generic.IEnumerable<OpenUsd.Rendering.RenderDiagnostic!>! entries) -> void
+OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderDrawMode.Bounds = 4 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderDrawMode.FlatShaded = 1 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderDrawMode.Points = 3 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderDrawMode.SmoothShaded = 0 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderDrawMode.Wireframe = 2 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderFrameResult
+OpenUsd.Rendering.RenderFrameResult.<Clone>$() -> OpenUsd.Rendering.RenderFrameResult!
+OpenUsd.Rendering.RenderFrameResult.DeviceLoss.get -> OpenUsd.Rendering.RenderDeviceLossKind
+OpenUsd.Rendering.RenderFrameResult.Diagnostics.get -> OpenUsd.Rendering.RenderBackendDiagnostics!
+OpenUsd.Rendering.RenderFrameResult.Equals(OpenUsd.Rendering.RenderFrameResult? other) -> bool
+OpenUsd.Rendering.RenderFrameResult.StateRevision.get -> ulong
+OpenUsd.Rendering.RenderFrameResult.Statistics.get -> OpenUsd.Rendering.RenderFrameStatistics
+OpenUsd.Rendering.RenderFrameResult.Status.get -> OpenUsd.Rendering.RenderFrameStatus
+OpenUsd.Rendering.RenderFrameStatistics
+OpenUsd.Rendering.RenderFrameStatistics.CpuTime.get -> System.TimeSpan
+OpenUsd.Rendering.RenderFrameStatistics.DrawCalls.get -> int
+OpenUsd.Rendering.RenderFrameStatistics.Equals(OpenUsd.Rendering.RenderFrameStatistics other) -> bool
+OpenUsd.Rendering.RenderFrameStatistics.GpuTime.get -> System.TimeSpan?
+OpenUsd.Rendering.RenderFrameStatistics.RenderFrameStatistics() -> void
+OpenUsd.Rendering.RenderFrameStatistics.RenderFrameStatistics(System.TimeSpan cpuTime, System.TimeSpan? gpuTime, int drawCalls, long triangles) -> void
+OpenUsd.Rendering.RenderFrameStatistics.Triangles.get -> long
+OpenUsd.Rendering.RenderFrameStatus
+OpenUsd.Rendering.RenderFrameStatus.DeviceLost = 2 -> OpenUsd.Rendering.RenderFrameStatus
+OpenUsd.Rendering.RenderFrameStatus.Failed = 3 -> OpenUsd.Rendering.RenderFrameStatus
+OpenUsd.Rendering.RenderFrameStatus.Rendered = 0 -> OpenUsd.Rendering.RenderFrameStatus
+OpenUsd.Rendering.RenderFrameStatus.Skipped = 1 -> OpenUsd.Rendering.RenderFrameStatus
+OpenUsd.Rendering.RenderPickOptions
+OpenUsd.Rendering.RenderPickOptions.CullBackFaces = 1 -> OpenUsd.Rendering.RenderPickOptions
+OpenUsd.Rendering.RenderPickOptions.None = 0 -> OpenUsd.Rendering.RenderPickOptions
+OpenUsd.Rendering.RenderPickRequest
+OpenUsd.Rendering.RenderPickRequest.Equals(OpenUsd.Rendering.RenderPickRequest other) -> bool
+OpenUsd.Rendering.RenderPickRequest.Flags.get -> OpenUsd.Rendering.RenderPickOptions
+OpenUsd.Rendering.RenderPickRequest.Height.get -> int
+OpenUsd.Rendering.RenderPickRequest.InferStaleReasons(ulong stateRevision, ulong? sceneRevision) -> OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickRequest.IsStale(ulong stateRevision, ulong? sceneRevision) -> bool
+OpenUsd.Rendering.RenderPickRequest.RenderPickRequest() -> void
+OpenUsd.Rendering.RenderPickRequest.RenderPickRequest(int x, int y, int width, int height, OpenUsd.Rendering.ViewportDimensions viewport, ulong requestedStateRevision, ulong? requestedSceneRevision = null, OpenUsd.Rendering.RenderPickTarget target = OpenUsd.Rendering.RenderPickTarget.Primitive, OpenUsd.Rendering.RenderPickOptions flags = OpenUsd.Rendering.RenderPickOptions.None) -> void
+OpenUsd.Rendering.RenderPickRequest.RenderPickRequest(int x, int y, OpenUsd.Rendering.ViewportDimensions viewport, ulong requestedStateRevision, ulong? requestedSceneRevision = null, OpenUsd.Rendering.RenderPickTarget target = OpenUsd.Rendering.RenderPickTarget.Primitive, OpenUsd.Rendering.RenderPickOptions flags = OpenUsd.Rendering.RenderPickOptions.None) -> void
+OpenUsd.Rendering.RenderPickRequest.RequestedSceneRevision.get -> ulong?
+OpenUsd.Rendering.RenderPickRequest.RequestedStateRevision.get -> ulong
+OpenUsd.Rendering.RenderPickRequest.Target.get -> OpenUsd.Rendering.RenderPickTarget
+OpenUsd.Rendering.RenderPickRequest.Viewport.get -> OpenUsd.Rendering.ViewportDimensions
+OpenUsd.Rendering.RenderPickRequest.Width.get -> int
+OpenUsd.Rendering.RenderPickRequest.X.get -> int
+OpenUsd.Rendering.RenderPickRequest.Y.get -> int
+OpenUsd.Rendering.RenderPickResult
+OpenUsd.Rendering.RenderPickResult.BackendKind.get -> OpenUsd.Rendering.RenderBackendKind?
+OpenUsd.Rendering.RenderPickResult.BackendToken.get -> uint?
+OpenUsd.Rendering.RenderPickResult.ElementIndex.get -> int?
+OpenUsd.Rendering.RenderPickResult.Equals(OpenUsd.Rendering.RenderPickResult other) -> bool
+OpenUsd.Rendering.RenderPickResult.InstanceIndex.get -> int?
+OpenUsd.Rendering.RenderPickResult.InstancerPath.get -> string?
+OpenUsd.Rendering.RenderPickResult.Item.get -> OpenUsd.Rendering.SelectionItem?
+OpenUsd.Rendering.RenderPickResult.NormalizedDepth.get -> float?
+OpenUsd.Rendering.RenderPickResult.PrimPath.get -> string!
+OpenUsd.Rendering.RenderPickResult.RenderPickResult() -> void
+OpenUsd.Rendering.RenderPickResult.Request.get -> OpenUsd.Rendering.RenderPickRequest
+OpenUsd.Rendering.RenderPickResult.RequestedSceneRevision.get -> ulong?
+OpenUsd.Rendering.RenderPickResult.RequestedStateRevision.get -> ulong
+OpenUsd.Rendering.RenderPickResult.SceneRevision.get -> ulong?
+OpenUsd.Rendering.RenderPickResult.StaleReasons.get -> OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickResult.StateRevision.get -> ulong
+OpenUsd.Rendering.RenderPickResult.Status.get -> OpenUsd.Rendering.RenderPickStatus
+OpenUsd.Rendering.RenderPickResult.WorldNormal.get -> System.Numerics.Vector3?
+OpenUsd.Rendering.RenderPickResult.WorldPosition.get -> System.Numerics.Vector3?
+OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickStaleReason.BackendState = 64 -> OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickStaleReason.Camera = 4 -> OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickStaleReason.ContextGeneration = 32 -> OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickStaleReason.None = 0 -> OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickStaleReason.SceneRevision = 2 -> OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickStaleReason.StateRevision = 1 -> OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickStaleReason.Time = 16 -> OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickStaleReason.Viewport = 8 -> OpenUsd.Rendering.RenderPickStaleReason
+OpenUsd.Rendering.RenderPickStatus
+OpenUsd.Rendering.RenderPickStatus.Hit = 1 -> OpenUsd.Rendering.RenderPickStatus
+OpenUsd.Rendering.RenderPickStatus.Miss = 0 -> OpenUsd.Rendering.RenderPickStatus
+OpenUsd.Rendering.RenderPickStatus.Stale = 2 -> OpenUsd.Rendering.RenderPickStatus
+OpenUsd.Rendering.RenderPickStatus.Unsupported = 3 -> OpenUsd.Rendering.RenderPickStatus
+OpenUsd.Rendering.RenderPickTarget
+OpenUsd.Rendering.RenderPickTarget.Edge = 2 -> OpenUsd.Rendering.RenderPickTarget
+OpenUsd.Rendering.RenderPickTarget.Face = 1 -> OpenUsd.Rendering.RenderPickTarget
+OpenUsd.Rendering.RenderPickTarget.Point = 3 -> OpenUsd.Rendering.RenderPickTarget
+OpenUsd.Rendering.RenderPickTarget.Primitive = 0 -> OpenUsd.Rendering.RenderPickTarget
+OpenUsd.Rendering.RenderPlatform
+OpenUsd.Rendering.RenderPlatform.Linux = 2 -> OpenUsd.Rendering.RenderPlatform
+OpenUsd.Rendering.RenderPlatform.MacOS = 3 -> OpenUsd.Rendering.RenderPlatform
+OpenUsd.Rendering.RenderPlatform.Unknown = 0 -> OpenUsd.Rendering.RenderPlatform
+OpenUsd.Rendering.RenderPlatform.Windows = 1 -> OpenUsd.Rendering.RenderPlatform
+OpenUsd.Rendering.RenderPurpose
+OpenUsd.Rendering.RenderPurpose.Default = 1 -> OpenUsd.Rendering.RenderPurpose
+OpenUsd.Rendering.RenderPurpose.Guide = 8 -> OpenUsd.Rendering.RenderPurpose
+OpenUsd.Rendering.RenderPurpose.None = 0 -> OpenUsd.Rendering.RenderPurpose
+OpenUsd.Rendering.RenderPurpose.Proxy = 2 -> OpenUsd.Rendering.RenderPurpose
+OpenUsd.Rendering.RenderPurpose.Render = 4 -> OpenUsd.Rendering.RenderPurpose
+OpenUsd.Rendering.RenderSettings
+OpenUsd.Rendering.RenderSettings.ClearColor.get -> System.Numerics.Vector4
+OpenUsd.Rendering.RenderSettings.EnableLighting.get -> bool
+OpenUsd.Rendering.RenderSettings.EnableShadows.get -> bool
+OpenUsd.Rendering.RenderSettings.Equals(OpenUsd.Rendering.RenderSettings other) -> bool
+OpenUsd.Rendering.RenderSettings.RenderSettings() -> void
+OpenUsd.Rendering.RenderSettings.RenderSettings(int samplesPerPixel, bool enableLighting, bool enableShadows, System.Numerics.Vector4 clearColor) -> void
+OpenUsd.Rendering.RenderSettings.SamplesPerPixel.get -> int
+OpenUsd.Rendering.RenderVisibility
+OpenUsd.Rendering.RenderVisibility.IncludeInvisible = 1 -> OpenUsd.Rendering.RenderVisibility
+OpenUsd.Rendering.RenderVisibility.RespectAuthored = 0 -> OpenUsd.Rendering.RenderVisibility
+OpenUsd.Rendering.SceneDisplayState
+OpenUsd.Rendering.SceneDisplayState.Deconstruct(out OpenUsd.Rendering.RenderPurpose Purposes, out OpenUsd.Rendering.RenderVisibility Visibility, out OpenUsd.Rendering.RenderDrawMode DrawMode) -> void
+OpenUsd.Rendering.SceneDisplayState.DrawMode.get -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.SceneDisplayState.DrawMode.init -> void
+OpenUsd.Rendering.SceneDisplayState.Equals(OpenUsd.Rendering.SceneDisplayState other) -> bool
+OpenUsd.Rendering.SceneDisplayState.Purposes.get -> OpenUsd.Rendering.RenderPurpose
+OpenUsd.Rendering.SceneDisplayState.Purposes.init -> void
+OpenUsd.Rendering.SceneDisplayState.SceneDisplayState() -> void
+OpenUsd.Rendering.SceneDisplayState.SceneDisplayState(OpenUsd.Rendering.RenderPurpose Purposes, OpenUsd.Rendering.RenderVisibility Visibility, OpenUsd.Rendering.RenderDrawMode DrawMode) -> void
+OpenUsd.Rendering.SceneDisplayState.Visibility.get -> OpenUsd.Rendering.RenderVisibility
+OpenUsd.Rendering.SceneDisplayState.Visibility.init -> void
+OpenUsd.Rendering.SelectionItem
+OpenUsd.Rendering.SelectionItem.ElementIndex.get -> int?
+OpenUsd.Rendering.SelectionItem.Equals(OpenUsd.Rendering.SelectionItem other) -> bool
+OpenUsd.Rendering.SelectionItem.InstanceIndex.get -> int?
+OpenUsd.Rendering.SelectionItem.InstancerPath.get -> string?
+OpenUsd.Rendering.SelectionItem.PrimPath.get -> string!
+OpenUsd.Rendering.SelectionItem.SelectionItem() -> void
+OpenUsd.Rendering.SelectionItem.SelectionItem(string! primPath, string? instancerPath = null, int? instanceIndex = null, int? elementIndex = null) -> void
+OpenUsd.Rendering.SelectionState
+OpenUsd.Rendering.SelectionState.Equals(OpenUsd.Rendering.SelectionState? other) -> bool
+OpenUsd.Rendering.SelectionState.Items.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.SelectionItem>!
+OpenUsd.Rendering.SelectionState.PrimPaths.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Rendering.SelectionState.SelectionState(System.Collections.Generic.IEnumerable<OpenUsd.Rendering.SelectionItem>! items) -> void
+OpenUsd.Rendering.SelectionState.SelectionState(System.Collections.Generic.IEnumerable<string!>! primPaths) -> void
+OpenUsd.Rendering.StageIdentity
+OpenUsd.Rendering.StageIdentity.<Clone>$() -> OpenUsd.Rendering.StageIdentity!
+OpenUsd.Rendering.StageIdentity.Equals(OpenUsd.Rendering.StageIdentity? other) -> bool
+OpenUsd.Rendering.StageIdentity.Identifier.get -> string!
+OpenUsd.Rendering.StageIdentity.StageIdentity(string! identifier) -> void
+OpenUsd.Rendering.StageRenderState
+OpenUsd.Rendering.StageRenderState.<Clone>$() -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.StageRenderState.AdvanceRevision() -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.StageRenderState.Camera.get -> OpenUsd.Rendering.CameraState
+OpenUsd.Rendering.StageRenderState.Diagnostics.get -> OpenUsd.Rendering.RenderDiagnosticsState!
+OpenUsd.Rendering.StageRenderState.Display.get -> OpenUsd.Rendering.SceneDisplayState
+OpenUsd.Rendering.StageRenderState.Equals(OpenUsd.Rendering.StageRenderState? other) -> bool
+OpenUsd.Rendering.StageRenderState.RenderSettings.get -> OpenUsd.Rendering.RenderSettings
+OpenUsd.Rendering.StageRenderState.Revision.get -> ulong
+OpenUsd.Rendering.StageRenderState.Selection.get -> OpenUsd.Rendering.SelectionState!
+OpenUsd.Rendering.StageRenderState.Stage.get -> OpenUsd.Rendering.StageIdentity!
+OpenUsd.Rendering.StageRenderState.Time.get -> OpenUsd.Rendering.StageTime
+OpenUsd.Rendering.StageRenderState.Viewport.get -> OpenUsd.Rendering.ViewportDimensions
+OpenUsd.Rendering.StageRenderState.WithCamera(OpenUsd.Rendering.CameraState camera) -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.StageRenderState.WithDiagnostics(OpenUsd.Rendering.RenderDiagnosticsState! diagnostics) -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.StageRenderState.WithDisplay(OpenUsd.Rendering.SceneDisplayState display) -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.StageRenderState.WithRenderSettings(OpenUsd.Rendering.RenderSettings renderSettings) -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.StageRenderState.WithSelection(OpenUsd.Rendering.SelectionState! selection) -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.StageRenderState.WithStage(OpenUsd.Rendering.StageIdentity! stage) -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.StageRenderState.WithTime(OpenUsd.Rendering.StageTime time) -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.StageRenderState.WithViewport(OpenUsd.Rendering.ViewportDimensions viewport) -> OpenUsd.Rendering.StageRenderState!
+OpenUsd.Rendering.StageTime
+OpenUsd.Rendering.StageTime.Deconstruct(out double TimeCode) -> void
+OpenUsd.Rendering.StageTime.Equals(OpenUsd.Rendering.StageTime other) -> bool
+OpenUsd.Rendering.StageTime.StageTime() -> void
+OpenUsd.Rendering.StageTime.StageTime(double TimeCode) -> void
+OpenUsd.Rendering.StageTime.TimeCode.get -> double
+OpenUsd.Rendering.StageTime.TimeCode.init -> void
+OpenUsd.Rendering.ViewportDimensions
+OpenUsd.Rendering.ViewportDimensions.Equals(OpenUsd.Rendering.ViewportDimensions other) -> bool
+OpenUsd.Rendering.ViewportDimensions.Height.get -> int
+OpenUsd.Rendering.ViewportDimensions.ViewportDimensions() -> void
+OpenUsd.Rendering.ViewportDimensions.ViewportDimensions(int width, int height) -> void
+OpenUsd.Rendering.ViewportDimensions.Width.get -> int
+override OpenUsd.Rendering.CameraState.GetHashCode() -> int
+override OpenUsd.Rendering.CompositionExternalImage.GetHashCode() -> int
+override OpenUsd.Rendering.CompositionExternalSemaphore.GetHashCode() -> int
+override OpenUsd.Rendering.CompositionFrameRenderResult.GetHashCode() -> int
+override OpenUsd.Rendering.CompositionPresenterProbeResult.GetHashCode() -> int
+override OpenUsd.Rendering.ManagedRenderFrameResult.Equals(object? obj) -> bool
+override OpenUsd.Rendering.ManagedRenderFrameResult.GetHashCode() -> int
+override OpenUsd.Rendering.ManagedRenderFrameResult.ToString() -> string!
+override OpenUsd.Rendering.RenderBackendCapabilities.GetHashCode() -> int
+override OpenUsd.Rendering.RenderBackendDiagnostic.Equals(object? obj) -> bool
+override OpenUsd.Rendering.RenderBackendDiagnostic.GetHashCode() -> int
+override OpenUsd.Rendering.RenderBackendDiagnostic.ToString() -> string!
+override OpenUsd.Rendering.RenderBackendDiagnostics.Equals(object? obj) -> bool
+override OpenUsd.Rendering.RenderBackendDiagnostics.GetHashCode() -> int
+override OpenUsd.Rendering.RenderBackendIdentity.Equals(object? obj) -> bool
+override OpenUsd.Rendering.RenderBackendIdentity.GetHashCode() -> int
+override OpenUsd.Rendering.RenderBackendIdentity.ToString() -> string!
+override OpenUsd.Rendering.RenderBackendInitializationResult.Equals(object? obj) -> bool
+override OpenUsd.Rendering.RenderBackendInitializationResult.GetHashCode() -> int
+override OpenUsd.Rendering.RenderBackendInitializationResult.ToString() -> string!
+override OpenUsd.Rendering.RenderBackendManagerResult.Equals(object? obj) -> bool
+override OpenUsd.Rendering.RenderBackendManagerResult.GetHashCode() -> int
+override OpenUsd.Rendering.RenderBackendManagerResult.ToString() -> string!
+override OpenUsd.Rendering.RenderBackendProbeResult.Equals(object? obj) -> bool
+override OpenUsd.Rendering.RenderBackendProbeResult.GetHashCode() -> int
+override OpenUsd.Rendering.RenderBackendProbeResult.ToString() -> string!
+override OpenUsd.Rendering.RenderBackendSelectionRequest.GetHashCode() -> int
+override OpenUsd.Rendering.RenderBackendSelectionResult.Equals(object? obj) -> bool
+override OpenUsd.Rendering.RenderBackendSelectionResult.GetHashCode() -> int
+override OpenUsd.Rendering.RenderDiagnostic.Equals(object? obj) -> bool
+override OpenUsd.Rendering.RenderDiagnostic.GetHashCode() -> int
+override OpenUsd.Rendering.RenderDiagnostic.ToString() -> string!
+override OpenUsd.Rendering.RenderDiagnosticsState.Equals(object? obj) -> bool
+override OpenUsd.Rendering.RenderDiagnosticsState.GetHashCode() -> int
+override OpenUsd.Rendering.RenderFrameResult.Equals(object? obj) -> bool
+override OpenUsd.Rendering.RenderFrameResult.GetHashCode() -> int
+override OpenUsd.Rendering.RenderFrameResult.ToString() -> string!
+override OpenUsd.Rendering.RenderFrameStatistics.GetHashCode() -> int
+override OpenUsd.Rendering.RenderPickRequest.GetHashCode() -> int
+override OpenUsd.Rendering.RenderPickResult.GetHashCode() -> int
+override OpenUsd.Rendering.RenderSettings.GetHashCode() -> int
+override OpenUsd.Rendering.SceneDisplayState.GetHashCode() -> int
+override OpenUsd.Rendering.SelectionItem.GetHashCode() -> int
+override OpenUsd.Rendering.SelectionState.Equals(object? obj) -> bool
+override OpenUsd.Rendering.SelectionState.GetHashCode() -> int
+override OpenUsd.Rendering.StageIdentity.Equals(object? obj) -> bool
+override OpenUsd.Rendering.StageIdentity.GetHashCode() -> int
+override OpenUsd.Rendering.StageIdentity.ToString() -> string!
+override OpenUsd.Rendering.StageRenderState.Equals(object? obj) -> bool
+override OpenUsd.Rendering.StageRenderState.GetHashCode() -> int
+override OpenUsd.Rendering.StageRenderState.ToString() -> string!
+override OpenUsd.Rendering.StageTime.GetHashCode() -> int
+override OpenUsd.Rendering.ViewportDimensions.GetHashCode() -> int
+static OpenUsd.Rendering.CameraState.Default.get -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.operator !=(OpenUsd.Rendering.CameraState left, OpenUsd.Rendering.CameraState right) -> bool
+static OpenUsd.Rendering.CameraState.operator ==(OpenUsd.Rendering.CameraState left, OpenUsd.Rendering.CameraState right) -> bool
+static OpenUsd.Rendering.CompositionExternalImage.operator !=(OpenUsd.Rendering.CompositionExternalImage left, OpenUsd.Rendering.CompositionExternalImage right) -> bool
+static OpenUsd.Rendering.CompositionExternalImage.operator ==(OpenUsd.Rendering.CompositionExternalImage left, OpenUsd.Rendering.CompositionExternalImage right) -> bool
+static OpenUsd.Rendering.CompositionExternalSemaphore.operator !=(OpenUsd.Rendering.CompositionExternalSemaphore left, OpenUsd.Rendering.CompositionExternalSemaphore right) -> bool
+static OpenUsd.Rendering.CompositionExternalSemaphore.operator ==(OpenUsd.Rendering.CompositionExternalSemaphore left, OpenUsd.Rendering.CompositionExternalSemaphore right) -> bool
+static OpenUsd.Rendering.CompositionFrameRenderResult.operator !=(OpenUsd.Rendering.CompositionFrameRenderResult left, OpenUsd.Rendering.CompositionFrameRenderResult right) -> bool
+static OpenUsd.Rendering.CompositionFrameRenderResult.operator ==(OpenUsd.Rendering.CompositionFrameRenderResult left, OpenUsd.Rendering.CompositionFrameRenderResult right) -> bool
+static OpenUsd.Rendering.CompositionFrameSynchronization.Automatic.get -> OpenUsd.Rendering.CompositionFrameSynchronization!
+static OpenUsd.Rendering.CompositionFrameSynchronization.KeyedMutex(uint acquireKey, uint releaseKey) -> OpenUsd.Rendering.CompositionFrameSynchronization!
+static OpenUsd.Rendering.CompositionFrameSynchronization.Semaphores(long waitSemaphoreId, long signalSemaphoreId) -> OpenUsd.Rendering.CompositionFrameSynchronization!
+static OpenUsd.Rendering.CompositionFrameSynchronization.TimelineSemaphores(long waitSemaphoreId, ulong waitValue, long signalSemaphoreId, ulong signalValue) -> OpenUsd.Rendering.CompositionFrameSynchronization!
+static OpenUsd.Rendering.CompositionPresenterProbeResult.Available(string! status = "GPU composition available") -> OpenUsd.Rendering.CompositionPresenterProbeResult
+static OpenUsd.Rendering.CompositionPresenterProbeResult.operator !=(OpenUsd.Rendering.CompositionPresenterProbeResult left, OpenUsd.Rendering.CompositionPresenterProbeResult right) -> bool
+static OpenUsd.Rendering.CompositionPresenterProbeResult.operator ==(OpenUsd.Rendering.CompositionPresenterProbeResult left, OpenUsd.Rendering.CompositionPresenterProbeResult right) -> bool
+static OpenUsd.Rendering.CompositionPresenterProbeResult.Unavailable(string! status) -> OpenUsd.Rendering.CompositionPresenterProbeResult
+static OpenUsd.Rendering.ManagedRenderFrameResult.operator !=(OpenUsd.Rendering.ManagedRenderFrameResult? left, OpenUsd.Rendering.ManagedRenderFrameResult? right) -> bool
+static OpenUsd.Rendering.ManagedRenderFrameResult.operator ==(OpenUsd.Rendering.ManagedRenderFrameResult? left, OpenUsd.Rendering.ManagedRenderFrameResult? right) -> bool
+static OpenUsd.Rendering.RenderBackendCapabilities.None.get -> OpenUsd.Rendering.RenderBackendCapabilities
+static OpenUsd.Rendering.RenderBackendCapabilities.operator !=(OpenUsd.Rendering.RenderBackendCapabilities left, OpenUsd.Rendering.RenderBackendCapabilities right) -> bool
+static OpenUsd.Rendering.RenderBackendCapabilities.operator ==(OpenUsd.Rendering.RenderBackendCapabilities left, OpenUsd.Rendering.RenderBackendCapabilities right) -> bool
+static OpenUsd.Rendering.RenderBackendDiagnostic.operator !=(OpenUsd.Rendering.RenderBackendDiagnostic? left, OpenUsd.Rendering.RenderBackendDiagnostic? right) -> bool
+static OpenUsd.Rendering.RenderBackendDiagnostic.operator ==(OpenUsd.Rendering.RenderBackendDiagnostic? left, OpenUsd.Rendering.RenderBackendDiagnostic? right) -> bool
+static OpenUsd.Rendering.RenderBackendDiagnostics.Empty.get -> OpenUsd.Rendering.RenderBackendDiagnostics!
+static OpenUsd.Rendering.RenderBackendDiagnostics.operator !=(OpenUsd.Rendering.RenderBackendDiagnostics? left, OpenUsd.Rendering.RenderBackendDiagnostics? right) -> bool
+static OpenUsd.Rendering.RenderBackendDiagnostics.operator ==(OpenUsd.Rendering.RenderBackendDiagnostics? left, OpenUsd.Rendering.RenderBackendDiagnostics? right) -> bool
+static OpenUsd.Rendering.RenderBackendIdentity.operator !=(OpenUsd.Rendering.RenderBackendIdentity? left, OpenUsd.Rendering.RenderBackendIdentity? right) -> bool
+static OpenUsd.Rendering.RenderBackendIdentity.operator ==(OpenUsd.Rendering.RenderBackendIdentity? left, OpenUsd.Rendering.RenderBackendIdentity? right) -> bool
+static OpenUsd.Rendering.RenderBackendInitializationResult.Failed(OpenUsd.Rendering.RenderBackendInitializationFailureKind failure, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderBackendInitializationResult!
+static OpenUsd.Rendering.RenderBackendInitializationResult.operator !=(OpenUsd.Rendering.RenderBackendInitializationResult? left, OpenUsd.Rendering.RenderBackendInitializationResult? right) -> bool
+static OpenUsd.Rendering.RenderBackendInitializationResult.operator ==(OpenUsd.Rendering.RenderBackendInitializationResult? left, OpenUsd.Rendering.RenderBackendInitializationResult? right) -> bool
+static OpenUsd.Rendering.RenderBackendInitializationResult.Success(OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderBackendInitializationResult!
+static OpenUsd.Rendering.RenderBackendManagerResult.operator !=(OpenUsd.Rendering.RenderBackendManagerResult? left, OpenUsd.Rendering.RenderBackendManagerResult? right) -> bool
+static OpenUsd.Rendering.RenderBackendManagerResult.operator ==(OpenUsd.Rendering.RenderBackendManagerResult? left, OpenUsd.Rendering.RenderBackendManagerResult? right) -> bool
+static OpenUsd.Rendering.RenderBackendProbeResult.Available(OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderBackendProbeResult!
+static OpenUsd.Rendering.RenderBackendProbeResult.operator !=(OpenUsd.Rendering.RenderBackendProbeResult? left, OpenUsd.Rendering.RenderBackendProbeResult? right) -> bool
+static OpenUsd.Rendering.RenderBackendProbeResult.operator ==(OpenUsd.Rendering.RenderBackendProbeResult? left, OpenUsd.Rendering.RenderBackendProbeResult? right) -> bool
+static OpenUsd.Rendering.RenderBackendProbeResult.Unavailable(OpenUsd.Rendering.RenderBackendProbeFailureKind failure, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderBackendProbeResult!
+static OpenUsd.Rendering.RenderBackendSelectionPolicy.Select(OpenUsd.Rendering.RenderBackendSelectionRequest request, System.Collections.Generic.IEnumerable<OpenUsd.Rendering.RenderBackendKind>! availableBackends, System.Collections.Generic.IEnumerable<OpenUsd.Rendering.RenderBackendKind>? failedInitializations = null) -> OpenUsd.Rendering.RenderBackendSelectionResult!
+static OpenUsd.Rendering.RenderBackendSelectionRequest.operator !=(OpenUsd.Rendering.RenderBackendSelectionRequest left, OpenUsd.Rendering.RenderBackendSelectionRequest right) -> bool
+static OpenUsd.Rendering.RenderBackendSelectionRequest.operator ==(OpenUsd.Rendering.RenderBackendSelectionRequest left, OpenUsd.Rendering.RenderBackendSelectionRequest right) -> bool
+static OpenUsd.Rendering.RenderDiagnostic.operator !=(OpenUsd.Rendering.RenderDiagnostic? left, OpenUsd.Rendering.RenderDiagnostic? right) -> bool
+static OpenUsd.Rendering.RenderDiagnostic.operator ==(OpenUsd.Rendering.RenderDiagnostic? left, OpenUsd.Rendering.RenderDiagnostic? right) -> bool
+static OpenUsd.Rendering.RenderDiagnosticsState.Empty.get -> OpenUsd.Rendering.RenderDiagnosticsState!
+static OpenUsd.Rendering.RenderDiagnosticsState.operator !=(OpenUsd.Rendering.RenderDiagnosticsState? left, OpenUsd.Rendering.RenderDiagnosticsState? right) -> bool
+static OpenUsd.Rendering.RenderDiagnosticsState.operator ==(OpenUsd.Rendering.RenderDiagnosticsState? left, OpenUsd.Rendering.RenderDiagnosticsState? right) -> bool
+static OpenUsd.Rendering.RenderFrameResult.Failed(ulong stateRevision, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderFrameResult!
+static OpenUsd.Rendering.RenderFrameResult.LostDevice(ulong stateRevision, OpenUsd.Rendering.RenderDeviceLossKind deviceLoss, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderFrameResult!
+static OpenUsd.Rendering.RenderFrameResult.operator !=(OpenUsd.Rendering.RenderFrameResult? left, OpenUsd.Rendering.RenderFrameResult? right) -> bool
+static OpenUsd.Rendering.RenderFrameResult.operator ==(OpenUsd.Rendering.RenderFrameResult? left, OpenUsd.Rendering.RenderFrameResult? right) -> bool
+static OpenUsd.Rendering.RenderFrameResult.Rendered(ulong stateRevision, OpenUsd.Rendering.RenderFrameStatistics statistics, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderFrameResult!
+static OpenUsd.Rendering.RenderFrameResult.Skipped(ulong stateRevision, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderFrameResult!
+static OpenUsd.Rendering.RenderFrameStatistics.Empty.get -> OpenUsd.Rendering.RenderFrameStatistics
+static OpenUsd.Rendering.RenderFrameStatistics.operator !=(OpenUsd.Rendering.RenderFrameStatistics left, OpenUsd.Rendering.RenderFrameStatistics right) -> bool
+static OpenUsd.Rendering.RenderFrameStatistics.operator ==(OpenUsd.Rendering.RenderFrameStatistics left, OpenUsd.Rendering.RenderFrameStatistics right) -> bool
+static OpenUsd.Rendering.RenderPickRequest.operator !=(OpenUsd.Rendering.RenderPickRequest left, OpenUsd.Rendering.RenderPickRequest right) -> bool
+static OpenUsd.Rendering.RenderPickRequest.operator ==(OpenUsd.Rendering.RenderPickRequest left, OpenUsd.Rendering.RenderPickRequest right) -> bool
+static OpenUsd.Rendering.RenderPickResult.Hit(in OpenUsd.Rendering.RenderPickRequest request, ulong stateRevision, ulong? sceneRevision, in OpenUsd.Rendering.SelectionItem item, System.Numerics.Vector3? worldPosition = null, System.Numerics.Vector3? worldNormal = null, float? normalizedDepth = null, OpenUsd.Rendering.RenderBackendKind? backendKind = null, uint? backendToken = null) -> OpenUsd.Rendering.RenderPickResult
+static OpenUsd.Rendering.RenderPickResult.Miss(in OpenUsd.Rendering.RenderPickRequest request, ulong stateRevision, ulong? sceneRevision) -> OpenUsd.Rendering.RenderPickResult
+static OpenUsd.Rendering.RenderPickResult.operator !=(OpenUsd.Rendering.RenderPickResult left, OpenUsd.Rendering.RenderPickResult right) -> bool
+static OpenUsd.Rendering.RenderPickResult.operator ==(OpenUsd.Rendering.RenderPickResult left, OpenUsd.Rendering.RenderPickResult right) -> bool
+static OpenUsd.Rendering.RenderPickResult.Stale(in OpenUsd.Rendering.RenderPickRequest request, ulong stateRevision, ulong? sceneRevision) -> OpenUsd.Rendering.RenderPickResult
+static OpenUsd.Rendering.RenderPickResult.Stale(in OpenUsd.Rendering.RenderPickRequest request, ulong stateRevision, ulong? sceneRevision, OpenUsd.Rendering.RenderPickStaleReason staleReasons) -> OpenUsd.Rendering.RenderPickResult
+static OpenUsd.Rendering.RenderPickResult.Unsupported(in OpenUsd.Rendering.RenderPickRequest request, ulong stateRevision, ulong? sceneRevision) -> OpenUsd.Rendering.RenderPickResult
+static OpenUsd.Rendering.RenderSettings.Default.get -> OpenUsd.Rendering.RenderSettings
+static OpenUsd.Rendering.RenderSettings.operator !=(OpenUsd.Rendering.RenderSettings left, OpenUsd.Rendering.RenderSettings right) -> bool
+static OpenUsd.Rendering.RenderSettings.operator ==(OpenUsd.Rendering.RenderSettings left, OpenUsd.Rendering.RenderSettings right) -> bool
+static OpenUsd.Rendering.SceneDisplayState.Default.get -> OpenUsd.Rendering.SceneDisplayState
+static OpenUsd.Rendering.SceneDisplayState.operator !=(OpenUsd.Rendering.SceneDisplayState left, OpenUsd.Rendering.SceneDisplayState right) -> bool
+static OpenUsd.Rendering.SceneDisplayState.operator ==(OpenUsd.Rendering.SceneDisplayState left, OpenUsd.Rendering.SceneDisplayState right) -> bool
+static OpenUsd.Rendering.SelectionItem.operator !=(OpenUsd.Rendering.SelectionItem left, OpenUsd.Rendering.SelectionItem right) -> bool
+static OpenUsd.Rendering.SelectionItem.operator ==(OpenUsd.Rendering.SelectionItem left, OpenUsd.Rendering.SelectionItem right) -> bool
+static OpenUsd.Rendering.SelectionState.Empty.get -> OpenUsd.Rendering.SelectionState!
+static OpenUsd.Rendering.SelectionState.operator !=(OpenUsd.Rendering.SelectionState? left, OpenUsd.Rendering.SelectionState? right) -> bool
+static OpenUsd.Rendering.SelectionState.operator ==(OpenUsd.Rendering.SelectionState? left, OpenUsd.Rendering.SelectionState? right) -> bool
+static OpenUsd.Rendering.StageIdentity.Empty.get -> OpenUsd.Rendering.StageIdentity!
+static OpenUsd.Rendering.StageIdentity.operator !=(OpenUsd.Rendering.StageIdentity? left, OpenUsd.Rendering.StageIdentity? right) -> bool
+static OpenUsd.Rendering.StageIdentity.operator ==(OpenUsd.Rendering.StageIdentity? left, OpenUsd.Rendering.StageIdentity? right) -> bool
+static OpenUsd.Rendering.StageRenderState.Create(OpenUsd.Rendering.StageIdentity! stage) -> OpenUsd.Rendering.StageRenderState!
+static OpenUsd.Rendering.StageRenderState.Default.get -> OpenUsd.Rendering.StageRenderState!
+static OpenUsd.Rendering.StageRenderState.operator !=(OpenUsd.Rendering.StageRenderState? left, OpenUsd.Rendering.StageRenderState? right) -> bool
+static OpenUsd.Rendering.StageRenderState.operator ==(OpenUsd.Rendering.StageRenderState? left, OpenUsd.Rendering.StageRenderState? right) -> bool
+static OpenUsd.Rendering.StageTime.Default.get -> OpenUsd.Rendering.StageTime
+static OpenUsd.Rendering.StageTime.operator !=(OpenUsd.Rendering.StageTime left, OpenUsd.Rendering.StageTime right) -> bool
+static OpenUsd.Rendering.StageTime.operator ==(OpenUsd.Rendering.StageTime left, OpenUsd.Rendering.StageTime right) -> bool
+static OpenUsd.Rendering.ViewportDimensions.Empty.get -> OpenUsd.Rendering.ViewportDimensions
+static OpenUsd.Rendering.ViewportDimensions.operator !=(OpenUsd.Rendering.ViewportDimensions left, OpenUsd.Rendering.ViewportDimensions right) -> bool
+static OpenUsd.Rendering.ViewportDimensions.operator ==(OpenUsd.Rendering.ViewportDimensions left, OpenUsd.Rendering.ViewportDimensions right) -> bool
+~override OpenUsd.Rendering.CameraState.Equals(object obj) -> bool
+~override OpenUsd.Rendering.CameraState.ToString() -> string
+~override OpenUsd.Rendering.CompositionExternalImage.Equals(object obj) -> bool
+~override OpenUsd.Rendering.CompositionExternalImage.ToString() -> string
+~override OpenUsd.Rendering.CompositionExternalSemaphore.Equals(object obj) -> bool
+~override OpenUsd.Rendering.CompositionExternalSemaphore.ToString() -> string
+~override OpenUsd.Rendering.CompositionFrameRenderResult.Equals(object obj) -> bool
+~override OpenUsd.Rendering.CompositionFrameRenderResult.ToString() -> string
+~override OpenUsd.Rendering.CompositionPresenterProbeResult.Equals(object obj) -> bool
+~override OpenUsd.Rendering.CompositionPresenterProbeResult.ToString() -> string
+~override OpenUsd.Rendering.RenderBackendCapabilities.Equals(object obj) -> bool
+~override OpenUsd.Rendering.RenderBackendCapabilities.ToString() -> string
+~override OpenUsd.Rendering.RenderBackendSelectionRequest.Equals(object obj) -> bool
+~override OpenUsd.Rendering.RenderBackendSelectionRequest.ToString() -> string
+~override OpenUsd.Rendering.RenderFrameStatistics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.RenderFrameStatistics.ToString() -> string
+~override OpenUsd.Rendering.RenderPickRequest.Equals(object obj) -> bool
+~override OpenUsd.Rendering.RenderPickRequest.ToString() -> string
+~override OpenUsd.Rendering.RenderPickResult.Equals(object obj) -> bool
+~override OpenUsd.Rendering.RenderPickResult.ToString() -> string
+~override OpenUsd.Rendering.RenderSettings.Equals(object obj) -> bool
+~override OpenUsd.Rendering.RenderSettings.ToString() -> string
+~override OpenUsd.Rendering.SceneDisplayState.Equals(object obj) -> bool
+~override OpenUsd.Rendering.SceneDisplayState.ToString() -> string
+~override OpenUsd.Rendering.SelectionItem.Equals(object obj) -> bool
+~override OpenUsd.Rendering.SelectionItem.ToString() -> string
+~override OpenUsd.Rendering.StageTime.Equals(object obj) -> bool
+~override OpenUsd.Rendering.StageTime.ToString() -> string
+~override OpenUsd.Rendering.ViewportDimensions.Equals(object obj) -> bool
+~override OpenUsd.Rendering.ViewportDimensions.ToString() -> string

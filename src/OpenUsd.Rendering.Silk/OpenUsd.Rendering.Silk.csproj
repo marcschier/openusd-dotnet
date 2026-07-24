@@ -1,0 +1,85 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd.Rendering\OpenUsd.Rendering.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.vertex.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.vertex.dxil" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.fragment.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.fragment.dxil" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.vertex.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.vertex.spv" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.fragment.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.fragment.spv" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.vertex.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.vertex.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.fragment.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.fragment.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\pick.vertex.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.pick.vertex.dxil" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\pick.fragment.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.pick.fragment.dxil" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\pick.vertex.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.pick.vertex.spv" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\pick.fragment.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.pick.fragment.spv" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\pick.vertex.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.pick.vertex.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\pick.fragment.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.pick.fragment.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.mask.vertex.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.mask.vertex.dxil" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.mask.fragment.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.mask.fragment.dxil" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.mask.vertex.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.mask.vertex.spv" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.mask.fragment.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.mask.fragment.spv" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.mask.vertex.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.mask.vertex.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.mask.fragment.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.mask.fragment.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.outline.vertex.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.outline.vertex.dxil" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.outline.fragment.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.outline.fragment.dxil" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.outline.vertex.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.outline.vertex.spv" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.outline.fragment.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.outline.fragment.spv" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.outline.vertex.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.outline.vertex.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\selection.outline.fragment.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.selection.outline.fragment.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\compute.fill.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.compute.fill.dxil" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\compute.scale.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.compute.scale.dxil" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\compute.fill.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.compute.fill.spv" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\compute.scale.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.compute.scale.spv" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\compute.fill.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.compute.fill.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\compute.scale.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.compute.scale.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\manifest.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.manifest.json" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Rendering.Silk</AssemblyName>
+    <RootNamespace>OpenUsd.Rendering.Silk</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Hydra-fed managed fallback renderer and backend-neutral RHI for OpenUsd.</Description>
+    <PackageTags>openusd;usd;silk.net;rendering;nativeaot</PackageTags>
+  </PropertyGroup>
+
+</Project>

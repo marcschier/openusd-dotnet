@@ -1,0 +1,21 @@
+#usda 1.0
+
+def "World"
+{
+    def Xform "Properties"
+    {
+        custom double[] custom:array = [1, 2]
+        custom color3f custom:color = (0.25, 0.5, 0.75)
+        custom int64 custom:count = 42
+        custom bool custom:enabled = 1
+        custom token custom:kind = "Beacon"
+        custom string custom:label = "hello"
+        custom double custom:number = 3.5
+        double custom:number.timeSamples = {
+            1: 4.5,
+            2: 5.5,
+        }
+        custom float3 custom:vector = (1, 2, 3)
+    }
+}
+

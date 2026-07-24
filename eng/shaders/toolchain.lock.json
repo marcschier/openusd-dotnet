@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "direct3D": {
+      "shaderModel": "6.0",
+      "format": "DXIL"
+    },
+    "vulkan": {
+      "apiVersion": "1.2",
+      "spirvVersion": "1.5"
+    },
+    "metal": {
+      "languageVersion": "2.4",
+      "xcodeVersion": "16.4"
+    }
+  },
+  "slang": {
+    "version": "2026.13.1",
+    "tag": "v2026.13.1",
+    "commit": "c0952c29d3664b60ada5e5edb3fff9ffd6f98d2d",
+    "repository": "https://github.com/shader-slang/slang",
+    "assets": [
+      {
+        "rid": "win-x64",
+        "archiveName": "slang-2026.13.1-windows-x86_64.zip",
+        "url": "https://github.com/shader-slang/slang/releases/download/v2026.13.1/slang-2026.13.1-windows-x86_64.zip",
+        "sha256": "fa1c9bcab2cdcd3626f7a1e250dd35d606c1b84745b64627f1dd63fca3746a70"
+      },
+      {
+        "rid": "linux-x64",
+        "archiveName": "slang-2026.13.1-linux-x86_64-glibc-2.27.tar.gz",
+        "url": "https://github.com/shader-slang/slang/releases/download/v2026.13.1/slang-2026.13.1-linux-x86_64-glibc-2.27.tar.gz",
+        "sha256": "f6db08763e38c398086d2b1d785ab7fc190bad27f29992e1be6ca3cc187884d0"
+      },
+      {
+        "rid": "osx-arm64",
+        "archiveName": "slang-2026.13.1-macos-aarch64.tar.gz",
+        "url": "https://github.com/shader-slang/slang/releases/download/v2026.13.1/slang-2026.13.1-macos-aarch64.tar.gz",
+        "sha256": "cf58b42ba87f66f58e0de297da57f4a5c92d00b7e7f38a708d2a4244abd8d003"
+      }
+    ]
+  },
+  "spirvTools": {
+    "version": "vulkan-sdk-1.4.350.1",
+    "commit": "0539c81f69a3daeb706fd3477dca61435b475156",
+    "repository": "https://github.com/KhronosGroup/SPIRV-Tools",
+    "archiveName": "spirv-tools-0539c81f69a3daeb706fd3477dca61435b475156.zip",
+    "extractDirectory": "SPIRV-Tools-0539c81f69a3daeb706fd3477dca61435b475156",
+    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Tools/zip/0539c81f69a3daeb706fd3477dca61435b475156",
+    "sha256": "3317e5b55e32e56f9531c4213323e0c6e32ad8a662a983cc07f83b2f00ba6cb3"
+  },
+  "spirvHeaders": {
+    "commit": "ad9184e76a66b1001c29db9b0a3e87f646c64de0",
+    "repository": "https://github.com/KhronosGroup/SPIRV-Headers",
+    "archiveName": "spirv-headers-ad9184e76a66b1001c29db9b0a3e87f646c64de0.zip",
+    "extractDirectory": "SPIRV-Headers-ad9184e76a66b1001c29db9b0a3e87f646c64de0",
+    "url": "https://codeload.github.com/KhronosGroup/SPIRV-Headers/zip/ad9184e76a66b1001c29db9b0a3e87f646c64de0",
+    "sha256": "7d7a8b280a0fc70657a3a380f2d665c7273877b85446def3337f4d49613abade"
+  }
+}
+

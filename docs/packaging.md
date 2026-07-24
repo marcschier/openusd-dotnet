@@ -1,0 +1,414 @@
+# Packaging
+
+Use this guide to identify the managed and RID-specific packages a consumer needs, understand how
+Core and Imaging assets reach publish output, and find the package-only resolution gates.
+
+**On this page:** [Package resolution](#package-resolution) ·
+[Package layout](#package-layout) · [Pack](#pack) ·
+[Core execution](#package-only-execution-gate) ·
+[Imaging execution](#package-only-imaging-execution-gate) ·
+[Required mode](#required-execution-mode) · [Related documentation](#related-documentation)
+
+## Package resolution
+
+```mermaid
+flowchart LR
+    app["Consumer references"] --> managed["Managed API"]
+    app --> backend["Managed backend"]
+    managed -->|"pair with RID"| core["Core RID package"]
+    backend -->|"pair with RID"| imaging["Imaging RID package"]
+    imaging -->|"exact dependency"| core
+    core --> coreAssets["Core native + usd resources"]
+    imaging --> imagingAssets["Hydra + hdSilk + plugin resources"]
+    coreAssets --> resolve["RID and buildTransitive resolution"]
+    imagingAssets --> resolve
+    managed --> output["Published app"]
+    backend --> output
+    resolve --> output
+```
+
+Data-only consumers pair the managed API with `OpenUsd.Runtime.Core.<rid>`. Rendering consumers add
+a managed backend and `OpenUsd.Runtime.Imaging.<rid>`, whose exact dependency also brings Core.
+
+Managed libraries target .NET 8, 9, and 10. Native assets are split into two extensible runtime
+packages for each supported RID:
+
+- `OpenUsd.Runtime.Core.<rid>` contains the monolithic OpenUSD runtime, its load-time native
+  dependencies, the `openusd_dotnet` C ABI shim, and the nested `lib/usd` data plugin tree. The
+  Windows package also carries the locked `vulkan-1.dll` required by `usd_ms.dll`.
+- `OpenUsd.Runtime.Imaging.<rid>` depends on the exact matching Core package and adds the
+  `openusd_hydra` and `openusd_hdsilk` C ABI shims, renderer plugins, and the hdSilk plugin tree.
+  Windows includes `openusd_storm_child.dll`; Linux includes the exact ABI-7 Storm child SONAME link
+  chain; macOS includes exactly one `libopenusd_storm_child.dylib`.
+
+The current package set requires project-owned data ABI version 8 and native
+capabilities `0x1FF`. Package-only execution prints and verifies both values
+before exercising stage operations.
+
+The first package matrix covers `win-x64`, `linux-x64`, and `osx-arm64`. Package projects consume
+immutable native installs from:
+
+```text
+native/install/<rid>
+native/install/shim/<rid>
+```
+
+Packing fails with a direct diagnostic when either install or a required library/plugin tree is
+missing. It never creates an empty runtime package.
+
+## Package layout
+
+Native libraries use NuGet's RID layout:
+
+```text
+runtimes/<rid>/native/*
+```
+
+OpenUSD resources are kept outside the native asset group so NuGet cannot flatten files with
+repeated names such as `plugInfo.json`. Package-specific `buildTransitive` targets copy them into
+published applications while retaining their source layout:
+
+```text
+runtimes/<rid>/resources/usd/**
+runtimes/<rid>/resources/plugin/usd/**
+```
+
+The resulting application contains `usd/**` for built-in USD metadata and `plugin/usd/**` for
+renderer metadata. `openusd_hdsilk` is published exactly once as a normal NuGet native asset at the
+application root, where managed `LibraryImport` resolves it. During packing, the installed hdSilk
+metadata is copied to the package intermediate directory and its `LibraryPath` is changed to the
+matching root library:
+
+```text
+win-x64:   ../../../openusd_hdsilk.dll
+linux-x64: ../../../libopenusd_hdsilk.so
+osx-arm64: ../../../libopenusd_hdsilk.dylib
+```
+
+The immutable `native/install/shim/<rid>/plugin/usd/hdSilk/resources/plugInfo.json` file is never
+modified. This avoids loading physically distinct root and `bin`/`lib` copies of hdSilk, which
+would register its OpenUSD types twice.
+
+`OpenUsd.Runtime.Imaging.win-x64` publishes exactly one
+`openusd_storm_child.dll` at the application root. It comes from
+`native/install/shim/win-x64/bin`, while the existing `plugin/usd/hdStorm/**`
+resource tree supplies Storm renderer metadata.
+
+`OpenUsd.Runtime.Imaging.linux-x64` requires ELF `DT_SONAME` to be exactly
+`libopenusd_storm_child.so.7`. CMake uses `SOVERSION 7` and `VERSION 7.0.0`, so
+its native asset set is exactly
+`libopenusd_storm_child.so -> libopenusd_storm_child.so.7 ->
+libopenusd_storm_child.so.7.0.0`, with only `.so.7.0.0` a regular ELF. Missing
+links, regular duplicate copies, unversioned or arbitrary SONAMEs, absolute
+link targets, and extra `.so.*` entries fail packing. The nupkg records links using Unix ZIP
+symlink metadata and link-target payloads; its Linux build target rehydrates
+those links after NuGet extraction. They are never flattened into resources.
+Packing validates the source header as ABI v7, requires the ABI-query, v2/v3 frame,
+pick, packed-selection, navigation-input, and framebuffer-capture exports, and parses
+`readelf --dynamic --wide` output for
+the Storm child, Hydra, and hdSilk.
+Linux additionally requires `openusd_storm_child_initialize_linux`; Windows and
+macOS intentionally omit that platform-only export.
+The exact allowed dynamic-loader policy is one `DT_RUNPATH` entry containing
+only `$ORIGIN`. Legacy `DT_RPATH`, absolute paths, source/build/install paths,
+empty or duplicate entries, additional relative directories, and missing or
+multiple `DT_RUNPATH` tags fail packing. The build helper configures the Linux
+shim install with `CMAKE_INSTALL_RPATH=$ORIGIN`; packaging fails instead of
+patching an ELF binary when that contract is not met.
+
+`OpenUsd.Runtime.Imaging.osx-arm64` publishes
+`runtimes/osx-arm64/native/libopenusd_storm_child.dylib` exactly once. Packing
+uses `nm` to require every current Storm child header export, including ABI
+query and framebuffer capture, and uses `otool` to require
+`@rpath/<library>.dylib` install names and the exact LC_RPATH allowlist
+`[@loader_path]` for Storm child, Hydra, and hdSilk. Rooted paths, duplicates,
+extra relative paths, and any source, build, or install path are rejected.
+Dependencies are limited to system libraries and safe `@rpath` or
+`@loader_path` names without traversal. The validation evidence is stored in
+the package under `build/`.
+
+Each Imaging package has an exact dependency on its matching Core version, for example
+`[0.1.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
+resource staging arrive when a consumer references only Imaging.
+
+## Pack
+
+Build the locked native inputs first, then pack the runtime projects:
+
+```shell
+dotnet pack src/OpenUsd.Runtime.Core.win-x64/OpenUsd.Runtime.Core.win-x64.csproj -c Release -o artifacts/packages
+dotnet pack src/OpenUsd.Runtime.Imaging.win-x64/OpenUsd.Runtime.Imaging.win-x64.csproj -c Release -o artifacts/packages
+```
+
+Use the corresponding project names for `linux-x64` and `osx-arm64`. The Linux and macOS projects
+are ready to consume the same locked layout, but require native installs produced on those
+platforms.
+
+Package archives include repository documentation such as `README.md`, so their
+byte sizes and SHA-256 digests change with packaged inputs. Inspect the current
+build instead of copying a historical list into this guide:
+
+```powershell
+Get-ChildItem artifacts/packages -File |
+  Where-Object { $_.Extension -in '.nupkg', '.snupkg' } |
+  Sort-Object Name |
+  ForEach-Object {
+    [pscustomobject]@{
+      Artifact = $_.FullName
+      Bytes = $_.Length
+      Sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    }
+  }
+```
+
+Canonical evidence is generated with the build it describes:
+
+- `native/install/<rid>/.openusd-install-metadata.json` binds the current native
+  sources, headers, installed libraries, and their hashes. Verify it with
+  `./eng/native-install-metadata.ps1 -Operation Verify -Rid <rid>`.
+- `artifacts/package-linux-storm-child/package-evidence.json` records the Linux
+  nupkg and validation-manifest hashes, exact ABI-7 SONAME topology, RUNPATH
+  policy, package-only ABI output, and loaded-library confinement.
+- `artifacts/package-macos-storm-child/package-evidence.json` records the macOS
+  nupkg and validation-manifest hashes, install names, RPATH policy, package-only
+  ABI output, dyld confinement, and signing verification.
+- The Linux and macOS Imaging nupkgs embed their platform validation manifest
+  under `build/` as `OpenUsd.Runtime.Imaging.<rid>.native-validation.json`.
+
+The package workflow uploads the platform evidence directory with the nupkg and
+native-source metadata. Run `./eng/validate-linux-package-evidence.ps1` or
+`./eng/validate-macos-package-evidence.ps1` on its matching platform to
+recompute and validate the current artifact hashes.
+
+Package layout tests create isolated synthetic installs under
+`artifacts/package-tests`, inspect the nupkgs as zip archives, verify the
+Core-to-Imaging dependency, and restore or publish clean consumers from the
+generated local feed. After a Release build, run them with:
+
+```powershell
+./eng/run-managed-tests.ps1 `
+  -Project tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj `
+  -Framework net10.0 `
+  -Configuration Release
+```
+
+## Package-only execution gate
+
+When the locked native and shim install for the current host is present,
+`OpenUsd.Package.Tests` performs a NativeAOT execution gate for `win-x64`,
+`linux-x64`, or `osx-arm64`:
+
+1. Pack `OpenUsd.Interop`, `OpenUsd`, and the matching
+   `OpenUsd.Runtime.Core.<rid>` into an isolated local feed.
+2. Generate a temporary consumer containing only `PackageReference` items.
+3. Restore into an isolated global-packages folder with source mapping that resolves every
+   `OpenUsd*` ID from the local feed.
+4. Publish the consumer as NativeAOT for the current RID.
+5. Create a small USDA input in the publish directory and launch the executable with a sanitized
+   `PATH`.
+6. Register the staged `usd` plugin tree, open the input stage, create and save a second stage, then
+   reopen it and verify an authored value.
+
+The test asserts that all three OpenUsd dependencies have `package` entries in
+`project.assets.json`, no project dependency exists, the process runs with the publish directory as
+its working directory, and successful output contains:
+
+```text
+PACKAGE_EXECUTION_OK
+ABI=8
+CAPABILITIES=0x1FF
+INPUT_OPENED=true
+CAMERA_STATE_QUERY=true
+ROUNDTRIP_SAVED=true
+ROUNDTRIP_VALUE=42.5
+CWD_IS_PUBLISH=true
+```
+
+The process output and generated consumer project must not contain repository source paths,
+`ProjectReference`, or `native/install`.
+A separate clean-feed managed consumer loads only `OpenUsd.Interop` from its
+nupkg and invokes the compatibility validator. Data ABI 6 with the complete
+v8 mask and data ABI 8 with the former `0x7F` mask must both throw the typed
+`OpenUsdNativeException`.
+
+## Package-only Imaging execution gate
+
+The Imaging consumer has exactly two direct package references:
+
+| RID | Managed backend | Runtime package | GPU gate |
+| --- | --- | --- | --- |
+| `win-x64` | `OpenUsd.Rendering.Silk.D3D12` | `OpenUsd.Runtime.Imaging.win-x64` | D3D12 WARP |
+| `linux-x64` | `OpenUsd.Rendering.Silk.Vulkan` | `OpenUsd.Runtime.Imaging.linux-x64` | Hash-locked Vulkan SwiftShader |
+| `osx-arm64` | `OpenUsd.Rendering.Silk.Metal` | `OpenUsd.Runtime.Imaging.osx-arm64` | Metal |
+
+The backend brings `OpenUsd.Rendering.Silk`, `OpenUsd.Rendering`, `OpenUsd`,
+and `OpenUsd.Interop` transitively. Imaging brings the exact matching Core
+runtime package and both runtime packages' targets. The Windows package test
+also compiles all three clean-feed consumer sources without executing foreign
+RID binaries.
+
+The packaged `minimal.usda` stage is opened through `plugin/usd`. The first
+hdSilk page must contain one frame and at least one mesh upsert; the mesh is
+retained and incrementally uploaded through the platform backend. The steady
+page must contain one frame and no repeated mesh changes, after which the
+device waits idle.
+
+Linux execution sets `VK_ICD_FILENAMES` and `VK_DRIVER_FILES` to the
+`vk_swiftshader_icd.json` staged at the publish root by the backend NuGet
+package. `LD_LIBRARY_PATH` is restricted to that publish root, which also
+contains the packaged `libvulkan.so` and `libvk_swiftshader.so`; `LD_PRELOAD`
+points at that packaged loader so OpenUSD and the managed backend share it.
+macOS launches with `DYLD_LIBRARY_PATH` removed. The packaged Mach-O install
+names and loader-relative rpaths must resolve from the publish root without a
+host SDK or repository native install.
+
+Linux also runs a dedicated package-only NativeAOT Storm child consumer with
+only `OpenUsd.Runtime.Imaging.linux-x64` directly referenced. It queries ABI v7
+and calls invalid-handle navigation-input and framebuffer-capture exports,
+requiring status 1, the typed invalid-child message, and a fully reset navigation
+snapshot with `LD_LIBRARY_PATH` removed, then reads `/proc/self/maps`. Every
+mapped `libopenusd_*.so*` and
+`libusd_*.so*` must resolve under the package publish root; Storm child and
+`libusd_ms.so` must both be present, and repository `native/install`, build,
+source, or system copies fail the process. Its project, output, and evidence
+must not contain source paths. Synthetic tests cover clean-feed compilation,
+exact Core dependency versioning, real ELF hashes, ZIP symlink targets, exact
+ABI-7 SONAME topology, no flattened or duplicate Storm child copies, and
+negative topology/parser cases for missing/wrong links, arbitrary `.so.*`,
+RPATH, absolute/source paths, missing RUNPATH, empty, duplicate, and unexpected
+entries.
+
+macOS runs the equivalent package-only NativeAOT consumer with direct package
+references to Imaging and the managed Metal backend. The latter supplies the
+validated `mesh.metallib` and schema-v4 sidecar. The test verifies their hashes,
+queries Storm child ABI v7, performs invalid-handle navigation and capture
+checks, loads the packaged core and Storm dylibs plus the system Metal framework,
+and enumerates dyld
+images through `_dyld_image_count` and `_dyld_get_image_name`. Every project
+dylib is canonicalized with `realpath` and must be under
+`AppContext.BaseDirectory`; global, source, build, and `native/install` copies
+fail. Every published dylib is signed first and the self-contained executable
+last. Each file independently runs `codesign --verify --strict --verbose=4`
+and hardened-runtime flag inspection; all failures are aggregated. Package
+bytes are compared with the installed input before signing. Evidence derives
+the install name from the `otool` validation manifest, derives each
+`underAppBase` value from canonical dyld paths, and records a separate
+post-sign SHA-256 with each file's signature result.
+
+Successful output includes:
+
+```text
+PACKAGE_IMAGING_EXECUTION_OK
+FIRST_PAGE_FRAMES=1
+FIRST_PAGE_UPSERTS=<positive count>
+FIRST_PAGE_REMOVALS=0
+STEADY_PAGE_FRAMES=1
+STEADY_PAGE_UPSERTS=0
+STEADY_PAGE_REMOVALS=0
+<platform upload marker>=true
+GPU_BACKEND=<D3D12_WARP|VULKAN_SWIFTSHADER|METAL>
+INCREMENTAL_GPU_UPLOAD=true
+WAIT_IDLE=true
+PLUGIN_LAYOUT=true
+STORM_CHILD_ABI=7
+STORM_CHILD_DLLIMPORT=true
+STORM_CHILD_CAPTURE_STATUS=1
+STORM_CHILD_CAPTURE_ERROR=A valid Storm native child is required.
+STORM_CHILD_CAPTURE_DLLIMPORT=true
+STORM_CHILD_NAVIGATION_STATUS=1
+STORM_CHILD_NAVIGATION_ERROR=A valid Storm native child is required.
+STORM_CHILD_NAVIGATION_RESET=true
+STORM_CHILD_NAVIGATION_DLLIMPORT=true
+STORM_CHILD_INITIALIZE_LINUX_EXPORT=false
+CWD_IS_PUBLISH=true
+```
+
+The gate verifies the renderer plugin tree and exactly one root hdSilk library:
+
+```text
+win-x64:   openusd_hdsilk.dll
+linux-x64: libopenusd_hdsilk.so
+osx-arm64: libopenusd_hdsilk.dylib
+```
+
+It parses the published `plugin/usd/hdSilk/resources/plugInfo.json` and checks
+the RID-specific root-relative `LibraryPath`. Core native files, USD resources,
+and `OpenUsd.Runtime.Core.<rid>.targets` must arrive transitively.
+On Windows it also calls `openusd_storm_child_get_abi_version` and
+`openusd_storm_child_capture_framebuffer` through `DllImport`, without creating
+a window. The capture call must return the explicit invalid-child status and
+message before any frame is rendered, proving the ABI v7 entry point and
+marshalling path. The gate verifies the single published DLL byte-for-byte
+against the validated shim install.
+
+## Required execution mode
+
+On machines without the locked native install matching the current host,
+ordinary test runs report `PACKAGE_EXECUTION_PREREQUISITES_ABSENT` and continue
+to run synthetic package-layout tests. Setting:
+
+```text
+OPENUSD_PACKAGE_EXECUTION_REQUIRED=true
+```
+
+turns an unsupported host or missing OpenUSD, shim, or Windows Vulkan
+prerequisite into a test failure.
+
+`.github/workflows/package.yml` runs a required-mode matrix:
+
+| Runner | RID | Native/GPU prerequisites |
+| --- | --- | --- |
+| `windows-latest` | `win-x64` | MSVC x64, D3D12 WARP |
+| `ubuntu-latest` | `linux-x64` | clang, Ninja, X11/Wayland/OpenGL headers, locked SwiftShader from NuGet |
+| `macos-15-arm64` | `osx-arm64` | Xcode 16.4, CMake, Ninja, Metal |
+
+Each job restores or builds its locked native install, verifies install
+metadata, builds the package tests, and directly runs all tests with required
+execution enabled. A successful job therefore proves both Core and Imaging
+package-only NativeAOT execution for that RID. The Linux job additionally
+requires evidence schema 3; recomputes the nupkg, native-validation, Storm link
+payloads, and real ELF hash; requires
+`DT_SONAME=libopenusd_storm_child.so.7` with the exact symlink chain; enforces
+exact `DT_RUNPATH=[$ORIGIN]`; and requires ABI 7,
+invalid-handle navigation/capture status 1, a reset navigation snapshot,
+`LD_LIBRARY_PATH_PRESENT=false`, and confined `/proc/self/maps` results.
+The macOS job requires evidence schema 2, the
+`@rpath/libopenusd_storm_child.dylib` package entry, exact
+`LC_RPATH=[@loader_path]`, ABI/navigation/capture output,
+`DYLD_LIBRARY_PATH_PRESENT=false`, canonical confined dyld image paths, and
+strict/hardened verification for every dylib and the executable. The render
+workflow repeats these gates for both source-build and archive inputs.
+Linux archive dispatch requires an HTTPS URL and full SHA-256, extracts only
+the validated `native/install/linux-x64` and shim subtrees, runs the dedicated
+package-only NativeAOT consumer, validates source metadata as `archive`, and
+uploads the package evidence. Missing or malformed evidence fails both
+`package.yml` and the render workflow. Source-build mode remains the default.
+macOS package dispatch similarly supports pinned HTTPS archive mode with a full
+SHA-256 and requires archive source metadata before accepting package evidence.
+
+The native cache key hashes the OpenUSD lock, relevant native fetch/build/prepare
+scripts, CMake files and presets, plugin resource templates, and checked-in
+native source and header files. Generated `native/build`, `native/install`,
+`native/downloads`, `native/src`, and `native/.cache` trees are excluded.
+
+Every completed native build writes
+`native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
+the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, data ABI 8 and
+capabilities `0x1FF`, Storm ABI 5, hdSilk session/page ABI 4/2, and Storm child
+ABI 7. Metadata schema 3 records camera-state version 1, Storm-child navigation
+input version 1, exact data-shim and Storm-child source SHA-256 values, plus
+SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their
+exact source-matching headers, and the shared render-camera and render-pick headers. A post-build
+source change therefore invalidates metadata even if an installed binary is
+still present. The Windows gate also requires the locked Vulkan loader.
+Missing or mismatched metadata fails clearly and requires rebuilding the native
+install, preventing a stale cache from reaching package tests. Linux and macOS
+execution remains CI-gated when their native installs and hardware APIs are
+unavailable on a developer machine.
+
+## Related documentation
+
+- [Native build](native-build.md) covers the immutable per-RID installs consumed by package projects.
+- [Rendering](rendering.md) covers backend activation and the hdSilk command-page path.
+- [Shader pipeline](shader-pipeline.md) covers checked backend shader assets.
+- [Testing](testing.md) covers package-only and release evidence gates.

@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenUsd.Rendering\OpenUsd.Rendering.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Rendering.Storm\OpenUsd.Rendering.Storm.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Rendering.Silk\OpenUsd.Rendering.Silk.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Rendering.Silk.Metal\OpenUsd.Rendering.Silk.Metal.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Rendering.Tests</AssemblyName>
+    <RootNamespace>OpenUsd.Rendering.Tests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpMetal" />
+    <PackageReference Include="TUnit" />
+  </ItemGroup>
+
+</Project>

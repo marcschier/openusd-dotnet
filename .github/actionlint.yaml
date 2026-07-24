@@ -1,0 +1,5 @@
+self-hosted-runner:
+  labels:
+    - macos-15-arm64
+
+config-variables: null

@@ -1,0 +1,7 @@
+#usda 1.0
+
+def Xform "Payload"
+{
+    custom double custom:payloadValue = 3.5
+}
+

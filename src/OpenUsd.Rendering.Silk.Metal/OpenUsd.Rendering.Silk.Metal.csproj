@@ -1,0 +1,109 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd.Rendering.Silk\OpenUsd.Rendering.Silk.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OpenUsdMetalShaderLibraryPath Condition="'$(OpenUsdMetalShaderLibraryPath)' == ''">$(MSBuildThisFileDirectory)..\..\eng\shaders\checked\mesh.metallib</OpenUsdMetalShaderLibraryPath>
+    <OpenUsdMetalShaderManifestPath Condition="'$(OpenUsdMetalShaderManifestPath)' == ''">$(MSBuildThisFileDirectory)..\..\eng\shaders\checked\mesh.metallib.manifest.json</OpenUsdMetalShaderManifestPath>
+    <OpenUsdMetalShaderValidatorPath Condition="'$(OpenUsdMetalShaderValidatorPath)' == ''">$(MSBuildThisFileDirectory)..\..\eng\shaders\scripts\metal_sidecar.py</OpenUsdMetalShaderValidatorPath>
+    <OpenUsdMetalShaderSourceManifestPath Condition="'$(OpenUsdMetalShaderSourceManifestPath)' == ''">$(MSBuildThisFileDirectory)..\..\eng\shaders\shader-manifest.json</OpenUsdMetalShaderSourceManifestPath>
+    <OpenUsdMetalShaderToolchainLockPath Condition="'$(OpenUsdMetalShaderToolchainLockPath)' == ''">$(MSBuildThisFileDirectory)..\..\eng\shaders\toolchain.lock.json</OpenUsdMetalShaderToolchainLockPath>
+    <OpenUsdMetalRepositoryRoot Condition="'$(OpenUsdMetalRepositoryRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..'))</OpenUsdMetalRepositoryRoot>
+    <OpenUsdMetalPythonExecutable Condition="'$(OpenUsdMetalPythonExecutable)' == ''">python</OpenUsdMetalPythonExecutable>
+    <OpenUsdRequireMetalShaderLibrary Condition="'$(OpenUsdRequireMetalShaderLibrary)' == ''">false</OpenUsdRequireMetalShaderLibrary>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\eng\shaders\checked\mesh.vertex.metal"
+          Link="Shaders\mesh.vertex.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\mesh.fragment.metal"
+          Link="Shaders\mesh.fragment.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\pick.vertex.metal"
+          Link="Shaders\pick.vertex.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\pick.fragment.metal"
+          Link="Shaders\pick.fragment.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\selection.mask.vertex.metal"
+          Link="Shaders\selection.mask.vertex.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\selection.mask.fragment.metal"
+          Link="Shaders\selection.mask.fragment.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\selection.outline.vertex.metal"
+          Link="Shaders\selection.outline.vertex.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\selection.outline.fragment.metal"
+          Link="Shaders\selection.outline.fragment.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\compute.fill.metal"
+          Link="Shaders\compute.fill.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\compute.scale.metal"
+          Link="Shaders\compute.scale.metal"
+          Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(OpenUsdMetalShaderLibraryPath)') and Exists('$(OpenUsdMetalShaderManifestPath)')">
+    <Content Include="$(OpenUsdMetalShaderLibraryPath)"
+             Link="mesh.metallib"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest"
+             Pack="true"
+             PackagePath="runtimes/osx/native/" />
+    <Content Include="$(OpenUsdMetalShaderManifestPath)"
+             Link="mesh.metallib.manifest.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest"
+             Pack="true"
+             PackagePath="runtimes/osx/native/" />
+  </ItemGroup>
+
+  <Target Name="RequireOptInMetalShaderLibrary"
+          BeforeTargets="PrepareForBuild;Publish"
+          Condition="'$(OpenUsdRequireMetalShaderLibrary)' == 'true'">
+    <Error Condition="!Exists('$(OpenUsdMetalShaderLibraryPath)')"
+           Text="OpenUsdRequireMetalShaderLibrary=true requires the Xcode-validated ten-entry eng/shaders/checked/mesh.metallib." />
+    <Error Condition="!Exists('$(OpenUsdMetalShaderManifestPath)')"
+           Text="OpenUsdRequireMetalShaderLibrary=true requires the ten-entry mesh.metallib validation manifest." />
+  </Target>
+
+  <Target Name="ValidateMetalPackageProduction"
+          BeforeTargets="GenerateNuspec;Pack">
+    <Error Condition="!Exists('$(OpenUsdMetalShaderLibraryPath)')"
+           Text="OpenUsd.Rendering.Silk.Metal cannot be packed without the validated combined ten-entry mesh.metallib." />
+    <Error Condition="!Exists('$(OpenUsdMetalShaderManifestPath)')"
+           Text="OpenUsd.Rendering.Silk.Metal cannot be packed without the ten-entry mesh.metallib validation manifest." />
+    <Error Condition="'$(OpenUsdRequireMetalShaderLibrary)' != 'true'"
+           Text="Metal package production requires OpenUsdRequireMetalShaderLibrary=true." />
+    <Error Condition="!Exists('$(OpenUsdMetalShaderValidatorPath)')"
+           Text="Metal package production requires the authoritative schema-v4 sidecar validator." />
+    <Error Condition="!Exists('$(OpenUsdMetalShaderSourceManifestPath)')"
+           Text="Metal package production requires the checked shader source manifest." />
+    <Error Condition="!Exists('$(OpenUsdMetalShaderToolchainLockPath)')"
+           Text="Metal package production requires the locked shader toolchain model." />
+    <Exec WorkingDirectory="$(OpenUsdMetalRepositoryRoot)"
+          Command="&quot;$(OpenUsdMetalPythonExecutable)&quot; &quot;$(OpenUsdMetalShaderValidatorPath)&quot; --sidecar &quot;$(OpenUsdMetalShaderManifestPath)&quot; --library &quot;$(OpenUsdMetalShaderLibraryPath)&quot; --manifest &quot;$(OpenUsdMetalShaderSourceManifestPath)&quot; --lock &quot;$(OpenUsdMetalShaderToolchainLockPath)&quot; --repository-root &quot;$(OpenUsdMetalRepositoryRoot)&quot; --verify-checked-files" />
+    <Error Condition="!$([MSBuild]::IsOSPlatform('OSX'))"
+           Text="OpenUsd.Rendering.Silk.Metal package production is supported only on macOS with Xcode 16.4." />
+  </Target>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Rendering.Silk.Metal</AssemblyName>
+    <RootNamespace>OpenUsd.Rendering.Silk.Metal</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Metal backend for the OpenUsd Silk.NET renderer.</Description>
+    <PackageTags>openusd;usd;silk.net;metal;rendering</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpMetal" />
+    <PackageReference Include="Silk.NET.Core" />
+  </ItemGroup>
+
+</Project>

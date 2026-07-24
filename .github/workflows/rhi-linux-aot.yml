@@ -1,0 +1,49 @@
+name: RHI Linux NativeAOT
+
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'src/OpenUsd.Rendering/**'
+      - 'src/OpenUsd.Rendering.Silk*/**'
+      - 'tests/OpenUsd.RhiProbe/**'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/VulkanCompositionPresentationTests.cs'
+      - '.github/workflows/rhi-linux-aot.yml'
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - 'src/OpenUsd.Rendering/**'
+      - 'src/OpenUsd.Rendering.Silk*/**'
+      - 'tests/OpenUsd.RhiProbe/**'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/VulkanCompositionPresentationTests.cs'
+      - '.github/workflows/rhi-linux-aot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-nativeaot-vulkan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - name: Install NativeAOT prerequisites
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+      - name: Publish RHI probe
+        run: >
+          dotnet publish tests/OpenUsd.RhiProbe/OpenUsd.RhiProbe.csproj
+          -c Release -f net10.0 -r linux-x64 -p:AotProbe=true
+      - name: Run Vulkan RHI and presentation probe
+        shell: pwsh
+        run: |
+          $publish = 'tests/OpenUsd.RhiProbe/bin/Release/net10.0/linux-x64/publish'
+          $env:OPENUSD_VULKAN_PRESENTATION_ITERATIONS = '10'
+          ./eng/run-rhi-probe.ps1 `
+            -Rid linux-x64 `
+            -PublishRoot $publish `
+            -SkipPublish

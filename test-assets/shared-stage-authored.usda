@@ -1,0 +1,10 @@
+#usda 1.0
+
+def "World"
+{
+    def Xform "Shared"
+    {
+        custom double custom:value = 7
+    }
+}
+

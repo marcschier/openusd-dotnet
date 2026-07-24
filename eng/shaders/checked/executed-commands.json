@@ -1,0 +1,1083 @@
+{
+  "schemaVersion": 1,
+  "toolchain": {
+    "slangVersion": "2026.13.1",
+    "slangCommit": "c0952c29d3664b60ada5e5edb3fff9ffd6f98d2d",
+    "spirvToolsVersion": "vulkan-sdk-1.4.350.1",
+    "spirvToolsCommit": "0539c81f69a3daeb706fd3477dca61435b475156",
+    "shaderModel": "6.0",
+    "shaderModelToken": "6_0",
+    "direct3DFormat": "DXIL",
+    "vulkanVersion": "1.2",
+    "spirvVersion": "1.5",
+    "spirvCapability": "spirv_1_5",
+    "spirvTargetEnv": "vulkan1.2",
+    "metalVersion": "2.4",
+    "metalCapability": "METAL_2_4",
+    "metalStandard": "metal2.4",
+    "xcodeVersion": "16.4"
+  },
+  "outputRoot": "eng/shaders/.cache/checked-build",
+  "programs": [
+    {
+      "name": "mesh.vertex",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "vertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "vertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "dxil",
+            "-profile",
+            "vs_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.vertex.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "vertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "spirv",
+            "-profile",
+            "vs_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.vertex.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "vertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "metal",
+            "-profile",
+            "vs_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.vertex.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.vertex.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.vertex"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.vertex.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "pick.vertex",
+      "source": "eng/shaders/sources/pick.vertex.slang",
+      "entryPoint": "pickVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/pick.vertex.slang",
+            "-entry",
+            "pickVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "dxil",
+            "-profile",
+            "vs_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/pick.vertex.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/pick.vertex.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/pick.vertex.slang",
+            "-entry",
+            "pickVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "spirv",
+            "-profile",
+            "vs_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/pick.vertex.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/pick.vertex.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/pick.vertex.slang",
+            "-entry",
+            "pickVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "metal",
+            "-profile",
+            "vs_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/pick.vertex.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/pick.vertex.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/pick.vertex.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/pick.vertex.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "pick.vertex"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/pick.vertex.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "pick.fragment",
+      "source": "eng/shaders/sources/pick.fragment.slang",
+      "entryPoint": "pickFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/pick.fragment.slang",
+            "-entry",
+            "pickFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/pick.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/pick.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/pick.fragment.slang",
+            "-entry",
+            "pickFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/pick.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/pick.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/pick.fragment.slang",
+            "-entry",
+            "pickFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/pick.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/pick.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/pick.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/pick.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "pick.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/pick.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "selection.mask.vertex",
+      "source": "eng/shaders/sources/selection.mask.vertex.slang",
+      "entryPoint": "selectionMaskVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.mask.vertex.slang",
+            "-entry",
+            "selectionMaskVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "dxil",
+            "-profile",
+            "vs_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.mask.vertex.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.vertex.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.mask.vertex.slang",
+            "-entry",
+            "selectionMaskVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "spirv",
+            "-profile",
+            "vs_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.mask.vertex.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.vertex.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.mask.vertex.slang",
+            "-entry",
+            "selectionMaskVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "metal",
+            "-profile",
+            "vs_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.mask.vertex.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.vertex.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.vertex.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/selection.mask.vertex.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "selection.mask.vertex"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/selection.mask.vertex.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "selection.mask.fragment",
+      "source": "eng/shaders/sources/selection.mask.fragment.slang",
+      "entryPoint": "selectionMaskFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.mask.fragment.slang",
+            "-entry",
+            "selectionMaskFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.mask.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.mask.fragment.slang",
+            "-entry",
+            "selectionMaskFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.mask.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.mask.fragment.slang",
+            "-entry",
+            "selectionMaskFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.mask.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/selection.mask.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "selection.mask.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/selection.mask.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "selection.outline.vertex",
+      "source": "eng/shaders/sources/selection.outline.vertex.slang",
+      "entryPoint": "selectionOutlineVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.outline.vertex.slang",
+            "-entry",
+            "selectionOutlineVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "dxil",
+            "-profile",
+            "vs_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.outline.vertex.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.vertex.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.outline.vertex.slang",
+            "-entry",
+            "selectionOutlineVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "spirv",
+            "-profile",
+            "vs_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.outline.vertex.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.vertex.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.outline.vertex.slang",
+            "-entry",
+            "selectionOutlineVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "metal",
+            "-profile",
+            "vs_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.outline.vertex.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.vertex.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.vertex.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/selection.outline.vertex.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "selection.outline.vertex"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/selection.outline.vertex.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "selection.outline.fragment",
+      "source": "eng/shaders/sources/selection.outline.fragment.slang",
+      "entryPoint": "selectionOutlineFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.outline.fragment.slang",
+            "-entry",
+            "selectionOutlineFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.outline.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.outline.fragment.slang",
+            "-entry",
+            "selectionOutlineFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.outline.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/selection.outline.fragment.slang",
+            "-entry",
+            "selectionOutlineFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/selection.outline.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/selection.outline.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "selection.outline.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/selection.outline.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "compute.fill",
+      "source": "eng/shaders/sources/compute.slang",
+      "entryPoint": "fillMain",
+      "stage": "compute",
+      "profile": "cs_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/compute.slang",
+            "-entry",
+            "fillMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "dxil",
+            "-profile",
+            "cs_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/compute.fill.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/compute.fill.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/compute.slang",
+            "-entry",
+            "fillMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "spirv",
+            "-profile",
+            "cs_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/compute.fill.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/compute.fill.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/compute.slang",
+            "-entry",
+            "fillMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "metal",
+            "-profile",
+            "cs_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/compute.fill.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/compute.fill.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/compute.fill.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/compute.fill.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "compute.fill"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/compute.fill.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "compute.scale",
+      "source": "eng/shaders/sources/compute.slang",
+      "entryPoint": "scaleMain",
+      "stage": "compute",
+      "profile": "cs_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/compute.slang",
+            "-entry",
+            "scaleMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "dxil",
+            "-profile",
+            "cs_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/compute.scale.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/compute.scale.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/compute.slang",
+            "-entry",
+            "scaleMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "spirv",
+            "-profile",
+            "cs_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/compute.scale.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/compute.scale.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/compute.slang",
+            "-entry",
+            "scaleMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-target",
+            "metal",
+            "-profile",
+            "cs_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/compute.scale.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/compute.scale.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/compute.scale.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/compute.scale.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "compute.scale"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/compute.scale.spv"
+          ]
+        }
+      }
+    }
+  ]
+}

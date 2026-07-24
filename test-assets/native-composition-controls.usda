@@ -1,0 +1,55 @@
+#usda 1.0
+
+class "InheritBase"
+{
+    custom double custom:inherited = 11
+}
+
+class "SpecializeBase"
+{
+    custom double custom:specialized = 22
+}
+
+def "World"
+{
+    def Xform "Inherited" (
+        prepend inherits = </InheritBase>
+    )
+    {
+    }
+
+    def Xform "Specialized" (
+        prepend specializes = </SpecializeBase>
+    )
+    {
+    }
+
+    def Xform "Payload" (
+        prepend payload = @D:/git/marcschier/openusd/native/../test-assets\native-composition-source.usda@</Model>
+    )
+    {
+    }
+
+    def Xform "Instance" (
+        instanceable = true
+        prepend references = @D:/git/marcschier/openusd/native/../test-assets\native-composition-source.usda@</Model>
+    )
+    {
+    }
+
+    def Xform "Keep"
+    {
+        def Xform "Child"
+        {
+        }
+    }
+
+    def Xform "Exclude"
+    {
+    }
+}
+
+def Xform "Other"
+{
+}
+

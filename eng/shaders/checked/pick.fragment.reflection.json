@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 2,
+  "source": "eng/shaders/sources/pick.fragment.slang",
+  "entryPoint": {
+    "name": "pickFragmentMain",
+    "stage": "fragment",
+    "profile": "ps_6_0",
+    "threadGroupSize": null
+  },
+  "resources": [
+    {
+      "name": "PickParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "b",
+          "register": 1,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 1,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "constantBuffer",
+        "access": "constant",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": null,
+          "fields": [
+            {
+              "name": "pickToken",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "uint32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 0,
+        "size": 16
+      },
+      "vulkanLayout": {
+        "kind": "constantBuffer",
+        "access": "constant",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": null,
+          "fields": [
+            {
+              "name": "pickToken",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "uint32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 0,
+        "size": 16
+      }
+    }
+  ],
+  "stageInputs": [
+    {
+      "name": "position",
+      "semantic": {
+        "name": "SV_POSITION",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "primitiveId",
+      "semantic": {
+        "name": "SV_PRIMITIVEID",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "uint32"
+      }
+    }
+  ],
+  "stageOutputs": [
+    {
+      "name": "result",
+      "semantic": {
+        "name": "SV_TARGET",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    }
+  ]
+}

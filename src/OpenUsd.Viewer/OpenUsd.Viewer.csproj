@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd\OpenUsd.csproj" />
+    <ProjectReference Include="..\OpenUsd.Rendering\OpenUsd.Rendering.csproj" />
+    <ProjectReference Include="..\OpenUsd.Rendering.Storm\OpenUsd.Rendering.Storm.csproj" />
+    <ProjectReference Include="..\OpenUsd.Rendering.Silk.D3D12\OpenUsd.Rendering.Silk.D3D12.csproj" />
+    <ProjectReference Include="..\OpenUsd.Rendering.Silk.Vulkan\OpenUsd.Rendering.Silk.Vulkan.csproj" />
+    <ProjectReference Include="..\OpenUsd.Rendering.Silk.Metal\OpenUsd.Rendering.Silk.Metal.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>OpenUsd.Viewer</AssemblyName>
+    <RootNamespace>OpenUsd.Viewer</RootNamespace>
+    <IsApplicationProject>true</IsApplicationProject>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Wayland" />
+  </ItemGroup>
+
+</Project>

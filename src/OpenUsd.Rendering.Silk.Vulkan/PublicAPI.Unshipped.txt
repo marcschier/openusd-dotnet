@@ -1,0 +1,71 @@
+#nullable enable
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ActiveFrames.get -> int
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ActiveFrames.init -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ActiveGenerations.get -> int
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ActiveGenerations.init -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.Deconstruct(out int ActiveGenerations, out int ActiveFrames, out long PresentedFrames, out long RingReuseFrames, out long RenderCallbacks, out OpenUsd.Rendering.Silk.SilkMeshRenderResult? LastMeshRenderResult, out string? ImageHandleType, out string? PresentationPath) -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.Equals(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics other) -> bool
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ImageHandleType.get -> string?
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ImageHandleType.init -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.LastMeshRenderResult.get -> OpenUsd.Rendering.Silk.SilkMeshRenderResult?
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.LastMeshRenderResult.init -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.PresentationPath.get -> string?
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.PresentationPath.init -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.PresentedFrames.get -> long
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.PresentedFrames.init -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.RenderCallbacks.get -> long
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.RenderCallbacks.init -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.RingReuseFrames.get -> long
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.RingReuseFrames.init -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.VulkanCompositionPresenterDiagnostics() -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.VulkanCompositionPresenterDiagnostics(int ActiveGenerations, int ActiveFrames, long PresentedFrames, long RingReuseFrames, long RenderCallbacks, OpenUsd.Rendering.Silk.SilkMeshRenderResult? LastMeshRenderResult, string? ImageHandleType = null, string? PresentationPath = null) -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderCallback
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderContext
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderContext.AllocationId.get -> long
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderContext.ColorTarget.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderContext.DepthTarget.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderContext.FrameIndex.get -> int
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderContext.Renderer.get -> OpenUsd.Rendering.Silk.SilkMeshRenderer!
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderContext.UseCount.get -> int
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.CreateGenerationAsync(OpenUsd.Rendering.ViewportDimensions size, int frameCount, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.ICompositionPresentationGeneration!>
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.GetDiagnostics() -> OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.ProbeAsync(OpenUsd.Rendering.CompositionPresentationTarget! target, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.CompositionPresenterProbeResult>
+OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.RenderAsync(OpenUsd.Rendering.ICompositionPresentationFrame! frame, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.CompositionFrameRenderResult>
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.Backend.get -> OpenUsd.Rendering.Silk.SilkGraphicsBackend
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.Capabilities.get -> OpenUsd.Rendering.Silk.SilkGraphicsCapabilities
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateBindingLayout(OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsBindingLayout!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateBuffer(nuint size, OpenUsd.Rendering.Silk.SilkBufferUsage usage) -> OpenUsd.Rendering.Silk.ISilkGraphicsBuffer!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateCommandList() -> OpenUsd.Rendering.Silk.ISilkGraphicsCommandList!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateComputeBindingLayout(OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkComputeBindingLayout!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateComputePipeline(OpenUsd.Rendering.Silk.SilkComputePipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkComputePipeline!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateComputeShaderProgram(OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkComputeShaderProgram!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateGraphicsPipeline(OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsPipeline!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreatePickGraphicsPipeline(OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkPickGraphicsPipeline!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreatePickReadbackBuffer() -> OpenUsd.Rendering.Silk.ISilkPickReadbackBuffer!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateSampler(OpenUsd.Rendering.Silk.SilkSamplerDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsSampler!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateSelectionMaskGraphicsPipeline(OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkSelectionMaskGraphicsPipeline!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateSelectionOutlineBinding(OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkSelectionOutlineBinding!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateSelectionOutlineGraphicsPipeline(OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkSelectionOutlineGraphicsPipeline!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateShaderModule(OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsShaderModule!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateShaderProgram(OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsShaderProgram!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateTexture2D(OpenUsd.Rendering.Silk.SilkTextureDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.CreateTexture2D(uint width, uint height, OpenUsd.Rendering.Silk.SilkTextureFormat format = OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba8Unorm) -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.Dispose() -> void
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.PickDeviceGeneration.get -> ulong
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.SelectionOutlineCapabilities.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.SelectionOutlineDeviceGeneration.get -> ulong
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.Submit(OpenUsd.Rendering.Silk.ISilkGraphicsCommandList! commandList) -> OpenUsd.Rendering.Silk.ISilkGraphicsSubmission!
+OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.WaitIdle() -> void
+override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.GetHashCode() -> int
+static OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.operator !=(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics left, OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics right) -> bool
+static OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.operator ==(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics left, OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics right) -> bool
+static OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.Create(bool required = false) -> OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter!
+static OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter.Create(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderCallback! renderCallback, bool required = false) -> OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionViewportPresenter!
+static OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice.Create() -> OpenUsd.Rendering.Silk.Vulkan.VulkanSilkGraphicsDevice!
+virtual OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderCallback.Invoke(OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionRenderContext! context) -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
+~override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.Vulkan.VulkanCompositionPresenterDiagnostics.ToString() -> string

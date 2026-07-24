@@ -1,0 +1,41 @@
+<Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/OpenUsd.Benchmarks/OpenUsd.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/OpenUsd.HelloStage/OpenUsd.HelloStage.csproj" />
+    <Project Path="samples/OpenUsd.LiveAuthoring.Sample/OpenUsd.LiveAuthoring.Sample.csproj" />
+    <Project Path="samples/OpenUsd.LiveAuthoring/OpenUsd.LiveAuthoring.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/OpenUsd.Interop/OpenUsd.Interop.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Core.linux-x64/OpenUsd.Runtime.Core.linux-x64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Core.osx-arm64/OpenUsd.Runtime.Core.osx-arm64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Core.win-x64/OpenUsd.Runtime.Core.win-x64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Imaging.linux-x64/OpenUsd.Runtime.Imaging.linux-x64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Imaging.osx-arm64/OpenUsd.Runtime.Imaging.osx-arm64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Imaging.win-x64/OpenUsd.Runtime.Imaging.win-x64.csproj" />
+    <Project Path="src/OpenUsd.Rendering.Silk.D3D12/OpenUsd.Rendering.Silk.D3D12.csproj" />
+    <Project Path="src/OpenUsd.Rendering.Silk.Metal/OpenUsd.Rendering.Silk.Metal.csproj" />
+    <Project Path="src/OpenUsd.Rendering.Silk.Vulkan/OpenUsd.Rendering.Silk.Vulkan.csproj" />
+    <Project Path="src/OpenUsd.Rendering.Silk/OpenUsd.Rendering.Silk.csproj" />
+    <Project Path="src/OpenUsd.Rendering.Storm/OpenUsd.Rendering.Storm.csproj" />
+    <Project Path="src/OpenUsd.Rendering/OpenUsd.Rendering.csproj" />
+    <Project Path="src/OpenUsd.Viewer/OpenUsd.Viewer.csproj" />
+    <Project Path="src/OpenUsd/OpenUsd.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenUsd.Interop.Tests/OpenUsd.Interop.Tests.csproj" />
+    <Project Path="tests/OpenUsd.LiveAuthoring.Tests/OpenUsd.LiveAuthoring.Tests.csproj" />
+    <Project Path="tests/OpenUsd.Native.Tests/OpenUsd.Native.Tests.csproj" />
+    <Project Path="tests/OpenUsd.NativeProbe/OpenUsd.NativeProbe.csproj" />
+    <Project Path="tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj" />
+    <Project Path="tests/OpenUsd.Performance.Tests/OpenUsd.Performance.Tests.csproj" />
+    <Project Path="tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj" />
+    <Project Path="tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj" />
+    <Project Path="tests/OpenUsd.RhiProbe/OpenUsd.RhiProbe.csproj" />
+    <Project Path="tests/OpenUsd.SilkProbe/OpenUsd.SilkProbe.csproj" />
+    <Project Path="tests/OpenUsd.Tests/OpenUsd.Tests.csproj" />
+    <Project Path="tests/OpenUsd.Viewer.Tests/OpenUsd.Viewer.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,18 @@
+#usda 1.0
+(
+    subLayers = [
+        @D:/git/marcschier/openusd/native/../test-assets\native-edit-sublayer.usda@
+    ]
+)
+
+over "World"
+{
+    def Xform "RootDirect"
+    {
+    }
+
+    def Xform "RootConvenience"
+    {
+    }
+}
+

@@ -1,0 +1,604 @@
+name: render platform smoke
+
+on:
+  workflow_call:
+    inputs:
+      native-source:
+        required: false
+        default: archive
+        type: string
+      windows-native-url:
+        required: false
+        type: string
+      windows-native-sha256:
+        required: false
+        type: string
+      linux-native-url:
+        required: false
+        type: string
+      linux-native-sha256:
+        required: false
+        type: string
+      macos-native-url:
+        required: false
+        type: string
+      macos-native-sha256:
+        required: false
+        type: string
+      native-pipeline-run-id:
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      native-source:
+        description: Build pinned OpenUSD inputs or download immutable tarballs
+        required: true
+        default: build
+        type: choice
+        options:
+          - build
+          - archive
+      windows-native-url:
+        description: HTTPS tar.gz for win-x64 (archive mode)
+        required: false
+        type: string
+      windows-native-sha256:
+        description: SHA-256 for the win-x64 tar.gz
+        required: false
+        type: string
+      linux-native-url:
+        description: HTTPS tar.gz for linux-x64 (archive mode)
+        required: false
+        type: string
+      linux-native-sha256:
+        description: SHA-256 for the linux-x64 tar.gz
+        required: false
+        type: string
+      macos-native-url:
+        description: HTTPS tar.gz for osx-arm64 (archive mode)
+        required: false
+        type: string
+      macos-native-sha256:
+        description: SHA-256 for the osx-arm64 tar.gz
+        required: false
+        type: string
+      native-pipeline-run-id:
+        description: Native artifact workflow run ID to consume instead of URL archives
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: render-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-wgl:
+    name: Windows WGL
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      NATIVE_PIPELINE_RUN_ID: >-
+        ${{ inputs['native-pipeline-run-id'] ||
+            (github.event_name == 'workflow_call' && github.run_id) || '' }}
+      NATIVE_SOURCE: >-
+        ${{ (inputs['native-pipeline-run-id'] ||
+            github.event_name == 'workflow_call') && 'archive' ||
+            inputs['native-source'] }}
+      NATIVE_URL: ${{ inputs['windows-native-url'] }}
+      NATIVE_SHA256: ${{ inputs['windows-native-sha256'] }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Validate native archive subtree staging
+        shell: pwsh
+        run: ./eng/test-render-native-archive.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        if: env.NATIVE_SOURCE == 'build'
+      - name: Download verified native pipeline archive
+        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.NATIVE_PIPELINE_RUN_ID }}
+          name: openusd-native-win-x64
+          path: artifacts/native-pipeline/win-x64
+      - name: Prepare pinned native input
+        shell: pwsh
+        run: |
+          $pipelineRoot = if ($env:NATIVE_PIPELINE_RUN_ID) {
+            'artifacts/native-pipeline/win-x64'
+          } else {
+            ''
+          }
+          ./eng/prepare-workflow-native-input.ps1 `
+            -Rid win-x64 `
+            -Source $env:NATIVE_SOURCE `
+            -ArchiveUri $env:NATIVE_URL `
+            -ArchiveSha256 $env:NATIVE_SHA256 `
+            -PipelineRoot $pipelineRoot
+      - name: Execute staged NativeAOT shared-stage probes
+        shell: pwsh
+        run: |
+          ./eng/test-shared-stage-soak-identity.ps1
+          ./eng/run-native-probe.ps1 -Rid win-x64 -SkipNativeAbiProbe
+          ./eng/run-silk-probe.ps1 -Rid win-x64 -SharedStageSoak
+      - name: Execute mandatory WGL shared-stage soak
+        shell: pwsh
+        run: >
+          ./eng/run-platform-smoke.ps1
+          -Platform windows-wgl
+          -SharedStageSoak
+          -SoakSeconds 90
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-windows-wgl-${{ github.run_id }}
+          path: |
+            artifacts/platform-smoke/windows-wgl
+            artifacts/silk-probe/win-x64/shared-stage-soak.json
+            artifacts/native-input/win-x64/source.json
+          if-no-files-found: warn
+
+  windows-vulkan-required:
+    name: Windows Avalonia Vulkan required
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      NATIVE_PIPELINE_RUN_ID: >-
+        ${{ inputs['native-pipeline-run-id'] ||
+            (github.event_name == 'workflow_call' && github.run_id) || '' }}
+      NATIVE_SOURCE: >-
+        ${{ (inputs['native-pipeline-run-id'] ||
+            github.event_name == 'workflow_call') && 'archive' ||
+            inputs['native-source'] }}
+      NATIVE_URL: ${{ inputs['windows-native-url'] }}
+      NATIVE_SHA256: ${{ inputs['windows-native-sha256'] }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+      - name: Download verified native pipeline archive
+        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.NATIVE_PIPELINE_RUN_ID }}
+          name: openusd-native-win-x64
+          path: artifacts/native-pipeline/win-x64
+      - name: Prepare pinned native input
+        shell: pwsh
+        run: |
+          $pipelineRoot = if ($env:NATIVE_PIPELINE_RUN_ID) {
+            'artifacts/native-pipeline/win-x64'
+          } else {
+            ''
+          }
+          ./eng/prepare-workflow-native-input.ps1 `
+            -Rid win-x64 `
+            -Source $env:NATIVE_SOURCE `
+            -ArchiveUri $env:NATIVE_URL `
+            -ArchiveSha256 $env:NATIVE_SHA256 `
+            -PipelineRoot $pipelineRoot
+      - name: Locate system Vulkan ICD
+        id: vulkan-icd
+        shell: pwsh
+        run: |
+          $root = "$env:SystemRoot\System32\DriverStore\FileRepository"
+          $icd = Get-ChildItem $root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '(vk64|vulkan.*64)\.json$' } |
+            Select-Object -First 1
+          if ($null -eq $icd) {
+            throw 'No system Vulkan ICD was found; required Vulkan evidence cannot run.'
+          }
+          "path=$($icd.FullName)" >> $env:GITHUB_OUTPUT
+      - name: Execute required D3D11 destination pixel test
+        shell: pwsh
+        env:
+          VK_DRIVER_FILES: ${{ steps.vulkan-icd.outputs.path }}
+          VK_ICD_FILENAMES: ${{ steps.vulkan-icd.outputs.path }}
+          OPENUSD_REQUIRE_VULKAN_PRESENTATION: '1'
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project -c Release -f net10.0
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VulkanCompositionPresentationTests/D3D11BridgeImportsPixelsAndReusesKeyedMutex')
+      - name: Execute ten required Avalonia hdSilk Vulkan processes
+        shell: pwsh
+        run: >
+          ./eng/run-avalonia-vulkan-smoke.ps1
+          -IcdPath '${{ steps.vulkan-icd.outputs.path }}'
+          -Required
+          -Repetitions 10
+          -TimeoutSeconds 120
+      - name: Execute fresh NativeAOT Vulkan probe
+        shell: pwsh
+        run: >
+          ./eng/run-avalonia-vulkan-smoke.ps1
+          -IcdPath '${{ steps.vulkan-icd.outputs.path }}'
+          -Required
+          -AotProbe
+          -TimeoutSeconds 120
+      - name: Execute ABI v4 switching and retired-kind quarantine evidence
+        shell: pwsh
+        env:
+          VK_DRIVER_FILES: ${{ steps.vulkan-icd.outputs.path }}
+          VK_ICD_FILENAMES: ${{ steps.vulkan-icd.outputs.path }}
+          OPENUSD_REQUIRE_VULKAN_PRESENTATION: '1'
+        run: |
+          ./eng/test-viewer-source-identity.ps1
+          ./eng/test-viewer-evidence-contract.ps1
+          ./eng/run-storm-native-child.ps1 `
+            -SwitchCount 100 `
+            -SurvivalSeconds 90 `
+            -FreshProcessCount 15
+      - name: Upload mandatory Vulkan evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-windows-vulkan-${{ github.run_id }}
+          path: |
+            artifacts/avalonia-vulkan-smoke/win-x64
+            artifacts/avalonia-vulkan-smoke/win-x64-aot
+            artifacts/storm-native-child
+            TestResults
+            artifacts/native-input/win-x64/source.json
+          if-no-files-found: error
+
+  linux-presentation:
+    name: Linux X11 and compositor-managed XWayland required gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      NATIVE_PIPELINE_RUN_ID: >-
+        ${{ inputs['native-pipeline-run-id'] ||
+            (github.event_name == 'workflow_call' && github.run_id) || '' }}
+      NATIVE_SOURCE: >-
+        ${{ (inputs['native-pipeline-run-id'] ||
+            github.event_name == 'workflow_call') && 'archive' ||
+            inputs['native-source'] }}
+      NATIVE_URL: ${{ inputs['linux-native-url'] }}
+      NATIVE_SHA256: ${{ inputs['linux-native-sha256'] }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Validate native archive metadata preservation
+        shell: pwsh
+        run: ./eng/test-render-native-archive.ps1
+      - name: Install Linux presentation and NativeAOT prerequisites
+        run: >
+          sudo apt-get update &&
+          sudo apt-get install -y
+          clang
+          libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxcursor-dev
+          libxi-dev libxinerama-dev libxrandr-dev libxtst-dev libxtst6 libwayland-dev
+          mesa-utils mesa-vulkan-drivers vulkan-tools libvulkan-dev
+          weston x11-utils xwayland xvfb zlib1g-dev
+      - name: Install Linux native build prerequisites
+        if: env.NATIVE_SOURCE == 'build'
+        run: >-
+          sudo apt-get install -y
+          build-essential cmake ninja-build pkg-config libxt-dev
+      - name: Validate Linux native prerequisite preflight contract
+        shell: pwsh
+        run: ./eng/test-linux-native-prerequisites.ps1
+      - name: Preflight Linux native build prerequisites
+        if: env.NATIVE_SOURCE == 'build'
+        shell: pwsh
+        run: ./eng/check-linux-native-prerequisites.ps1
+      - name: Validate Linux presentation runner policy
+        run: bash ./eng/test-storm-native-child-linux.sh
+      - name: Download verified native pipeline archive
+        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.NATIVE_PIPELINE_RUN_ID }}
+          name: openusd-native-linux-x64
+          path: artifacts/native-pipeline/linux-x64
+      - name: Prepare pinned native input
+        shell: pwsh
+        run: |
+          $pipelineRoot = if ($env:NATIVE_PIPELINE_RUN_ID) {
+            'artifacts/native-pipeline/linux-x64'
+          } else {
+            ''
+          }
+          ./eng/prepare-workflow-native-input.ps1 `
+            -Rid linux-x64 `
+            -Source $env:NATIVE_SOURCE `
+            -ArchiveUri $env:NATIVE_URL `
+            -ArchiveSha256 $env:NATIVE_SHA256 `
+            -PipelineRoot $pipelineRoot
+      - name: Build Linux package tests for immutable archive
+        if: env.NATIVE_SOURCE == 'archive'
+        shell: pwsh
+        run: dotnet build tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj -c Release
+      - name: Execute archive package validation and Storm child consumer
+        if: env.NATIVE_SOURCE == 'archive'
+        shell: pwsh
+        env:
+          OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
+        run: |
+          $testApp = 'tests/OpenUsd.Package.Tests/bin/Release/net10.0/OpenUsd.Package.Tests'
+          & $testApp `
+            --filter-uid `
+            'OpenUsd.Package.Tests.RuntimePackageTests.1.1.LinuxElfRunpathParserRejectsUnsafeDynamicSections.1.1.0'
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          & $testApp `
+            --filter-uid `
+            'OpenUsd.Package.Tests.RuntimePackageTests.1.1.LinuxStormChildPackageExecutesNativeAotWithoutLibraryPath.1.1.0'
+          exit $LASTEXITCODE
+      - name: Validate archive ABI-4 SONAME topology, evidence, and hashes
+        if: env.NATIVE_SOURCE == 'archive'
+        shell: pwsh
+        run: ./eng/validate-linux-package-evidence.ps1 -RequireArchiveSource
+      - name: Execute staged NativeAOT shared-stage probes
+        shell: pwsh
+        run: |
+          ./eng/run-native-probe.ps1 -Rid linux-x64 -SkipNativeAbiProbe
+          ./eng/run-silk-probe.ps1 -Rid linux-x64 -SharedStageSoak
+      - name: Execute Linux GLX native-child CTest
+        if: env.NATIVE_SOURCE == 'build'
+        run: |
+          export DISPLAY=:94
+          Xvfb "$DISPLAY" -screen 0 1280x720x24 -ac -nolisten tcp >artifacts/linux-storm-ctest-xvfb.log 2>&1 &
+          xvfb_pid=$!
+          trap 'kill "$xvfb_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 100); do
+            xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break
+            sleep 0.05
+          done
+          ctest --test-dir native/build/shim/linux-x64 --output-on-failure
+      - name: Execute mandatory isolated X11 shared-stage soak
+        shell: pwsh
+        run: >
+          ./eng/run-platform-smoke.ps1
+          -Platform linux-x11
+          -SharedStageSoak
+          -SoakSeconds 90
+      - name: Execute mandatory XWayland shared-stage soak
+        shell: pwsh
+        run: >
+          ./eng/run-platform-smoke.ps1
+          -Platform linux-wayland
+          -SharedStageSoak
+          -SoakSeconds 90
+      - name: Publish Avalonia Vulkan smoke
+        shell: pwsh
+        run: ./eng/publish-avalonia-vulkan-smoke.ps1 -Rid linux-x64
+      - name: Evaluate Linux Vulkan runtime readiness
+        id: linux-vulkan
+        shell: pwsh
+        run: |
+          $path = 'artifacts/avalonia-vulkan-smoke/linux-x64/publish-capability.json'
+          $capability = Get-Content $path -Raw | ConvertFrom-Json
+          $ready = $capability.nativeRuntime -and $capability.pluginMetadata
+          "ready=$($ready.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if (-not $ready) {
+           $evidence = @{
+             outcome = 'skipped'
+             blocker = 'linux hdSilk runtime/plugin unavailable'
+             nativeSource = $env:NATIVE_SOURCE
+             capability = $capability
+           }
+           $evidence | ConvertTo-Json -Depth 4 |
+             Set-Content 'artifacts/avalonia-vulkan-smoke/linux-x64/workflow-readiness.json'
+           if ($env:NATIVE_SOURCE -eq 'archive') {
+             throw 'The supplied Linux native archive lacks the required hdSilk runtime/plugin.'
+           }
+          }
+      - name: Execute required X11 Vulkan import smoke
+        if: steps.linux-vulkan.outputs.ready == 'true'
+        env:
+          OPENUSD_REQUIRE_VULKAN_PRESENTATION: '1'
+        run: >
+          ./eng/run-avalonia-vulkan-smoke-linux.sh
+          x11
+          artifacts/avalonia-vulkan-smoke/linux-x64
+          /usr/lib/x86_64-linux-gnu/libvulkan.so.1
+          /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+      - name: Execute required Wayland Vulkan import smoke
+        if: steps.linux-vulkan.outputs.ready == 'true'
+        env:
+          OPENUSD_REQUIRE_VULKAN_PRESENTATION: '1'
+        run: >
+          ./eng/run-avalonia-vulkan-smoke-linux.sh
+          wayland
+          artifacts/avalonia-vulkan-smoke/linux-x64
+          /usr/lib/x86_64-linux-gnu/libvulkan.so.1
+          /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+      - name: Execute X11 Storm child switching gate
+        env:
+          OPENUSD_LINUX_STORM_SWITCH_COUNT: '100'
+          OPENUSD_LINUX_STORM_SURVIVAL_SECONDS: '90'
+          OPENUSD_LINUX_STORM_FRESH_PROCESS_COUNT: '10'
+          OPENUSD_REQUIRE_VULKAN_PRESENTATION: ${{ steps.linux-vulkan.outputs.ready == 'true' && '1' || '0' }}
+        run: bash ./eng/run-storm-native-child-linux.sh x11
+      - name: Execute whole-shell XWayland Storm child switching gate
+        env:
+          OPENUSD_LINUX_STORM_SWITCH_COUNT: '100'
+          OPENUSD_LINUX_STORM_SURVIVAL_SECONDS: '90'
+          OPENUSD_LINUX_STORM_FRESH_PROCESS_COUNT: '10'
+          OPENUSD_REQUIRE_VULKAN_PRESENTATION: ${{ steps.linux-vulkan.outputs.ready == 'true' && '1' || '0' }}
+        run: bash ./eng/run-storm-native-child-linux.sh xwayland
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-linux-presentation-${{ github.run_id }}
+          path: |
+            artifacts/platform-smoke/linux-x11
+            artifacts/platform-smoke/linux-wayland
+            artifacts/silk-probe/linux-x64/shared-stage-soak.json
+            artifacts/native-input/linux-x64/source.json
+            artifacts/package-linux-storm-child
+            artifacts/avalonia-vulkan-smoke/linux-x64
+            artifacts/storm-native-child-linux
+            artifacts/linux-storm-ctest-xvfb.log
+            tests/OpenUsd.Package.Tests/bin/Release/net10.0/TestResults
+          if-no-files-found: error
+
+  macos-arm64:
+    name: macOS arm64 Storm child and Metal
+    runs-on: macos-15-arm64
+    timeout-minutes: 360
+    env:
+      NATIVE_PIPELINE_RUN_ID: >-
+        ${{ inputs['native-pipeline-run-id'] ||
+            (github.event_name == 'workflow_call' && github.run_id) || '' }}
+      NATIVE_SOURCE: >-
+        ${{ (inputs['native-pipeline-run-id'] ||
+            github.event_name == 'workflow_call') && 'archive' ||
+            inputs['native-source'] }}
+      NATIVE_URL: ${{ inputs['macos-native-url'] }}
+      NATIVE_SHA256: ${{ inputs['macos-native-sha256'] }}
+      OpenUsdRequireMetalShaderLibrary: 'true'
+      OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Select Xcode 16.4
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
+          xcodebuild -version
+      - name: Validate native archive metadata preservation
+        shell: pwsh
+        run: ./eng/test-render-native-archive.ps1
+      - name: Install native build prerequisites
+        if: env.NATIVE_SOURCE == 'build'
+        run: brew install cmake ninja
+      - name: Build and validate six-entry Metal library
+        shell: pwsh
+        run: |
+          ./eng/shaders/fetch-toolchain.ps1 -Rid osx-arm64
+          ./eng/shaders/build-toolchain.ps1 -Rid osx-arm64
+          ./eng/shaders/build-shaders.ps1 `
+            -Rid osx-arm64 `
+            -OutputRoot eng/shaders/out/render-macos
+          ./eng/shaders/prepare-metal-library.ps1 `
+            -OutputRoot eng/shaders/out/checked-payload/osx-arm64
+      - name: Download verified native pipeline archive
+        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.NATIVE_PIPELINE_RUN_ID }}
+          name: openusd-native-osx-arm64
+          path: artifacts/native-pipeline/osx-arm64
+      - name: Prepare pinned native input
+        shell: pwsh
+        run: |
+          $pipelineRoot = if ($env:NATIVE_PIPELINE_RUN_ID) {
+            'artifacts/native-pipeline/osx-arm64'
+          } else {
+            ''
+          }
+          ./eng/prepare-workflow-native-input.ps1 `
+            -Rid osx-arm64 `
+            -Source $env:NATIVE_SOURCE `
+            -ArchiveUri $env:NATIVE_URL `
+            -ArchiveSha256 $env:NATIVE_SHA256 `
+            -PipelineRoot $pipelineRoot
+      - name: Execute immutable macOS package-only gates
+        shell: pwsh
+        run: |
+          dotnet build tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj -c Release
+          $testApp = 'tests/OpenUsd.Package.Tests/bin/Release/net10.0/OpenUsd.Package.Tests'
+          & $testApp --minimum-expected-tests 22
+          if ($LASTEXITCODE -ne 0) {
+            throw "The macOS package-only gates failed with $LASTEXITCODE."
+          }
+          $evidencePath = 'artifacts/package-macos-storm-child/package-evidence.json'
+          if (-not (Test-Path $evidencePath)) {
+            throw "The immutable macOS package evidence is missing: $evidencePath"
+          }
+          ./eng/validate-macos-package-evidence.ps1 `
+            -RequireArchiveSource:($env:NATIVE_SOURCE -eq 'archive')
+      - name: Execute staged NativeAOT shared-stage probes
+        shell: pwsh
+        run: |
+          ./eng/run-native-probe.ps1 -Rid osx-arm64 -SkipNativeAbiProbe
+          ./eng/run-silk-probe.ps1 -Rid osx-arm64
+          ./eng/run-silk-probe.ps1 -Rid osx-arm64 -MetalComposition
+      - name: Execute actual IOSurface Metal composition tests
+        shell: pwsh
+        run: |
+          $conformanceProject = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          $viewerProject = 'tests/OpenUsd.Viewer.Tests/OpenUsd.Viewer.Tests.csproj'
+          dotnet build $conformanceProject `
+            -c Release `
+            -f net10.0 `
+            -p:OpenUsdRequireMetalShaderLibrary=true
+          dotnet build $viewerProject `
+            -c Release `
+            -f net10.0 `
+            -p:OpenUsdRequireMetalShaderLibrary=true
+          ./eng/run-managed-tests.ps1 `
+            -Project $conformanceProject `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/MetalCompositionPresentationTests/*')
+          ./eng/run-managed-tests.ps1 `
+            -Project $viewerProject `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/MetalCompositionViewportLifecycleTests/*')
+      - name: Execute native probe and Storm/Metal no-restart switching loops
+        shell: pwsh
+        run: >
+          ./eng/run-storm-native-child-macos.ps1
+          -SwitchCount 100
+          -SurvivalSeconds 90
+          -NativeSource $env:NATIVE_SOURCE
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-macos-arm64-${{ github.run_id }}
+          path: |
+            artifacts/platform-smoke/macos-arm64
+            artifacts/storm-native-child-macos
+            artifacts/metal-composition-probe/osx-arm64
+            artifacts/package-macos-storm-child
+            artifacts/native-input/osx-arm64/source.json
+            eng/shaders/out/render-macos
+            eng/shaders/out/checked-payload/osx-arm64
+            native/build/shim/osx-arm64/Testing
+            TestResults
+          if-no-files-found: error

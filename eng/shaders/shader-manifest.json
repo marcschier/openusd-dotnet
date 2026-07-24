@@ -1,0 +1,263 @@
+{
+  "schemaVersion": 1,
+  "matrixLayout": "row-major",
+  "programs": [
+    {
+      "name": "mesh.vertex",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "vertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "SceneParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "mesh.fragment",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "resources": [
+        {
+          "name": "SceneParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "pick.vertex",
+      "source": "eng/shaders/sources/pick.vertex.slang",
+      "entryPoint": "pickVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "SceneParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "pick.fragment",
+      "source": "eng/shaders/sources/pick.fragment.slang",
+      "entryPoint": "pickFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "resources": [
+        {
+          "name": "PickParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 1,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "selection.mask.vertex",
+      "source": "eng/shaders/sources/selection.mask.vertex.slang",
+      "entryPoint": "selectionMaskVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "SceneParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "selection.mask.fragment",
+      "source": "eng/shaders/sources/selection.mask.fragment.slang",
+      "entryPoint": "selectionMaskFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "resources": []
+    },
+    {
+      "name": "selection.outline.vertex",
+      "source": "eng/shaders/sources/selection.outline.vertex.slang",
+      "entryPoint": "selectionOutlineVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": []
+    },
+    {
+      "name": "selection.outline.fragment",
+      "source": "eng/shaders/sources/selection.outline.fragment.slang",
+      "entryPoint": "selectionOutlineFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "resources": [
+        {
+          "name": "selectionMask",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "visibleDepth",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 1,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "selectionSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 2,
+            "set": 0
+          }
+        },
+        {
+          "name": "SelectionOutlineParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 3,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "compute.fill",
+      "source": "eng/shaders/sources/compute.slang",
+      "entryPoint": "fillMain",
+      "stage": "compute",
+      "profile": "cs_6_0",
+      "resources": [
+        {
+          "name": "outputValues",
+          "access": "readWrite",
+          "d3d": {
+            "registerClass": "u",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "ComputeParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 1,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "compute.scale",
+      "source": "eng/shaders/sources/compute.slang",
+      "entryPoint": "scaleMain",
+      "stage": "compute",
+      "profile": "cs_6_0",
+      "resources": [
+        {
+          "name": "outputValues",
+          "access": "readWrite",
+          "d3d": {
+            "registerClass": "u",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "ComputeParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 1,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        }
+      ]
+    }
+  ]
+}

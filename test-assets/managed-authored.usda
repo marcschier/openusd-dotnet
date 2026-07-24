@@ -1,0 +1,15 @@
+#usda 1.0
+
+def Xform "World"
+{
+    def Xform "Node"
+    {
+        custom double[] custom:empty = []
+        custom double[] custom:samples = [1, 2, 3, 5, 8]
+        custom double custom:temperature = 42.5
+        double custom:temperature.timeSamples = {
+            10: 43.5,
+        }
+    }
+}
+

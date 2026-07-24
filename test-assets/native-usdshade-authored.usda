@@ -1,0 +1,35 @@
+#usda 1.0
+
+def "World"
+{
+    def Mesh "Mesh" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/Material>
+    }
+
+    def "Looks"
+    {
+        def Material "Material"
+        {
+            token outputs:surface.connect = </World/Looks/Material/PreviewSurface.outputs:surface>
+
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </World/Looks/Material/Texture.outputs:rgb>
+                float inputs:roughness = 0.65
+                token outputs:surface
+            }
+
+            def Shader "Texture"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @textures/albedo.png@
+                float3 outputs:rgb
+            }
+        }
+    }
+}
+

@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Interop</AssemblyName>
+    <RootNamespace>OpenUsd.Interop</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Generated, AOT-safe interop declarations for the versioned OpenUsd native C ABI.</Description>
+    <PackageTags>openusd;usd;interop;pinvoke;nativeaot</PackageTags>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,10 @@
+#usda 1.0
+
+def Xform "Model"
+{
+    def Mesh "Mesh"
+    {
+        float3[] extent = [(1, 2, 3), (4, 6, 8)]
+    }
+}
+

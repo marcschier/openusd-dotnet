@@ -1,0 +1,18 @@
+#usda 1.0
+def "World" {
+  def Shader "A" {
+    uniform token info:id = "TestA"
+    float outputs:out = 1
+  }
+  def Shader "B" {
+    uniform token info:id = "TestB"
+    float outputs:out = 2
+  }
+  def Shader "Dest" {
+    uniform token info:id = "TestDest"
+    float inputs:value.connect = [
+      </World/A.outputs:out>,
+      </World/B.outputs:out>
+    ]
+  }
+}

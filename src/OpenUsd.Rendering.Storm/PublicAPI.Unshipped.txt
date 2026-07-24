@@ -1,0 +1,183 @@
+#nullable enable
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.CancelledCommandCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.CancelledCommandCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.CoalescedRequestCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.CoalescedRequestCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.CompatibilityProfile.get -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.CompatibilityProfile.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.ContextGeneration.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.ContextGeneration.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Converged.get -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Converged.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.CreatorThreadId.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.CreatorThreadId.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Deconstruct(out ulong FrameCount, out ulong PixelSignature, out ulong PixelSampleCount, out ulong FocusCount, out ulong PointerCount, out ulong WheelCount, out ulong KeyCount, out ulong ContextGeneration, out ulong CoalescedRequestCount, out ulong CancelledCommandCount, out ulong TeardownFallbackCount, out ulong LatestRequestedRevision, out ulong LatestRequestedCameraSignature, out ulong LatestRenderedCameraSignature, out uint RenderThreadId, out uint CreatorThreadId, out uint PendingCommandCount, out uint PeakPendingCommandCount, out int GlMajor, out int GlMinor, out bool CompatibilityProfile, out int Width, out int Height, out uint Dpi, out bool Visible, out bool Focused, out bool Converged) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Dpi.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Dpi.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Equals(OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics other) -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.FocusCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.FocusCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Focused.get -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Focused.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.FrameCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.FrameCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.GlMajor.get -> int
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.GlMajor.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.GlMinor.get -> int
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.GlMinor.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Height.get -> int
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Height.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.KeyCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.KeyCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.LatestRenderedCameraSignature.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.LatestRenderedCameraSignature.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.LatestRequestedCameraSignature.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.LatestRequestedCameraSignature.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.LatestRequestedRevision.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.LatestRequestedRevision.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.OpenUsdStormChildDiagnostics() -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.OpenUsdStormChildDiagnostics(ulong FrameCount, ulong PixelSignature, ulong PixelSampleCount, ulong FocusCount, ulong PointerCount, ulong WheelCount, ulong KeyCount, ulong ContextGeneration, ulong CoalescedRequestCount, ulong CancelledCommandCount, ulong TeardownFallbackCount, ulong LatestRequestedRevision, ulong LatestRequestedCameraSignature, ulong LatestRenderedCameraSignature, uint RenderThreadId, uint CreatorThreadId, uint PendingCommandCount, uint PeakPendingCommandCount, int GlMajor, int GlMinor, bool CompatibilityProfile, int Width, int Height, uint Dpi, bool Visible, bool Focused, bool Converged) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.PeakPendingCommandCount.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.PeakPendingCommandCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.PendingCommandCount.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.PendingCommandCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.PixelSampleCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.PixelSampleCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.PixelSignature.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.PixelSignature.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.PointerCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.PointerCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.RenderThreadId.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.RenderThreadId.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.TeardownFallbackCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.TeardownFallbackCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Visible.get -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Visible.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.WheelCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.WheelCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Width.get -> int
+OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Width.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildRuntime
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.BackendKind.get -> OpenUsd.Rendering.RenderBackendKind
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.CaptureFramebuffer(uint backgroundRgba = 4279111182, byte tolerance = 2, bool copyPixels = false) -> OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.ContextGeneration.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.Dispose() -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.Focus() -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.GetDiagnostics() -> OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.GetNavigationInput() -> OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.Pick(OpenUsd.Rendering.RenderPickRequest request) -> OpenUsd.Rendering.RenderPickResult
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.Render(double timeCode, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), ulong revision = 0, ulong? sceneRevision = null) -> OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.RendererName.get -> string!
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.RequestFrame(double timeCode, ulong revision = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), ulong? sceneRevision = null) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.Resize(int width, int height, uint dpi) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.SetSelection(OpenUsd.Rendering.SelectionState! selection, System.Numerics.Vector4 color) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.SetVisible(bool visible) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.SimulateContextLoss() -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.Window.get -> nint
+OpenUsd.Rendering.Storm.OpenUsdStormException
+OpenUsd.Rendering.Storm.OpenUsdStormException.Status.get -> OpenUsd.Interop.OpenUsdNativeStatus
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.AverageRgba.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.AverageRgba.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.BackgroundRgba.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.BackgroundRgba.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Deconstruct(out ulong FrameCount, out ulong PixelHash, out ulong PixelCount, out ulong NonBackgroundPixelCount, out int Width, out int Height, out uint Dpi, out uint BackgroundRgba, out uint AverageRgba, out uint MinimumRgba, out uint MaximumRgba, out uint ReadBuffer, out System.ReadOnlyMemory<byte> RgbaPixels) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Dpi.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Dpi.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Equals(OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture other) -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.FrameCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.FrameCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Height.get -> int
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Height.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.MaximumRgba.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.MaximumRgba.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.MinimumRgba.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.MinimumRgba.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.NonBackgroundPixelCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.NonBackgroundPixelCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.OpenUsdStormFramebufferCapture() -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.OpenUsdStormFramebufferCapture(ulong FrameCount, ulong PixelHash, ulong PixelCount, ulong NonBackgroundPixelCount, int Width, int Height, uint Dpi, uint BackgroundRgba, uint AverageRgba, uint MinimumRgba, uint MaximumRgba, uint ReadBuffer, System.ReadOnlyMemory<byte> RgbaPixels) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.PixelCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.PixelCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.PixelHash.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.PixelHash.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.ReadBuffer.get -> uint
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.ReadBuffer.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.RgbaPixels.get -> System.ReadOnlyMemory<byte>
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.RgbaPixels.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Width.get -> int
+OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Width.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers
+OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers.Alt = 1 -> OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers
+OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers.Control = 4 -> OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers
+OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers.Meta = 8 -> OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers
+OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers.None = 0 -> OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers
+OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers.Shift = 2 -> OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Buttons.get -> OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Buttons.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.CumulativeWheelDelta.get -> double
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.CumulativeWheelDelta.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Deconstruct(out ulong Sequence, out int PointerX, out int PointerY, out OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons Buttons, out OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers Modifiers, out double CumulativeWheelDelta, out ulong FrameSelectedPressCount, out ulong ResetAutomaticPressCount, out ulong ToggleProjectionPressCount, out OpenUsd.Rendering.Storm.OpenUsdStormNavigationState State) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Equals(OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput other) -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Focused.get -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.FrameSelectedPressCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.FrameSelectedPressCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Inside.get -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Modifiers.get -> OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Modifiers.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OpenUsdStormNavigationInput() -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OpenUsdStormNavigationInput(ulong Sequence, int PointerX, int PointerY, OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons Buttons, OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers Modifiers, double CumulativeWheelDelta, ulong FrameSelectedPressCount, ulong ResetAutomaticPressCount, ulong ToggleProjectionPressCount, OpenUsd.Rendering.Storm.OpenUsdStormNavigationState State) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.PointerX.get -> int
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.PointerX.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.PointerY.get -> int
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.PointerY.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.ResetAutomaticPressCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.ResetAutomaticPressCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Sequence.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Sequence.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.State.get -> OpenUsd.Rendering.Storm.OpenUsdStormNavigationState
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.State.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.ToggleProjectionPressCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.ToggleProjectionPressCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationState
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationState.Focused = 1 -> OpenUsd.Rendering.Storm.OpenUsdStormNavigationState
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationState.Inside = 2 -> OpenUsd.Rendering.Storm.OpenUsdStormNavigationState
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationState.None = 0 -> OpenUsd.Rendering.Storm.OpenUsdStormNavigationState
+OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons
+OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons.Left = 1 -> OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons
+OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons.Middle = 2 -> OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons
+OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons.None = 0 -> OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons
+OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons.Right = 4 -> OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Abandon() -> void
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.BackendKind.get -> OpenUsd.Rendering.RenderBackendKind
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Dispose() -> void
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Name.get -> string!
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Pick(OpenUsd.Rendering.RenderPickRequest request) -> OpenUsd.Rendering.RenderPickResult
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Render(int width, int height, uint framebuffer, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), ulong revision = 0, ulong? sceneRevision = null) -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.SetSelection(OpenUsd.Rendering.SelectionState! selection, System.Numerics.Vector4 color) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormRuntime
+override OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.GetHashCode() -> int
+override OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.GetHashCode() -> int
+override OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.GetHashCode() -> int
+static OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.operator !=(OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics left, OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics right) -> bool
+static OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.operator ==(OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics left, OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics right) -> bool
+static OpenUsd.Rendering.Storm.OpenUsdStormChildRuntime.AbiVersion.get -> uint
+static OpenUsd.Rendering.Storm.OpenUsdStormChildRuntime.Create(nint parentWindow, string! pluginPath, OpenUsd.UsdStageRenderSource! source, int width, int height, uint dpi) -> OpenUsd.Rendering.Storm.OpenUsdStormChildSession!
+static OpenUsd.Rendering.Storm.OpenUsdStormChildRuntime.InitializeLinuxX11Dispatcher() -> void
+static OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.operator !=(OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture left, OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture right) -> bool
+static OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.operator ==(OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture left, OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture right) -> bool
+static OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.operator !=(OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput left, OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput right) -> bool
+static OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.operator ==(OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput left, OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput right) -> bool
+static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.AbiVersion.get -> uint
+static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.Create(string! pluginPath, OpenUsd.UsdStageRenderSource! source) -> OpenUsd.Rendering.Storm.OpenUsdStormRenderer!
+static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.Create(string! pluginPath, string! stagePath) -> OpenUsd.Rendering.Storm.OpenUsdStormRenderer!
+~override OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.ToString() -> string
+~override OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.ToString() -> string
+~override OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.ToString() -> string

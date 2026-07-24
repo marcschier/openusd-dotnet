@@ -1,0 +1,29 @@
+# Normalize line endings to LF on commit; check out as-is.
+* text=auto eol=lf
+
+*.cs       text eol=lf
+*.csproj   text eol=lf
+*.props    text eol=lf
+*.targets  text eol=lf
+*.slnx     text eol=lf
+*.json     text eol=lf
+*.md       text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.ps1      text eol=lf
+*.sh       text eol=lf
+*.cmake    text eol=lf
+CMakeLists.txt text eol=lf
+*.editorconfig text eol=lf
+
+*.cmd      text eol=crlf
+*.bat      text eol=crlf
+
+*.png      binary
+*.jpg      binary
+*.snk      binary
+*.ico      binary
+*.usd      binary
+*.usdc     binary
+*.usdz     binary
+*.usda     text eol=lf

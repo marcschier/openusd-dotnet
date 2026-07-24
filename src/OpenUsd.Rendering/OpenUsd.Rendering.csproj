@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd\OpenUsd.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Rendering</AssemblyName>
+    <RootNamespace>OpenUsd.Rendering</RootNamespace>
+    <Description>Renderer-neutral scene, viewport, capability, and failover contracts for OpenUsd.</Description>
+    <PackageTags>openusd;usd;rendering;hydra;viewer</PackageTags>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,6 @@
+OpenUsd
+Copyright (c) marcschier
+
+This repository is an independent .NET integration for OpenUSD. It is not affiliated with or endorsed by Pixar, Unity, NVIDIA, or the Alliance for OpenUSD.
+
+The planned native runtime is built from Pixar OpenUSD, licensed under the Apache License 2.0. Third-party notices and exact source revisions will be generated from eng/openusd.lock.json before native runtime packages are published.

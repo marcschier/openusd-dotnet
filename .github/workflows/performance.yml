@@ -1,0 +1,97 @@
+name: performance safety
+
+on:
+  workflow_call:
+    inputs:
+      full_benchmarks:
+        description: Run the complete informational BenchmarkDotNet suite
+        required: false
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      full_benchmarks:
+        description: Run the complete informational BenchmarkDotNet suite
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [ master, main ]
+    paths:
+      - '.github/workflows/performance.yml'
+      - 'benchmarks/OpenUsd.Benchmarks/**'
+      - 'docs/rendering.md'
+      - 'docs/testing.md'
+      - 'eng/run-performance.ps1'
+      - 'global.json'
+      - 'OpenUsd.slnx'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'src/OpenUsd/**'
+      - 'src/OpenUsd.Interop/**'
+      - 'src/OpenUsd.Rendering/**'
+      - 'src/OpenUsd.Rendering.Silk/**'
+      - 'tests/OpenUsd.Performance.Tests/**'
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - '.github/workflows/performance.yml'
+      - 'benchmarks/OpenUsd.Benchmarks/**'
+      - 'docs/rendering.md'
+      - 'docs/testing.md'
+      - 'eng/run-performance.ps1'
+      - 'global.json'
+      - 'OpenUsd.slnx'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'src/OpenUsd/**'
+      - 'src/OpenUsd.Interop/**'
+      - 'src/OpenUsd.Rendering/**'
+      - 'src/OpenUsd.Rendering.Silk/**'
+      - 'tests/OpenUsd.Performance.Tests/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  safety:
+    name: deterministic gates and benchmark smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - name: Run deterministic gates and short benchmark smoke
+        if: inputs.full_benchmarks != true
+        shell: pwsh
+        run: >
+          ./eng/run-performance.ps1
+          -Mode Smoke
+          -BenchmarkJob Short
+          -Repeat 3
+          -ArtifactsPath artifacts/performance
+      - name: Run deterministic gates and full benchmark artifacts
+        if: inputs.full_benchmarks == true
+        shell: pwsh
+        run: >
+          ./eng/run-performance.ps1
+          -Mode Artifacts
+          -BenchmarkJob Short
+          -Repeat 3
+          -ArtifactsPath artifacts/performance
+      - name: Upload performance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: performance-${{ github.run_id }}
+          path: artifacts/performance/
+          if-no-files-found: error
+          retention-days: 30

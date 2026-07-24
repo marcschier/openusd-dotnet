@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 2,
+  "source": "eng/shaders/sources/compute.slang",
+  "entryPoint": {
+    "name": "fillMain",
+    "stage": "compute",
+    "profile": "cs_6_0",
+    "threadGroupSize": [
+      64,
+      1,
+      1
+    ]
+  },
+  "resources": [
+    {
+      "name": "outputValues",
+      "bindings": {
+        "d3d": {
+          "registerClass": "u",
+          "register": 0,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 0,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "readWrite",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": 16,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "readWrite",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": 16,
+        "size": null
+      }
+    },
+    {
+      "name": "ComputeParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "b",
+          "register": 1,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 1,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "constantBuffer",
+        "access": "constant",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": null,
+          "fields": [
+            {
+              "name": "elementCount",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 0,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "scale",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "float32"
+              },
+              "layout": {
+                "offset": 4,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 0,
+        "size": 8
+      },
+      "vulkanLayout": {
+        "kind": "constantBuffer",
+        "access": "constant",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": null,
+          "fields": [
+            {
+              "name": "elementCount",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "uint32"
+              },
+              "layout": {
+                "offset": 0,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "scale",
+              "type": {
+                "kind": "scalar",
+                "scalarType": "float32"
+              },
+              "layout": {
+                "offset": 4,
+                "size": 4,
+                "elementStride": 0,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 0,
+        "size": 16
+      }
+    }
+  ],
+  "stageInputs": [
+    {
+      "name": "dispatchThreadId",
+      "semantic": {
+        "name": "SV_DISPATCHTHREADID",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "uint32"
+        }
+      }
+    }
+  ],
+  "stageOutputs": []
+}

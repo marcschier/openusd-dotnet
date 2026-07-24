@@ -1,0 +1,29 @@
+// Copyright (c) marcschier. Licensed under the MIT License.
+
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Markup.Xaml;
+
+namespace OpenUsd.Viewer;
+
+public sealed class App : Application
+{
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+    }
+
+    public override void OnFrameworkInitializationCompleted()
+    {
+        LinuxX11Threading.RebindAfterPlatformSetup();
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.MainWindow = new MainWindow();
+            ViewerStartupOptions.WriteStatus(
+                $"Platform backend: {ViewerStartupOptions.PlatformDecision.BackendName}; " +
+                "initialized");
+        }
+
+        base.OnFrameworkInitializationCompleted();
+    }
+}

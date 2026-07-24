@@ -1,0 +1,205 @@
+name: ci
+
+on:
+  workflow_call:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.301
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Restore
+        run: dotnet restore OpenUsd.slnx
+      - name: Verify generated interop
+        run: python eng/generate-interop.py --verify
+      - name: Verify checked shader identity
+        if: runner.os == 'Linux'
+        run: >
+          python eng/shaders/scripts/checked_payload.py
+          --checked-root eng/shaders/checked
+          --lock eng/shaders/toolchain.lock.json
+          --manifest eng/shaders/shader-manifest.json
+      - name: Build
+        run: >
+          dotnet build OpenUsd.slnx -c Release --no-restore
+          -p:OpenUsdRequireMetalShaderLibrary=false
+      - name: Verify formatting
+        if: runner.os == 'Linux'
+        run: dotnet format OpenUsd.slnx --verify-no-changes --no-restore
+      - name: Check line length
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./eng/check-line-length.ps1
+      - name: Validate documentation
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./eng/test-documentation.ps1
+      - name: Validate native artifact workflow
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./eng/test-native-artifact-workflow.ps1
+      - name: Validate continuous safety workflow
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./eng/test-continuous-safety-workflow.ps1
+      - name: Verify Vulkan test runtime
+        if: runner.os != 'macOS'
+        shell: pwsh
+        run: >
+          ./eng/test-vulkan-test-runtime.ps1
+          -Root tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0
+      - name: Test
+        if: runner.os != 'macOS'
+        shell: pwsh
+        run: |
+          if ($IsWindows) {
+            ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release
+            $projects = @(
+              Get-ChildItem tests -Recurse -Filter '*.csproj' -File |
+                Where-Object {
+                  $_.BaseName.EndsWith(
+                    '.Tests',
+                    [StringComparison]::Ordinal) -and
+                  $_.BaseName -cne 'OpenUsd.Rendering.ConformanceTests'
+                } |
+                Select-Object -ExpandProperty FullName
+            )
+            if ($projects.Count -eq 0) {
+              throw 'No non-conformance managed test projects were found.'
+            }
+            ./eng/run-managed-tests.ps1 `
+              -Project $projects `
+              -Configuration Release
+          } else {
+            ./eng/run-managed-tests.ps1 -Configuration Release
+          }
+      - name: Confirm macOS compile-only coverage
+        if: runner.os == 'macOS'
+        run: >
+          echo "Regular macOS CI is compile-only; Metal execution runs after
+          Xcode-validated shader generation in shaders.yml."
+
+  aot-smoke:
+    name: NativeAOT compile (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-latest
+            rid: osx-arm64
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - name: Install NativeAOT prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+      - name: Publish sample
+        run: >
+          dotnet publish samples/OpenUsd.HelloStage/OpenUsd.HelloStage.csproj
+          -c Release -f net10.0 -r ${{ matrix.rid }} -p:PublishAot=true
+      - name: Compile native interop probe
+        run: >
+          dotnet publish tests/OpenUsd.NativeProbe/OpenUsd.NativeProbe.csproj
+          -c Release -f net10.0 -r ${{ matrix.rid }} -p:AotProbe=true
+      - name: Run managed NativeAOT safety probe
+        shell: pwsh
+        run: |
+          $probe = "tests/OpenUsd.NativeProbe/bin/Release/net10.0/${{ matrix.rid }}/publish/OpenUsd.NativeProbe"
+          if ($IsWindows) {
+            $probe += '.exe'
+          }
+          & $probe --managed-safety
+          if ($LASTEXITCODE -ne 0) {
+            throw "Managed NativeAOT safety probe failed with exit code $LASTEXITCODE."
+          }
+      - name: Compile hdSilk interop probe
+        run: >
+          dotnet publish tests/OpenUsd.SilkProbe/OpenUsd.SilkProbe.csproj
+          -c Release -f net10.0 -r ${{ matrix.rid }} -p:AotProbe=true
+          -p:OpenUsdRequireMetalShaderLibrary=false
+      - name: Publish win-x64 RHI probe
+        if: runner.os == 'Windows'
+        run: >
+          dotnet publish tests/OpenUsd.RhiProbe/OpenUsd.RhiProbe.csproj
+          -c Release -f net10.0 -r win-x64 -p:AotProbe=true
+      - name: Run win-x64 RHI probe
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $publish = "tests/OpenUsd.RhiProbe/bin/Release/net10.0/win-x64/publish"
+          ./eng/run-rhi-probe.ps1 `
+            -Rid win-x64 `
+            -PublishRoot $publish `
+            -SkipPublish
+
+  coverage:
+    name: coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - name: Build coverage test
+        run: >
+          dotnet build tests/OpenUsd.Tests/OpenUsd.Tests.csproj
+          -c Release -f net10.0
+      - name: Test with coverage
+        shell: pwsh
+        run: |
+          $results = Join-Path $PWD 'TestResults'
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Tests/OpenUsd.Tests.csproj `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--results-directory', $results,
+              '--coverage',
+              '--coverage-settings', (Join-Path $PWD 'eng/coverage.config'),
+              '--coverage-output-format', 'cobertura',
+              '--coverage-output', 'coverage.cobertura.xml')
+      - name: Enforce coverage threshold
+        shell: pwsh
+        run: >
+          ./eng/check-coverage.ps1
+          -CoverageFile TestResults/coverage.cobertura.xml
+          -MinLineRate 0.80

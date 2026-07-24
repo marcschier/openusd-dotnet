@@ -1,0 +1,142 @@
+<Project>
+
+  <PropertyGroup>
+    <OpenUsdInstallRoot Condition="'$(OpenUsdInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/$(RuntimePackageRid)'))</OpenUsdInstallRoot>
+    <OpenUsdShimInstallRoot Condition="'$(OpenUsdShimInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/shim/$(RuntimePackageRid)'))</OpenUsdShimInstallRoot>
+    <OpenUsdVulkanRuntimeLibrary Condition="'$(OpenUsdVulkanRuntimeLibrary)' == '' and '$(RuntimePackageRid)' == 'win-x64'">$(MSBuildThisFileDirectory)../../native/install/vulkan-sdk-*/bin/vulkan-1.dll</OpenUsdVulkanRuntimeLibrary>
+    <_OpenUsdRuntimePackagePath>runtimes/$(RuntimePackageRid)</_OpenUsdRuntimePackagePath>
+    <_OpenUsdHdSilkSourcePlugInfo>$(OpenUsdShimInstallRoot)/plugin/usd/hdSilk/resources/plugInfo.json</_OpenUsdHdSilkSourcePlugInfo>
+    <_OpenUsdHdSilkPackagePlugInfo>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/hdSilk/resources/plugInfo.json'))</_OpenUsdHdSilkPackagePlugInfo>
+    <_OpenUsdHdSilkTransformScript>$(MSBuildThisFileDirectory)Set-HdSilkPackageLibraryPath.ps1</_OpenUsdHdSilkTransformScript>
+    <_OpenUsdLinuxValidationScript>$(MSBuildThisFileDirectory)Validate-LinuxNativePackage.ps1</_OpenUsdLinuxValidationScript>
+    <_OpenUsdLinuxPreserveLinksScript>$(MSBuildThisFileDirectory)Preserve-LinuxStormChildPackageLinks.ps1</_OpenUsdLinuxPreserveLinksScript>
+    <_OpenUsdMacOsValidationScript>$(MSBuildThisFileDirectory)Validate-MacOsNativePackage.ps1</_OpenUsdMacOsValidationScript>
+    <_OpenUsdStormChildHeader>$(MSBuildThisFileDirectory)../../native/openusd_storm_child/include/openusd_storm_child.h</_OpenUsdStormChildHeader>
+    <_OpenUsdLinuxValidationEvidence>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/linux-native-validation.json'))</_OpenUsdLinuxValidationEvidence>
+    <_OpenUsdMacOsValidationEvidence>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/macos-native-validation.json'))</_OpenUsdMacOsValidationEvidence>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimePackageRid)' == 'win-x64'">
+    <_OpenUsdMonolithicLibrary>$(OpenUsdInstallRoot)/lib/usd_ms.dll</_OpenUsdMonolithicLibrary>
+    <_OpenUsdDotnetLibrary>$(OpenUsdShimInstallRoot)/bin/openusd_dotnet.dll</_OpenUsdDotnetLibrary>
+    <_OpenUsdHydraLibrary>$(OpenUsdShimInstallRoot)/bin/openusd_hydra.dll</_OpenUsdHydraLibrary>
+    <_OpenUsdHdSilkLibrary>$(OpenUsdShimInstallRoot)/bin/openusd_hdsilk.dll</_OpenUsdHdSilkLibrary>
+    <_OpenUsdStormChildLibrary>$(OpenUsdShimInstallRoot)/bin/openusd_storm_child.dll</_OpenUsdStormChildLibrary>
+    <_OpenUsdHdSilkPackageLibraryPath>../../../openusd_hdsilk.dll</_OpenUsdHdSilkPackageLibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimePackageRid)' == 'linux-x64'">
+    <_OpenUsdMonolithicLibrary>$(OpenUsdInstallRoot)/lib/libusd_ms.so</_OpenUsdMonolithicLibrary>
+    <_OpenUsdDotnetLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so</_OpenUsdDotnetLibrary>
+    <_OpenUsdHydraLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so</_OpenUsdHydraLibrary>
+    <_OpenUsdHdSilkLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so</_OpenUsdHdSilkLibrary>
+    <_OpenUsdStormChildLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so</_OpenUsdStormChildLibrary>
+    <_OpenUsdHdSilkPackageLibraryPath>../../../libopenusd_hdsilk.so</_OpenUsdHdSilkPackageLibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimePackageRid)' == 'osx-arm64'">
+    <_OpenUsdMonolithicLibrary>$(OpenUsdInstallRoot)/lib/libusd_ms.dylib</_OpenUsdMonolithicLibrary>
+    <_OpenUsdDotnetLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.dylib</_OpenUsdDotnetLibrary>
+    <_OpenUsdHydraLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.dylib</_OpenUsdHydraLibrary>
+    <_OpenUsdHdSilkLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.dylib</_OpenUsdHdSilkLibrary>
+    <_OpenUsdStormChildLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.dylib</_OpenUsdStormChildLibrary>
+    <_OpenUsdHdSilkPackageLibraryPath>../../../libopenusd_hdsilk.dylib</_OpenUsdHdSilkPackageLibraryPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <_OpenUsdInstalledLibrary Include="$(OpenUsdInstallRoot)/bin/*.dll;$(OpenUsdInstallRoot)/bin/*.so;$(OpenUsdInstallRoot)/bin/*.so.*;$(OpenUsdInstallRoot)/bin/*.dylib;$(OpenUsdInstallRoot)/lib/*.dll;$(OpenUsdInstallRoot)/lib/*.so;$(OpenUsdInstallRoot)/lib/*.so.*;$(OpenUsdInstallRoot)/lib/*.dylib" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimePackageRid)' == 'win-x64'">
+    <_OpenUsdVulkanRuntimeLibrary Include="$(OpenUsdVulkanRuntimeLibrary)" />
+    <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/bin/openusd_dotnet.dll" />
+    <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/bin/openusd_hydra.dll;$(OpenUsdShimInstallRoot)/bin/openusd_hdsilk.dll;$(OpenUsdShimInstallRoot)/bin/openusd_storm_child.dll" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimePackageRid)' == 'linux-x64'">
+    <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so.*" />
+    <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.7;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.7.0.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimePackageRid)' == 'osx-arm64'">
+    <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.dylib" />
+    <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.dylib;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.dylib;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.dylib" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(RuntimePackageKind)' == 'Core'">
+    <None Include="@(_OpenUsdInstalledLibrary);@(_OpenUsdCoreShimLibrary)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/native" />
+    <None Include="@(_OpenUsdVulkanRuntimeLibrary)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/native/vulkan-1.dll" />
+    <None Include="$(OpenUsdInstallRoot)/lib/usd/**/*" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/resources/usd" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(RuntimePackageKind)' == 'Imaging'">
+    <None Include="@(_OpenUsdImagingShimLibrary)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/native" />
+    <None Include="$(OpenUsdInstallRoot)/plugin/usd/**/*" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/resources/plugin/usd" />
+    <None Include="$(_OpenUsdHdSilkPackagePlugInfo)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/resources/plugin/usd/hdSilk/resources/plugInfo.json" />
+    <None Include="$(_OpenUsdLinuxValidationEvidence)" Pack="true" PackagePath="build/OpenUsd.Runtime.Imaging.linux-x64.native-validation.json" Condition="'$(RuntimePackageRid)' == 'linux-x64' and '$(OpenUsdSkipLinuxElfValidation)' != 'true'" />
+    <None Include="$(_OpenUsdMacOsValidationEvidence)" Pack="true" PackagePath="build/OpenUsd.Runtime.Imaging.osx-arm64.native-validation.json" Condition="'$(RuntimePackageRid)' == 'osx-arm64' and '$(OpenUsdSkipMacOsMachOValidation)' != 'true'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(OpenUsdInstallRoot)/THIRD-PARTY.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" />
+    <None Include="$(MSBuildProjectDirectory)/buildTransitive/$(PackageId).targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+  </ItemGroup>
+
+  <Target Name="ValidateOpenUsdRuntimePackageInputs" BeforeTargets="GenerateNuspec">
+    <Error Condition="!Exists('$(OpenUsdInstallRoot)')" Text="The locked OpenUSD install for $(RuntimePackageRid) is missing at '$(OpenUsdInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
+    <Error Condition="!Exists('$(OpenUsdShimInstallRoot)')" Text="The OpenUsd shim install for $(RuntimePackageRid) is missing at '$(OpenUsdShimInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdMonolithicLibrary)')" Text="The locked OpenUSD install is incomplete: '$(_OpenUsdMonolithicLibrary)' is missing." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdDotnetLibrary)')" Text="The OpenUsd data shim is missing: '$(_OpenUsdDotnetLibrary)'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'win-x64' and '@(_OpenUsdVulkanRuntimeLibrary->Count())' != '1'" Text="The locked Windows Vulkan loader is missing or ambiguous. Expected exactly one native/install/vulkan-sdk-*/bin/vulkan-1.dll, or set OpenUsdVulkanRuntimeLibrary explicitly." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(OpenUsdInstallRoot)/lib/usd/plugInfo.json')" Text="The nested USD plugin resource tree is missing from '$(OpenUsdInstallRoot)/lib/usd'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and !Exists('$(_OpenUsdHydraLibrary)')" Text="The OpenUsd Hydra shim is missing: '$(_OpenUsdHydraLibrary)'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and !Exists('$(_OpenUsdHdSilkLibrary)')" Text="The OpenUsd hdSilk shim is missing: '$(_OpenUsdHdSilkLibrary)'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and '$(RuntimePackageRid)' == 'win-x64' and !Exists('$(_OpenUsdStormChildLibrary)')" Text="The OpenUsd Storm child shim is missing: '$(_OpenUsdStormChildLibrary)'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and '$(RuntimePackageRid)' == 'linux-x64' and !Exists('$(_OpenUsdStormChildLibrary)')" Text="The OpenUsd Storm child shim is missing: '$(_OpenUsdStormChildLibrary)'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and '$(RuntimePackageRid)' == 'osx-arm64' and !Exists('$(_OpenUsdStormChildLibrary)')" Text="The OpenUsd Storm child shim is missing: '$(_OpenUsdStormChildLibrary)'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and !Exists('$(OpenUsdInstallRoot)/plugin/usd/plugInfo.json')" Text="The renderer plugin resource tree is missing from '$(OpenUsdInstallRoot)/plugin/usd'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and !Exists('$(OpenUsdShimInstallRoot)/plugin/usd/hdSilk/resources/plugInfo.json')" Text="The hdSilk plugin resource tree is missing from '$(OpenUsdShimInstallRoot)/plugin/usd'." />
+  </Target>
+
+  <Target
+    Name="ValidateOpenUsdMacOsNativePackage"
+    Condition="'$(RuntimePackageKind)' == 'Imaging' and '$(RuntimePackageRid)' == 'osx-arm64' and '$(OpenUsdSkipMacOsMachOValidation)' != 'true'"
+    BeforeTargets="GenerateNuspec"
+    DependsOnTargets="ValidateOpenUsdRuntimePackageInputs">
+    <Exec Command="pwsh -NoProfile -File &quot;$(_OpenUsdMacOsValidationScript)&quot; -StormChildLibrary &quot;$(_OpenUsdStormChildLibrary)&quot; -HydraLibrary &quot;$(_OpenUsdHydraLibrary)&quot; -HdSilkLibrary &quot;$(_OpenUsdHdSilkLibrary)&quot; -StormChildHeader &quot;$(_OpenUsdStormChildHeader)&quot; -EvidencePath &quot;$(_OpenUsdMacOsValidationEvidence)&quot;" />
+  </Target>
+
+  <Target
+    Name="ValidateOpenUsdLinuxNativePackage"
+    Condition="'$(RuntimePackageKind)' == 'Imaging' and '$(RuntimePackageRid)' == 'linux-x64' and '$(OpenUsdSkipLinuxElfValidation)' != 'true'"
+    BeforeTargets="GenerateNuspec"
+    DependsOnTargets="ValidateOpenUsdRuntimePackageInputs">
+    <Exec Command="pwsh -NoProfile -File &quot;$(_OpenUsdLinuxValidationScript)&quot; -StormChildLibrary &quot;$(_OpenUsdStormChildLibrary)&quot; -HydraLibrary &quot;$(_OpenUsdHydraLibrary)&quot; -HdSilkLibrary &quot;$(_OpenUsdHdSilkLibrary)&quot; -StormChildHeader &quot;$(_OpenUsdStormChildHeader)&quot; -EvidencePath &quot;$(_OpenUsdLinuxValidationEvidence)&quot;" />
+  </Target>
+
+  <Target
+    Name="PreserveOpenUsdLinuxStormChildPackageLinks"
+    Condition="'$(RuntimePackageKind)' == 'Imaging' and '$(RuntimePackageRid)' == 'linux-x64'"
+    AfterTargets="Pack">
+    <PropertyGroup>
+      <_OpenUsdPackedArchive>$([System.IO.Path]::GetFullPath('$(PackageOutputPath)/$(PackageId).$(PackageVersion).nupkg'))</_OpenUsdPackedArchive>
+      <_OpenUsdAllowLinkPlaceholdersArg Condition="'$(OpenUsdSkipLinuxElfValidation)' == 'true'">-AllowLinkPlaceholders</_OpenUsdAllowLinkPlaceholdersArg>
+    </PropertyGroup>
+    <Exec Command="pwsh -NoProfile -File &quot;$(_OpenUsdLinuxPreserveLinksScript)&quot; -PackagePath &quot;$(_OpenUsdPackedArchive)&quot; -StormChildLibrary &quot;$(_OpenUsdStormChildLibrary)&quot; $(_OpenUsdAllowLinkPlaceholdersArg)" />
+  </Target>
+
+  <Target
+    Name="PrepareOpenUsdHdSilkPackageMetadata"
+    Condition="'$(RuntimePackageKind)' == 'Imaging'"
+    BeforeTargets="GenerateNuspec"
+    DependsOnTargets="ValidateOpenUsdRuntimePackageInputs;ValidateOpenUsdLinuxNativePackage;ValidateOpenUsdMacOsNativePackage">
+    <Exec Command="pwsh -NoProfile -File &quot;$(_OpenUsdHdSilkTransformScript)&quot; -SourcePath &quot;$(_OpenUsdHdSilkSourcePlugInfo)&quot; -DestinationPath &quot;$(_OpenUsdHdSilkPackagePlugInfo)&quot; -LibraryPath &quot;$(_OpenUsdHdSilkPackageLibraryPath)&quot;" />
+  </Target>
+
+  <Target
+    Name="UseExactOpenUsdCorePackageDependency"
+    Condition="'$(RuntimePackageKind)' == 'Imaging'"
+    AfterTargets="_GetProjectReferenceVersions">
+    <ItemGroup>
+      <_ProjectReferencesWithVersions Update="@(_ProjectReferencesWithVersions)">
+        <ProjectVersion>[%(_ProjectReferencesWithVersions.ProjectVersion)]</ProjectVersion>
+      </_ProjectReferencesWithVersions>
+    </ItemGroup>
+  </Target>
+
+</Project>

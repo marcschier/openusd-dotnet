@@ -1,0 +1,7 @@
+#usda 1.0
+
+def Xform "Ref"
+{
+    custom double custom:refValue = 7.5
+}
+

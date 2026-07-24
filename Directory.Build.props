@@ -1,0 +1,91 @@
+<Project>
+
+  <PropertyGroup>
+    <IsTestProject Condition="'$(IsTestProject)' == '' AND ($(MSBuildProjectName.EndsWith('.Tests')) OR $(MSBuildProjectName.EndsWith('.ConformanceTests')))">true</IsTestProject>
+    <IsBenchmarkProject Condition="'$(IsBenchmarkProject)' == '' AND $(MSBuildProjectName.EndsWith('.Benchmarks'))">true</IsBenchmarkProject>
+    <IsSampleProject Condition="'$(IsSampleProject)' == '' AND $(MSBuildProjectName.Contains('.HelloStage'))">true</IsSampleProject>
+    <IsApplicationProject Condition="'$(IsApplicationProject)' == '' AND ($(MSBuildProjectName.EndsWith('.Viewer')) OR $(MSBuildProjectName.EndsWith('.NativeProbe')) OR $(MSBuildProjectName.EndsWith('.SilkProbe')))">true</IsApplicationProject>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Features>strict</Features>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <Deterministic>true</Deterministic>
+    <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)eng\OpenUsd.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_IsProductionLibrary Condition="'$(IsTestProject)' != 'true' AND '$(IsSampleProject)' != 'true' AND '$(IsBenchmarkProject)' != 'true' AND '$(IsApplicationProject)' != 'true'">true</_IsProductionLibrary>
+    <OpenUsdPublicApiAnalysisEnabled
+      Condition="'$(OpenUsdPublicApiAnalysisEnabled)' == '' AND '$(_IsProductionLibrary)' == 'true' AND $(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src')) AND !$(MSBuildProjectName.StartsWith('OpenUsd.Runtime.'))">true</OpenUsdPublicApiAnalysisEnabled>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(OpenUsdPublicApiAnalysisEnabled)' == 'true'">
+    <!-- Existing optional-parameter shapes are reviewed separately; API add/remove diagnostics remain strict. -->
+    <NoWarn>$(NoWarn);RS0026;RS0027</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(_IsProductionLibrary)' == 'true'">
+    <IsPackable>true</IsPackable>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <Authors>marcschier</Authors>
+    <Company>marcschier</Company>
+    <Product>OpenUsd</Product>
+    <Copyright>Copyright (c) marcschier</Copyright>
+    <PackageProjectUrl>https://github.com/marcschier/openusd-dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/marcschier/openusd-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(_IsProductionLibrary)' != 'true'">
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;CS1570;CS1571;CS1572;CS1573;CS1574;CS1580;CS1581;CS1584</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(_IsProductionLibrary)' == 'true' AND ('$(TargetFramework)' == 'net8.0' OR '$(TargetFramework)' == 'net9.0' OR '$(TargetFramework)' == 'net10.0')">
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nerdbank.GitVersioning" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers"
+                      PrivateAssets="all"
+                      Condition="'$(OpenUsdPublicApiAnalysisEnabled)' == 'true'" />
+    <PackageReference Include="Roslynator.Analyzers" PrivateAssets="all" />
+    <PackageReference Include="Roslynator.Formatting.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(OpenUsdPublicApiAnalysisEnabled)' == 'true'">
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)\PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)\PublicAPI.Unshipped.txt" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(_IsProductionLibrary)' == 'true'">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+</Project>

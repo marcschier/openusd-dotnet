@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackageId>OpenUsd.Runtime.Core.linux-x64</PackageId>
+    <Description>OpenUSD core native runtime and data plugin resources for Linux x64.</Description>
+    <PackageTags>openusd;usd;native;runtime;linux;x64</PackageTags>
+    <RuntimePackageKind>Core</RuntimePackageKind>
+    <RuntimePackageRid>linux-x64</RuntimePackageRid>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+  </PropertyGroup>
+
+  <Import Project="../OpenUsd.Runtime.Packaging/OpenUsd.Runtime.Packaging.targets" />
+
+</Project>

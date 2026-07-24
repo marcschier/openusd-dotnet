@@ -1,0 +1,887 @@
+#nullable enable
+const OpenUsd.OpenUsdInfo.ManagedApiGeneration = 1 -> int
+const OpenUsd.OpenUsdInfo.ProductName = "OpenUsd" -> string!
+const OpenUsd.UsdStageBoundResultException.ErrorCode = "OPENUSD_SCHEDULER_STAGE_BOUND_RESULT" -> string!
+const OpenUsd.UsdStageBoundResultException.ErrorMessage = "UsdStageScheduler callbacks cannot return stage-bound OpenUSD values." -> string!
+const OpenUsd.UsdStageOwnershipException.ErrorCode = "OPENUSD_BORROWED_STAGE_OWNERSHIP" -> string!
+const OpenUsd.UsdStageOwnershipException.ErrorMessage = "A borrowed UsdStage cannot be disposed because its scheduler owns the native stage." -> string!
+const OpenUsd.UsdStageSchedulerReentrancyException.ErrorCode = "OPENUSD_STAGE_SCHEDULER_REENTRANCY" -> string!
+const OpenUsd.UsdStageSchedulerReentrancyException.ErrorMessage = "UsdStageScheduler operations cannot be invoked from a scheduler callback." -> string!
+OpenUsd.Geom.UsdExtent3f
+OpenUsd.Geom.UsdExtent3f.Deconstruct(out OpenUsd.UsdVec3f Minimum, out OpenUsd.UsdVec3f Maximum) -> void
+OpenUsd.Geom.UsdExtent3f.Equals(OpenUsd.Geom.UsdExtent3f other) -> bool
+OpenUsd.Geom.UsdExtent3f.Maximum.get -> OpenUsd.UsdVec3f
+OpenUsd.Geom.UsdExtent3f.Maximum.init -> void
+OpenUsd.Geom.UsdExtent3f.Minimum.get -> OpenUsd.UsdVec3f
+OpenUsd.Geom.UsdExtent3f.Minimum.init -> void
+OpenUsd.Geom.UsdExtent3f.UsdExtent3f() -> void
+OpenUsd.Geom.UsdExtent3f.UsdExtent3f(OpenUsd.UsdVec3f Minimum, OpenUsd.UsdVec3f Maximum) -> void
+OpenUsd.Geom.UsdGeomCamera
+OpenUsd.Geom.UsdGeomCamera.ClippingRange.get -> OpenUsd.UsdVec2f
+OpenUsd.Geom.UsdGeomCamera.ClippingRange.set -> void
+OpenUsd.Geom.UsdGeomCamera.FocalLength.get -> float
+OpenUsd.Geom.UsdGeomCamera.FocalLength.set -> void
+OpenUsd.Geom.UsdGeomCamera.GetState() -> OpenUsd.Geom.UsdGeomCameraState
+OpenUsd.Geom.UsdGeomCamera.GetState(double timeCode) -> OpenUsd.Geom.UsdGeomCameraState
+OpenUsd.Geom.UsdGeomCamera.GetTransform() -> OpenUsd.UsdMatrix4d
+OpenUsd.Geom.UsdGeomCamera.GetTransform(double timeCode) -> OpenUsd.UsdMatrix4d
+OpenUsd.Geom.UsdGeomCamera.HorizontalAperture.get -> float
+OpenUsd.Geom.UsdGeomCamera.HorizontalAperture.set -> void
+OpenUsd.Geom.UsdGeomCamera.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomCamera.Path.get -> string!
+OpenUsd.Geom.UsdGeomCamera.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomCamera.Projection.get -> OpenUsd.Geom.UsdGeomCameraProjection
+OpenUsd.Geom.UsdGeomCamera.Projection.set -> void
+OpenUsd.Geom.UsdGeomCamera.SetTransform(OpenUsd.UsdMatrix4d value) -> void
+OpenUsd.Geom.UsdGeomCamera.SetTransform(OpenUsd.UsdMatrix4d value, double timeCode) -> void
+OpenUsd.Geom.UsdGeomCamera.UsdGeomCamera() -> void
+OpenUsd.Geom.UsdGeomCamera.VerticalAperture.get -> float
+OpenUsd.Geom.UsdGeomCamera.VerticalAperture.set -> void
+OpenUsd.Geom.UsdGeomCamera.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomCameraProjection
+OpenUsd.Geom.UsdGeomCameraProjection.Orthographic = 1 -> OpenUsd.Geom.UsdGeomCameraProjection
+OpenUsd.Geom.UsdGeomCameraProjection.Perspective = 0 -> OpenUsd.Geom.UsdGeomCameraProjection
+OpenUsd.Geom.UsdGeomCameraState
+OpenUsd.Geom.UsdGeomCameraState.ClippingFar.get -> double
+OpenUsd.Geom.UsdGeomCameraState.ClippingNear.get -> double
+OpenUsd.Geom.UsdGeomCameraState.Equals(OpenUsd.Geom.UsdGeomCameraState other) -> bool
+OpenUsd.Geom.UsdGeomCameraState.FocalLength.get -> double
+OpenUsd.Geom.UsdGeomCameraState.FocusDistance.get -> double
+OpenUsd.Geom.UsdGeomCameraState.FStop.get -> double
+OpenUsd.Geom.UsdGeomCameraState.HorizontalAperture.get -> double
+OpenUsd.Geom.UsdGeomCameraState.HorizontalApertureOffset.get -> double
+OpenUsd.Geom.UsdGeomCameraState.Projection.get -> OpenUsd.Geom.UsdGeomCameraProjection
+OpenUsd.Geom.UsdGeomCameraState.UsdGeomCameraState() -> void
+OpenUsd.Geom.UsdGeomCameraState.UsdGeomCameraState(OpenUsd.Geom.UsdGeomCameraProjection projection, double windowLeft, double windowRight, double windowBottom, double windowTop, double clippingNear, double clippingFar, double focalLength, double horizontalAperture, double verticalAperture, double horizontalApertureOffset, double verticalApertureOffset, double focusDistance, double fStop) -> void
+OpenUsd.Geom.UsdGeomCameraState.VerticalAperture.get -> double
+OpenUsd.Geom.UsdGeomCameraState.VerticalApertureOffset.get -> double
+OpenUsd.Geom.UsdGeomCameraState.WindowBottom.get -> double
+OpenUsd.Geom.UsdGeomCameraState.WindowCenterX.get -> double
+OpenUsd.Geom.UsdGeomCameraState.WindowCenterY.get -> double
+OpenUsd.Geom.UsdGeomCameraState.WindowHeight.get -> double
+OpenUsd.Geom.UsdGeomCameraState.WindowLeft.get -> double
+OpenUsd.Geom.UsdGeomCameraState.WindowRight.get -> double
+OpenUsd.Geom.UsdGeomCameraState.WindowTop.get -> double
+OpenUsd.Geom.UsdGeomCameraState.WindowWidth.get -> double
+OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomImageable.GetPurpose() -> OpenUsd.Geom.UsdGeomPurpose
+OpenUsd.Geom.UsdGeomImageable.GetVisibility() -> OpenUsd.Geom.UsdGeomVisibility
+OpenUsd.Geom.UsdGeomImageable.GetVisibility(double timeCode) -> OpenUsd.Geom.UsdGeomVisibility
+OpenUsd.Geom.UsdGeomImageable.Path.get -> string!
+OpenUsd.Geom.UsdGeomImageable.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomImageable.SetPurpose(OpenUsd.Geom.UsdGeomPurpose purpose) -> void
+OpenUsd.Geom.UsdGeomImageable.SetVisibility(OpenUsd.Geom.UsdGeomVisibility visibility) -> void
+OpenUsd.Geom.UsdGeomImageable.SetVisibility(OpenUsd.Geom.UsdGeomVisibility visibility, double timeCode) -> void
+OpenUsd.Geom.UsdGeomImageable.UsdGeomImageable() -> void
+OpenUsd.Geom.UsdGeomInterpolation
+OpenUsd.Geom.UsdGeomInterpolation.Constant = 0 -> OpenUsd.Geom.UsdGeomInterpolation
+OpenUsd.Geom.UsdGeomInterpolation.FaceVarying = 4 -> OpenUsd.Geom.UsdGeomInterpolation
+OpenUsd.Geom.UsdGeomInterpolation.Uniform = 1 -> OpenUsd.Geom.UsdGeomInterpolation
+OpenUsd.Geom.UsdGeomInterpolation.Varying = 2 -> OpenUsd.Geom.UsdGeomInterpolation
+OpenUsd.Geom.UsdGeomInterpolation.Vertex = 3 -> OpenUsd.Geom.UsdGeomInterpolation
+OpenUsd.Geom.UsdGeomMesh
+OpenUsd.Geom.UsdGeomMesh.DoubleSided.get -> bool
+OpenUsd.Geom.UsdGeomMesh.DoubleSided.set -> void
+OpenUsd.Geom.UsdGeomMesh.GetExtent() -> OpenUsd.Geom.UsdExtent3f
+OpenUsd.Geom.UsdGeomMesh.GetExtent(double timeCode) -> OpenUsd.Geom.UsdExtent3f
+OpenUsd.Geom.UsdGeomMesh.GetFaceVertexCounts() -> int[]!
+OpenUsd.Geom.UsdGeomMesh.GetFaceVertexIndices() -> int[]!
+OpenUsd.Geom.UsdGeomMesh.GetNormals() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomMesh.GetNormals(double timeCode) -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomMesh.GetPoints() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomMesh.GetPoints(double timeCode) -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomMesh.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomMesh.NormalsInterpolation.get -> OpenUsd.Geom.UsdGeomInterpolation
+OpenUsd.Geom.UsdGeomMesh.NormalsInterpolation.set -> void
+OpenUsd.Geom.UsdGeomMesh.Orientation.get -> OpenUsd.Geom.UsdGeomOrientation
+OpenUsd.Geom.UsdGeomMesh.Orientation.set -> void
+OpenUsd.Geom.UsdGeomMesh.Path.get -> string!
+OpenUsd.Geom.UsdGeomMesh.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomMesh.SetExtent(OpenUsd.Geom.UsdExtent3f extent) -> void
+OpenUsd.Geom.UsdGeomMesh.SetExtent(OpenUsd.Geom.UsdExtent3f extent, double timeCode) -> void
+OpenUsd.Geom.UsdGeomMesh.SetNormals(System.ReadOnlySpan<OpenUsd.UsdVec3f> values, OpenUsd.Geom.UsdGeomInterpolation interpolation) -> void
+OpenUsd.Geom.UsdGeomMesh.SetNormals(System.ReadOnlySpan<OpenUsd.UsdVec3f> values, OpenUsd.Geom.UsdGeomInterpolation interpolation, double timeCode) -> void
+OpenUsd.Geom.UsdGeomMesh.SetPoints(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomMesh.SetPoints(System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
+OpenUsd.Geom.UsdGeomMesh.SetTopology(System.ReadOnlySpan<int> faceVertexCounts, System.ReadOnlySpan<int> faceVertexIndices) -> void
+OpenUsd.Geom.UsdGeomMesh.SubdivisionScheme.get -> OpenUsd.Geom.UsdGeomSubdivisionScheme
+OpenUsd.Geom.UsdGeomMesh.SubdivisionScheme.set -> void
+OpenUsd.Geom.UsdGeomMesh.UsdGeomMesh() -> void
+OpenUsd.Geom.UsdGeomMesh.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomOrientation
+OpenUsd.Geom.UsdGeomOrientation.LeftHanded = 1 -> OpenUsd.Geom.UsdGeomOrientation
+OpenUsd.Geom.UsdGeomOrientation.RightHanded = 0 -> OpenUsd.Geom.UsdGeomOrientation
+OpenUsd.Geom.UsdGeomPurpose
+OpenUsd.Geom.UsdGeomPurpose.Default = 0 -> OpenUsd.Geom.UsdGeomPurpose
+OpenUsd.Geom.UsdGeomPurpose.Guide = 3 -> OpenUsd.Geom.UsdGeomPurpose
+OpenUsd.Geom.UsdGeomPurpose.Proxy = 2 -> OpenUsd.Geom.UsdGeomPurpose
+OpenUsd.Geom.UsdGeomPurpose.Render = 1 -> OpenUsd.Geom.UsdGeomPurpose
+OpenUsd.Geom.UsdGeomPurposeMask
+OpenUsd.Geom.UsdGeomPurposeMask.All = OpenUsd.Geom.UsdGeomPurposeMask.Default | OpenUsd.Geom.UsdGeomPurposeMask.Proxy | OpenUsd.Geom.UsdGeomPurposeMask.Render | OpenUsd.Geom.UsdGeomPurposeMask.Guide -> OpenUsd.Geom.UsdGeomPurposeMask
+OpenUsd.Geom.UsdGeomPurposeMask.Default = 1 -> OpenUsd.Geom.UsdGeomPurposeMask
+OpenUsd.Geom.UsdGeomPurposeMask.Guide = 8 -> OpenUsd.Geom.UsdGeomPurposeMask
+OpenUsd.Geom.UsdGeomPurposeMask.None = 0 -> OpenUsd.Geom.UsdGeomPurposeMask
+OpenUsd.Geom.UsdGeomPurposeMask.Proxy = 2 -> OpenUsd.Geom.UsdGeomPurposeMask
+OpenUsd.Geom.UsdGeomPurposeMask.Render = 4 -> OpenUsd.Geom.UsdGeomPurposeMask
+OpenUsd.Geom.UsdGeomStageExtensions
+OpenUsd.Geom.UsdGeomSubdivisionScheme
+OpenUsd.Geom.UsdGeomSubdivisionScheme.Bilinear = 3 -> OpenUsd.Geom.UsdGeomSubdivisionScheme
+OpenUsd.Geom.UsdGeomSubdivisionScheme.CatmullClark = 1 -> OpenUsd.Geom.UsdGeomSubdivisionScheme
+OpenUsd.Geom.UsdGeomSubdivisionScheme.Loop = 2 -> OpenUsd.Geom.UsdGeomSubdivisionScheme
+OpenUsd.Geom.UsdGeomSubdivisionScheme.None = 0 -> OpenUsd.Geom.UsdGeomSubdivisionScheme
+OpenUsd.Geom.UsdGeomVisibility
+OpenUsd.Geom.UsdGeomVisibility.Inherited = 0 -> OpenUsd.Geom.UsdGeomVisibility
+OpenUsd.Geom.UsdGeomVisibility.Invisible = 1 -> OpenUsd.Geom.UsdGeomVisibility
+OpenUsd.Geom.UsdGeomXform
+OpenUsd.Geom.UsdGeomXform.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomXform.Path.get -> string!
+OpenUsd.Geom.UsdGeomXform.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomXform.UsdGeomXform() -> void
+OpenUsd.Geom.UsdGeomXform.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomXformable.GetLocalTransform() -> OpenUsd.UsdMatrix4d
+OpenUsd.Geom.UsdGeomXformable.GetLocalTransform(double timeCode) -> OpenUsd.UsdMatrix4d
+OpenUsd.Geom.UsdGeomXformable.GetResetXformStack() -> bool
+OpenUsd.Geom.UsdGeomXformable.GetWorldTransform() -> OpenUsd.UsdMatrix4d
+OpenUsd.Geom.UsdGeomXformable.GetWorldTransform(double timeCode) -> OpenUsd.UsdMatrix4d
+OpenUsd.Geom.UsdGeomXformable.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomXformable.Path.get -> string!
+OpenUsd.Geom.UsdGeomXformable.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomXformable.SetLocalTransform(OpenUsd.UsdMatrix4d value) -> void
+OpenUsd.Geom.UsdGeomXformable.SetLocalTransform(OpenUsd.UsdMatrix4d value, double timeCode) -> void
+OpenUsd.Geom.UsdGeomXformable.SetResetXformStack(bool reset) -> void
+OpenUsd.Geom.UsdGeomXformable.UsdGeomXformable() -> void
+OpenUsd.IUsdDetachedResult
+OpenUsd.IUsdStageBound
+OpenUsd.Lux.UsdLuxCylinderLight
+OpenUsd.Lux.UsdLuxCylinderLight.Length.get -> float
+OpenUsd.Lux.UsdLuxCylinderLight.Length.set -> void
+OpenUsd.Lux.UsdLuxCylinderLight.Light.get -> OpenUsd.Lux.UsdLuxLight!
+OpenUsd.Lux.UsdLuxCylinderLight.Path.get -> string!
+OpenUsd.Lux.UsdLuxCylinderLight.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Lux.UsdLuxCylinderLight.Radius.get -> float
+OpenUsd.Lux.UsdLuxCylinderLight.Radius.set -> void
+OpenUsd.Lux.UsdLuxCylinderLight.UsdLuxCylinderLight() -> void
+OpenUsd.Lux.UsdLuxCylinderLight.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Lux.UsdLuxDiskLight
+OpenUsd.Lux.UsdLuxDiskLight.Light.get -> OpenUsd.Lux.UsdLuxLight!
+OpenUsd.Lux.UsdLuxDiskLight.Path.get -> string!
+OpenUsd.Lux.UsdLuxDiskLight.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Lux.UsdLuxDiskLight.Radius.get -> float
+OpenUsd.Lux.UsdLuxDiskLight.Radius.set -> void
+OpenUsd.Lux.UsdLuxDiskLight.UsdLuxDiskLight() -> void
+OpenUsd.Lux.UsdLuxDiskLight.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Lux.UsdLuxDistantLight
+OpenUsd.Lux.UsdLuxDistantLight.Angle.get -> float
+OpenUsd.Lux.UsdLuxDistantLight.Angle.set -> void
+OpenUsd.Lux.UsdLuxDistantLight.Light.get -> OpenUsd.Lux.UsdLuxLight!
+OpenUsd.Lux.UsdLuxDistantLight.Path.get -> string!
+OpenUsd.Lux.UsdLuxDistantLight.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Lux.UsdLuxDistantLight.UsdLuxDistantLight() -> void
+OpenUsd.Lux.UsdLuxDistantLight.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Lux.UsdLuxDomeLight
+OpenUsd.Lux.UsdLuxDomeLight.Light.get -> OpenUsd.Lux.UsdLuxLight!
+OpenUsd.Lux.UsdLuxDomeLight.Path.get -> string!
+OpenUsd.Lux.UsdLuxDomeLight.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Lux.UsdLuxDomeLight.TextureFile.get -> OpenUsd.UsdAssetPath
+OpenUsd.Lux.UsdLuxDomeLight.TextureFile.set -> void
+OpenUsd.Lux.UsdLuxDomeLight.UsdLuxDomeLight() -> void
+OpenUsd.Lux.UsdLuxDomeLight.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Lux.UsdLuxLight
+OpenUsd.Lux.UsdLuxLight.ApplyShaping() -> OpenUsd.Lux.UsdLuxShaping
+OpenUsd.Lux.UsdLuxLight.Color.get -> OpenUsd.UsdVec3f
+OpenUsd.Lux.UsdLuxLight.Color.set -> void
+OpenUsd.Lux.UsdLuxLight.ColorTemperature.get -> float
+OpenUsd.Lux.UsdLuxLight.ColorTemperature.set -> void
+OpenUsd.Lux.UsdLuxLight.Diffuse.get -> float
+OpenUsd.Lux.UsdLuxLight.Diffuse.set -> void
+OpenUsd.Lux.UsdLuxLight.EnableColorTemperature.get -> bool
+OpenUsd.Lux.UsdLuxLight.EnableColorTemperature.set -> void
+OpenUsd.Lux.UsdLuxLight.Exposure.get -> float
+OpenUsd.Lux.UsdLuxLight.Exposure.set -> void
+OpenUsd.Lux.UsdLuxLight.GetShaping() -> OpenUsd.Lux.UsdLuxShaping
+OpenUsd.Lux.UsdLuxLight.HasShaping.get -> bool
+OpenUsd.Lux.UsdLuxLight.Intensity.get -> float
+OpenUsd.Lux.UsdLuxLight.Intensity.set -> void
+OpenUsd.Lux.UsdLuxLight.Normalize.get -> bool
+OpenUsd.Lux.UsdLuxLight.Normalize.set -> void
+OpenUsd.Lux.UsdLuxLight.Path.get -> string!
+OpenUsd.Lux.UsdLuxLight.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Lux.UsdLuxLight.Specular.get -> float
+OpenUsd.Lux.UsdLuxLight.Specular.set -> void
+OpenUsd.Lux.UsdLuxLight.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Lux.UsdLuxRectLight
+OpenUsd.Lux.UsdLuxRectLight.Height.get -> float
+OpenUsd.Lux.UsdLuxRectLight.Height.set -> void
+OpenUsd.Lux.UsdLuxRectLight.Light.get -> OpenUsd.Lux.UsdLuxLight!
+OpenUsd.Lux.UsdLuxRectLight.Path.get -> string!
+OpenUsd.Lux.UsdLuxRectLight.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Lux.UsdLuxRectLight.TextureFile.get -> OpenUsd.UsdAssetPath
+OpenUsd.Lux.UsdLuxRectLight.TextureFile.set -> void
+OpenUsd.Lux.UsdLuxRectLight.UsdLuxRectLight() -> void
+OpenUsd.Lux.UsdLuxRectLight.Width.get -> float
+OpenUsd.Lux.UsdLuxRectLight.Width.set -> void
+OpenUsd.Lux.UsdLuxRectLight.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Lux.UsdLuxShaping
+OpenUsd.Lux.UsdLuxShaping.ConeAngle.get -> float
+OpenUsd.Lux.UsdLuxShaping.ConeAngle.set -> void
+OpenUsd.Lux.UsdLuxShaping.ConeSoftness.get -> float
+OpenUsd.Lux.UsdLuxShaping.ConeSoftness.set -> void
+OpenUsd.Lux.UsdLuxShaping.Focus.get -> float
+OpenUsd.Lux.UsdLuxShaping.Focus.set -> void
+OpenUsd.Lux.UsdLuxShaping.Path.get -> string!
+OpenUsd.Lux.UsdLuxShaping.UsdLuxShaping() -> void
+OpenUsd.Lux.UsdLuxSphereLight
+OpenUsd.Lux.UsdLuxSphereLight.Light.get -> OpenUsd.Lux.UsdLuxLight!
+OpenUsd.Lux.UsdLuxSphereLight.Path.get -> string!
+OpenUsd.Lux.UsdLuxSphereLight.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Lux.UsdLuxSphereLight.Radius.get -> float
+OpenUsd.Lux.UsdLuxSphereLight.Radius.set -> void
+OpenUsd.Lux.UsdLuxSphereLight.UsdLuxSphereLight() -> void
+OpenUsd.Lux.UsdLuxSphereLight.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Lux.UsdLuxStageExtensions
+OpenUsd.OpenUsdInfo
+OpenUsd.Shade.UsdPreviewSurface
+OpenUsd.Shade.UsdPreviewSurface.ConnectDiffuseColor(OpenUsd.Shade.UsdShadeOutput source) -> void
+OpenUsd.Shade.UsdPreviewSurface.Material.get -> OpenUsd.Shade.UsdShadeMaterial
+OpenUsd.Shade.UsdPreviewSurface.SetDiffuseColor(OpenUsd.UsdVec3f value) -> void
+OpenUsd.Shade.UsdPreviewSurface.SetDisplacement(float value) -> void
+OpenUsd.Shade.UsdPreviewSurface.SetEmissiveColor(OpenUsd.UsdVec3f value) -> void
+OpenUsd.Shade.UsdPreviewSurface.SetMetallic(float value) -> void
+OpenUsd.Shade.UsdPreviewSurface.SetNormal(OpenUsd.UsdVec3f value) -> void
+OpenUsd.Shade.UsdPreviewSurface.SetOpacity(float value) -> void
+OpenUsd.Shade.UsdPreviewSurface.SetOpacityThreshold(float value) -> void
+OpenUsd.Shade.UsdPreviewSurface.SetRoughness(float value) -> void
+OpenUsd.Shade.UsdPreviewSurface.Shader.get -> OpenUsd.Shade.UsdShadeShader
+OpenUsd.Shade.UsdPreviewSurface.UsdPreviewSurface() -> void
+OpenUsd.Shade.UsdShadeAttributeType
+OpenUsd.Shade.UsdShadeAttributeType.Input = 1 -> OpenUsd.Shade.UsdShadeAttributeType
+OpenUsd.Shade.UsdShadeAttributeType.Output = 2 -> OpenUsd.Shade.UsdShadeAttributeType
+OpenUsd.Shade.UsdShadeConnection
+OpenUsd.Shade.UsdShadeConnection.Deconstruct(out string! SourcePrimPath, out string! SourceName, out OpenUsd.Shade.UsdShadeAttributeType SourceType) -> void
+OpenUsd.Shade.UsdShadeConnection.Equals(OpenUsd.Shade.UsdShadeConnection other) -> bool
+OpenUsd.Shade.UsdShadeConnection.SourceName.get -> string!
+OpenUsd.Shade.UsdShadeConnection.SourceName.init -> void
+OpenUsd.Shade.UsdShadeConnection.SourcePrimPath.get -> string!
+OpenUsd.Shade.UsdShadeConnection.SourcePrimPath.init -> void
+OpenUsd.Shade.UsdShadeConnection.SourceType.get -> OpenUsd.Shade.UsdShadeAttributeType
+OpenUsd.Shade.UsdShadeConnection.SourceType.init -> void
+OpenUsd.Shade.UsdShadeConnection.UsdShadeConnection() -> void
+OpenUsd.Shade.UsdShadeConnection.UsdShadeConnection(string! SourcePrimPath, string! SourceName, OpenUsd.Shade.UsdShadeAttributeType SourceType) -> void
+OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeInput.ConnectToSource(OpenUsd.Shade.UsdShadeInput source) -> void
+OpenUsd.Shade.UsdShadeInput.ConnectToSource(OpenUsd.Shade.UsdShadeOutput source) -> void
+OpenUsd.Shade.UsdShadeInput.Disconnect() -> void
+OpenUsd.Shade.UsdShadeInput.GetAssetPath() -> OpenUsd.UsdAssetPath
+OpenUsd.Shade.UsdShadeInput.GetColor() -> OpenUsd.UsdVec3f
+OpenUsd.Shade.UsdShadeInput.GetConnectedSource() -> OpenUsd.Shade.UsdShadeConnection
+OpenUsd.Shade.UsdShadeInput.GetConnectedSources() -> System.Collections.Generic.IReadOnlyList<OpenUsd.Shade.UsdShadeConnection>!
+OpenUsd.Shade.UsdShadeInput.GetFloat() -> float
+OpenUsd.Shade.UsdShadeInput.GetNormal() -> OpenUsd.UsdVec3f
+OpenUsd.Shade.UsdShadeInput.GetString() -> string!
+OpenUsd.Shade.UsdShadeInput.GetToken() -> string!
+OpenUsd.Shade.UsdShadeInput.GetVector() -> OpenUsd.UsdVec3f
+OpenUsd.Shade.UsdShadeInput.Name.get -> string!
+OpenUsd.Shade.UsdShadeInput.PrimPath.get -> string!
+OpenUsd.Shade.UsdShadeInput.Set(float value) -> void
+OpenUsd.Shade.UsdShadeInput.SetAssetPath(OpenUsd.UsdAssetPath value) -> void
+OpenUsd.Shade.UsdShadeInput.SetColor(OpenUsd.UsdVec3f value) -> void
+OpenUsd.Shade.UsdShadeInput.SetNormal(OpenUsd.UsdVec3f value) -> void
+OpenUsd.Shade.UsdShadeInput.SetString(string! value) -> void
+OpenUsd.Shade.UsdShadeInput.SetToken(string! value) -> void
+OpenUsd.Shade.UsdShadeInput.SetVector(OpenUsd.UsdVec3f value) -> void
+OpenUsd.Shade.UsdShadeInput.UsdShadeInput() -> void
+OpenUsd.Shade.UsdShadeInput.ValueType.get -> OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdShadeMaterial
+OpenUsd.Shade.UsdShadeMaterial.Bind(OpenUsd.UsdPrim prim) -> void
+OpenUsd.Shade.UsdShadeMaterial.ConnectSurface(OpenUsd.Shade.UsdShadeOutput source) -> void
+OpenUsd.Shade.UsdShadeMaterial.CreateSurfaceOutput() -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeMaterial.GetSurfaceOutput() -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeMaterial.Path.get -> string!
+OpenUsd.Shade.UsdShadeMaterial.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Shade.UsdShadeMaterial.Unbind(OpenUsd.UsdPrim prim) -> void
+OpenUsd.Shade.UsdShadeMaterial.UsdShadeMaterial() -> void
+OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeOutput.ConnectToSource(OpenUsd.Shade.UsdShadeInput source) -> void
+OpenUsd.Shade.UsdShadeOutput.ConnectToSource(OpenUsd.Shade.UsdShadeOutput source) -> void
+OpenUsd.Shade.UsdShadeOutput.Disconnect() -> void
+OpenUsd.Shade.UsdShadeOutput.GetConnectedSource() -> OpenUsd.Shade.UsdShadeConnection
+OpenUsd.Shade.UsdShadeOutput.GetConnectedSources() -> System.Collections.Generic.IReadOnlyList<OpenUsd.Shade.UsdShadeConnection>!
+OpenUsd.Shade.UsdShadeOutput.Name.get -> string!
+OpenUsd.Shade.UsdShadeOutput.PrimPath.get -> string!
+OpenUsd.Shade.UsdShadeOutput.UsdShadeOutput() -> void
+OpenUsd.Shade.UsdShadeOutput.ValueType.get -> OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdShadeShader
+OpenUsd.Shade.UsdShadeShader.CreateInputAsset(string! name) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeShader.CreateInputColor3f(string! name) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeShader.CreateInputFloat(string! name) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeShader.CreateInputNormal3f(string! name) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeShader.CreateInputString(string! name) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeShader.CreateInputToken(string! name) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeShader.CreateInputVector3f(string! name) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeShader.CreateOutput(string! name, OpenUsd.Shade.UsdShadeValueType valueType) -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeShader.GetInput(string! name) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeShader.GetOutput(string! name) -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeShader.Path.get -> string!
+OpenUsd.Shade.UsdShadeShader.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Shade.UsdShadeShader.SourceId.get -> string!
+OpenUsd.Shade.UsdShadeShader.SourceId.set -> void
+OpenUsd.Shade.UsdShadeShader.UsdShadeShader() -> void
+OpenUsd.Shade.UsdShadeStageExtensions
+OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdShadeValueType.Asset = 7 -> OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdShadeValueType.Color3f = 2 -> OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdShadeValueType.Float = 1 -> OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdShadeValueType.Float3 = 8 -> OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdShadeValueType.Normal3f = 4 -> OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdShadeValueType.String = 6 -> OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdShadeValueType.Token = 5 -> OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdShadeValueType.Vector3f = 3 -> OpenUsd.Shade.UsdShadeValueType
+OpenUsd.Shade.UsdUvTexture
+OpenUsd.Shade.UsdUvTexture.File.get -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdUvTexture.Rgb.get -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdUvTexture.Shader.get -> OpenUsd.Shade.UsdShadeShader
+OpenUsd.Shade.UsdUvTexture.UsdUvTexture() -> void
+OpenUsd.Skel.UsdSkelAnimation
+OpenUsd.Skel.UsdSkelAnimation.GetJoints() -> string![]!
+OpenUsd.Skel.UsdSkelAnimation.GetRotations() -> OpenUsd.UsdQuatf[]!
+OpenUsd.Skel.UsdSkelAnimation.GetRotations(double timeCode) -> OpenUsd.UsdQuatf[]!
+OpenUsd.Skel.UsdSkelAnimation.GetScales() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Skel.UsdSkelAnimation.GetScales(double timeCode) -> OpenUsd.UsdVec3f[]!
+OpenUsd.Skel.UsdSkelAnimation.GetTranslations() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Skel.UsdSkelAnimation.GetTranslations(double timeCode) -> OpenUsd.UsdVec3f[]!
+OpenUsd.Skel.UsdSkelAnimation.Path.get -> string!
+OpenUsd.Skel.UsdSkelAnimation.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Skel.UsdSkelAnimation.SetJoints(System.ReadOnlySpan<string!> joints) -> void
+OpenUsd.Skel.UsdSkelAnimation.SetRotations(System.ReadOnlySpan<OpenUsd.UsdQuatf> values) -> void
+OpenUsd.Skel.UsdSkelAnimation.SetRotations(System.ReadOnlySpan<OpenUsd.UsdQuatf> values, double timeCode) -> void
+OpenUsd.Skel.UsdSkelAnimation.SetScales(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Skel.UsdSkelAnimation.SetScales(System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
+OpenUsd.Skel.UsdSkelAnimation.SetTranslations(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Skel.UsdSkelAnimation.SetTranslations(System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
+OpenUsd.Skel.UsdSkelAnimation.UsdSkelAnimation() -> void
+OpenUsd.Skel.UsdSkelBinding
+OpenUsd.Skel.UsdSkelBinding.ClearAnimationSource() -> void
+OpenUsd.Skel.UsdSkelBinding.ClearSkeleton() -> void
+OpenUsd.Skel.UsdSkelBinding.GeomBindTransform.get -> OpenUsd.UsdMatrix4d
+OpenUsd.Skel.UsdSkelBinding.GeomBindTransform.set -> void
+OpenUsd.Skel.UsdSkelBinding.GetAnimationSource() -> OpenUsd.Skel.UsdSkelAnimation
+OpenUsd.Skel.UsdSkelBinding.GetJointInfluences() -> OpenUsd.Skel.UsdSkelJointInfluences!
+OpenUsd.Skel.UsdSkelBinding.GetSkeleton() -> OpenUsd.Skel.UsdSkelSkeleton
+OpenUsd.Skel.UsdSkelBinding.Path.get -> string!
+OpenUsd.Skel.UsdSkelBinding.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Skel.UsdSkelBinding.SetAnimationSource(OpenUsd.Skel.UsdSkelAnimation animation) -> void
+OpenUsd.Skel.UsdSkelBinding.SetJointInfluences(System.ReadOnlySpan<int> jointIndices, System.ReadOnlySpan<float> jointWeights, int elementSize, OpenUsd.Skel.UsdSkelInterpolation interpolation) -> void
+OpenUsd.Skel.UsdSkelBinding.SetSkeleton(OpenUsd.Skel.UsdSkelSkeleton skeleton) -> void
+OpenUsd.Skel.UsdSkelBinding.UsdSkelBinding() -> void
+OpenUsd.Skel.UsdSkelInterpolation
+OpenUsd.Skel.UsdSkelInterpolation.Constant = 0 -> OpenUsd.Skel.UsdSkelInterpolation
+OpenUsd.Skel.UsdSkelInterpolation.Vertex = 1 -> OpenUsd.Skel.UsdSkelInterpolation
+OpenUsd.Skel.UsdSkelJointInfluences
+OpenUsd.Skel.UsdSkelJointInfluences.<Clone>$() -> OpenUsd.Skel.UsdSkelJointInfluences!
+OpenUsd.Skel.UsdSkelJointInfluences.Deconstruct(out int[]! JointIndices, out float[]! JointWeights, out int ElementSize, out OpenUsd.Skel.UsdSkelInterpolation Interpolation) -> void
+OpenUsd.Skel.UsdSkelJointInfluences.ElementSize.get -> int
+OpenUsd.Skel.UsdSkelJointInfluences.ElementSize.init -> void
+OpenUsd.Skel.UsdSkelJointInfluences.Equals(OpenUsd.Skel.UsdSkelJointInfluences? other) -> bool
+OpenUsd.Skel.UsdSkelJointInfluences.Interpolation.get -> OpenUsd.Skel.UsdSkelInterpolation
+OpenUsd.Skel.UsdSkelJointInfluences.Interpolation.init -> void
+OpenUsd.Skel.UsdSkelJointInfluences.JointIndices.get -> int[]!
+OpenUsd.Skel.UsdSkelJointInfluences.JointIndices.init -> void
+OpenUsd.Skel.UsdSkelJointInfluences.JointWeights.get -> float[]!
+OpenUsd.Skel.UsdSkelJointInfluences.JointWeights.init -> void
+OpenUsd.Skel.UsdSkelJointInfluences.UsdSkelJointInfluences(int[]! JointIndices, float[]! JointWeights, int ElementSize, OpenUsd.Skel.UsdSkelInterpolation Interpolation) -> void
+OpenUsd.Skel.UsdSkelRoot
+OpenUsd.Skel.UsdSkelRoot.ApplyBinding() -> OpenUsd.Skel.UsdSkelBinding
+OpenUsd.Skel.UsdSkelRoot.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Skel.UsdSkelRoot.Path.get -> string!
+OpenUsd.Skel.UsdSkelRoot.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Skel.UsdSkelRoot.UsdSkelRoot() -> void
+OpenUsd.Skel.UsdSkelRoot.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Skel.UsdSkelSkeleton
+OpenUsd.Skel.UsdSkelSkeleton.ApplyBinding() -> OpenUsd.Skel.UsdSkelBinding
+OpenUsd.Skel.UsdSkelSkeleton.GetBindTransforms() -> OpenUsd.UsdMatrix4d[]!
+OpenUsd.Skel.UsdSkelSkeleton.GetJoints() -> string![]!
+OpenUsd.Skel.UsdSkelSkeleton.GetRestTransforms() -> OpenUsd.UsdMatrix4d[]!
+OpenUsd.Skel.UsdSkelSkeleton.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Skel.UsdSkelSkeleton.Path.get -> string!
+OpenUsd.Skel.UsdSkelSkeleton.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Skel.UsdSkelSkeleton.SetBindTransforms(System.ReadOnlySpan<OpenUsd.UsdMatrix4d> values) -> void
+OpenUsd.Skel.UsdSkelSkeleton.SetJoints(System.ReadOnlySpan<string!> joints) -> void
+OpenUsd.Skel.UsdSkelSkeleton.SetRestTransforms(System.ReadOnlySpan<OpenUsd.UsdMatrix4d> values) -> void
+OpenUsd.Skel.UsdSkelSkeleton.UsdSkelSkeleton() -> void
+OpenUsd.Skel.UsdSkelSkeleton.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Skel.UsdSkelStageExtensions
+OpenUsd.UsdAssetPath
+OpenUsd.UsdAssetPath.Equals(OpenUsd.UsdAssetPath other) -> bool
+OpenUsd.UsdAssetPath.Path.get -> string!
+OpenUsd.UsdAssetPath.UsdAssetPath() -> void
+OpenUsd.UsdAssetPath.UsdAssetPath(string! path) -> void
+OpenUsd.UsdAttribute
+OpenUsd.UsdAttribute.BlockValue() -> void
+OpenUsd.UsdAttribute.ClearValue() -> void
+OpenUsd.UsdAttribute.GetTimeSamples() -> double[]!
+OpenUsd.UsdAttribute.GetValue() -> OpenUsd.UsdScalarValue
+OpenUsd.UsdAttribute.GetValue(double timeCode) -> OpenUsd.UsdScalarValue
+OpenUsd.UsdAttribute.GetValueState() -> OpenUsd.UsdAttributeValueState
+OpenUsd.UsdAttribute.GetValueState(double timeCode) -> OpenUsd.UsdAttributeValueState
+OpenUsd.UsdAttribute.Name.get -> string!
+OpenUsd.UsdAttribute.PrimPath.get -> string!
+OpenUsd.UsdAttribute.TypeName.get -> string!
+OpenUsd.UsdAttribute.UsdAttribute() -> void
+OpenUsd.UsdAttributeValueState
+OpenUsd.UsdAttributeValueState.Deconstruct(out bool HasAuthoredValueOpinion, out bool IsBlocked) -> void
+OpenUsd.UsdAttributeValueState.Equals(OpenUsd.UsdAttributeValueState other) -> bool
+OpenUsd.UsdAttributeValueState.HasAuthoredValueOpinion.get -> bool
+OpenUsd.UsdAttributeValueState.HasAuthoredValueOpinion.init -> void
+OpenUsd.UsdAttributeValueState.IsBlocked.get -> bool
+OpenUsd.UsdAttributeValueState.IsBlocked.init -> void
+OpenUsd.UsdAttributeValueState.UsdAttributeValueState() -> void
+OpenUsd.UsdAttributeValueState.UsdAttributeValueState(bool HasAuthoredValueOpinion, bool IsBlocked) -> void
+OpenUsd.UsdBounds3d
+OpenUsd.UsdBounds3d.Center.get -> OpenUsd.UsdVec3d
+OpenUsd.UsdBounds3d.Equals(OpenUsd.UsdBounds3d other) -> bool
+OpenUsd.UsdBounds3d.IsEmpty.get -> bool
+OpenUsd.UsdBounds3d.Max.get -> OpenUsd.UsdVec3d
+OpenUsd.UsdBounds3d.Min.get -> OpenUsd.UsdVec3d
+OpenUsd.UsdBounds3d.Size.get -> OpenUsd.UsdVec3d
+OpenUsd.UsdBounds3d.UsdBounds3d() -> void
+OpenUsd.UsdBounds3d.UsdBounds3d(OpenUsd.UsdVec3d min, OpenUsd.UsdVec3d max) -> void
+OpenUsd.UsdLayer
+OpenUsd.UsdLayer.AddSublayer(string! sublayerPath) -> void
+OpenUsd.UsdLayer.ClearMetadata(string! key) -> void
+OpenUsd.UsdLayer.Dispose() -> void
+OpenUsd.UsdLayer.Export(string! path) -> void
+OpenUsd.UsdLayer.GetMetadataBool(string! key) -> bool
+OpenUsd.UsdLayer.GetMetadataDouble(string! key) -> double
+OpenUsd.UsdLayer.GetMetadataInt64(string! key) -> long
+OpenUsd.UsdLayer.GetMetadataString(string! key) -> string!
+OpenUsd.UsdLayer.GetSublayerPaths() -> string![]!
+OpenUsd.UsdLayer.Identifier.get -> string!
+OpenUsd.UsdLayer.Reload(bool force = false) -> bool
+OpenUsd.UsdLayer.RemoveSublayer(string! sublayerPath) -> void
+OpenUsd.UsdLayer.Save() -> void
+OpenUsd.UsdLayer.SetMetadata(string! key, bool value) -> void
+OpenUsd.UsdLayer.SetMetadata(string! key, double value) -> void
+OpenUsd.UsdLayer.SetMetadata(string! key, long value) -> void
+OpenUsd.UsdLayer.SetMetadata(string! key, string! value) -> void
+OpenUsd.UsdMatrix4d
+OpenUsd.UsdMatrix4d.Equals(OpenUsd.UsdMatrix4d other) -> bool
+OpenUsd.UsdMatrix4d.ExtractTranslation() -> OpenUsd.UsdVec3d
+OpenUsd.UsdMatrix4d.GetInverse() -> OpenUsd.UsdMatrix4d
+OpenUsd.UsdMatrix4d.M00.get -> double
+OpenUsd.UsdMatrix4d.M01.get -> double
+OpenUsd.UsdMatrix4d.M02.get -> double
+OpenUsd.UsdMatrix4d.M03.get -> double
+OpenUsd.UsdMatrix4d.M10.get -> double
+OpenUsd.UsdMatrix4d.M11.get -> double
+OpenUsd.UsdMatrix4d.M12.get -> double
+OpenUsd.UsdMatrix4d.M13.get -> double
+OpenUsd.UsdMatrix4d.M20.get -> double
+OpenUsd.UsdMatrix4d.M21.get -> double
+OpenUsd.UsdMatrix4d.M22.get -> double
+OpenUsd.UsdMatrix4d.M23.get -> double
+OpenUsd.UsdMatrix4d.M30.get -> double
+OpenUsd.UsdMatrix4d.M31.get -> double
+OpenUsd.UsdMatrix4d.M32.get -> double
+OpenUsd.UsdMatrix4d.M33.get -> double
+OpenUsd.UsdMatrix4d.this[int row, int column].get -> double
+OpenUsd.UsdMatrix4d.ToArray() -> double[]!
+OpenUsd.UsdMatrix4d.TransformPoint(OpenUsd.UsdVec3d point) -> OpenUsd.UsdVec3d
+OpenUsd.UsdMatrix4d.TryInvert(out OpenUsd.UsdMatrix4d inverse) -> bool
+OpenUsd.UsdMatrix4d.UsdMatrix4d() -> void
+OpenUsd.UsdMatrix4d.UsdMatrix4d(double m00, double m01, double m02, double m03, double m10, double m11, double m12, double m13, double m20, double m21, double m22, double m23, double m30, double m31, double m32, double m33) -> void
+OpenUsd.UsdPath
+OpenUsd.UsdPayloadArc
+OpenUsd.UsdPayloadArc.AssetPath.get -> string!
+OpenUsd.UsdPayloadArc.Equals(OpenUsd.UsdPayloadArc other) -> bool
+OpenUsd.UsdPayloadArc.SourceLayerIdentifier.get -> string!
+OpenUsd.UsdPayloadArc.TargetPrimPath.get -> string!
+OpenUsd.UsdPayloadArc.UsdPayloadArc() -> void
+OpenUsd.UsdPayloadArc.UsdPayloadArc(string! assetPath, string! targetPrimPath, string! sourceLayerIdentifier) -> void
+OpenUsd.UsdPrim
+OpenUsd.UsdPrim.AddInherit(string! inheritedPrimPath) -> void
+OpenUsd.UsdPrim.AddPayload(string! assetPath, string? targetPrimPath = null) -> void
+OpenUsd.UsdPrim.AddReference(string! assetPath, string? targetPrimPath = null) -> void
+OpenUsd.UsdPrim.AddSpecialize(string! specializedPrimPath) -> void
+OpenUsd.UsdPrim.AddVariant(string! variantSetName, string! variantName) -> void
+OpenUsd.UsdPrim.AddVariantSet(string! variantSetName) -> void
+OpenUsd.UsdPrim.ClearInherits() -> void
+OpenUsd.UsdPrim.ClearMetadata(string! key) -> void
+OpenUsd.UsdPrim.ClearPayloads() -> void
+OpenUsd.UsdPrim.ClearReferences() -> void
+OpenUsd.UsdPrim.ClearRelationshipTargets(string! relationshipName) -> void
+OpenUsd.UsdPrim.ClearSpecializes() -> void
+OpenUsd.UsdPrim.CreateRelationship(string! relationshipName) -> void
+OpenUsd.UsdPrim.Exists() -> bool
+OpenUsd.UsdPrim.GetAppliedSchemas() -> string![]!
+OpenUsd.UsdPrim.GetAttribute(string! name) -> OpenUsd.UsdAttribute
+OpenUsd.UsdPrim.GetAttributeNames() -> string![]!
+OpenUsd.UsdPrim.GetAttributes() -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdAttribute>!
+OpenUsd.UsdPrim.GetBool(string! attributeName) -> bool
+OpenUsd.UsdPrim.GetBool(string! attributeName, double timeCode) -> bool
+OpenUsd.UsdPrim.GetChildren() -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdPrim>!
+OpenUsd.UsdPrim.GetColor3f(string! attributeName) -> OpenUsd.UsdVec3f
+OpenUsd.UsdPrim.GetColor3f(string! attributeName, double timeCode) -> OpenUsd.UsdVec3f
+OpenUsd.UsdPrim.GetDouble(string! attributeName) -> double
+OpenUsd.UsdPrim.GetDouble(string! attributeName, double timeCode) -> double
+OpenUsd.UsdPrim.GetDoubleArray(string! attributeName) -> double[]!
+OpenUsd.UsdPrim.GetDoubleArray(string! attributeName, double timeCode) -> double[]!
+OpenUsd.UsdPrim.GetFloatArray(string! attributeName) -> float[]!
+OpenUsd.UsdPrim.GetFloatArray(string! attributeName, double timeCode) -> float[]!
+OpenUsd.UsdPrim.GetInt32Array(string! attributeName) -> int[]!
+OpenUsd.UsdPrim.GetInt32Array(string! attributeName, double timeCode) -> int[]!
+OpenUsd.UsdPrim.GetInt64(string! attributeName) -> long
+OpenUsd.UsdPrim.GetInt64(string! attributeName, double timeCode) -> long
+OpenUsd.UsdPrim.GetMatrix4d(string! attributeName) -> OpenUsd.UsdMatrix4d
+OpenUsd.UsdPrim.GetMatrix4d(string! attributeName, double timeCode) -> OpenUsd.UsdMatrix4d
+OpenUsd.UsdPrim.GetMetadataBool(string! key) -> bool
+OpenUsd.UsdPrim.GetMetadataDouble(string! key) -> double
+OpenUsd.UsdPrim.GetMetadataInt64(string! key) -> long
+OpenUsd.UsdPrim.GetMetadataString(string! key) -> string!
+OpenUsd.UsdPrim.GetPayloadArcs() -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdPayloadArc>!
+OpenUsd.UsdPrim.GetPrototypePath() -> string!
+OpenUsd.UsdPrim.GetPurpose() -> string!
+OpenUsd.UsdPrim.GetRelationship(string! name) -> OpenUsd.UsdRelationship
+OpenUsd.UsdPrim.GetRelationshipNames() -> string![]!
+OpenUsd.UsdPrim.GetRelationships() -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdRelationship>!
+OpenUsd.UsdPrim.GetRelationshipTargets(string! relationshipName) -> string![]!
+OpenUsd.UsdPrim.GetString(string! attributeName) -> string!
+OpenUsd.UsdPrim.GetString(string! attributeName, double timeCode) -> string!
+OpenUsd.UsdPrim.GetToken(string! attributeName) -> string!
+OpenUsd.UsdPrim.GetToken(string! attributeName, double timeCode) -> string!
+OpenUsd.UsdPrim.GetVariantNames(string! variantSetName) -> string![]!
+OpenUsd.UsdPrim.GetVariantSelection(string! variantSetName) -> string!
+OpenUsd.UsdPrim.GetVariantSetNames() -> string![]!
+OpenUsd.UsdPrim.GetVec2fArray(string! attributeName) -> OpenUsd.UsdVec2f[]!
+OpenUsd.UsdPrim.GetVec2fArray(string! attributeName, double timeCode) -> OpenUsd.UsdVec2f[]!
+OpenUsd.UsdPrim.GetVec3f(string! attributeName) -> OpenUsd.UsdVec3f
+OpenUsd.UsdPrim.GetVec3f(string! attributeName, double timeCode) -> OpenUsd.UsdVec3f
+OpenUsd.UsdPrim.GetVec3fArray(string! attributeName) -> OpenUsd.UsdVec3f[]!
+OpenUsd.UsdPrim.GetVec3fArray(string! attributeName, double timeCode) -> OpenUsd.UsdVec3f[]!
+OpenUsd.UsdPrim.GetVisibility() -> string!
+OpenUsd.UsdPrim.GetWorldBounds(double timeCode, OpenUsd.Geom.UsdGeomPurposeMask purposeMask = OpenUsd.Geom.UsdGeomPurposeMask.All) -> OpenUsd.UsdBounds3d
+OpenUsd.UsdPrim.GetWorldBounds(OpenUsd.Geom.UsdGeomPurposeMask purposeMask = OpenUsd.Geom.UsdGeomPurposeMask.All) -> OpenUsd.UsdBounds3d
+OpenUsd.UsdPrim.IsActive() -> bool
+OpenUsd.UsdPrim.IsInstance() -> bool
+OpenUsd.UsdPrim.IsInstanceable() -> bool
+OpenUsd.UsdPrim.IsLoaded() -> bool
+OpenUsd.UsdPrim.IsPrototype() -> bool
+OpenUsd.UsdPrim.Load() -> void
+OpenUsd.UsdPrim.Path.get -> string!
+OpenUsd.UsdPrim.Remove() -> void
+OpenUsd.UsdPrim.SetActive(bool active) -> void
+OpenUsd.UsdPrim.SetBool(string! attributeName, bool value) -> void
+OpenUsd.UsdPrim.SetBool(string! attributeName, bool value, double timeCode) -> void
+OpenUsd.UsdPrim.SetColor3f(string! attributeName, OpenUsd.UsdVec3f value) -> void
+OpenUsd.UsdPrim.SetColor3f(string! attributeName, OpenUsd.UsdVec3f value, double timeCode) -> void
+OpenUsd.UsdPrim.SetDouble(string! attributeName, double value) -> void
+OpenUsd.UsdPrim.SetDouble(string! attributeName, double value, double timeCode) -> void
+OpenUsd.UsdPrim.SetDoubleArray(string! attributeName, System.ReadOnlySpan<double> values) -> void
+OpenUsd.UsdPrim.SetDoubleArray(string! attributeName, System.ReadOnlySpan<double> values, double timeCode) -> void
+OpenUsd.UsdPrim.SetFloatArray(string! attributeName, System.ReadOnlySpan<float> values) -> void
+OpenUsd.UsdPrim.SetFloatArray(string! attributeName, System.ReadOnlySpan<float> values, double timeCode) -> void
+OpenUsd.UsdPrim.SetInstanceable(bool instanceable) -> void
+OpenUsd.UsdPrim.SetInt32Array(string! attributeName, System.ReadOnlySpan<int> values) -> void
+OpenUsd.UsdPrim.SetInt32Array(string! attributeName, System.ReadOnlySpan<int> values, double timeCode) -> void
+OpenUsd.UsdPrim.SetInt64(string! attributeName, long value) -> void
+OpenUsd.UsdPrim.SetInt64(string! attributeName, long value, double timeCode) -> void
+OpenUsd.UsdPrim.SetMatrix4d(string! attributeName, OpenUsd.UsdMatrix4d value) -> void
+OpenUsd.UsdPrim.SetMatrix4d(string! attributeName, OpenUsd.UsdMatrix4d value, double timeCode) -> void
+OpenUsd.UsdPrim.SetMetadata(string! key, bool value) -> void
+OpenUsd.UsdPrim.SetMetadata(string! key, double value) -> void
+OpenUsd.UsdPrim.SetMetadata(string! key, long value) -> void
+OpenUsd.UsdPrim.SetMetadata(string! key, string! value) -> void
+OpenUsd.UsdPrim.SetPurpose(string! purpose) -> void
+OpenUsd.UsdPrim.SetRelationshipTargets(string! relationshipName, System.ReadOnlySpan<string!> targets) -> void
+OpenUsd.UsdPrim.SetString(string! attributeName, string! value) -> void
+OpenUsd.UsdPrim.SetString(string! attributeName, string! value, double timeCode) -> void
+OpenUsd.UsdPrim.SetToken(string! attributeName, string! value) -> void
+OpenUsd.UsdPrim.SetToken(string! attributeName, string! value, double timeCode) -> void
+OpenUsd.UsdPrim.SetVariantSelection(string! variantSetName, string? variantSelection) -> void
+OpenUsd.UsdPrim.SetVec2fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec2f> values) -> void
+OpenUsd.UsdPrim.SetVec2fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec2f> values, double timeCode) -> void
+OpenUsd.UsdPrim.SetVec3f(string! attributeName, OpenUsd.UsdVec3f value) -> void
+OpenUsd.UsdPrim.SetVec3f(string! attributeName, OpenUsd.UsdVec3f value, double timeCode) -> void
+OpenUsd.UsdPrim.SetVec3fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.UsdPrim.SetVec3fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
+OpenUsd.UsdPrim.SetVisibility(string! visibility) -> void
+OpenUsd.UsdPrim.TypeName.get -> string!
+OpenUsd.UsdPrim.Unload() -> void
+OpenUsd.UsdPrim.UsdPrim() -> void
+OpenUsd.UsdQuatf
+OpenUsd.UsdQuatf.Equals(OpenUsd.UsdQuatf other) -> bool
+OpenUsd.UsdQuatf.Real.get -> float
+OpenUsd.UsdQuatf.UsdQuatf() -> void
+OpenUsd.UsdQuatf.UsdQuatf(float real, float x, float y, float z) -> void
+OpenUsd.UsdQuatf.X.get -> float
+OpenUsd.UsdQuatf.Y.get -> float
+OpenUsd.UsdQuatf.Z.get -> float
+OpenUsd.UsdRelationship
+OpenUsd.UsdRelationship.ClearTargets() -> void
+OpenUsd.UsdRelationship.GetTargets() -> string![]!
+OpenUsd.UsdRelationship.Name.get -> string!
+OpenUsd.UsdRelationship.PrimPath.get -> string!
+OpenUsd.UsdRelationship.SetTargets(System.ReadOnlySpan<string!> targets) -> void
+OpenUsd.UsdRelationship.UsdRelationship() -> void
+OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Boolean = 1 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Color3 = 7 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.DoubleArray = 11 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.FloatArray = 10 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Int32Array = 9 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Invalid = 0 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Matrix4d = 8 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Number = 3 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Signed64 = 2 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Text = 4 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Token = 5 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Vec2fArray = 12 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Vec3fArray = 13 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Vector3 = 6 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarValue
+OpenUsd.UsdScalarValue.BoolValue.get -> bool
+OpenUsd.UsdScalarValue.Color3fValue.get -> OpenUsd.UsdVec3f
+OpenUsd.UsdScalarValue.DoubleArrayValue.get -> double[]!
+OpenUsd.UsdScalarValue.DoubleValue.get -> double
+OpenUsd.UsdScalarValue.FloatArrayValue.get -> float[]!
+OpenUsd.UsdScalarValue.Int32ArrayValue.get -> int[]!
+OpenUsd.UsdScalarValue.Int64Value.get -> long
+OpenUsd.UsdScalarValue.Kind.get -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarValue.Matrix4dValue.get -> OpenUsd.UsdMatrix4d
+OpenUsd.UsdScalarValue.StringValue.get -> string!
+OpenUsd.UsdScalarValue.TokenValue.get -> string!
+OpenUsd.UsdScalarValue.UsdScalarValue() -> void
+OpenUsd.UsdScalarValue.Vec2fArrayValue.get -> OpenUsd.UsdVec2f[]!
+OpenUsd.UsdScalarValue.Vec3fArrayValue.get -> OpenUsd.UsdVec3f[]!
+OpenUsd.UsdScalarValue.Vec3fValue.get -> OpenUsd.UsdVec3f
+OpenUsd.UsdStage
+OpenUsd.UsdStage.ChangeSerial.get -> ulong
+OpenUsd.UsdStage.ClearDefaultPrim() -> void
+OpenUsd.UsdStage.CreateClassPrim(string! path) -> OpenUsd.UsdPrim
+OpenUsd.UsdStage.DefinePrim(string! path, string? typeName = null) -> OpenUsd.UsdPrim
+OpenUsd.UsdStage.Dispose() -> void
+OpenUsd.UsdStage.EditTargetLayerIdentifier.get -> string!
+OpenUsd.UsdStage.EndTimeCode.get -> double
+OpenUsd.UsdStage.EndTimeCode.set -> void
+OpenUsd.UsdStage.Export(string! path) -> void
+OpenUsd.UsdStage.FramesPerSecond.get -> double
+OpenUsd.UsdStage.FramesPerSecond.set -> void
+OpenUsd.UsdStage.GetDefaultPrim() -> OpenUsd.UsdPrim
+OpenUsd.UsdStage.GetLayerStackIdentifiers() -> string![]!
+OpenUsd.UsdStage.GetPrim(string! path) -> OpenUsd.UsdPrim
+OpenUsd.UsdStage.GetRootLayer() -> OpenUsd.UsdLayer!
+OpenUsd.UsdStage.GetSessionLayer() -> OpenUsd.UsdLayer!
+OpenUsd.UsdStage.GetWorldBounds(double timeCode, OpenUsd.Geom.UsdGeomPurposeMask purposeMask = OpenUsd.Geom.UsdGeomPurposeMask.All) -> OpenUsd.UsdBounds3d
+OpenUsd.UsdStage.GetWorldBounds(OpenUsd.Geom.UsdGeomPurposeMask purposeMask = OpenUsd.Geom.UsdGeomPurposeMask.All) -> OpenUsd.UsdBounds3d
+OpenUsd.UsdStage.HasPrim(string! path) -> bool
+OpenUsd.UsdStage.IsLayerMuted(string! layerIdentifier) -> bool
+OpenUsd.UsdStage.MuteLayer(string! layerIdentifier) -> void
+OpenUsd.UsdStage.OverridePrim(string! path) -> OpenUsd.UsdPrim
+OpenUsd.UsdStage.Reload() -> void
+OpenUsd.UsdStage.RemovePrim(string! path) -> void
+OpenUsd.UsdStage.RootLayerIdentifier.get -> string!
+OpenUsd.UsdStage.Save() -> void
+OpenUsd.UsdStage.SessionLayerIdentifier.get -> string!
+OpenUsd.UsdStage.SetDefaultPrim(string! path) -> void
+OpenUsd.UsdStage.SetEditTarget(OpenUsd.UsdLayer! layer) -> void
+OpenUsd.UsdStage.SetEditTargetToRootLayer() -> void
+OpenUsd.UsdStage.SetEditTargetToSessionLayer() -> void
+OpenUsd.UsdStage.StartTimeCode.get -> double
+OpenUsd.UsdStage.StartTimeCode.set -> void
+OpenUsd.UsdStage.TimeCodesPerSecond.get -> double
+OpenUsd.UsdStage.TimeCodesPerSecond.set -> void
+OpenUsd.UsdStage.Traverse() -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdPrim>!
+OpenUsd.UsdStage.UnmuteLayer(string! layerIdentifier) -> void
+OpenUsd.UsdStageBoundResultException
+OpenUsd.UsdStageBoundResultException.Code.get -> string!
+OpenUsd.UsdStageChange
+OpenUsd.UsdStageChange.AfterChangeSerial.get -> ulong
+OpenUsd.UsdStageChange.BeforeChangeSerial.get -> ulong
+OpenUsd.UsdStageChange.Coalesce(OpenUsd.UsdStageChange subsequent) -> OpenUsd.UsdStageChange
+OpenUsd.UsdStageChange.EditCount.get -> int
+OpenUsd.UsdStageChange.Equals(OpenUsd.UsdStageChange other) -> bool
+OpenUsd.UsdStageChange.Invalidation.get -> OpenUsd.UsdStageInvalidationKind
+OpenUsd.UsdStageChange.UsdStageChange() -> void
+OpenUsd.UsdStageChange.UsdStageChange(ulong beforeChangeSerial, ulong afterChangeSerial, OpenUsd.UsdStageInvalidationKind invalidation, int editCount = 1) -> void
+OpenUsd.UsdStageInvalidationKind
+OpenUsd.UsdStageInvalidationKind.Composition = 2 -> OpenUsd.UsdStageInvalidationKind
+OpenUsd.UsdStageInvalidationKind.Full = 3 -> OpenUsd.UsdStageInvalidationKind
+OpenUsd.UsdStageInvalidationKind.Property = 0 -> OpenUsd.UsdStageInvalidationKind
+OpenUsd.UsdStageInvalidationKind.Topology = 1 -> OpenUsd.UsdStageInvalidationKind
+OpenUsd.UsdStageOwnershipException
+OpenUsd.UsdStageOwnershipException.Code.get -> string!
+OpenUsd.UsdStageRenderLease
+OpenUsd.UsdStageRenderLease.Dispose() -> void
+OpenUsd.UsdStageRenderSource
+OpenUsd.UsdStageRenderSource.AcquireLease() -> OpenUsd.UsdStageRenderLease!
+OpenUsd.UsdStageRenderSource.Dispose() -> void
+OpenUsd.UsdStageScheduler
+OpenUsd.UsdStageScheduler.AcquireRenderSourceAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.UsdStageRenderSource!>
+OpenUsd.UsdStageScheduler.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.UsdStageScheduler.EditAsync(System.Action<OpenUsd.UsdStage!>! edit, OpenUsd.UsdStageInvalidationKind invalidation, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+OpenUsd.UsdStageScheduler.EditAsync<T>(System.Func<OpenUsd.UsdStage!, T>! edit, OpenUsd.UsdStageInvalidationKind invalidation, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>
+OpenUsd.UsdStageScheduler.InvokeAsync(System.Action<OpenUsd.UsdStage!>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+OpenUsd.UsdStageScheduler.InvokeAsync<T>(System.Func<OpenUsd.UsdStage!, T>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>
+OpenUsd.UsdStageScheduler.ReadChangesAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<OpenUsd.UsdStageChange>!
+OpenUsd.UsdStageSchedulerReentrancyException
+OpenUsd.UsdStageSchedulerReentrancyException.Code.get -> string!
+OpenUsd.UsdVec2f
+OpenUsd.UsdVec2f.Equals(OpenUsd.UsdVec2f other) -> bool
+OpenUsd.UsdVec2f.UsdVec2f() -> void
+OpenUsd.UsdVec2f.UsdVec2f(float x, float y) -> void
+OpenUsd.UsdVec2f.X.get -> float
+OpenUsd.UsdVec2f.Y.get -> float
+OpenUsd.UsdVec3d
+OpenUsd.UsdVec3d.Deconstruct(out double X, out double Y, out double Z) -> void
+OpenUsd.UsdVec3d.Equals(OpenUsd.UsdVec3d other) -> bool
+OpenUsd.UsdVec3d.UsdVec3d() -> void
+OpenUsd.UsdVec3d.UsdVec3d(double X, double Y, double Z) -> void
+OpenUsd.UsdVec3d.X.get -> double
+OpenUsd.UsdVec3d.X.init -> void
+OpenUsd.UsdVec3d.Y.get -> double
+OpenUsd.UsdVec3d.Y.init -> void
+OpenUsd.UsdVec3d.Z.get -> double
+OpenUsd.UsdVec3d.Z.init -> void
+OpenUsd.UsdVec3f
+OpenUsd.UsdVec3f.Equals(OpenUsd.UsdVec3f other) -> bool
+OpenUsd.UsdVec3f.UsdVec3f() -> void
+OpenUsd.UsdVec3f.UsdVec3f(float x, float y, float z) -> void
+OpenUsd.UsdVec3f.X.get -> float
+OpenUsd.UsdVec3f.Y.get -> float
+OpenUsd.UsdVec3f.Z.get -> float
+override OpenUsd.Geom.UsdExtent3f.GetHashCode() -> int
+override OpenUsd.Geom.UsdGeomCameraState.GetHashCode() -> int
+override OpenUsd.Shade.UsdShadeConnection.GetHashCode() -> int
+override OpenUsd.Skel.UsdSkelJointInfluences.Equals(object? obj) -> bool
+override OpenUsd.Skel.UsdSkelJointInfluences.GetHashCode() -> int
+override OpenUsd.Skel.UsdSkelJointInfluences.ToString() -> string!
+override OpenUsd.UsdAssetPath.GetHashCode() -> int
+override OpenUsd.UsdAssetPath.ToString() -> string!
+override OpenUsd.UsdAttributeValueState.GetHashCode() -> int
+override OpenUsd.UsdBounds3d.Equals(object? obj) -> bool
+override OpenUsd.UsdBounds3d.GetHashCode() -> int
+override OpenUsd.UsdBounds3d.ToString() -> string!
+override OpenUsd.UsdMatrix4d.Equals(object? obj) -> bool
+override OpenUsd.UsdMatrix4d.GetHashCode() -> int
+override OpenUsd.UsdPayloadArc.GetHashCode() -> int
+override OpenUsd.UsdQuatf.Equals(object? obj) -> bool
+override OpenUsd.UsdQuatf.GetHashCode() -> int
+override OpenUsd.UsdQuatf.ToString() -> string!
+override OpenUsd.UsdStageChange.GetHashCode() -> int
+override OpenUsd.UsdVec2f.Equals(object? obj) -> bool
+override OpenUsd.UsdVec2f.GetHashCode() -> int
+override OpenUsd.UsdVec2f.ToString() -> string!
+override OpenUsd.UsdVec3d.GetHashCode() -> int
+override OpenUsd.UsdVec3d.ToString() -> string!
+override OpenUsd.UsdVec3f.Equals(object? obj) -> bool
+override OpenUsd.UsdVec3f.GetHashCode() -> int
+override OpenUsd.UsdVec3f.ToString() -> string!
+static OpenUsd.Geom.UsdExtent3f.operator !=(OpenUsd.Geom.UsdExtent3f left, OpenUsd.Geom.UsdExtent3f right) -> bool
+static OpenUsd.Geom.UsdExtent3f.operator ==(OpenUsd.Geom.UsdExtent3f left, OpenUsd.Geom.UsdExtent3f right) -> bool
+static OpenUsd.Geom.UsdGeomCamera.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomCamera value) -> bool
+static OpenUsd.Geom.UsdGeomCamera.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomCamera
+static OpenUsd.Geom.UsdGeomCameraState.operator !=(OpenUsd.Geom.UsdGeomCameraState left, OpenUsd.Geom.UsdGeomCameraState right) -> bool
+static OpenUsd.Geom.UsdGeomCameraState.operator ==(OpenUsd.Geom.UsdGeomCameraState left, OpenUsd.Geom.UsdGeomCameraState right) -> bool
+static OpenUsd.Geom.UsdGeomImageable.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomImageable value) -> bool
+static OpenUsd.Geom.UsdGeomImageable.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomImageable
+static OpenUsd.Geom.UsdGeomMesh.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomMesh value) -> bool
+static OpenUsd.Geom.UsdGeomMesh.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomMesh
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineCamera(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomCamera
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineMesh(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomMesh
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineXform(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomXform
+static OpenUsd.Geom.UsdGeomXform.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomXform value) -> bool
+static OpenUsd.Geom.UsdGeomXform.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomXform
+static OpenUsd.Geom.UsdGeomXformable.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomXformable value) -> bool
+static OpenUsd.Geom.UsdGeomXformable.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomXformable
+static OpenUsd.Lux.UsdLuxCylinderLight.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Lux.UsdLuxCylinderLight value) -> bool
+static OpenUsd.Lux.UsdLuxCylinderLight.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Lux.UsdLuxCylinderLight
+static OpenUsd.Lux.UsdLuxDiskLight.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Lux.UsdLuxDiskLight value) -> bool
+static OpenUsd.Lux.UsdLuxDiskLight.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Lux.UsdLuxDiskLight
+static OpenUsd.Lux.UsdLuxDistantLight.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Lux.UsdLuxDistantLight value) -> bool
+static OpenUsd.Lux.UsdLuxDistantLight.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Lux.UsdLuxDistantLight
+static OpenUsd.Lux.UsdLuxDomeLight.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Lux.UsdLuxDomeLight value) -> bool
+static OpenUsd.Lux.UsdLuxDomeLight.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Lux.UsdLuxDomeLight
+static OpenUsd.Lux.UsdLuxRectLight.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Lux.UsdLuxRectLight value) -> bool
+static OpenUsd.Lux.UsdLuxRectLight.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Lux.UsdLuxRectLight
+static OpenUsd.Lux.UsdLuxSphereLight.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Lux.UsdLuxSphereLight value) -> bool
+static OpenUsd.Lux.UsdLuxSphereLight.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Lux.UsdLuxSphereLight
+static OpenUsd.Lux.UsdLuxStageExtensions.DefineCylinderLight(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Lux.UsdLuxCylinderLight
+static OpenUsd.Lux.UsdLuxStageExtensions.DefineDiskLight(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Lux.UsdLuxDiskLight
+static OpenUsd.Lux.UsdLuxStageExtensions.DefineDistantLight(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Lux.UsdLuxDistantLight
+static OpenUsd.Lux.UsdLuxStageExtensions.DefineDomeLight(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Lux.UsdLuxDomeLight
+static OpenUsd.Lux.UsdLuxStageExtensions.DefineRectLight(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Lux.UsdLuxRectLight
+static OpenUsd.Lux.UsdLuxStageExtensions.DefineSphereLight(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Lux.UsdLuxSphereLight
+static OpenUsd.OpenUsdInfo.Version.get -> string!
+static OpenUsd.Shade.UsdPreviewSurface.Create(OpenUsd.UsdStage! stage, string! materialPath, string! shaderPath) -> OpenUsd.Shade.UsdPreviewSurface
+static OpenUsd.Shade.UsdShadeConnection.operator !=(OpenUsd.Shade.UsdShadeConnection left, OpenUsd.Shade.UsdShadeConnection right) -> bool
+static OpenUsd.Shade.UsdShadeConnection.operator ==(OpenUsd.Shade.UsdShadeConnection left, OpenUsd.Shade.UsdShadeConnection right) -> bool
+static OpenUsd.Shade.UsdShadeMaterial.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Shade.UsdShadeMaterial value) -> bool
+static OpenUsd.Shade.UsdShadeMaterial.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Shade.UsdShadeMaterial
+static OpenUsd.Shade.UsdShadeShader.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Shade.UsdShadeShader value) -> bool
+static OpenUsd.Shade.UsdShadeShader.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Shade.UsdShadeShader
+static OpenUsd.Shade.UsdShadeStageExtensions.DefineMaterial(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Shade.UsdShadeMaterial
+static OpenUsd.Shade.UsdShadeStageExtensions.DefineShader(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Shade.UsdShadeShader
+static OpenUsd.Shade.UsdShadeStageExtensions.GetDirectlyBoundMaterial(this OpenUsd.UsdStage! stage, OpenUsd.UsdPrim prim) -> OpenUsd.Shade.UsdShadeMaterial
+static OpenUsd.Shade.UsdUvTexture.Create(OpenUsd.UsdStage! stage, string! shaderPath, OpenUsd.UsdAssetPath assetPath) -> OpenUsd.Shade.UsdUvTexture
+static OpenUsd.Skel.UsdSkelAnimation.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Skel.UsdSkelAnimation value) -> bool
+static OpenUsd.Skel.UsdSkelAnimation.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Skel.UsdSkelAnimation
+static OpenUsd.Skel.UsdSkelBinding.Apply(OpenUsd.UsdPrim prim) -> OpenUsd.Skel.UsdSkelBinding
+static OpenUsd.Skel.UsdSkelBinding.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Skel.UsdSkelBinding value) -> bool
+static OpenUsd.Skel.UsdSkelBinding.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Skel.UsdSkelBinding
+static OpenUsd.Skel.UsdSkelJointInfluences.operator !=(OpenUsd.Skel.UsdSkelJointInfluences? left, OpenUsd.Skel.UsdSkelJointInfluences? right) -> bool
+static OpenUsd.Skel.UsdSkelJointInfluences.operator ==(OpenUsd.Skel.UsdSkelJointInfluences? left, OpenUsd.Skel.UsdSkelJointInfluences? right) -> bool
+static OpenUsd.Skel.UsdSkelRoot.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Skel.UsdSkelRoot value) -> bool
+static OpenUsd.Skel.UsdSkelRoot.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Skel.UsdSkelRoot
+static OpenUsd.Skel.UsdSkelSkeleton.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Skel.UsdSkelSkeleton value) -> bool
+static OpenUsd.Skel.UsdSkelSkeleton.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Skel.UsdSkelSkeleton
+static OpenUsd.Skel.UsdSkelStageExtensions.DefineAnimation(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Skel.UsdSkelAnimation
+static OpenUsd.Skel.UsdSkelStageExtensions.DefineSkeleton(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Skel.UsdSkelSkeleton
+static OpenUsd.Skel.UsdSkelStageExtensions.DefineSkelRoot(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Skel.UsdSkelRoot
+static OpenUsd.UsdAssetPath.operator !=(OpenUsd.UsdAssetPath left, OpenUsd.UsdAssetPath right) -> bool
+static OpenUsd.UsdAssetPath.operator ==(OpenUsd.UsdAssetPath left, OpenUsd.UsdAssetPath right) -> bool
+static OpenUsd.UsdAttributeValueState.operator !=(OpenUsd.UsdAttributeValueState left, OpenUsd.UsdAttributeValueState right) -> bool
+static OpenUsd.UsdAttributeValueState.operator ==(OpenUsd.UsdAttributeValueState left, OpenUsd.UsdAttributeValueState right) -> bool
+static OpenUsd.UsdBounds3d.Empty.get -> OpenUsd.UsdBounds3d
+static OpenUsd.UsdBounds3d.operator !=(OpenUsd.UsdBounds3d left, OpenUsd.UsdBounds3d right) -> bool
+static OpenUsd.UsdBounds3d.operator ==(OpenUsd.UsdBounds3d left, OpenUsd.UsdBounds3d right) -> bool
+static OpenUsd.UsdMatrix4d.CreateTranslation(double x, double y, double z) -> OpenUsd.UsdMatrix4d
+static OpenUsd.UsdMatrix4d.CreateTranslation(OpenUsd.UsdVec3d translation) -> OpenUsd.UsdMatrix4d
+static OpenUsd.UsdMatrix4d.Identity.get -> OpenUsd.UsdMatrix4d
+static OpenUsd.UsdMatrix4d.operator !=(OpenUsd.UsdMatrix4d left, OpenUsd.UsdMatrix4d right) -> bool
+static OpenUsd.UsdMatrix4d.operator ==(OpenUsd.UsdMatrix4d left, OpenUsd.UsdMatrix4d right) -> bool
+static OpenUsd.UsdPath.IsAbsolutePrimPath(string? path) -> bool
+static OpenUsd.UsdPath.ValidateAbsolutePrimPath(string? path, string! paramName = "path") -> void
+static OpenUsd.UsdPayloadArc.operator !=(OpenUsd.UsdPayloadArc left, OpenUsd.UsdPayloadArc right) -> bool
+static OpenUsd.UsdPayloadArc.operator ==(OpenUsd.UsdPayloadArc left, OpenUsd.UsdPayloadArc right) -> bool
+static OpenUsd.UsdQuatf.Identity.get -> OpenUsd.UsdQuatf
+static OpenUsd.UsdQuatf.operator !=(OpenUsd.UsdQuatf left, OpenUsd.UsdQuatf right) -> bool
+static OpenUsd.UsdQuatf.operator ==(OpenUsd.UsdQuatf left, OpenUsd.UsdQuatf right) -> bool
+static OpenUsd.UsdStage.Create(string! path) -> OpenUsd.UsdStage!
+static OpenUsd.UsdStage.Open(string! path) -> OpenUsd.UsdStage!
+static OpenUsd.UsdStage.OpenMasked(string! path, System.ReadOnlySpan<string!> maskPaths) -> OpenUsd.UsdStage!
+static OpenUsd.UsdStageChange.operator !=(OpenUsd.UsdStageChange left, OpenUsd.UsdStageChange right) -> bool
+static OpenUsd.UsdStageChange.operator ==(OpenUsd.UsdStageChange left, OpenUsd.UsdStageChange right) -> bool
+static OpenUsd.UsdStageScheduler.Create(string! path, int capacity = 1024) -> OpenUsd.UsdStageScheduler!
+static OpenUsd.UsdStageScheduler.Create(string! path, int capacity, int notificationCapacity) -> OpenUsd.UsdStageScheduler!
+static OpenUsd.UsdStageScheduler.Open(string! path, int capacity = 1024) -> OpenUsd.UsdStageScheduler!
+static OpenUsd.UsdStageScheduler.Open(string! path, int capacity, int notificationCapacity) -> OpenUsd.UsdStageScheduler!
+static OpenUsd.UsdVec2f.operator !=(OpenUsd.UsdVec2f left, OpenUsd.UsdVec2f right) -> bool
+static OpenUsd.UsdVec2f.operator ==(OpenUsd.UsdVec2f left, OpenUsd.UsdVec2f right) -> bool
+static OpenUsd.UsdVec3d.operator !=(OpenUsd.UsdVec3d left, OpenUsd.UsdVec3d right) -> bool
+static OpenUsd.UsdVec3d.operator ==(OpenUsd.UsdVec3d left, OpenUsd.UsdVec3d right) -> bool
+static OpenUsd.UsdVec3f.operator !=(OpenUsd.UsdVec3f left, OpenUsd.UsdVec3f right) -> bool
+static OpenUsd.UsdVec3f.operator ==(OpenUsd.UsdVec3f left, OpenUsd.UsdVec3f right) -> bool
+~override OpenUsd.Geom.UsdExtent3f.Equals(object obj) -> bool
+~override OpenUsd.Geom.UsdExtent3f.ToString() -> string
+~override OpenUsd.Geom.UsdGeomCameraState.Equals(object obj) -> bool
+~override OpenUsd.Geom.UsdGeomCameraState.ToString() -> string
+~override OpenUsd.Shade.UsdShadeConnection.Equals(object obj) -> bool
+~override OpenUsd.Shade.UsdShadeConnection.ToString() -> string
+~override OpenUsd.UsdAssetPath.Equals(object obj) -> bool
+~override OpenUsd.UsdAttributeValueState.Equals(object obj) -> bool
+~override OpenUsd.UsdAttributeValueState.ToString() -> string
+~override OpenUsd.UsdPayloadArc.Equals(object obj) -> bool
+~override OpenUsd.UsdPayloadArc.ToString() -> string
+~override OpenUsd.UsdStageChange.Equals(object obj) -> bool
+~override OpenUsd.UsdStageChange.ToString() -> string
+~override OpenUsd.UsdVec3d.Equals(object obj) -> bool

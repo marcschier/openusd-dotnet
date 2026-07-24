@@ -1,0 +1,59 @@
+## .NET and build output
+.dotnet/
+global.json.bak
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+artifacts/
+publish/
+*.user
+*.suo
+*.userprefs
+
+## Native build output and dependencies
+native/build/
+native/install/
+native/downloads/
+native/src/
+native/.cache/
+CMakeUserPresets.json
+compile_commands.json
+*.ilk
+*.obj
+*.pdb
+*.dSYM/
+
+## Test, coverage, and benchmarks
+[Tt]est[Rr]esult*/
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.cobertura.xml
+BenchmarkDotNet.Artifacts/
+/.scratch-*/
+/*-results.txt
+/test-verification-report.txt
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+
+## NuGet
+*.nupkg
+*.snupkg
+.packages/
+**/packages/*
+!**/packages/build/
+
+## OS
+.DS_Store
+Thumbs.db

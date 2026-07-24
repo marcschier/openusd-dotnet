@@ -1,0 +1,95 @@
+name: release gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ 'release/**' ]
+    tags: [ 'v*' ]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  shaders:
+    uses: ./.github/workflows/shaders.yml
+
+  native:
+    uses: ./.github/workflows/native.yml
+
+  performance:
+    uses: ./.github/workflows/performance.yml
+
+  packages:
+    needs: [ ci, shaders, native ]
+    uses: ./.github/workflows/package.yml
+    with:
+      native-pipeline-run-id: ${{ github.run_id }}
+      linux-native-source: archive
+      macos-native-source: archive
+
+  render:
+    needs: packages
+    uses: ./.github/workflows/render.yml
+    with:
+      native-pipeline-run-id: ${{ github.run_id }}
+      native-source: archive
+
+  aggregate:
+    name: aggregate release evidence
+    if: always()
+    needs: [ ci, shaders, native, performance, packages, render ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Write release gate evidence
+        shell: pwsh
+        run: |
+          $results = [ordered]@{
+            schemaVersion = 1
+            repository = '${{ github.repository }}'
+            commit = '${{ github.sha }}'
+            ref = '${{ github.ref }}'
+            runId = '${{ github.run_id }}'
+            runAttempt = '${{ github.run_attempt }}'
+            completedAt = [DateTimeOffset]::UtcNow.ToString('O')
+            jobs = [ordered]@{
+              ci = '${{ needs.ci.result }}'
+              shaders = '${{ needs.shaders.result }}'
+              native = '${{ needs.native.result }}'
+              performance = '${{ needs.performance.result }}'
+              packages = '${{ needs.packages.result }}'
+              render = '${{ needs.render.result }}'
+            }
+          }
+          $root = 'artifacts/release-gate'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $path = Join-Path $root 'release-gate.json'
+          $results | ConvertTo-Json -Depth 5 | Set-Content $path
+      - name: Upload release gate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-gate-${{ github.run_id }}
+          path: artifacts/release-gate/release-gate.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Require every release gate
+        shell: pwsh
+        run: |
+          $results = @(
+            '${{ needs.ci.result }}',
+            '${{ needs.shaders.result }}',
+            '${{ needs.native.result }}',
+            '${{ needs.performance.result }}',
+            '${{ needs.packages.result }}',
+            '${{ needs.render.result }}')
+          if ($results | Where-Object { $_ -cne 'success' }) {
+            throw "Release gates failed: $($results -join ', ')."
+          }

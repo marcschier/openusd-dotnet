@@ -1,0 +1,98 @@
+#nullable enable
+const OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.IOSurfaceHandleType = "IOSurfaceRef" -> string!
+const OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.SharedEventHandleType = "MetalSharedEvent" -> string!
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.ActiveFrames.get -> int
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.ActiveFrames.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.ActiveGenerations.get -> int
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.ActiveGenerations.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.Deconstruct(out bool ProbeSucceeded, out int ActiveGenerations, out int ActiveFrames, out long PresentedFrames, out long RingReuseFrames, out long RenderCallbacks, out ulong LastSceneRevision, out int LastDrawCount, out long LastTriangleCount, out int LastWidth, out int LastHeight, out long LastAllocationId, out string? DeviceLossReason) -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.DeviceLossReason.get -> string?
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.DeviceLossReason.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.Equals(OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics other) -> bool
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastAllocationId.get -> long
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastAllocationId.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastDrawCount.get -> int
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastDrawCount.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastHeight.get -> int
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastHeight.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastSceneRevision.get -> ulong
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastSceneRevision.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastTriangleCount.get -> long
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastTriangleCount.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastWidth.get -> int
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.LastWidth.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.MetalCompositionPresenterDiagnostics() -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.MetalCompositionPresenterDiagnostics(bool ProbeSucceeded, int ActiveGenerations, int ActiveFrames, long PresentedFrames, long RingReuseFrames, long RenderCallbacks, ulong LastSceneRevision, int LastDrawCount, long LastTriangleCount, int LastWidth, int LastHeight, long LastAllocationId, string? DeviceLossReason) -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.PresentedFrames.get -> long
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.PresentedFrames.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.ProbeSucceeded.get -> bool
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.ProbeSucceeded.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.RenderCallbacks.get -> long
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.RenderCallbacks.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.RingReuseFrames.get -> long
+OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.RingReuseFrames.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderCallback
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderContext
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderContext.AllocationId.get -> long
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderContext.CancellationToken.get -> System.Threading.CancellationToken
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderContext.ColorTarget.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderContext.DepthTarget.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderContext.FrameIndex.get -> int
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderContext.Renderer.get -> OpenUsd.Rendering.Silk.SilkMeshRenderer!
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderContext.UseCount.get -> int
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.Deconstruct(out ulong SceneRevision, out OpenUsd.Rendering.Silk.SilkMeshRenderResult MeshRenderResult) -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.Equals(OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult other) -> bool
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.MeshRenderResult.get -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.MeshRenderResult.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.MetalCompositionRenderResult() -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.MetalCompositionRenderResult(ulong SceneRevision, OpenUsd.Rendering.Silk.SilkMeshRenderResult MeshRenderResult) -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.SceneRevision.get -> ulong
+OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.SceneRevision.init -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter
+OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.CreateGenerationAsync(OpenUsd.Rendering.ViewportDimensions size, int frameCount, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.ICompositionPresentationGeneration!>
+OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.DisposeAsync() -> System.Threading.Tasks.ValueTask
+OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.GetDiagnostics() -> OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics
+OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.MetalCompositionViewportPresenter(bool required = false) -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.MetalCompositionViewportPresenter(OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderCallback! renderCallback, bool required = false) -> void
+OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.ProbeAsync(OpenUsd.Rendering.CompositionPresentationTarget! target, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.CompositionPresenterProbeResult>
+OpenUsd.Rendering.Silk.Metal.MetalCompositionViewportPresenter.RenderAsync(OpenUsd.Rendering.ICompositionPresentationFrame! frame, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.CompositionFrameRenderResult>
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.Backend.get -> OpenUsd.Rendering.Silk.SilkGraphicsBackend
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.Capabilities.get -> OpenUsd.Rendering.Silk.SilkGraphicsCapabilities
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateBindingLayout(OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsBindingLayout!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateBuffer(nuint size, OpenUsd.Rendering.Silk.SilkBufferUsage usage) -> OpenUsd.Rendering.Silk.ISilkGraphicsBuffer!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateCommandList() -> OpenUsd.Rendering.Silk.ISilkGraphicsCommandList!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateComputeBindingLayout(OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkComputeBindingLayout!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateComputePipeline(OpenUsd.Rendering.Silk.SilkComputePipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkComputePipeline!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateComputeShaderProgram(OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkComputeShaderProgram!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateGraphicsPipeline(OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsPipeline!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreatePickGraphicsPipeline(OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkPickGraphicsPipeline!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreatePickReadbackBuffer() -> OpenUsd.Rendering.Silk.ISilkPickReadbackBuffer!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateSampler(OpenUsd.Rendering.Silk.SilkSamplerDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsSampler!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateSelectionMaskGraphicsPipeline(OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkSelectionMaskGraphicsPipeline!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateSelectionOutlineBinding(OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkSelectionOutlineBinding!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateSelectionOutlineGraphicsPipeline(OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkSelectionOutlineGraphicsPipeline!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateShaderModule(OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsShaderModule!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateShaderProgram(OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsShaderProgram!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateTexture2D(OpenUsd.Rendering.Silk.SilkTextureDescriptor descriptor) -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.CreateTexture2D(uint width, uint height, OpenUsd.Rendering.Silk.SilkTextureFormat format = OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba8Unorm) -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.Dispose() -> void
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.PickDeviceGeneration.get -> ulong
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.SelectionOutlineCapabilities.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.SelectionOutlineDeviceGeneration.get -> ulong
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.Submit(OpenUsd.Rendering.Silk.ISilkGraphicsCommandList! commandList) -> OpenUsd.Rendering.Silk.ISilkGraphicsSubmission!
+OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.WaitIdle() -> void
+override OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.GetHashCode() -> int
+static OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.operator !=(OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics left, OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics right) -> bool
+static OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.operator ==(OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics left, OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics right) -> bool
+static OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.operator !=(OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult left, OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult right) -> bool
+static OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.operator ==(OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult left, OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult right) -> bool
+static OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice.Create() -> OpenUsd.Rendering.Silk.Metal.MetalSilkGraphicsDevice!
+virtual OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderCallback.Invoke(OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderContext! context) -> OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult
+~override OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.Metal.MetalCompositionPresenterDiagnostics.ToString() -> string
+~override OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.Metal.MetalCompositionRenderResult.ToString() -> string

@@ -1,0 +1,15 @@
+<Project>
+
+  <PropertyGroup>
+    <_OpenUsdCoreOsxArm64ResourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/osx-arm64/resources'))</_OpenUsdCoreOsxArm64ResourceRoot>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == 'osx-arm64'">
+    <Content Include="$(_OpenUsdCoreOsxArm64ResourceRoot)/**/*">
+      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

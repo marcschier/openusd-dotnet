@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenUsd.Runtime.Core.linux-x64/OpenUsd.Runtime.Core.linux-x64.csproj" IncludeAssets="all" PrivateAssets="none" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackageId>OpenUsd.Runtime.Imaging.linux-x64</PackageId>
+    <Description>OpenUSD Hydra, renderer, and hdSilk native runtime resources for Linux x64.</Description>
+    <PackageTags>openusd;usd;hydra;rendering;native;runtime;linux;x64</PackageTags>
+    <RuntimePackageKind>Imaging</RuntimePackageKind>
+    <RuntimePackageRid>linux-x64</RuntimePackageRid>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <Import Project="../OpenUsd.Runtime.Packaging/OpenUsd.Runtime.Packaging.targets" />
+
+</Project>

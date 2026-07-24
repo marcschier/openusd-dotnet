@@ -1,0 +1,432 @@
+<Window
+    x:Class="OpenUsd.Viewer.MainWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenUsd.Viewer"
+    AutomationProperties.Name="OpenUsd Viewer"
+    Title="OpenUsd Viewer"
+    Width="1440"
+    Height="900"
+    MinWidth="960"
+    MinHeight="600">
+  <Grid RowDefinitions="Auto,*,Auto,Auto">
+    <Border
+        Grid.Row="0"
+        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+        BorderThickness="0,0,0,1"
+        Padding="8">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
+        <Menu Grid.Column="0" VerticalAlignment="Center">
+          <MenuItem Header="_File">
+            <MenuItem
+                x:Name="OpenStageMenuItem"
+                AutomationProperties.Name="Open stage"
+                Header="_Open Stage..." />
+            <MenuItem
+                x:Name="ReloadStageMenuItem"
+                AutomationProperties.Name="Reload current stage"
+                Header="_Reload Stage"
+                IsEnabled="False" />
+            <Separator />
+            <MenuItem x:Name="RecentStagesMenu" Header="Recent Stages" IsEnabled="False" />
+          </MenuItem>
+          <MenuItem Header="_View">
+            <MenuItem
+                x:Name="StagePanelMenuItem"
+                AutomationProperties.Name="Show stage panel"
+                Header="_Stage panel"
+                ToggleType="CheckBox"
+                IsChecked="True" />
+            <MenuItem
+                x:Name="InspectorPanelMenuItem"
+                AutomationProperties.Name="Show inspector panel"
+                Header="_Inspector panel"
+                ToggleType="CheckBox"
+                IsChecked="True" />
+            <MenuItem
+                x:Name="TimelineMenuItem"
+                AutomationProperties.Name="Show timeline"
+                Header="_Timeline"
+                ToggleType="CheckBox"
+                IsChecked="True" />
+            <MenuItem
+                x:Name="DiagnosticsMenuItem"
+                AutomationProperties.Name="Show diagnostics tab"
+                Header="_Diagnostics tab"
+                ToggleType="CheckBox"
+                IsChecked="True" />
+          </MenuItem>
+          <MenuItem Header="_Camera">
+            <MenuItem
+                x:Name="ResetCameraAutomaticMenuItem"
+                AutomationProperties.Name="Reset camera to automatic"
+                Header="Reset _Automatic"
+                IsEnabled="False" />
+            <MenuItem
+                x:Name="ResetCameraLegacyMenuItem"
+                AutomationProperties.Name="Use explicit legacy camera pose"
+                Header="Explicit _Legacy Pose"
+                IsEnabled="False" />
+            <MenuItem
+                x:Name="ToggleCameraProjectionMenuItem"
+                AutomationProperties.Name="Toggle camera projection"
+                Header="Toggle _Projection"
+                IsEnabled="False" />
+            <MenuItem
+                x:Name="UseSelectedCameraMenuItem"
+                AutomationProperties.Name="Use selected UsdGeomCamera"
+                Header="_Use Selected Camera"
+                IsEnabled="False"
+                ToolTip.Tip="Select a UsdGeomCamera prim to use its authored camera." />
+            <MenuItem
+                x:Name="FrameSelectedMenuItem"
+                AutomationProperties.Name="Frame selected prim"
+                Header="_Frame Selected"
+                IsEnabled="False" />
+          </MenuItem>
+        </Menu>
+        <Button
+            x:Name="OpenStageButton"
+            Grid.Column="1"
+            AutomationProperties.Name="Open stage"
+            Content="_Open"
+            ToolTip.Tip="Open a USD stage (Ctrl+O)" />
+        <Button
+            x:Name="ReloadStageButton"
+            Grid.Column="2"
+            AutomationProperties.Name="Reload current stage"
+            Content="_Reload"
+            IsEnabled="False"
+            ToolTip.Tip="Reload the current stage (Ctrl+R)" />
+        <ComboBox
+            x:Name="RendererSelector"
+            Grid.Column="3"
+            Width="180"
+            AutomationProperties.Name="Rendering backend"
+            SelectedIndex="0"
+            ToolTip.Tip="Select the rendering backend">
+          <ComboBoxItem Content="Automatic" Tag="Auto" />
+          <ComboBoxItem Content="Storm" Tag="Storm" />
+          <ComboBoxItem Content="Direct3D 12" Tag="D3D12" />
+          <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
+          <ComboBoxItem Content="Metal" Tag="Metal" />
+        </ComboBox>
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4">
+          <Button
+              x:Name="ResetCameraAutomaticButton"
+              AutomationProperties.Name="Reset camera to automatic"
+              Content="_Auto"
+              IsEnabled="False"
+              ToolTip.Tip="Reset to the backend automatic camera (Home)" />
+          <Button
+              x:Name="ResetCameraLegacyButton"
+              AutomationProperties.Name="Use explicit legacy camera pose"
+              Content="_Legacy"
+              IsEnabled="False"
+              ToolTip.Tip="Use the explicit legacy eye and projection" />
+          <Button
+              x:Name="ToggleCameraProjectionButton"
+              AutomationProperties.Name="Toggle camera projection"
+              Content="_Projection"
+              IsEnabled="False"
+              ToolTip.Tip="Toggle perspective or orthographic projection (P)" />
+          <Button
+              x:Name="UseSelectedCameraButton"
+              AutomationProperties.Name="Use selected UsdGeomCamera"
+              Content="_Use Camera"
+              IsEnabled="False"
+              ToolTip.Tip="Select a UsdGeomCamera prim to use its authored camera." />
+          <Button
+              x:Name="FrameSelectedButton"
+              AutomationProperties.Name="Frame selected prim"
+              Content="_Frame"
+              IsEnabled="False"
+              ToolTip.Tip="Frame the selected prim at the current time (F)" />
+        </StackPanel>
+        <TextBlock
+            x:Name="CameraStatus"
+            Grid.Column="6"
+            AutomationProperties.Name="Camera navigation state"
+            VerticalAlignment="Center"
+            Text="Camera: Automatic" />
+        <TextBlock
+            x:Name="StageStatus"
+            Grid.Column="7"
+            AutomationProperties.Name="Current stage"
+            VerticalAlignment="Center"
+            Text="No stage loaded" />
+      </Grid>
+    </Border>
+
+    <Grid x:Name="MainContentGrid" Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="280" />
+        <ColumnDefinition Width="5" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="5" />
+        <ColumnDefinition Width="340" />
+      </Grid.ColumnDefinitions>
+      <Border x:Name="StagePanel" Grid.Column="0" Padding="8">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+          <TextBlock FontSize="16" FontWeight="SemiBold" Text="Stage" />
+          <TextBlock
+              x:Name="StageIdentity"
+              Grid.Row="1"
+              Margin="0,6,0,0"
+              AutomationProperties.Name="Stage identity"
+              Text="Identity: —"
+              TextWrapping="Wrap" />
+          <TextBlock
+              x:Name="StageStatistics"
+              Grid.Row="2"
+              Margin="0,4,0,0"
+              AutomationProperties.Name="Stage statistics"
+              Text="Statistics: —"
+              TextWrapping="Wrap" />
+          <TextBox
+              x:Name="HierarchyFilter"
+              Grid.Row="3"
+              Margin="0,8,0,0"
+              AutomationProperties.Name="Filter stage hierarchy"
+              PlaceholderText="Filter paths or names"
+              ToolTip.Tip="Matching prims and their ancestors remain visible" />
+          <TextBlock
+              x:Name="HierarchyState"
+              Grid.Row="4"
+              Margin="0,8,0,0"
+              AutomationProperties.Name="Stage hierarchy state"
+              Text="Open or drop a USD stage to inspect its prims."
+              TextWrapping="Wrap" />
+          <TreeView
+              x:Name="StageHierarchy"
+              Grid.Row="5"
+              Margin="0,8,0,0"
+              AutomationProperties.Name="Stage hierarchy"
+              IsVisible="False" />
+        </Grid>
+      </Border>
+
+      <GridSplitter
+          x:Name="StagePanelSplitter"
+          Grid.Column="1"
+          AutomationProperties.Name="Resize stage panel"
+          ResizeDirection="Columns" />
+
+      <Border
+          Grid.Column="2"
+          Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+          BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+          BorderThickness="1">
+        <local:RendererSwitchingViewport
+            x:Name="ViewportHost"
+            AutomationProperties.Name="Rendered stage viewport" />
+      </Border>
+
+      <GridSplitter
+          x:Name="InspectorPanelSplitter"
+          Grid.Column="3"
+          AutomationProperties.Name="Resize inspector panel"
+          ResizeDirection="Columns" />
+
+      <Border x:Name="InspectorPanel" Grid.Column="4" Padding="8">
+        <TabControl
+            x:Name="InspectorTabs"
+            AutomationProperties.Name="Stage details tabs"
+            SelectedIndex="0">
+          <TabItem x:Name="PropertiesTab" Header="_Properties">
+            <ScrollViewer Margin="0,8,0,0">
+              <StackPanel
+                  x:Name="InspectorRows"
+                  AutomationProperties.Name="Selected prim properties, variants, payloads, and session controls"
+                  Spacing="6">
+                <TextBlock
+                    x:Name="InspectorState"
+                    Text="Select a prim to inspect metadata and attributes."
+                    TextWrapping="Wrap" />
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+          <TabItem x:Name="LayersTab" Header="_Layers">
+            <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,Auto,Auto,*">
+              <TextBlock
+                  x:Name="LayerEditTarget"
+                  AutomationProperties.Name="Current edit target"
+                  Text="Edit target: —"
+                  TextWrapping="Wrap" />
+              <StackPanel Grid.Row="1" Margin="0,8,0,0" Orientation="Horizontal" Spacing="8">
+                <Button
+                    x:Name="SetSessionEditTargetButton"
+                    AutomationProperties.Name="Use session layer for edits"
+                    Content="Edit _Session"
+                    IsEnabled="False" />
+                <Button
+                    x:Name="SetRootEditTargetButton"
+                    AutomationProperties.Name="Explicitly enable in-memory root layer edits"
+                    Content="Enable _Root Edits"
+                    IsEnabled="False" />
+              </StackPanel>
+              <TextBlock
+                  x:Name="RootEditWarning"
+                  Grid.Row="2"
+                  Margin="0,8,0,0"
+                  AutomationProperties.Name="Root edit policy"
+                  Text="Prim controls author to the session layer by default. Root edits require the explicit button above and are never saved automatically."
+                  TextWrapping="Wrap" />
+              <TextBlock
+                  x:Name="LayersState"
+                  Grid.Row="3"
+                  Margin="0,8,0,0"
+                  Text="Open a USD stage to inspect its local layer stack."
+                  TextWrapping="Wrap" />
+              <ScrollViewer Grid.Row="4" Margin="0,8,0,0">
+                <StackPanel x:Name="LayersRows" Spacing="8" />
+              </ScrollViewer>
+            </Grid>
+          </TabItem>
+          <TabItem x:Name="DiagnosticsTab" Header="_Diagnostics">
+            <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    x:Name="CopyDiagnosticsButton"
+                    AutomationProperties.Name="Copy redacted diagnostics"
+                    Content="_Copy"
+                    IsEnabled="False" />
+                <Button
+                    x:Name="ExportDiagnosticsButton"
+                    AutomationProperties.Name="Export redacted diagnostics"
+                    Content="_Export..."
+                    IsEnabled="False" />
+                <CheckBox
+                    x:Name="IncludeDiagnosticPathsCheckBox"
+                    AutomationProperties.Name="Include source and user paths in diagnostics"
+                    Content="Include paths" />
+              </StackPanel>
+              <TextBlock
+                  x:Name="DiagnosticsState"
+                  Grid.Row="1"
+                  Margin="0,8,0,0"
+                  Text="Diagnostics are sampled from normal rendering at a bounded cadence."
+                  TextWrapping="Wrap" />
+              <TextBox
+                  x:Name="DiagnosticsText"
+                  Grid.Row="2"
+                  Margin="0,8,0,0"
+                  AutomationProperties.Name="Latest viewer diagnostics"
+                  AcceptsReturn="True"
+                  IsReadOnly="True"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                  Text="No diagnostics have been sampled."
+                  TextWrapping="NoWrap" />
+            </Grid>
+          </TabItem>
+          <TabItem x:Name="SettingsTab" Header="_Settings">
+            <ScrollViewer Margin="0,8,0,0">
+              <StackPanel Spacing="8">
+                <TextBlock
+                    FontWeight="SemiBold"
+                    Text="Viewer layout and accessibility" />
+                <CheckBox
+                    x:Name="StagePanelCheckBox"
+                    AutomationProperties.Name="Show stage panel"
+                    Content="Show stage panel"
+                    IsChecked="True" />
+                <CheckBox
+                    x:Name="InspectorPanelCheckBox"
+                    AutomationProperties.Name="Show inspector panel"
+                    Content="Show inspector panel"
+                    IsChecked="True" />
+                <CheckBox
+                    x:Name="TimelineCheckBox"
+                    AutomationProperties.Name="Show timeline"
+                    Content="Show timeline"
+                    IsChecked="True" />
+                <CheckBox
+                    x:Name="DiagnosticsCheckBox"
+                    AutomationProperties.Name="Show diagnostics tab"
+                    Content="Show diagnostics tab"
+                    IsChecked="True" />
+                <CheckBox
+                    x:Name="SnapTimelineCheckBox"
+                    AutomationProperties.Name="Snap manual timeline changes to authored frames"
+                    Content="Snap manual time changes to authored frames" />
+                <TextBlock
+                    x:Name="SettingsState"
+                    Text="Settings are saved atomically when the Viewer closes."
+                    TextWrapping="Wrap" />
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+        </TabControl>
+      </Border>
+    </Grid>
+
+    <Border
+        x:Name="TimelinePanel"
+        Grid.Row="2"
+        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+        BorderThickness="0,1,0,0"
+        Padding="8,6">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="10">
+        <Button
+            x:Name="PlayPauseButton"
+            AutomationProperties.Name="Play timeline"
+            Content="_Play"
+            IsEnabled="False"
+            ToolTip.Tip="Play or pause the authored timeline (Space)" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <TextBlock VerticalAlignment="Center" Text="Time" />
+          <TextBox
+              x:Name="CurrentTimeInput"
+              Width="110"
+              AutomationProperties.Name="Current time code"
+              IsEnabled="False"
+              ToolTip.Tip="Enter an invariant numeric USD time code" />
+        </StackPanel>
+        <TextBlock
+            x:Name="TimelineStart"
+            Grid.Column="2"
+            VerticalAlignment="Center"
+            Text="Start: —" />
+        <Slider
+            x:Name="TimelineSlider"
+            Grid.Column="3"
+            AutomationProperties.Name="Timeline time code"
+            IsEnabled="False"
+            Minimum="0"
+            Maximum="1"
+            Value="0" />
+        <StackPanel Grid.Column="4" MinWidth="260">
+          <TextBlock
+              x:Name="TimelineEndAndRate"
+              HorizontalAlignment="Right"
+              Text="End: — · FPS: — · TCPS: —" />
+          <TextBlock
+              x:Name="TimelineDiagnostic"
+              HorizontalAlignment="Right"
+              TextWrapping="Wrap" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border
+        Grid.Row="3"
+        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+        BorderThickness="0,1,0,0"
+        Padding="8,4">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16">
+        <TextBlock x:Name="ViewerStatus" AutomationProperties.Name="Viewer status" Text="Ready" />
+        <TextBlock
+            x:Name="CompositionStatus"
+            Grid.Column="1"
+            AutomationProperties.Name="Composition status"
+            Text="GPU: probing" />
+        <TextBlock
+            x:Name="RendererStatus"
+            Grid.Column="2"
+            AutomationProperties.Name="Renderer status"
+            Text="Renderer: unavailable" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

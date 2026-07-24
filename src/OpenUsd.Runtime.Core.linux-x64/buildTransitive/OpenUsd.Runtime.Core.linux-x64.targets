@@ -1,0 +1,15 @@
+<Project>
+
+  <PropertyGroup>
+    <_OpenUsdCoreLinuxX64ResourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/linux-x64/resources'))</_OpenUsdCoreLinuxX64ResourceRoot>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == 'linux-x64'">
+    <Content Include="$(_OpenUsdCoreLinuxX64ResourceRoot)/**/*">
+      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

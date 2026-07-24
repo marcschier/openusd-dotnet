@@ -1,0 +1,120 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    endTimeCode = 24
+    framesPerSecond = 24
+    startTimeCode = 0
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "Backdrop"
+    {
+        uniform bool doubleSided = 1
+        float3[] extent = [(-6, -4, -2), (6, 4, -2)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        color3f[] primvars:displayColor = [(0.08, 0.12, 0.24)] (
+            interpolation = "constant"
+        )
+        point3f[] points = [(-6, -4, -2), (6, -4, -2), (6, 4, -2), (-6, 4, -2)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Cube "Cube"
+    {
+        color3f[] primvars:displayColor = [(0.9, 0.16, 0.08)] (
+            interpolation = "constant"
+        )
+        double size = 2.5
+        matrix4d xformOp:transform = (
+            (1, 0, 0, 0),
+            (0, 1, 0, 0),
+            (0, 0, 1, 0),
+            (-1.65, -0.35, 0, 1)
+        )
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+    }
+
+    def Cube "Marker"
+    {
+        color3f[] primvars:displayColor = [(0.1, 0.85, 0.28)] (
+            interpolation = "constant"
+        )
+        double size = 1.35
+        matrix4d xformOp:transform = (
+            (1, 0, 0, 0),
+            (0, 1, 0, 0),
+            (0, 0, 1, 0),
+            (2.2, 1.15, 0.75, 1)
+        )
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+    }
+
+    def Xform "CameraRig"
+    {
+        matrix4d xformOp:transform = (
+            (1, 0, 0, 0),
+            (0, 1, 0, 0),
+            (0, 0, 1, 0),
+            (1.5, -0.75, 0.5, 1)
+        )
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+
+        def Xform "Offset"
+        {
+            matrix4d xformOp:transform = (
+                (1, 0, 0, 0),
+                (0, 1, 0, 0),
+                (0, 0, 1, 0),
+                (0.5, 0.25, 0, 1)
+            )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def Camera "ShotCamera"
+            {
+                float2 clippingRange = (0.1, 100)
+                float fStop.timeSamples = {
+                    0: 2.8,
+                    24: 5.6,
+                }
+                float focalLength.timeSamples = {
+                    0: 45,
+                    24: 28,
+                }
+                float focusDistance.timeSamples = {
+                    0: 12,
+                    24: 8,
+                }
+                float horizontalAperture = 24
+                float horizontalApertureOffset.timeSamples = {
+                    0: 1.5,
+                    24: -1.25,
+                }
+                token projection = "perspective"
+                float verticalAperture = 18
+                float verticalApertureOffset.timeSamples = {
+                    0: -0.75,
+                    24: 0.5,
+                }
+                matrix4d xformOp:transform.timeSamples = {
+                    0: (
+                        (1, 0, 0, 0),
+                        (0, 1, 0, 0),
+                        (0, 0, 1, 0),
+                        (-2, 0.5, 11.5, 1)
+                    ),
+                    24: (
+                        (1, 0, 0, 0),
+                        (0, 1, 0, 0),
+                        (0, 0, 1, 0),
+                        (-0.75, 1, 7.5, 1)
+                    ),
+                }
+                uniform token[] xformOpOrder = ["xformOp:transform"]
+            }
+        }
+    }
+}

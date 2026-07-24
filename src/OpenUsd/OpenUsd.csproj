@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd.Interop\OpenUsd.Interop.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd</AssemblyName>
+    <RootNamespace>OpenUsd</RootNamespace>
+    <Description>Idiomatic, high-performance .NET API for OpenUSD stages, layers, prims, properties, composition, and common schemas.</Description>
+    <PackageTags>openusd;usd;pixar;3d;scene-description;nativeaot</PackageTags>
+  </PropertyGroup>
+
+</Project>

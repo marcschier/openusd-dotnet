@@ -1,0 +1,108 @@
+add_library(openusd_dotnet SHARED
+    include/openusd_dotnet.h
+    private/openusd_renderer_stage_bridge.h
+    src/openusd_dotnet.cpp)
+
+function(configure_openusd_dotnet_target target_name)
+    target_compile_features(${target_name} PRIVATE cxx_std_17)
+    target_compile_definitions(${target_name} PRIVATE OPENUSD_DOTNET_BUILD)
+    target_include_directories(${target_name}
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>)
+    target_include_directories(
+        ${target_name}
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/private)
+    target_link_libraries(${target_name} PRIVATE usd_m)
+    if(TARGET openusd_native_sanitizers)
+        target_link_libraries(${target_name} PRIVATE openusd_native_sanitizers)
+    endif()
+
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /W4 /WX /permissive-)
+    else()
+        target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+endfunction()
+
+configure_openusd_dotnet_target(openusd_dotnet)
+
+if(OPENUSD_BUILD_NATIVE_FUZZERS)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
+       NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        message(
+            FATAL_ERROR
+            "OPENUSD_BUILD_NATIVE_FUZZERS requires Linux with Clang and libFuzzer.")
+    endif()
+
+    target_compile_options(
+        openusd_dotnet
+        PRIVATE
+            -fsanitize=fuzzer-no-link,address,undefined
+            -fno-omit-frame-pointer
+            -fno-sanitize-recover=all)
+    target_link_options(
+        openusd_dotnet
+        PRIVATE
+            -fsanitize=address,undefined
+            -fno-sanitize-recover=all)
+
+    add_executable(
+        openusd_stage_layer_fuzzer
+        tests/fuzz/stage_layer_fuzzer.cpp)
+    target_compile_features(openusd_stage_layer_fuzzer PRIVATE cxx_std_17)
+    target_link_libraries(openusd_stage_layer_fuzzer PRIVATE openusd_dotnet)
+    target_compile_options(
+        openusd_stage_layer_fuzzer
+        PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Werror
+            -fsanitize=fuzzer,address,undefined
+            -fno-omit-frame-pointer
+            -fno-sanitize-recover=all)
+    target_link_options(
+        openusd_stage_layer_fuzzer
+        PRIVATE
+            -fsanitize=fuzzer,address,undefined
+            -fno-sanitize-recover=all)
+    set_target_properties(
+        openusd_stage_layer_fuzzer
+        PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/fuzz")
+endif()
+
+if(OPENUSD_BUILD_NATIVE_TESTS)
+    add_library(openusd_dotnet_test STATIC
+        include/openusd_dotnet.h
+        private/openusd_renderer_stage_bridge.h
+        tests/openusd_dotnet_test_hooks.h
+        src/openusd_dotnet.cpp)
+    configure_openusd_dotnet_target(openusd_dotnet_test)
+    target_compile_definitions(
+        openusd_dotnet_test
+        PRIVATE OPENUSD_DOTNET_ENABLE_TEST_HOOKS)
+    target_include_directories(
+        openusd_dotnet_test
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+
+    add_library(openusd_dotnet_renderer_test SHARED
+        include/openusd_dotnet.h
+        private/openusd_renderer_stage_bridge.h
+        tests/openusd_dotnet_test_hooks.h
+        src/openusd_dotnet.cpp)
+    configure_openusd_dotnet_target(openusd_dotnet_renderer_test)
+    target_compile_definitions(
+        openusd_dotnet_renderer_test
+        PRIVATE OPENUSD_DOTNET_ENABLE_TEST_HOOKS)
+    target_include_directories(
+        openusd_dotnet_renderer_test
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+endif()
+
+include(GNUInstallDirs)
+install(TARGETS openusd_dotnet
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(FILES include/openusd_dotnet.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

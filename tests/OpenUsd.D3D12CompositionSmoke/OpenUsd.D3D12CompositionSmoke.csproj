@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Intentionally standalone; add to OpenUsd.slnx after parallel integration work settles. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenUsd\OpenUsd.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Rendering.Silk\OpenUsd.Rendering.Silk.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Rendering.Silk.D3D12\OpenUsd.Rendering.Silk.D3D12.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Viewer\OpenUsd.Viewer.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>OpenUsd.D3D12CompositionSmoke</AssemblyName>
+    <RootNamespace>OpenUsd.D3D12CompositionSmoke</RootNamespace>
+    <IsApplicationProject>true</IsApplicationProject>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- NativeAOT reports NETSDK1150 because this executable references the framework-dependent
+         OpenUsd.Viewer executable; the real composition gate intentionally remains framework-dependent. -->
+    <PublishAot Condition="'$(AotProbe)' == 'true'">true</PublishAot>
+  </PropertyGroup>
+
+</Project>
