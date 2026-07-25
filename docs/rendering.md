@@ -494,7 +494,7 @@ downstream handler when the dispatcher is already current.
 `.github/workflows/render.yml` runs all four proofs on their native hosts. Its `native-source` input either builds the
 OpenUSD commit and dependency inputs pinned by `eng/openusd.lock.json`, or consumes platform `tar.gz` archives supplied
 by explicit HTTPS URL and SHA-256 inputs. Archives must preserve `native/install/<rid>` and `native/install/shim/<rid>`
-at their root, including Unix links, executable modes, and the installed macOS Storm probe. The pinned `macos-15-arm64`
+at their root, including Unix links, executable modes, and the installed macOS Storm probe. The pinned `macos-15`
 gate runs the same native first/edit/preserved-frame probe for build and archive input, Cocoa
 input/threading/DPI/context-loss/teardown checks, actual Avalonia Storm/Metal switching, a signed package-only launch,
 non-zero Metal stage draws, and rejects every `STAGE_DRAW_BLOCKED` diagnostic. Artifacts include native probe,

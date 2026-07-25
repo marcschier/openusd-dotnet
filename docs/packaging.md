@@ -360,7 +360,7 @@ prerequisite into a test failure.
 | --- | --- | --- |
 | `windows-latest` | `win-x64` | MSVC x64, D3D12 WARP |
 | `ubuntu-latest` | `linux-x64` | clang, Ninja, X11/Wayland/OpenGL headers, locked SwiftShader from NuGet |
-| `macos-15-arm64` | `osx-arm64` | Xcode 16.4, CMake, Ninja, Metal |
+| `macos-15` | `osx-arm64` | Apple Silicon, Xcode 16.4, CMake, Ninja, Metal |
 
 Each job restores or builds its locked native install, verifies install
 metadata, builds the package tests, and directly runs all tests with required

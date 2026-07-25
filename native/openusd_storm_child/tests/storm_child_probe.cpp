@@ -12,6 +12,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -23,6 +24,9 @@ namespace
 using namespace openusd_storm_child_camera_test;
 
 constexpr wchar_t ParentClassName[] = L"OpenUsdStormChildProbeParent";
+constexpr char MissingWglCreateContextError[] =
+    "WGL_ARB_create_context is unavailable.";
+constexpr int CapabilityUnavailableExitCode = 125;
 
 bool Require(bool condition, const char* message)
 {
@@ -301,11 +305,20 @@ int main(int argc, char** argv)
             error_data);
     if (!passed)
     {
+        const bool capability_unavailable =
+            child == nullptr &&
+            std::strcmp(error_data, MissingWglCreateContextError) == 0;
         if (stage != nullptr)
         {
             openusd_stage_release(stage);
         }
         DestroyWindow(parent);
+        if (capability_unavailable)
+        {
+            std::cerr <<
+                "Skipping Storm child probe: WGL context creation is unavailable.\n";
+            return CapabilityUnavailableExitCode;
+        }
         return 5;
     }
     const openusd_render_camera automatic = AutomaticCamera();

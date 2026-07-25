@@ -271,7 +271,8 @@ public sealed class StormNativeChildHostTests
         await Assert.That(silkRunner).Contains("elseif ($MetalComposition)");
         await Assert.That(silkRunner)
             .Contains("& $executable --metal-composition $pluginPath $stagedStage $artifactPath");
-        await Assert.That(workflow).Contains("runs-on: macos-15-arm64");
+        await Assert.That(workflow).Contains("runs-on: macos-15");
+        await Assert.That(workflow).DoesNotContain("macos-15-intel");
         await Assert.That(workflow).Contains("-MetalComposition");
         await Assert.That(workflow)
             .Contains("MetalCompositionPresentationTests/*");

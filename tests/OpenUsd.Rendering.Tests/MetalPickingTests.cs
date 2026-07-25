@@ -154,7 +154,8 @@ public sealed class MetalPickingTests
         await Assert.That(project).DoesNotContain("six-entry");
         await Assert.That(workflow).Contains(
             "Validate ten-entry combined Metal library");
-        await Assert.That(workflow).Contains("runs-on: macos-15-arm64");
+        await Assert.That(workflow).Contains("runs-on: macos-15");
+        await Assert.That(workflow).DoesNotContain("macos-15-intel");
         await Assert.That(workflow).Contains(
             "-p:OpenUsdRequireMetalShaderLibrary=true");
     }

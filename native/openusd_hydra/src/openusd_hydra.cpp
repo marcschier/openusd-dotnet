@@ -194,7 +194,7 @@ public:
         }
     }
 
-    openusd_status Status() const noexcept
+    openusd_status RetainStatus() const noexcept
     {
         return _status;
     }
@@ -638,9 +638,9 @@ openusd_status openusd_storm_create_from_stage(
     return Guard(error, [&]()
     {
         StageRetainGuard stage_guard(stage, error);
-        if (stage_guard.Status() != OPENUSD_STATUS_OK)
+        if (stage_guard.RetainStatus() != OPENUSD_STATUS_OK)
         {
-            return stage_guard.Status();
+            return stage_guard.RetainStatus();
         }
         if (IsRendererCreateFailpoint("after-retain"))
         {

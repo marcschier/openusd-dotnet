@@ -9,6 +9,79 @@ namespace OpenUsd.Native.Tests;
 public sealed class NativeAbiVersionTests
 {
     [Test]
+    public async Task NativePlatformContractsHandleX11MacrosAndUnavailableWgl()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string hydraImplementation = await File.ReadAllTextAsync(Path.Combine(
+            repositoryRoot,
+            "native",
+            "openusd_hydra",
+            "src",
+            "openusd_hydra.cpp"));
+        string hydraTests = await File.ReadAllTextAsync(Path.Combine(
+            repositoryRoot,
+            "native",
+            "openusd_hydra",
+            "tests",
+            "CMakeLists.txt"));
+        string childTests = await File.ReadAllTextAsync(Path.Combine(
+            repositoryRoot,
+            "native",
+            "openusd_storm_child",
+            "tests",
+            "CMakeLists.txt"));
+        string hydraProbe = await File.ReadAllTextAsync(Path.Combine(
+            repositoryRoot,
+            "native",
+            "openusd_hydra",
+            "tests",
+            "storm_wgl_shared_stage_probe.cpp"));
+        string childProbe = await File.ReadAllTextAsync(Path.Combine(
+            repositoryRoot,
+            "native",
+            "openusd_storm_child",
+            "tests",
+            "storm_child_probe.cpp"));
+        string nativeWorkflow = await File.ReadAllTextAsync(Path.Combine(
+            repositoryRoot,
+            ".github",
+            "workflows",
+            "native.yml"));
+        string packageWorkflow = await File.ReadAllTextAsync(Path.Combine(
+            repositoryRoot,
+            ".github",
+            "workflows",
+            "package.yml"));
+
+        await Assert.That(hydraImplementation)
+            .Contains("openusd_status RetainStatus() const noexcept");
+        await Assert.That(hydraImplementation)
+            .DoesNotContain("openusd_status Status() const noexcept");
+        await Assert.That(Regex.Count(
+            hydraTests,
+            @"SKIP_RETURN_CODE 125",
+            RegexOptions.CultureInvariant)).IsEqualTo(2);
+        await Assert.That(Regex.Count(
+            childTests,
+            @"SKIP_RETURN_CODE 125",
+            RegexOptions.CultureInvariant)).IsEqualTo(1);
+        await Assert.That(hydraProbe)
+            .Contains("constexpr int CapabilityUnavailableExitCode = 125;");
+        await Assert.That(hydraProbe)
+            .Contains("FramebufferCreationResult::Unsupported");
+        await Assert.That(hydraProbe)
+            .Contains("FramebufferCreationResult::Incomplete");
+        await Assert.That(childProbe)
+            .Contains("constexpr int CapabilityUnavailableExitCode = 125;");
+        await Assert.That(childProbe)
+            .Contains("\"WGL_ARB_create_context is unavailable.\"");
+        await Assert.That(nativeWorkflow).Contains("runner: macos-15");
+        await Assert.That(packageWorkflow).Contains("runner: macos-15");
+        await Assert.That(nativeWorkflow).DoesNotContain("macos-15-intel");
+        await Assert.That(packageWorkflow).DoesNotContain("macos-15-intel");
+    }
+
+    [Test]
     public async Task SharedRenderCameraContractIsCommittedOutsideFetchedSources()
     {
         string repositoryRoot = FindRepositoryRoot();

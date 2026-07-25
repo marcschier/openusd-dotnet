@@ -467,7 +467,7 @@ jobs:
 
   macos-arm64:
     name: macOS arm64 Storm child and Metal
-    runs-on: macos-15-arm64
+    runs-on: macos-15
     timeout-minutes: 360
     env:
       NATIVE_PIPELINE_RUN_ID: >-

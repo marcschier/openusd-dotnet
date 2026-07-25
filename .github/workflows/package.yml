@@ -89,7 +89,7 @@ jobs:
             runner: ubuntu-latest
             rid: linux-x64
           - name: macOS arm64
-            runner: macos-15-arm64
+            runner: macos-15
             rid: osx-arm64
     env:
       OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'

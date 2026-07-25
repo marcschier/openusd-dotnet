@@ -140,11 +140,13 @@ if(WIN32)
     set_tests_properties(
         openusd_storm_wgl_shared_stage_probe_legacy
         PROPERTIES
+            SKIP_RETURN_CODE 125
             ENVIRONMENT_MODIFICATION
                 "PATH=path_list_prepend:${STORM_WGL_PROBE_NATIVE_DIR};PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${pxr_DIR}/bin;USDIMAGINGGL_ENGINE_ENABLE_SCENE_INDEX=set:0;USDIMAGINGGL_ENGINE_ENABLE_SCENE_INDEX_DEPRECATION_WARNING=set:0")
     set_tests_properties(
         openusd_storm_wgl_shared_stage_probe_scene_index
         PROPERTIES
+            SKIP_RETURN_CODE 125
             ENVIRONMENT_MODIFICATION
                 "PATH=path_list_prepend:${STORM_WGL_PROBE_NATIVE_DIR};PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${pxr_DIR}/bin;USDIMAGINGGL_ENGINE_ENABLE_SCENE_INDEX=set:1")
 endif()

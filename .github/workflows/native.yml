@@ -63,7 +63,7 @@ jobs:
           - rid: linux-x64
             runner: ubuntu-latest
           - rid: osx-arm64
-            runner: macos-15-arm64
+            runner: macos-15
     env:
       OpenUsdRequireMetalShaderLibrary: >-
         ${{ matrix.rid == 'osx-arm64' && 'true' || 'false' }}

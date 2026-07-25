@@ -192,6 +192,11 @@ The macOS source/native gates additionally pin non-precise detents, fractional p
 40 points per step, four-step bounds, direction inversion, sign, and magnitude. Managed tests also prove a
 disposed session rejects diagnostic capture without entering native code.
 
+Windows CTest reports the WGL-only probes as capability skips only when the host lacks the required
+WGL context-creation or framebuffer extension. Context creation and incomplete-framebuffer failures
+on a capable host remain failures. The separate `windows-wgl` platform smoke remains the required
+end-to-end proof on a WGL-capable Windows host.
+
 ```powershell
 ctest --test-dir native/build/shim/win-x64 -C Release --output-on-failure
 ```
@@ -285,7 +290,7 @@ evidence uses NSEvent/NSView injection, never user32. macOS exposes OpenGL 4.1 c
 compatibility profile. The probe requires `openusd_hydra` itself to report exactly `Storm / Metal`;
 the child preserves that name and appends only `OpenGL 4.1 core presentation`.
 
-The `macos-15-arm64` render job selects Xcode 16.4, validates the ten-entry metallib and sidecar,
+The `macos-15` Apple Silicon render job selects Xcode 16.4, validates the ten-entry metallib and sidecar,
 runs the same native first/edit/preserved-capture probe for build or archive input, runs the signed
 package-only launch and real `IOSurfaceRef`/`MetalSharedEvent` tests, then performs 100 Storm/Metal
 switches in one Avalonia process:
@@ -317,7 +322,7 @@ run loop. The gate requires monotonic context generation, renderer/context gener
 half-published state, and exact dimensions/DPI on the first post-recovery preserved frame.
 Native staging rejects a macOS runtime that omits the child library or installed probe.
 The hardening implementation is complete when cross-build and source-contract tests pass; the
-original macOS hosted proof remains blocked until this exact job succeeds on `macos-15-arm64`.
+original macOS hosted proof remains blocked until this exact job succeeds on `macos-15`.
 
 ## Shared-stage soak
 

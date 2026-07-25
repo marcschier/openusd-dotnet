@@ -36,7 +36,15 @@ constexpr GLenum DepthAttachment = 0x8D00;
 constexpr GLenum FramebufferComplete = 0x8CD5;
 constexpr GLenum DepthComponent24 = 0x81A6;
 constexpr GLint Rgba8 = 0x8058;
+constexpr int CapabilityUnavailableExitCode = 125;
 static_assert(OPENUSD_STORM_ABI_VERSION == 5);
+
+enum class FramebufferCreationResult
+{
+    Success,
+    Unsupported,
+    Incomplete
+};
 
 openusd_render_camera AutomaticCamera()
 {
@@ -210,7 +218,7 @@ private:
 class OffscreenFramebuffer
 {
 public:
-    bool Create()
+    FramebufferCreationResult Create()
     {
         _genFramebuffers = LoadGl<GlGenFramebuffers>("glGenFramebuffers");
         _bindFramebuffer = LoadGl<GlBindFramebuffer>("glBindFramebuffer");
@@ -236,7 +244,7 @@ public:
             _bindRenderbuffer == nullptr || _renderbufferStorage == nullptr ||
             _framebufferRenderbuffer == nullptr || _deleteRenderbuffers == nullptr)
         {
-            return false;
+            return FramebufferCreationResult::Unsupported;
         }
 
         glGenTextures(1, &_color);
@@ -264,7 +272,9 @@ public:
             Framebuffer, ColorAttachment0, GL_TEXTURE_2D, _color, 0);
         _framebufferRenderbuffer(
             Framebuffer, DepthAttachment, Renderbuffer, _depth);
-        return _checkFramebuffer(Framebuffer) == FramebufferComplete;
+        return _checkFramebuffer(Framebuffer) == FramebufferComplete
+            ? FramebufferCreationResult::Success
+            : FramebufferCreationResult::Incomplete;
     }
 
     GLuint Id() const
@@ -636,7 +646,14 @@ int main(int argc, char** argv)
         return 3;
     }
     OffscreenFramebuffer framebuffer;
-    if (!framebuffer.Create())
+    const FramebufferCreationResult framebuffer_result = framebuffer.Create();
+    if (framebuffer_result == FramebufferCreationResult::Unsupported)
+    {
+        std::cerr <<
+            "Skipping Storm WGL shared-stage probe: framebuffer support is unavailable.\n";
+        return CapabilityUnavailableExitCode;
+    }
+    if (framebuffer_result != FramebufferCreationResult::Success)
     {
         std::cerr << "Failed to create the offscreen OpenGL framebuffer.\n";
         return 4;
@@ -1038,7 +1055,7 @@ int main(int argc, char** argv)
     {
         OffscreenFramebuffer secondFramebuffer;
         openusd_storm_renderer* secondRenderer = nullptr;
-        if (!secondFramebuffer.Create() ||
+        if (secondFramebuffer.Create() != FramebufferCreationResult::Success ||
             openusd_storm_create_from_stage(
                 argv[1], stage, &secondRenderer, &error) != OPENUSD_STATUS_OK ||
             openusd_storm_render(
