@@ -186,6 +186,37 @@ Per-prim isolation is asserted as a skip rather than a throw: a record that fail
 be omitted from the page and counted by the rejected-mesh counter while every valid sibling still
 serializes. This is what stops one malformed prim in a production asset from blanking a frame.
 
+## Storm-to-hdSilk parity comparison
+
+`ParityImageComparer` in `OpenUsd.Rendering` is the renderer-neutral core of the parity
+harness. It compares a Storm reference capture with an hdSilk candidate capture as raw
+top-down RGBA8 buffers of identical dimensions, and is deliberately geometry-first: hdSilk
+still shades with an absolute-normal debug visualization, so colour comparison is opt-in and
+disabled by the default `ParityTolerance.Geometry` contract.
+
+A pixel counts as covered when any channel differs from the declared background by more than
+`BackgroundChannelTolerance`. From the two coverage masks the comparer reports intersection,
+union, and per-capture coverage counts.
+
+Rasterization and anti-aliasing legitimately differ by about a pixel between backends and
+drivers, so a coverage disagreement is forgiven when the other capture has coverage within
+`EdgeDilationRadius`. Two values are therefore reported: the raw
+`CoverageIntersectionOverUnion`, and the dilation-aware
+`AdjustedCoverageIntersectionOverUnion` that treats a forgiven shift as agreement. The
+adjusted value is the one gated, together with the fraction of unforgiven disagreements.
+Gating the raw value would fail a one-pixel silhouette shift on small shapes even though the
+dilation contract already accepted it.
+
+When `CompareColor` is enabled the comparer also reports the maximum and mean per-channel
+difference over the agreed coverage only, gated by `MaximumChannelDifference` and
+`MaximumMeanChannelDifference`. Every comparison emits an RGBA diff image for artifacts:
+reference-only coverage is blue, candidate-only coverage is red, agreed coverage is grey, and
+agreed background is black.
+
+`ParityImageComparisonTests` covers exact agreement, empty captures, forgiven and unforgiven
+one-pixel shifts, entirely missing geometry, colour opt-in, diff-image encoding, and rejection
+of mismatched dimensions, truncated buffers, and impossible tolerances.
+
 ## Windows native Storm child
 
 The native child-host CTest proves the application-owned `WS_CHILD`, parent/process/creator-thread
