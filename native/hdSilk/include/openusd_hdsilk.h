@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 2u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 3u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 4u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -72,14 +72,25 @@ extern "C" {
 /// index_count must equal triangle_count * 3, and each triangle_subprims entry
 /// is the authored USD face index decoded from HdMeshUtil primitiveParams for
 /// the corresponding emitted triangle. topology_revision starts at 1 and
-/// changes only when Hydra reports dirty topology. instance_id and
-/// instance_index are explicitly zero in ABI v2; non-zero values are reserved
-/// for a future instancing ABI.
+/// changes only when Hydra reports dirty topology.
+///
+/// In ABI v3 instance identity is meaningful. A prim with no instancer
+/// publishes exactly one record with instance_id and instance_index both zero.
+/// A point-instanced prototype publishes one record per resolved instance:
+/// path stays the authoritative prototype path, instance_index is the
+/// zero-based instance ordinal, and instance_id is a stable non-zero
+/// diagnostic identifier for the owning instancer. Consumers must therefore
+/// key retained meshes by (path, instance_index) rather than by path alone.
+/// Each instance record carries its own fully resolved transform.
 ///
 /// MESH_REMOVE (type = 3):
 ///   uint64 stable_id_hash
+///   int32  instance_index
 ///   uint32 path_byte_count
 ///   uint8  path[path_byte_count]  (UTF-8, no NUL)
+///
+/// A removal retires exactly one (path, instance_index) identity, so a
+/// shrinking instancer emits one removal per dropped instance.
 #define OPENUSD_SILK_COMMAND_FRAME 1u
 #define OPENUSD_SILK_COMMAND_MESH_UPSERT 2u
 #define OPENUSD_SILK_COMMAND_MESH_REMOVE 3u

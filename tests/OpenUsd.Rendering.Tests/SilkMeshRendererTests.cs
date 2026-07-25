@@ -9,14 +9,14 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkMeshRendererTests
 {
     [Test]
-    public async Task BuildsInterleavedNormalsAndSixteenBitIndices()
+    public async Task BuildsInterleavedNormalsAndThirtyTwoBitIndices()
     {
         SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(CreateMesh(
             [0, 0, 0, 1, 0, 0, 0, 1, 0],
             [0, 1, 2]));
 
         await Assert.That(geometry.Vertices.Length).IsEqualTo(18);
-        await Assert.That(geometry.Indices).IsEquivalentTo([(ushort)0, (ushort)1, (ushort)2]);
+        await Assert.That(geometry.Indices).IsEquivalentTo([0u, 1u, 2u]);
         for (int vertex = 0; vertex < 3; vertex++)
         {
             int offset = (vertex * 6) + 3;

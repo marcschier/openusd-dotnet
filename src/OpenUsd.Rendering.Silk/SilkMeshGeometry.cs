@@ -4,7 +4,7 @@ using System.Buffers.Binary;
 
 namespace OpenUsd.Rendering.Silk;
 
-internal sealed record SilkMeshGeometry(float[] Vertices, ushort[] Indices)
+internal sealed record SilkMeshGeometry(float[] Vertices, uint[] Indices)
 {
     internal uint IndexCount => checked((uint)Indices.Length);
 }
@@ -28,10 +28,6 @@ internal static class SilkMeshGeometryBuilder
         }
 
         int pointCount = points.Length / 3;
-        if (pointCount > ushort.MaxValue + 1)
-        {
-            throw InvalidMesh(mesh, "more than 65536 vertices cannot be represented by 16-bit indices");
-        }
 
         for (int i = 0; i < points.Length; i++)
         {
@@ -41,16 +37,16 @@ internal static class SilkMeshGeometryBuilder
             }
         }
 
-        ushort[] indices = new ushort[meshIndices.Length];
+        uint[] indices = new uint[meshIndices.Length];
         double[] normals = new double[points.Length];
         for (int triangle = 0; triangle < meshIndices.Length; triangle += 3)
         {
             int a = ValidateIndex(mesh, meshIndices, pointCount, triangle);
             int b = ValidateIndex(mesh, meshIndices, pointCount, triangle + 1);
             int c = ValidateIndex(mesh, meshIndices, pointCount, triangle + 2);
-            indices[triangle] = checked((ushort)a);
-            indices[triangle + 1] = checked((ushort)b);
-            indices[triangle + 2] = checked((ushort)c);
+            indices[triangle] = checked((uint)a);
+            indices[triangle + 1] = checked((uint)b);
+            indices[triangle + 2] = checked((uint)c);
 
             int pa = a * 3;
             int pb = b * 3;

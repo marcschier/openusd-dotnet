@@ -1,11 +1,97 @@
 #nullable enable
+~override OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkColor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkColor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkComputeParameters.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkComputeParameters.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkComputePipelineDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkComputePipelineDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkComputeReflection.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkComputeReflection.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkMeshRenderResult.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkMeshRenderResult.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPickBindingLayoutDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkPickBindingLayoutDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPickFrameBinding.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkPickFrameBinding.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPickIdentity.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkPickIdentity.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPickParametersReflection.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkPickParametersReflection.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPickReadbackContext.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkPickReadbackContext.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPickReadbackResult.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkPickReadbackResult.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkPickRendererStatistics.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkPickTokenRange.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkPickTokenRange.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkRenderingDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkRenderingDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSamplerDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSamplerDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSceneDelta.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSceneDelta.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSceneParametersReflection.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSceneParametersReflection.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkScissor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkScissor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineDiagnostics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineDiagnostics.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineRenderingDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkSelectionOutlineRenderingDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkTextureDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkTextureDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkViewport.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkViewport.ToString() -> string
 abstract OpenUsd.Rendering.Silk.SilkGraphicsBufferBase.ReadbackForTesting(System.Span<byte> destination) -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsBufferBase.Write(System.ReadOnlySpan<byte> data, nuint offset = 0) -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsResourceBase.ReleaseNative() -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(System.Span<byte> destination) -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(System.Span<float> destination) -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 2 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 3 -> uint
 const OpenUsd.Rendering.Silk.SilkPickTokenEncoding.ByteSize = 4 -> int
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MaximumWidth = 16 -> float
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MinimumWidth = 1 -> float
@@ -383,6 +469,7 @@ OpenUsd.Rendering.Silk.SilkMeshGpuResource.Mesh.get -> OpenUsd.Rendering.Silk.Si
 OpenUsd.Rendering.Silk.SilkMeshGpuResource.UniformBuffer.get -> OpenUsd.Rendering.Silk.ISilkGraphicsBuffer!
 OpenUsd.Rendering.Silk.SilkMeshGpuResource.VertexBuffer.get -> OpenUsd.Rendering.Silk.ISilkGraphicsBuffer!
 OpenUsd.Rendering.Silk.SilkMeshRemoveCommand
+OpenUsd.Rendering.Silk.SilkMeshRemoveCommand.InstanceIndex.get -> int
 OpenUsd.Rendering.Silk.SilkMeshRemoveCommand.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshRemoveCommand.SilkMeshRemoveCommand() -> void
 OpenUsd.Rendering.Silk.SilkMeshRemoveCommand.StableHash.get -> ulong
@@ -724,7 +811,7 @@ OpenUsd.Rendering.Silk.SilkSceneState.Apply(OpenUsd.Rendering.Silk.OpenUsdSilkPa
 OpenUsd.Rendering.Silk.SilkSceneState.Apply(System.ReadOnlySpan<byte> data, uint commandCount, ulong revision) -> OpenUsd.Rendering.Silk.SilkSceneDelta
 OpenUsd.Rendering.Silk.SilkSceneState.Frame.get -> OpenUsd.Rendering.Silk.SilkFrameState!
 OpenUsd.Rendering.Silk.SilkSceneState.Meshes.get -> System.Collections.Generic.IReadOnlyDictionary<ulong, OpenUsd.Rendering.Silk.SilkMeshData!>!
-OpenUsd.Rendering.Silk.SilkSceneState.MeshesByPath.get -> System.Collections.Generic.IReadOnlyDictionary<string!, OpenUsd.Rendering.Silk.SilkMeshData!>!
+OpenUsd.Rendering.Silk.SilkSceneState.MeshesByPath.get -> System.Collections.Generic.IReadOnlyDictionary<(string! Path, int InstanceIndex), OpenUsd.Rendering.Silk.SilkMeshData!>!
 OpenUsd.Rendering.Silk.SilkSceneState.PickIdentities.get -> OpenUsd.Rendering.Silk.SilkPickIdentityTable!
 OpenUsd.Rendering.Silk.SilkSceneState.Revision.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneState.SilkSceneState() -> void
@@ -1166,8 +1253,8 @@ static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.SelectionOutline.get -> Op
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.ValidatePinnedMetalLibrary() -> void
 static OpenUsd.Rendering.Silk.SilkColor.operator !=(OpenUsd.Rendering.Silk.SilkColor left, OpenUsd.Rendering.Silk.SilkColor right) -> bool
 static OpenUsd.Rendering.Silk.SilkColor.operator ==(OpenUsd.Rendering.Silk.SilkColor left, OpenUsd.Rendering.Silk.SilkColor right) -> bool
-static OpenUsd.Rendering.Silk.SilkCommandParser.Enumerate(System.ReadOnlySpan<byte> data, uint commandCount) -> OpenUsd.Rendering.Silk.SilkCommandEnumerator
 static OpenUsd.Rendering.Silk.SilkCommandParser.Enumerate(System.ReadOnlySpan<byte> data, uint commandCount, uint abiVersion) -> OpenUsd.Rendering.Silk.SilkCommandEnumerator
+static OpenUsd.Rendering.Silk.SilkCommandParser.Enumerate(System.ReadOnlySpan<byte> data, uint commandCount) -> OpenUsd.Rendering.Silk.SilkCommandEnumerator
 static OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.Checked.get -> OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor
 static OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor right) -> bool
@@ -1281,89 +1368,3 @@ static OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.operator ==(OpenUsd.Ren
 static OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.PositionNormal.get -> OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor
 static OpenUsd.Rendering.Silk.SilkViewport.operator !=(OpenUsd.Rendering.Silk.SilkViewport left, OpenUsd.Rendering.Silk.SilkViewport right) -> bool
 static OpenUsd.Rendering.Silk.SilkViewport.operator ==(OpenUsd.Rendering.Silk.SilkViewport left, OpenUsd.Rendering.Silk.SilkViewport right) -> bool
-~override OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkColor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkColor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkComputeParameters.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkComputeParameters.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkComputePipelineDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkComputePipelineDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkComputeReflection.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkComputeReflection.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkComputeShaderProgramDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkMeshRenderResult.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkMeshRenderResult.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkPickBindingLayoutDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkPickBindingLayoutDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkPickFrameBinding.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkPickFrameBinding.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkPickIdentity.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkPickIdentity.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkPickParametersReflection.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkPickParametersReflection.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkPickPipelineDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkPickReadbackContext.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkPickReadbackContext.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkPickReadbackResult.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkPickReadbackResult.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkPickRendererStatistics.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkPickRendererStatistics.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkPickTokenRange.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkPickTokenRange.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkRenderingDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkRenderingDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSamplerDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSamplerDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSceneDelta.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSceneDelta.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSceneParametersReflection.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSceneParametersReflection.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkScissor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkScissor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSelectionMaskBindingLayoutDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSelectionMaskPipelineDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSelectionMaskRenderingDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineBindingLayoutDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineCapabilities.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineDiagnostics.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineDiagnostics.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlinePipelineDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineReflection.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineRenderingDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkSelectionOutlineRenderingDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkShaderProgramDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkTextureDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkTextureDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.ToString() -> string
-~override OpenUsd.Rendering.Silk.SilkViewport.Equals(object obj) -> bool
-~override OpenUsd.Rendering.Silk.SilkViewport.ToString() -> string

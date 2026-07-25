@@ -315,14 +315,15 @@ internal static class SilkMeshRendererConformance
     private static byte[] CreateRemoveCommand(ulong id, string pathValue)
     {
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
-        var bytes = new byte[20 + path.Length];
+        var bytes = new byte[24 + path.Length];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshRemove);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(
             bytes.AsSpan(8),
             ComputeStableHash(pathValue));
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), (uint)path.Length);
-        path.CopyTo(bytes, 20);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)path.Length);
+        path.CopyTo(bytes, 24);
         return bytes;
     }
 

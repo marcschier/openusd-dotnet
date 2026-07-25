@@ -295,7 +295,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             commands,
             indexBuffer.Buffer,
             0,
-            IndexType.Uint16);
+            IndexType.Uint32);
         DescriptorSet descriptorSet = pipeline.GetDescriptorSet(uniformBuffer);
         _api.CmdBindDescriptorSets(
             commands,

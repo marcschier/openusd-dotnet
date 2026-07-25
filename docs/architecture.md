@@ -239,16 +239,22 @@ buffers, and selection crosses the ABI once as a packed update.
 ### Hydra to Silk
 
 `openusd_hdsilk` session ABI 4 registers the hdSilk Hydra plugin against the exact retained stage.
-Each sync returns a native-owned immutable page. Managed code validates page ABI 2, copies the page
+Each sync returns a native-owned immutable page. Managed code validates page ABI 3, copies the page
 bytes once, and releases the native page.
 
 The wire format is pointer-free and little-endian. Commands currently describe the frame,
 triangulated mesh upserts, and mesh removals. Paths are length-prefixed UTF-8 and remain the
-authoritative identity; hashes are collision-checked indexes.
+authoritative identity; hashes are collision-checked indexes. Page ABI 3 makes instance identity
+meaningful, so a retained mesh is keyed by `(path, instance index)` rather than by path alone.
+
+hdSilk creates mesh Rprims, an `extComputation` Sprim so skinned points can be pulled from computed
+primvars, and a point instancer that resolves one record per instance. A prim that cannot be
+serialized is skipped and counted rather than aborting the page, so a single malformed prim cannot
+blank an entire frame.
 
 `SilkSceneState` applies dirty pages into retained managed scene state. Geometry resources are
 rebuilt only when topology changes. Frame and property updates reuse retained resources where their
-contracts allow. `SilkMeshRenderer` then records backend-neutral RHI work.
+contracts allow. `SilkMeshRenderer` then records backend-neutral RHI work using 32-bit indices.
 
 Concrete device creation, resource handles, command submission, synchronization, external handles,
 and presentation stay in the D3D12, Vulkan, and Metal projects. This prevents platform code from

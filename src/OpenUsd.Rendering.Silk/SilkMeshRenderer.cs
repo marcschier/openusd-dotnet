@@ -746,42 +746,59 @@ public sealed class SilkMeshRenderer :
         }
 
         IReadOnlyList<SelectionItem> items = _selection.Items;
-        var resolved = new SilkMeshGpuResource?[items.Count];
-        int count = 0;
+        var resolved = new List<SilkMeshGpuResource>(items.Count);
         int missing = 0;
         for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
         {
             string path = items[itemIndex].PrimPath;
-            if (!Scene.MeshesByPath.TryGetValue(path, out SilkMeshData? mesh) ||
-                !GpuResources.Meshes.TryGetValue(
-                    mesh.Id,
-                    out SilkMeshGpuResource? resource))
+
+            // A point-instanced prototype contributes one retained mesh per
+            // instance, and selecting the prototype path highlights all of them.
+            IReadOnlyList<SilkMeshData> instances = Scene.GetInstances(path);
+            if (instances.Count == 0)
             {
                 missing++;
                 continue;
             }
-            if (resource.IndexCount == 0)
-            {
-                continue;
-            }
 
-            bool duplicate = false;
-            for (int resolvedIndex = 0; resolvedIndex < count; resolvedIndex++)
+            bool resolvedAnyInstance = false;
+            for (int instance = 0; instance < instances.Count; instance++)
             {
-                if (ReferenceEquals(resolved[resolvedIndex], resource))
+                if (!GpuResources.Meshes.TryGetValue(
+                        instances[instance].Id,
+                        out SilkMeshGpuResource? resource))
                 {
-                    duplicate = true;
-                    break;
+                    continue;
+                }
+                resolvedAnyInstance = true;
+                if (resource.IndexCount == 0)
+                {
+                    continue;
+                }
+
+                bool duplicate = false;
+                for (int resolvedIndex = 0; resolvedIndex < resolved.Count; resolvedIndex++)
+                {
+                    if (ReferenceEquals(resolved[resolvedIndex], resource))
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (!duplicate)
+                {
+                    resolved.Add(resource);
                 }
             }
-            if (!duplicate)
+
+            if (!resolvedAnyInstance)
             {
-                resolved[count++] = resource;
+                missing++;
             }
         }
 
-        _selectedMeshes = resolved;
-        _selectedMeshCount = count;
+        _selectedMeshes = [.. resolved];
+        _selectedMeshCount = resolved.Count;
         _missingSelectionPathCount = missing;
         _selectionResolvedGpuRevision = GpuResources.Revision;
         _selectionResolutionDirty = false;

@@ -132,11 +132,10 @@ public readonly ref struct SilkMeshUpsertCommand
         {
             throw new InvalidDataException("The mesh prim ID must be non-negative.");
         }
-        if (BinaryPrimitives.ReadInt32LittleEndian(bytes[20..24]) != 0 ||
-            BinaryPrimitives.ReadInt32LittleEndian(bytes[24..28]) != 0)
+        if (BinaryPrimitives.ReadInt32LittleEndian(bytes[24..28]) < 0)
         {
             throw new InvalidDataException(
-                "hdSilk page ABI v2 does not support non-zero instance identity.");
+                "The mesh instance index must be non-negative.");
         }
         if (BinaryPrimitives.ReadUInt32LittleEndian(bytes[28..32]) !=
             (uint)SilkTopologyKind.TriangleList)
@@ -170,10 +169,18 @@ public readonly ref struct SilkMeshUpsertCommand
     /// <summary>Gets Hydra's explicit Rprim identifier.</summary>
     public int PrimId => BinaryPrimitives.ReadInt32LittleEndian(_bytes[16..20]);
 
-    /// <summary>Gets the reserved instance identifier, which is zero in ABI v2.</summary>
+    /// <summary>
+    /// Gets the stable, diagnostic-only identifier of the owning instancer, or
+    /// zero when the prim is not instanced.
+    /// </summary>
     public int InstanceId => BinaryPrimitives.ReadInt32LittleEndian(_bytes[20..24]);
 
-    /// <summary>Gets the reserved instance index, which is zero in ABI v2.</summary>
+    /// <summary>
+    /// Gets the zero-based instance ordinal. A prim with no instancer always
+    /// reports zero; a point-instanced prototype reports one record per
+    /// instance, so (<see cref="Path"/>, <see cref="InstanceIndex"/>) is the
+    /// retained identity.
+    /// </summary>
     public int InstanceIndex => BinaryPrimitives.ReadInt32LittleEndian(_bytes[24..28]);
 
     /// <summary>Gets the emitted topology kind.</summary>
@@ -266,7 +273,7 @@ public readonly ref struct SilkMeshUpsertCommand
 /// </summary>
 public readonly ref struct SilkMeshRemoveCommand
 {
-    private const int FixedSize = 20;
+    private const int FixedSize = 24;
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly string _path;
     private readonly int _pathLength;
@@ -277,7 +284,12 @@ public readonly ref struct SilkMeshRemoveCommand
         {
             throw new InvalidDataException("The mesh removal command is truncated.");
         }
-        uint pathLength = BinaryPrimitives.ReadUInt32LittleEndian(bytes[16..20]);
+        if (BinaryPrimitives.ReadInt32LittleEndian(bytes[16..20]) < 0)
+        {
+            throw new InvalidDataException(
+                "The mesh removal instance index must be non-negative.");
+        }
+        uint pathLength = BinaryPrimitives.ReadUInt32LittleEndian(bytes[20..24]);
         if (pathLength > int.MaxValue)
         {
             throw new InvalidDataException(
@@ -295,6 +307,12 @@ public readonly ref struct SilkMeshRemoveCommand
 
     /// <summary>Gets the FNV-1a path hash used only as an identity index.</summary>
     public ulong StableHash => BinaryPrimitives.ReadUInt64LittleEndian(_bytes[8..16]);
+
+    /// <summary>
+    /// Gets the instance ordinal being retired. A shrinking instancer emits one
+    /// removal per dropped instance.
+    /// </summary>
+    public int InstanceIndex => BinaryPrimitives.ReadInt32LittleEndian(_bytes[16..20]);
 
     /// <summary>Gets the removed USD prim path.</summary>
     public string Path => _path;

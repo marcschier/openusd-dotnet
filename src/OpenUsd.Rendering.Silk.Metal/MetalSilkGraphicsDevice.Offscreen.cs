@@ -635,7 +635,7 @@ public sealed partial class MetalSilkGraphicsDevice
                                 encoder.DrawIndexedPrimitives(
                                     MTLPrimitiveType.Triangle,
                                     command.IndexCount,
-                                    MTLIndexType.UInt16,
+                                    MTLIndexType.UInt32,
                                     indexBuffer.Buffer,
                                     0);
                                 encoder.EndEncoding();

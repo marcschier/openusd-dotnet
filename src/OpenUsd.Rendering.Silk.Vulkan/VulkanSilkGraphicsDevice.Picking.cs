@@ -2005,7 +2005,7 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
                 _secondaryCommands,
                 draw.IndexBuffer.Buffer,
                 0,
-                IndexType.Uint16);
+                IndexType.Uint32);
             uint primitiveCount = draw.IndexCount / 3;
             for (uint primitive = 0;
                  primitive < primitiveCount;

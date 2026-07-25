@@ -521,7 +521,7 @@ public interface ISilkGraphicsCommandList : IDisposable
     /// <summary>Binds a vertex buffer.</summary>
     void SetVertexBuffer(ISilkGraphicsBuffer buffer);
 
-    /// <summary>Binds a 16-bit index buffer.</summary>
+    /// <summary>Binds a 32-bit index buffer.</summary>
     void SetIndexBuffer(ISilkGraphicsBuffer buffer);
 
     /// <summary>Binds SceneParameters at set zero, binding zero.</summary>

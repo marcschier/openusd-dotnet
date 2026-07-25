@@ -2,6 +2,7 @@
 
 #include "mesh.h"
 
+#include "instancer.h"
 #include "renderDelegate.h"
 #include "sceneState.h"
 
@@ -9,7 +10,10 @@
 #include "pxr/base/gf/vec3i.h"
 #include "pxr/base/vt/value.h"
 #include "pxr/imaging/hd/changeTracker.h"
+#include "pxr/imaging/hd/extComputationUtils.h"
 #include "pxr/imaging/hd/meshUtil.h"
+#include "pxr/imaging/hd/renderIndex.h"
+#include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hd/tokens.h"
 
 #include <algorithm>
@@ -18,6 +22,33 @@
 #include <utility>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+namespace
+{
+/// Points reach Hydra as float or double arrays depending on the authored
+/// type. Returns false when the value holds neither, leaving the previous
+/// points untouched.
+bool ExtractPoints(const VtValue& value, VtVec3fArray* out)
+{
+    if (value.IsHolding<VtVec3fArray>())
+    {
+        *out = value.UncheckedGet<VtVec3fArray>();
+        return true;
+    }
+    if (value.IsHolding<VtVec3dArray>())
+    {
+        const VtVec3dArray& source = value.UncheckedGet<VtVec3dArray>();
+        VtVec3fArray converted(source.size());
+        for (size_t i = 0; i < source.size(); ++i)
+        {
+            converted[i] = GfVec3f(source[i]);
+        }
+        *out = std::move(converted);
+        return true;
+    }
+    return false;
+}
+}
 
 HdSilkMesh::HdSilkMesh(SdfPath const& id)
     : HdMesh(id)
@@ -136,13 +167,59 @@ HdSilkMesh::Sync(
     {
         _transform = sceneDelegate->GetTransform(id);
     }
-    if (pointsDirty)
+
+    // Skinned and otherwise procedurally deformed meshes publish "points" as
+    // an ExtComputation output rather than an authored primvar, so a plain
+    // Get() returns nothing and would leave the point array empty while the
+    // topology is fully triangulated. Pull computed primvars first and let an
+    // authored value win only when no computation supplied one.
+    bool pointsResolved = false;
+    HdExtComputationPrimvarDescriptorVector dirtyComputedPrimvars;
+    for (size_t interpolation = 0;
+         interpolation < HdInterpolationCount;
+         ++interpolation)
     {
-        const VtValue value = sceneDelegate->Get(id, HdTokens->points);
-        if (value.IsHolding<VtVec3fArray>())
+        const HdExtComputationPrimvarDescriptorVector computedPrimvars =
+            sceneDelegate->GetExtComputationPrimvarDescriptors(
+                id,
+                static_cast<HdInterpolation>(interpolation));
+        for (HdExtComputationPrimvarDescriptor const& primvar : computedPrimvars)
         {
-            _points = value.UncheckedGet<VtVec3fArray>();
+            if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, primvar.name))
+            {
+                dirtyComputedPrimvars.emplace_back(primvar);
+            }
         }
+    }
+    if (!dirtyComputedPrimvars.empty())
+    {
+        const HdExtComputationUtils::ValueStore computedValues =
+            HdExtComputationUtils::GetComputedPrimvarValues(
+                dirtyComputedPrimvars,
+                sceneDelegate);
+        for (HdExtComputationPrimvarDescriptor const& primvar :
+             dirtyComputedPrimvars)
+        {
+            if (primvar.name != HdTokens->points)
+            {
+                continue;
+            }
+            const auto value = computedValues.find(primvar.name);
+            if (value != computedValues.end() &&
+                ExtractPoints(value->second, &_points))
+            {
+                pointsResolved = true;
+            }
+        }
+    }
+
+    // Topology and points must stay consistent. When topology is refreshed
+    // without a matching points dirty bit the cached array can still describe
+    // the previous topology, so re-pull it rather than publish indices that
+    // overrun the point buffer.
+    if (!pointsResolved && (pointsDirty || topologyRefreshed))
+    {
+        ExtractPoints(sceneDelegate->Get(id, HdTokens->points), &_points);
     }
     if (displayColorDirty)
     {
@@ -161,7 +238,19 @@ HdSilkMesh::Sync(
         }
     }
 
-    if (topologyRefreshed || pointsDirty || transformDirty || displayColorDirty)
+    // Instancer state must be refreshed before instance transforms are read,
+    // and parent instancers are synced by Rprim reference in Hydra.
+    _UpdateInstancer(sceneDelegate, dirtyBits);
+    HdInstancer::_SyncInstancerAndParents(
+        sceneDelegate->GetRenderIndex(),
+        GetInstancerId());
+
+    const bool instancerDirty =
+        HdChangeTracker::IsInstancerDirty(*dirtyBits, id) ||
+        HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
+
+    if (topologyRefreshed || pointsDirty || transformDirty ||
+        displayColorDirty || instancerDirty)
     {
         HdSilkMeshRecord record;
         record.path = id.GetString();
@@ -188,14 +277,72 @@ HdSilkMesh::Sync(
         record.indices = _triangleIndices;
         record.triangleSubprims = _triangleSubprims;
 
-        // Capture the key before std::move(record); argument evaluation
+        // Capture the key before the record is moved; argument evaluation
         // order relative to the moved-from object is otherwise unspecified.
         const std::string path = record.path;
-        HdSilkRenderParam* silkRenderParam = static_cast<HdSilkRenderParam*>(renderParam);
-        silkRenderParam->GetSceneState().UpsertMesh(path, std::move(record));
+        HdSilkRenderParam* silkRenderParam =
+            static_cast<HdSilkRenderParam*>(renderParam);
+
+        std::vector<HdSilkMeshRecord> records =
+            _BuildInstanceRecords(sceneDelegate, std::move(record));
+        silkRenderParam->GetSceneState().ReplaceMeshInstances(
+            path,
+            std::move(records));
     }
 
     *dirtyBits = HdChangeTracker::Clean;
+}
+
+std::vector<HdSilkMeshRecord>
+HdSilkMesh::_BuildInstanceRecords(
+    HdSceneDelegate* sceneDelegate,
+    HdSilkMeshRecord record)
+{
+    const SdfPath& instancerId = GetInstancerId();
+    if (instancerId.IsEmpty())
+    {
+        record.instanceId = 0;
+        record.instanceIndex = 0;
+        std::vector<HdSilkMeshRecord> records;
+        records.push_back(std::move(record));
+        return records;
+    }
+
+    // hdSilk has no instancing wire ABI of its own: each resolved instance is
+    // flattened into its own record so backend-neutral consumers keep drawing
+    // plain triangle lists. instance_index makes the identities distinct while
+    // the prototype path stays authoritative.
+    HdInstancer* instancer =
+        sceneDelegate->GetRenderIndex().GetInstancer(instancerId);
+    if (instancer == nullptr)
+    {
+        return {};
+    }
+
+    const VtMatrix4dArray instanceTransforms =
+        static_cast<HdSilkInstancer*>(instancer)->ComputeInstanceTransforms(
+            GetId());
+    if (instanceTransforms.size() >
+        static_cast<size_t>(std::numeric_limits<int32_t>::max()))
+    {
+        throw std::overflow_error(
+            "The hdSilk instance count exceeds the 32-bit instance index.");
+    }
+
+    const int32_t instanceId = HdSilkStableInstanceId(instancerId.GetString());
+    std::vector<HdSilkMeshRecord> records;
+    records.reserve(instanceTransforms.size());
+    for (size_t index = 0; index < instanceTransforms.size(); ++index)
+    {
+        HdSilkMeshRecord instanceRecord = record;
+        instanceRecord.instanceId = instanceId;
+        instanceRecord.instanceIndex = static_cast<int32_t>(index);
+        HdSilkFlattenMatrix(
+            instanceTransforms[index] * _transform,
+            instanceRecord.transform);
+        records.push_back(std::move(instanceRecord));
+    }
+    return records;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

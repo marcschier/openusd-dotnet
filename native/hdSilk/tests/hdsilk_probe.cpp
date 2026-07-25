@@ -33,7 +33,7 @@ namespace
 constexpr char SharedMeshPath[] = "/World/SharedStageProbeMesh";
 constexpr char TopologyMeshPath[] = "/World/TopologyProbeMesh";
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 4);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 2);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 3);
 
 openusd_render_camera AutomaticCamera()
 {
@@ -82,6 +82,8 @@ struct ParsedMeshIdentity
     std::string path;
     int32_t prim_id = -1;
     uint64_t topology_revision = 0;
+    int32_t instance_id = 0;
+    int32_t instance_index = 0;
 };
 
 struct ParsedPage
@@ -293,7 +295,12 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                         pathSize);
                     result.upsert_paths.push_back(path);
                     result.mesh_identities.push_back(
-                        ParsedMeshIdentity{path, primId, topologyRevision});
+                        ParsedMeshIdentity{
+                            path,
+                            primId,
+                            topologyRevision,
+                            instanceId,
+                            instanceIndex});
                     result.mesh_identity_valid &=
                         !path.empty() &&
                         path.front() == '/' &&
@@ -354,8 +361,8 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
         {
             ++result.mesh_remove_count;
             uint32_t pathSize = 0;
-            constexpr size_t pathSizeOffset = 8 + 8;
-            constexpr size_t pathOffset = 8 + 8 + 4;
+            constexpr size_t pathSizeOffset = 8 + 8 + 4;
+            constexpr size_t pathOffset = 8 + 8 + 4 + 4;
             if (ReadValue(data, size, offset + pathSizeOffset, &pathSize) &&
                 pathOffset <= byteSize &&
                 static_cast<size_t>(pathSize) <=
@@ -411,26 +418,127 @@ const ParsedMeshIdentity* FindMeshIdentity(
     return iterator == page.mesh_identities.end() ? nullptr : &*iterator;
 }
 
+/// Publishes exactly one non-instanced record, mirroring what HdSilkMesh does
+/// for a prim without an instancer.
+void ReplaceSingleMesh(
+    HdSilkSceneState& state,
+    const std::string& path,
+    HdSilkMeshRecord record)
+{
+    std::vector<HdSilkMeshRecord> records;
+    records.push_back(std::move(record));
+    state.ReplaceMeshInstances(path, std::move(records));
+}
+
+/// Point-instanced prototypes publish one record per instance under a shared
+/// authoritative path, and a shrinking instancer must retire exactly the
+/// instances it dropped.
+bool VerifyInstancedSceneStateSerialization()
+{
+    constexpr char InstancedPath[] = "/Instanced";
+    HdSilkSceneState state;
+
+    std::vector<HdSilkMeshRecord> instances;
+    for (int32_t index = 0; index < 3; ++index)
+    {
+        HdSilkMeshRecord record = MakeSceneStateRecord(InstancedPath, 7);
+        record.instanceId = 42;
+        record.instanceIndex = index;
+        record.transform[3] = static_cast<double>(index);
+        instances.push_back(std::move(record));
+    }
+    state.ReplaceMeshInstances(InstancedPath, std::move(instances));
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> firstBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage first = ParseCommands(firstBytes.data(), firstBytes.size());
+    if (commandCount != 4 ||
+        first.mesh_upsert_count != 3 ||
+        first.mesh_remove_count != 0 ||
+        first.mesh_identities.size() != 3)
+    {
+        return false;
+    }
+    for (int32_t index = 0; index < 3; ++index)
+    {
+        const ParsedMeshIdentity& identity =
+            first.mesh_identities[static_cast<size_t>(index)];
+        if (identity.path != InstancedPath ||
+            identity.instance_id != 42 ||
+            identity.instance_index != index ||
+            identity.prim_id != 7)
+        {
+            return false;
+        }
+    }
+
+    // Shrinking to a single instance must retire instances 1 and 2 without
+    // disturbing instance 0.
+    std::vector<HdSilkMeshRecord> shrunk;
+    HdSilkMeshRecord survivor = MakeSceneStateRecord(InstancedPath, 7);
+    survivor.instanceId = 42;
+    survivor.instanceIndex = 0;
+    shrunk.push_back(std::move(survivor));
+    state.ReplaceMeshInstances(InstancedPath, std::move(shrunk));
+
+    const std::vector<uint8_t> shrunkBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage shrunkPage =
+        ParseCommands(shrunkBytes.data(), shrunkBytes.size());
+    if (commandCount != 4 ||
+        shrunkPage.mesh_upsert_count != 1 ||
+        shrunkPage.mesh_remove_count != 2 ||
+        shrunkPage.remove_paths !=
+            std::vector<std::string>({InstancedPath, InstancedPath}))
+    {
+        return false;
+    }
+
+    // Removing the prim retires the one remaining instance.
+    state.RemoveMesh(InstancedPath);
+    const std::vector<uint8_t> removedBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const ParsedPage removedPage =
+        ParseCommands(removedBytes.data(), removedBytes.size());
+    return commandCount == 2 &&
+        removedPage.mesh_upsert_count == 0 &&
+        removedPage.mesh_remove_count == 1;
+}
+
+/// A malformed record must be skipped with a diagnostic rather than aborting
+/// the page, so one bad prim cannot blank an otherwise renderable scene. The
+/// page still carries its FRAME command and no MESH_UPSERT.
 bool RejectsInvalidSceneStateRecord(HdSilkMeshRecord record)
 {
+    const std::string path = record.path;
+    HdSilkSceneState state;
+    std::vector<HdSilkMeshRecord> records;
+    records.push_back(std::move(record));
+    const uint64_t rejectedBefore = HdSilkSceneState::GetRejectedMeshCount();
     try
     {
-        HdSilkSceneState state;
-        state.UpsertMesh(record.path, std::move(record));
-        static_cast<void>(state.BuildPage(nullptr, nullptr));
-        return false;
+        state.ReplaceMeshInstances(path, std::move(records));
     }
     catch (const std::invalid_argument&)
     {
+        // Path/key mismatches are still contract violations at publish time.
         return true;
     }
+
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    return commandCount == 1 &&
+        page.mesh_upsert_count == 0 &&
+        HdSilkSceneState::GetRejectedMeshCount() > rejectedBefore;
 }
 
 bool VerifySceneStateSerialization()
 {
     HdSilkSceneState state;
-    state.UpsertMesh("/Zed", MakeSceneStateRecord("/Zed", 2));
-    state.UpsertMesh("/Alpha", MakeSceneStateRecord("/Alpha", 1, 5));
+    ReplaceSingleMesh(state, "/Zed", MakeSceneStateRecord("/Zed", 2));
+    ReplaceSingleMesh(state, "/Alpha", MakeSceneStateRecord("/Alpha", 1, 5));
     uint64_t revision = 0;
     uint32_t commandCount = 0;
     std::vector<uint8_t> firstBytes =
@@ -456,7 +564,7 @@ bool VerifySceneStateSerialization()
     }
 
     state.RemoveMesh("/Alpha");
-    state.UpsertMesh("/Alpha", MakeSceneStateRecord("/Alpha", 9, 1));
+    ReplaceSingleMesh(state, "/Alpha", MakeSceneStateRecord("/Alpha", 9, 1));
     std::vector<uint8_t> readdBytes =
         state.BuildPage(&revision, &commandCount);
     ParsedPage readd = ParseCommands(readdBytes.data(), readdBytes.size());
@@ -488,10 +596,11 @@ bool VerifySceneStateSerialization()
     HdSilkMeshRecord invalidMapping = MakeSceneStateRecord("/InvalidMapping", 4);
     invalidMapping.triangleSubprims.clear();
     HdSilkMeshRecord invalidInstance = MakeSceneStateRecord("/InvalidInstance", 5);
-    invalidInstance.instanceIndex = 1;
+    invalidInstance.instanceIndex = -1;
     return RejectsInvalidSceneStateRecord(std::move(invalidPoints)) &&
         RejectsInvalidSceneStateRecord(std::move(invalidMapping)) &&
-        RejectsInvalidSceneStateRecord(std::move(invalidInstance));
+        RejectsInvalidSceneStateRecord(std::move(invalidInstance)) &&
+        VerifyInstancedSceneStateSerialization();
 }
 
 openusd_status Sync(

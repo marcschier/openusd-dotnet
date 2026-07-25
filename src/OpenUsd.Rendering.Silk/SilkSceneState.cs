@@ -10,9 +10,11 @@ namespace OpenUsd.Rendering.Silk;
 public sealed class SilkSceneState
 {
     private readonly Dictionary<ulong, SilkMeshData> _meshes = [];
-    private readonly Dictionary<string, SilkMeshData> _meshesByPath =
-        new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Path, int InstanceIndex), SilkMeshData> _meshesByPath =
+        [];
     private readonly Dictionary<ulong, string> _pathsByHash = [];
+    private readonly Dictionary<string, List<SilkMeshData>> _instancesByPath =
+        new(StringComparer.Ordinal);
     private readonly Func<string, ulong>? _pathHasher;
 
     /// <summary>Initializes an empty retained scene and pick identity table.</summary>
@@ -36,8 +38,13 @@ public sealed class SilkSceneState
     /// <summary>Gets retained meshes by explicit Hydra prim ID.</summary>
     public IReadOnlyDictionary<ulong, SilkMeshData> Meshes => _meshes;
 
-    /// <summary>Gets retained meshes by authoritative USD prim path.</summary>
-    public IReadOnlyDictionary<string, SilkMeshData> MeshesByPath => _meshesByPath;
+    /// <summary>
+    /// Gets retained meshes keyed by USD prim path and instance ordinal. A
+    /// point-instanced prototype contributes one entry per instance under the
+    /// same authoritative path.
+    /// </summary>
+    public IReadOnlyDictionary<(string Path, int InstanceIndex), SilkMeshData> MeshesByPath =>
+        _meshesByPath;
 
     /// <summary>Gets retained future-GPU token ranges and resolved identities.</summary>
     public SilkPickIdentityTable PickIdentities { get; }
@@ -124,12 +131,13 @@ public sealed class SilkSceneState
             !string.Equals(primMesh.Path, mesh.Path, StringComparison.Ordinal))
         {
             throw new InvalidDataException(
-                $"hdSilk prim ID {mesh.PrimId} is shared by " +
-                $"'{primMesh.Path}' and '{mesh.Path}'.");
+                $"hdSilk prim ID {mesh.PrimId} instance {mesh.InstanceIndex} is " +
+                $"shared by '{primMesh.Path}' and '{mesh.Path}'.");
         }
 
         ulong? replacedId = null;
-        if (_meshesByPath.TryGetValue(mesh.Path, out SilkMeshData? pathMesh))
+        (string Path, int InstanceIndex) pathKey = (mesh.Path, mesh.InstanceIndex);
+        if (_meshesByPath.TryGetValue(pathKey, out SilkMeshData? pathMesh))
         {
             if (pathMesh.StableHash != mesh.StableHash)
             {
@@ -152,10 +160,35 @@ public sealed class SilkSceneState
             _meshes.Remove(oldId);
         }
         _meshes[mesh.Id] = mesh;
-        _meshesByPath[mesh.Path] = mesh;
+        _meshesByPath[pathKey] = mesh;
         _pathsByHash[mesh.StableHash] = mesh.Path;
+
+        if (!_instancesByPath.TryGetValue(mesh.Path, out List<SilkMeshData>? instances))
+        {
+            instances = [];
+            _instancesByPath[mesh.Path] = instances;
+        }
+        int existing = instances.FindIndex(
+            candidate => candidate.InstanceIndex == mesh.InstanceIndex);
+        if (existing >= 0)
+        {
+            instances[existing] = mesh;
+        }
+        else
+        {
+            instances.Add(mesh);
+        }
         return replacedId;
     }
+
+    /// <summary>
+    /// Gets every retained instance of one authoritative prim path. A prim with
+    /// no instancer yields a single entry.
+    /// </summary>
+    internal IReadOnlyList<SilkMeshData> GetInstances(string path) =>
+        _instancesByPath.TryGetValue(path, out List<SilkMeshData>? instances)
+            ? instances
+            : [];
 
     private bool RemoveMesh(
         SilkMeshRemoveCommand removal,
@@ -178,7 +211,9 @@ public sealed class SilkSceneState
                 $"hdSilk removal hash 0x{removal.StableHash:X16} names " +
                 $"'{hashPath}', not '{removal.Path}'.");
         }
-        if (!_meshesByPath.TryGetValue(removal.Path, out SilkMeshData? mesh))
+        (string Path, int InstanceIndex) pathKey =
+            (removal.Path, removal.InstanceIndex);
+        if (!_meshesByPath.TryGetValue(pathKey, out SilkMeshData? mesh))
         {
             return false;
         }
@@ -189,10 +224,23 @@ public sealed class SilkSceneState
         }
 
         removedId = mesh.Id;
-        _meshesByPath.Remove(mesh.Path);
+        _meshesByPath.Remove(pathKey);
         _meshes.Remove(mesh.Id);
-        _pathsByHash.Remove(mesh.StableHash);
-        PickIdentities.Remove(mesh.Path);
+
+        // The path hash index and pick identity are shared by every instance of
+        // a prototype, so retire them only once the last instance is gone.
+        if (_instancesByPath.TryGetValue(removal.Path, out List<SilkMeshData>? instances))
+        {
+            int instanceIndex = removal.InstanceIndex;
+            instances.RemoveAll(
+                candidate => candidate.InstanceIndex == instanceIndex);
+            if (instances.Count == 0)
+            {
+                _instancesByPath.Remove(removal.Path);
+                _pathsByHash.Remove(mesh.StableHash);
+                PickIdentities.Remove(mesh.Path);
+            }
+        }
         return true;
     }
 }
@@ -349,8 +397,18 @@ public sealed class SilkMeshData
     /// <summary>Gets Hydra's explicit Rprim identifier.</summary>
     public int PrimId { get; }
 
-    /// <summary>Gets the explicit prim ID as the retained resource key.</summary>
-    public ulong Id => checked((ulong)PrimId);
+    /// <summary>
+    /// Gets the retained resource key. A prim with no instancer keeps Hydra's
+    /// explicit prim ID so existing identities are unchanged. Point-instanced
+    /// records past instance zero pack the prim ID and instance ordinal behind
+    /// a high marker bit, because every instance of a prototype shares one prim
+    /// ID and would otherwise collide.
+    /// </summary>
+    public ulong Id => InstanceIndex == 0
+        ? checked((ulong)PrimId)
+        : (1UL << 63) |
+            ((ulong)checked((uint)PrimId) << 32) |
+            checked((uint)InstanceIndex);
 
     /// <summary>Gets the authoritative USD prim path.</summary>
     public string Path { get; }
@@ -358,10 +416,16 @@ public sealed class SilkMeshData
     /// <summary>Gets the collision-checked FNV-1a path hash index.</summary>
     public ulong StableHash { get; }
 
-    /// <summary>Gets the reserved instance ID, which is zero in page ABI v2.</summary>
+    /// <summary>
+    /// Gets the stable, diagnostic-only identifier of the owning instancer, or
+    /// zero when the prim is not instanced.
+    /// </summary>
     public int InstanceId { get; }
 
-    /// <summary>Gets the reserved instance index, which is zero in page ABI v2.</summary>
+    /// <summary>
+    /// Gets the zero-based instance ordinal. A prim with no instancer always
+    /// reports zero.
+    /// </summary>
     public int InstanceIndex { get; }
 
     /// <summary>Gets the emitted topology kind.</summary>

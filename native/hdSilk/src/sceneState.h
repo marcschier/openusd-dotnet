@@ -11,7 +11,9 @@
 #include "pxr/pxr.h"
 #include "pxr/base/gf/matrix4d.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -71,6 +73,50 @@ struct HdSilkMeshRecord
     float displayColor[4] = {0.7f, 0.7f, 0.7f, 1.0f};
 };
 
+/// Derives a stable, non-zero 31-bit identifier for an instancer path. The
+/// value is diagnostic only: (path, instanceIndex) remains the authoritative
+/// identity of a published record.
+inline int32_t HdSilkStableInstanceId(const std::string& instancerPath)
+{
+    uint64_t hash = 14695981039346656037ull;
+    for (unsigned char byte : instancerPath)
+    {
+        hash ^= static_cast<uint64_t>(byte);
+        hash *= 1099511628211ull;
+    }
+    const int32_t folded =
+        static_cast<int32_t>(static_cast<uint32_t>(hash ^ (hash >> 32)) &
+            0x7FFFFFFFu);
+    return folded == 0 ? 1 : folded;
+}
+
+/// Identity of one published mesh record. A non-instanced Rprim publishes a
+/// single record at instance index 0; a point-instanced prototype publishes
+/// one record per resolved instance. The USD prim path stays authoritative and
+/// is shared by every instance of the same prototype.
+struct HdSilkMeshKey
+{
+    std::string path;
+    int32_t instanceIndex = 0;
+
+    bool operator==(const HdSilkMeshKey& other) const
+    {
+        return instanceIndex == other.instanceIndex && path == other.path;
+    }
+};
+
+struct HdSilkMeshKeyHash
+{
+    size_t operator()(const HdSilkMeshKey& key) const
+    {
+        const size_t pathHash = std::hash<std::string>()(key.path);
+        const size_t indexHash =
+            std::hash<int32_t>()(key.instanceIndex);
+        return pathHash ^ (indexHash + 0x9e3779b97f4a7c15ull +
+            (pathHash << 6) + (pathHash >> 2));
+    }
+};
+
 /// Thread-safe scene state shared between HdSilkMesh::Sync (which Hydra may
 /// invoke concurrently from worker threads for different Rprims),
 /// HdSilkRenderPass::_Execute (which captures camera/viewport state), and
@@ -80,9 +126,20 @@ struct HdSilkMeshRecord
 class HdSilkSceneState
 {
 public:
-    void UpsertMesh(const std::string& path, HdSilkMeshRecord record);
+    /// Replaces every published instance of "path" with "records". Instance
+    /// indices that existed before but are absent from "records" are queued
+    /// for removal so a shrinking instancer cannot leave stale geometry
+    /// behind. An empty "records" vector removes the prim entirely.
+    void ReplaceMeshInstances(
+        const std::string& path,
+        std::vector<HdSilkMeshRecord> records);
     void RemoveMesh(const std::string& path);
     void SetFrame(const HdSilkFrameState& frame);
+
+    /// Number of mesh records rejected by wire validation since process
+    /// start. Rejected records are skipped with a diagnostic so that one
+    /// malformed prim cannot blank an otherwise renderable scene.
+    static uint64_t GetRejectedMeshCount();
 
     /// Builds a serialized page containing the current frame state plus any
     /// mesh upserts/removals queued since the previous call, then clears
@@ -99,8 +156,9 @@ private:
     };
 
     mutable std::mutex _mutex;
-    std::unordered_map<std::string, _Entry> _meshes;
-    std::vector<std::string> _pendingRemovals;
+    std::unordered_map<HdSilkMeshKey, _Entry, HdSilkMeshKeyHash> _meshes;
+    std::unordered_map<std::string, std::vector<int32_t>> _instancesByPath;
+    std::vector<HdSilkMeshKey> _pendingRemovals;
     HdSilkFrameState _frame;
     uint64_t _revision = 0;
 };

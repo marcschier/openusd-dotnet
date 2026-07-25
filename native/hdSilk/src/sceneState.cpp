@@ -4,8 +4,12 @@
 
 #include "openusd_hdsilk.h"
 
+#include "pxr/base/tf/diagnostic.h"
+
 #include <algorithm>
+#include <atomic>
 #include <cstring>
+#include <exception>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -179,10 +183,10 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         throw std::invalid_argument(
             "An hdSilk MESH_UPSERT requires a non-negative explicit prim ID.");
     }
-    if (record.instanceId != 0 || record.instanceIndex != 0)
+    if (record.instanceIndex < 0)
     {
         throw std::invalid_argument(
-            "hdSilk page ABI v2 reserves zero for unsupported instance identity.");
+            "An hdSilk mesh instance index must be non-negative.");
     }
     if (record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST)
     {
@@ -295,58 +299,115 @@ void AppendMeshUpsert(std::vector<uint8_t>& buffer, const HdSilkMeshRecord& reco
     AppendCommand(buffer, OPENUSD_SILK_COMMAND_MESH_UPSERT, payload);
 }
 
-void AppendMeshRemove(std::vector<uint8_t>& buffer, const std::string& path)
+void AppendMeshRemove(std::vector<uint8_t>& buffer, const HdSilkMeshKey& key)
 {
-    ValidatePath(path);
-    const uint32_t pathByteCount = CheckedCount(path.size(), "path byte count");
-    if (path.size() >
-        static_cast<size_t>(std::numeric_limits<uint32_t>::max()) - 20)
+    ValidatePath(key.path);
+    const uint32_t pathByteCount = CheckedCount(key.path.size(), "path byte count");
+    if (key.path.size() >
+        static_cast<size_t>(std::numeric_limits<uint32_t>::max()) - 24)
     {
         throw std::length_error(
             "An hdSilk MESH_REMOVE exceeds the 32-bit command byte_size.");
     }
 
     std::vector<uint8_t> payload;
-    payload.reserve(8 + 4 + pathByteCount);
-    AppendU64(payload, ComputeStableHash(path));
+    payload.reserve(8 + 4 + 4 + pathByteCount);
+    AppendU64(payload, ComputeStableHash(key.path));
+    AppendI32(payload, key.instanceIndex);
     AppendU32(payload, pathByteCount);
-    AppendBytes(payload, path.data(), path.size());
+    AppendBytes(payload, key.path.data(), key.path.size());
 
     AppendCommand(buffer, OPENUSD_SILK_COMMAND_MESH_REMOVE, payload);
 }
+std::atomic<uint64_t> _rejectedMeshCount{0};
+}
+
+uint64_t
+HdSilkSceneState::GetRejectedMeshCount()
+{
+    return _rejectedMeshCount.load(std::memory_order_relaxed);
 }
 
 void
-HdSilkSceneState::UpsertMesh(const std::string& path, HdSilkMeshRecord record)
+HdSilkSceneState::ReplaceMeshInstances(
+    const std::string& path,
+    std::vector<HdSilkMeshRecord> records)
 {
-    if (record.path != path)
+    for (const HdSilkMeshRecord& record : records)
     {
-        throw std::invalid_argument(
-            "The hdSilk scene-state key must match the mesh record path.");
+        if (record.path != path)
+        {
+            throw std::invalid_argument(
+                "The hdSilk scene-state key must match the mesh record path.");
+        }
     }
-    std::lock_guard<std::mutex> lock(_mutex);
-    _Entry& entry = _meshes[path];
-    entry.record = std::move(record);
-    entry.dirty = true;
 
-    // If this path had a removal queued (e.g. a rapid destroy+recreate),
-    // drop it: BuildPage() must not emit a MESH_REMOVE for a path that is
-    // alive again by the time the next page is built. The replacement record
-    // intentionally keeps its new prim ID and topology revision (which may
-    // reset), allowing consumers to recognize an implicit recreation.
-    _pendingRemovals.erase(
-        std::remove(_pendingRemovals.begin(), _pendingRemovals.end(), path),
-        _pendingRemovals.end());
+    std::lock_guard<std::mutex> lock(_mutex);
+    std::vector<int32_t>& published = _instancesByPath[path];
+    std::vector<int32_t> retained;
+    retained.reserve(records.size());
+
+    for (HdSilkMeshRecord& record : records)
+    {
+        const int32_t instanceIndex = record.instanceIndex;
+        const HdSilkMeshKey key{path, instanceIndex};
+        _Entry& entry = _meshes[key];
+        entry.record = std::move(record);
+        entry.dirty = true;
+        retained.push_back(instanceIndex);
+
+        // Drop a queued removal for an identity that is alive again, so a
+        // rapid destroy/recreate cannot erase the replacement record.
+        _pendingRemovals.erase(
+            std::remove(_pendingRemovals.begin(), _pendingRemovals.end(), key),
+            _pendingRemovals.end());
+    }
+
+    // Instances that existed before this sync but are absent now must be
+    // retired explicitly; otherwise a shrinking instancer leaves stale
+    // geometry in every consumer's retained scene.
+    for (int32_t previousIndex : published)
+    {
+        if (std::find(retained.begin(), retained.end(), previousIndex) !=
+            retained.end())
+        {
+            continue;
+        }
+        const HdSilkMeshKey staleKey{path, previousIndex};
+        if (_meshes.erase(staleKey) != 0)
+        {
+            _pendingRemovals.push_back(staleKey);
+        }
+    }
+
+    if (retained.empty())
+    {
+        _instancesByPath.erase(path);
+    }
+    else
+    {
+        published = std::move(retained);
+    }
 }
 
 void
 HdSilkSceneState::RemoveMesh(const std::string& path)
 {
     std::lock_guard<std::mutex> lock(_mutex);
-    if (_meshes.erase(path) != 0)
+    const auto published = _instancesByPath.find(path);
+    if (published == _instancesByPath.end())
     {
-        _pendingRemovals.push_back(path);
+        return;
     }
+    for (int32_t instanceIndex : published->second)
+    {
+        const HdSilkMeshKey key{path, instanceIndex};
+        if (_meshes.erase(key) != 0)
+        {
+            _pendingRemovals.push_back(key);
+        }
+    }
+    _instancesByPath.erase(published);
 }
 
 void
@@ -380,35 +441,76 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         dirtyEntries.end(),
         [](_Entry* left, _Entry* right)
         {
-            return Utf8PathLess(left->record.path, right->record.path);
+            if (left->record.path != right->record.path)
+            {
+                return Utf8PathLess(left->record.path, right->record.path);
+            }
+            return left->record.instanceIndex < right->record.instanceIndex;
         });
 
-    std::vector<std::string> removals = _pendingRemovals;
-    std::sort(removals.begin(), removals.end(), Utf8PathLess);
+    std::vector<HdSilkMeshKey> removals = _pendingRemovals;
+    std::sort(
+        removals.begin(),
+        removals.end(),
+        [](const HdSilkMeshKey& left, const HdSilkMeshKey& right)
+        {
+            if (left.path != right.path)
+            {
+                return Utf8PathLess(left.path, right.path);
+            }
+            return left.instanceIndex < right.instanceIndex;
+        });
     removals.erase(
         std::unique(removals.begin(), removals.end()),
         removals.end());
 
-    size_t commandCountSize =
-        CheckedAdd(1, dirtyEntries.size(), "page command count");
-    commandCountSize = CheckedAdd(
-        commandCountSize,
-        removals.size(),
-        "page command count");
-    const uint32_t commandCount =
-        CheckedCount(commandCountSize, "page command count");
-
     AppendFrame(buffer, _frame);
+    size_t appendedCommands = 1;
 
     for (const _Entry* entry : dirtyEntries)
     {
-        AppendMeshUpsert(buffer, entry->record);
+        // A single malformed or not-yet-resolved prim must not blank the
+        // whole scene: reject just that record, keep the rest of the page,
+        // and let the next dirty sync republish it once its data is
+        // consistent.
+        const size_t bufferSize = buffer.size();
+        try
+        {
+            AppendMeshUpsert(buffer, entry->record);
+            ++appendedCommands;
+        }
+        catch (const std::exception& error)
+        {
+            buffer.resize(bufferSize);
+            _rejectedMeshCount.fetch_add(1, std::memory_order_relaxed);
+            TF_WARN(
+                "hdSilk skipped mesh '%s' instance %d: %s",
+                entry->record.path.c_str(),
+                static_cast<int>(entry->record.instanceIndex),
+                error.what());
+        }
     }
 
-    for (const std::string& path : removals)
+    for (const HdSilkMeshKey& key : removals)
     {
-        AppendMeshRemove(buffer, path);
+        const size_t bufferSize = buffer.size();
+        try
+        {
+            AppendMeshRemove(buffer, key);
+            ++appendedCommands;
+        }
+        catch (const std::exception& error)
+        {
+            buffer.resize(bufferSize);
+            TF_WARN(
+                "hdSilk skipped removal of '%s': %s",
+                key.path.c_str(),
+                error.what());
+        }
     }
+
+    const uint32_t commandCount =
+        CheckedCount(appendedCommands, "page command count");
 
     for (_Entry* entry : dirtyEntries)
     {

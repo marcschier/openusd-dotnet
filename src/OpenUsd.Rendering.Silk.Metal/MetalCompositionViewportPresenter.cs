@@ -1273,7 +1273,7 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
                 72,
                 SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
             indices = device.CreateBuffer(
-                6,
+                12,
                 SilkBufferUsage.Index | SilkBufferUsage.Upload);
             uniforms = device.CreateBuffer(
                 80,
@@ -1284,7 +1284,7 @@ internal sealed class MetalCompositionPipelineResources : IDisposable
                  0.00f,  0.75f, 0, 1, 0, 0,
                  0.75f, -0.75f, 0, 1, 0, 0
             ]));
-            indices.Write(MemoryMarshal.AsBytes<ushort>([0, 1, 2]));
+            indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
             uniforms.Write(MemoryMarshal.AsBytes<float>(
             [
                 1, 0, 0, 0,

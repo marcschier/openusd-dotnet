@@ -533,9 +533,9 @@ public sealed class D3D12PickingTests
         D3D12SilkGraphicsDevice device)
     {
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
-            6,
+            12,
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
-        buffer.Write(MemoryMarshal.AsBytes<ushort>([0, 1, 2]));
+        buffer.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
         return buffer;
     }
 

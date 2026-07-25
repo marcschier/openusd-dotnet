@@ -78,7 +78,7 @@ public sealed class SilkCommandParserTests
     }
 
     [Test]
-    public async Task RejectsPageAbiV1AndAcceptsV2()
+    public async Task RejectsPageAbiV1AndAcceptsCurrent()
     {
         await Assert.That(() => new OpenUsdSilkPage(1, 1, [], 0))
             .Throws<InvalidDataException>();
@@ -97,7 +97,7 @@ public sealed class SilkCommandParserTests
     }
 
     [Test]
-    public async Task RejectsMalformedSizesCountsUtf8AndInstanceFields()
+    public async Task RejectsMalformedSizesCountsUtf8AndInstanceIndex()
     {
         byte[] invalidSize = CreateMeshCommand();
         BinaryPrimitives.WriteUInt32LittleEndian(
@@ -117,10 +117,12 @@ public sealed class SilkCommandParserTests
         byte[] invalidUtf8 = CreateMeshCommand();
         invalidUtf8[200] = 0xFF;
 
-        byte[] unsupportedInstance = CreateMeshCommand();
+        // Page ABI v3 makes instance identity meaningful, so a non-zero
+        // instancer id is legitimate. A negative instance ordinal is not.
+        byte[] negativeInstanceIndex = CreateMeshCommand();
         BinaryPrimitives.WriteInt32LittleEndian(
-            unsupportedInstance.AsSpan(20),
-            1);
+            negativeInstanceIndex.AsSpan(24),
+            -1);
 
         byte[] invalidHash = CreateMeshCommand(stableHash: 1);
 
@@ -131,7 +133,7 @@ public sealed class SilkCommandParserTests
                 invalidPathCount,
                 invalidTriangleCount,
                 invalidUtf8,
-                unsupportedInstance,
+                negativeInstanceIndex,
                 invalidHash,
             })
         {
@@ -266,8 +268,8 @@ public sealed class SilkCommandParserTests
             .Throws<InvalidDataException>())!;
 
         await Assert.That(exception.Message).Contains("collides");
-        await Assert.That(scene.MeshesByPath.Keys).IsEquivalentTo(["/First"]);
-        await Assert.That(scene.MeshesByPath["/First"].StableHash)
+        await Assert.That(scene.MeshesByPath.Keys).IsEquivalentTo([("/First", 0)]);
+        await Assert.That(scene.MeshesByPath[("/First", 0)].StableHash)
             .IsEqualTo(99ul);
     }
 
@@ -364,8 +366,8 @@ public sealed class SilkCommandParserTests
             BinaryPrimitives.ReadSingleLittleEndian(device.Buffers[0].Data.AsSpan(20)))
             .IsEqualTo(1f);
         await Assert.That(
-            BinaryPrimitives.ReadUInt16LittleEndian(device.Buffers[1].Data.AsSpan(4)))
-            .IsEqualTo((ushort)2);
+            BinaryPrimitives.ReadUInt32LittleEndian(device.Buffers[1].Data.AsSpan(8)))
+            .IsEqualTo(2u);
 
         byte[] removal = CreateMeshRemoveCommand();
         resources.Apply(scene, scene.Apply(removal, 1, revision: 3));
@@ -538,10 +540,10 @@ public sealed class SilkCommandParserTests
         return bytes;
     }
 
-    private static byte[] CreateMeshRemoveCommand()
+    private static byte[] CreateMeshRemoveCommand(int instanceIndex = 0)
     {
         byte[] path = Encoding.UTF8.GetBytes("/Cube");
-        var bytes = new byte[20 + path.Length];
+        var bytes = new byte[24 + path.Length];
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(0, 4),
             (uint)SilkCommandType.MeshRemove);
@@ -549,8 +551,9 @@ public sealed class SilkCommandParserTests
         BinaryPrimitives.WriteUInt64LittleEndian(
             bytes.AsSpan(8, 8),
             SilkWireFormat.ComputeStableHash("/Cube"));
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16, 4), (uint)path.Length);
-        path.CopyTo(bytes, 20);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16, 4), instanceIndex);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20, 4), (uint)path.Length);
+        path.CopyTo(bytes, 24);
         return bytes;
     }
 

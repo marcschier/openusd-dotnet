@@ -811,7 +811,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         var indexView = new IndexBufferView(
                             indexBuffer.Resource->GetGPUVirtualAddress(),
                             checked((uint)indexBuffer.Size),
-                            Format.FormatR16Uint);
+                            Format.FormatR32Uint);
                         nativeCommands->IASetIndexBuffer(&indexView);
                         break;
                     case SilkGraphicsCommandKind.SetUniformBuffer:

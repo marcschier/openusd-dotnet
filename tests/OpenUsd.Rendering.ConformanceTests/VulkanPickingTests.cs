@@ -662,9 +662,9 @@ public sealed class VulkanPickingTests
         VulkanSilkGraphicsDevice device)
     {
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
-            6,
+            12,
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
-        buffer.Write(MemoryMarshal.AsBytes<ushort>([0, 1, 2]));
+        buffer.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
         return buffer;
     }
 
@@ -688,9 +688,9 @@ public sealed class VulkanPickingTests
         VulkanSilkGraphicsDevice device)
     {
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
-            12,
+            24,
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
-        buffer.Write(MemoryMarshal.AsBytes<ushort>(
+        buffer.Write(MemoryMarshal.AsBytes<uint>(
             [0, 2, 1, 0, 3, 2]));
         return buffer;
     }

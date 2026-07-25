@@ -70,7 +70,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v5 and
-hdSilk session ABI v4; the hdSilk page ABI is v2. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v4; the hdSilk page ABI is v3. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -505,10 +505,29 @@ The fallback walking skeleton is a real Hydra renderer plugin, `hdSilk`. Hydra c
 `Sync` calls, triangulates topology, captures canonical `displayColor`, and executes a render pass that captures
 camera/frame state. The plugin serializes native-owned little-endian pages containing `FRAME`, dirty `MESH_UPSERT`,
 and `MESH_REMOVE` commands; a matrix-mode `FRAME` contains the exact 32 double values supplied by the caller. Page ABI
-v2 makes each mesh path authoritative and adds the collision-checked 64-bit path hash, explicit Hydra prim ID,
-reserved-zero instance fields, topology kind/revision, triangle count, and one authored USD face index per emitted
-triangle. Dirty topology rebuilds the `primitiveParams` mapping and increments its revision; property-only updates
-preserve it.
+v2 made each mesh path authoritative and added the collision-checked 64-bit path hash, explicit Hydra prim ID,
+topology kind/revision, triangle count, and one authored USD face index per emitted triangle. Dirty topology rebuilds
+the `primitiveParams` mapping and increments its revision; property-only updates preserve it.
+
+Page ABI v3 turns the previously reserved instance fields into real identity. A prim with no instancer publishes
+exactly one record with `instance_id` and `instance_index` both zero. A point-instanced prototype publishes one
+record per resolved instance: `path` stays the authoritative prototype path, `instance_index` is the zero-based
+instance ordinal, `instance_id` is a stable non-zero diagnostic identifier for the owning instancer, and every record
+carries its own fully resolved transform. Consumers must therefore key retained meshes by `(path, instance_index)`
+rather than by path alone. A `MESH_REMOVE` retires exactly one such identity, so a shrinking instancer emits one
+removal per dropped instance, and a selected path highlights all of its instances.
+
+hdSilk registers `extComputation` as a supported Sprim type. Without that Sprim, Hydra never creates the computation
+that UsdSkel depends on, and pulling computed primvars for a skinned mesh faults. Skinned points are therefore read
+from computed primvars whenever a mesh declares them, and points are refreshed whenever topology refreshes, so
+deformed positions can never be indexed against a stale point array.
+
+Serialization isolates failures per prim. A record whose points, indices, or triangle mapping do not validate is
+skipped with a warning and counted by a rejected-mesh counter instead of aborting the page, so one malformed prim in
+a production asset cannot blank an entire frame. Indices are 32-bit end to end across the wire, retained managed
+state, and the D3D12, Vulkan, and Metal backends; the previous 65,536-vertex ceiling is gone. hdSilk still supports
+only mesh Rprims, and its surface shading remains an absolute-normal debug visualization tinted by `displayColor`
+until the material and lighting parity slices land.
 
 Managed `SilkMeshData` owns defensive immutable copies indexed by authoritative path and explicit prim ID; hashes are
 path-derived secondary indexes and different paths with the same hash are rejected. It computes one deterministic 64-bit

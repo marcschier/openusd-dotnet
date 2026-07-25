@@ -3,10 +3,12 @@
 #include "renderDelegate.h"
 
 #include "openusd_hdsilk.h"
+#include "instancer.h"
 #include "mesh.h"
 #include "renderPass.h"
 
 #include "pxr/base/tf/diagnostic.h"
+#include "pxr/imaging/hd/extComputation.h"
 #include "pxr/imaging/hd/tokens.h"
 
 #include <atomic>
@@ -31,6 +33,11 @@ const TfTokenVector HdSilkRenderDelegate::SUPPORTED_RPRIM_TYPES =
 
 const TfTokenVector HdSilkRenderDelegate::SUPPORTED_SPRIM_TYPES =
 {
+    // Skinned and otherwise procedurally deformed meshes publish their points
+    // through an ExtComputation. Without the Sprim the render index never
+    // creates the computation, and pulling computed primvars dereferences a
+    // prim that does not exist.
+    HdPrimTypeTokens->extComputation,
 };
 
 const TfTokenVector HdSilkRenderDelegate::SUPPORTED_BPRIM_TYPES =
@@ -172,6 +179,10 @@ HdSilkRenderDelegate::DestroyRprim(HdRprim* rPrim)
 HdSprim*
 HdSilkRenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprimId)
 {
+    if (typeId == HdPrimTypeTokens->extComputation)
+    {
+        return new HdExtComputation(sprimId);
+    }
     TF_CODING_ERROR("Unknown Sprim type=%s id=%s", typeId.GetText(), sprimId.GetText());
     return nullptr;
 }
@@ -179,14 +190,18 @@ HdSilkRenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprimId)
 HdSprim*
 HdSilkRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
 {
+    if (typeId == HdPrimTypeTokens->extComputation)
+    {
+        return new HdExtComputation(SdfPath::EmptyPath());
+    }
     TF_CODING_ERROR("Creating unknown fallback sprim type=%s", typeId.GetText());
     return nullptr;
 }
 
 void
-HdSilkRenderDelegate::DestroySprim(HdSprim* /*sprim*/)
+HdSilkRenderDelegate::DestroySprim(HdSprim* sprim)
 {
-    TF_CODING_ERROR("Destroy Sprim not supported");
+    delete sprim;
 }
 
 HdBprim*
@@ -210,16 +225,15 @@ HdSilkRenderDelegate::DestroyBprim(HdBprim* /*bprim*/)
 }
 
 HdInstancer*
-HdSilkRenderDelegate::CreateInstancer(HdSceneDelegate* /*delegate*/, SdfPath const& id)
+HdSilkRenderDelegate::CreateInstancer(HdSceneDelegate* delegate, SdfPath const& id)
 {
-    TF_CODING_ERROR("Creating Instancer not supported id=%s", id.GetText());
-    return nullptr;
+    return new HdSilkInstancer(delegate, id);
 }
 
 void
-HdSilkRenderDelegate::DestroyInstancer(HdInstancer* /*instancer*/)
+HdSilkRenderDelegate::DestroyInstancer(HdInstancer* instancer)
 {
-    TF_CODING_ERROR("Destroy instancer not supported");
+    delete instancer;
 }
 
 void

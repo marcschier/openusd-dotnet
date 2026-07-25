@@ -22,6 +22,7 @@ param(
     [string]$EvidenceCameraPath,
     [string]$PickSmokeEvidencePath,
     [string]$NativeRuntimeOverridePath,
+    [string]$StageAssetRoot,
     [switch]$SimulateStormContextLoss,
     [string]$IdentityManifestPath,
     [switch]$ReusePublishedOutput
@@ -85,6 +86,31 @@ if (-not (Test-Path $stageSource))
 {
     throw "Stage file not found: $stageSource"
 }
+
+# Real-world USD projects are rarely one file: a root layer references sublayers,
+# payloads, and textures by relative path. Staging only the root layer silently
+# produces an empty stage, so an explicit asset root is copied alongside it and
+# the stage keeps its position relative to that root.
+$stageAssetSourceRoot = $null
+$stageRelativePath = [System.IO.Path]::GetFileName($stageSource)
+if (-not [string]::IsNullOrWhiteSpace($StageAssetRoot))
+{
+    $stageAssetSourceRoot = [System.IO.Path]::GetFullPath($StageAssetRoot)
+    if (-not (Test-Path -LiteralPath $stageAssetSourceRoot -PathType Container))
+    {
+        throw "Stage asset root not found: $stageAssetSourceRoot"
+    }
+
+    $rootPrefix = $stageAssetSourceRoot.TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar) +
+        [System.IO.Path]::DirectorySeparatorChar
+    if (-not $stageSource.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase))
+    {
+        throw "Stage $stageSource is not inside asset root $stageAssetSourceRoot."
+    }
+    $stageRelativePath = $stageSource.Substring($rootPrefix.Length)
+}
 $isStageCameraEvidence =
     $EvidenceScenario -ceq 'stage-camera-backend-smoke'
 $hasEvidenceCameraPath =
@@ -96,7 +122,7 @@ if ($isStageCameraEvidence -ne $hasEvidenceCameraPath -or
         'The stage-camera evidence scenario and an absolute ' +
         '-EvidenceCameraPath must be supplied together.')
 }
-$stagedStage = Join-Path $publishRoot ([System.IO.Path]::GetFileName($stageSource))
+$stagedStage = Join-Path $publishRoot $stageRelativePath
 if ($ReusePublishedOutput)
 {
     foreach ($requiredPath in @(
@@ -172,7 +198,24 @@ if (-not [string]::IsNullOrWhiteSpace($NativeRuntimeOverridePath))
     Get-ChildItem $nativeOverride -File -Filter '*.dll' |
         Copy-Item -Destination $binTarget -Force
 }
-Copy-Item $stageSource $stagedStage -Force
+if ($null -eq $stageAssetSourceRoot)
+{
+    Copy-Item $stageSource $stagedStage -Force
+}
+else
+{
+    # Copy the whole payload so relative references resolve, then verify the
+    # root layer landed at its expected relative location.
+    Copy-Item `
+        (Join-Path $stageAssetSourceRoot '*') `
+        $publishRoot `
+        -Recurse `
+        -Force
+    if (-not (Test-Path -LiteralPath $stagedStage -PathType Leaf))
+    {
+        throw "Staged asset root did not produce the stage at $stagedStage."
+    }
+}
 
 $binaryIdentityBefore = Get-ViewerBinaryIdentity
 if (-not [string]::IsNullOrWhiteSpace($IdentityManifestPath))

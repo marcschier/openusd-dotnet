@@ -82,7 +82,7 @@ and tests must be updated together.
 | Direct Storm `openusd_hydra` | ABI 5 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 7 | Managed child runtime requires an exact version. |
 | hdSilk session API | ABI 4 | Kept aligned through the matched Imaging runtime. |
-| hdSilk command page | ABI 2 | Every managed page is validated before parsing. |
+| hdSilk command page | ABI 3 | Every managed page is validated before parsing. |
 
 The data capability mask is part of compatibility. A native library with ABI 8 but an older capability
 mask is rejected, as is an older ABI that happens to report newer capability bits.

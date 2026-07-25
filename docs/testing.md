@@ -170,6 +170,22 @@ managed CI, deterministic performance safety, shader reproducibility, verified n
 archive production, package-only consumers, and platform render evidence on the same
 commit and artifact set.
 
+## hdSilk command-page probe
+
+`native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
+It asserts page ABI 3 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+`MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
+
+Instance identity has dedicated coverage. One case serializes a point-instanced scene and
+requires one record per resolved instance, each with the shared prototype path, its own
+zero-based `instance_index`, a stable non-zero `instance_id`, and its own resolved transform.
+Another replaces a single mesh and requires that only the affected `(path, instance_index)`
+identities are retired, so a shrinking instancer emits exactly one removal per dropped instance.
+
+Per-prim isolation is asserted as a skip rather than a throw: a record that fails validation must
+be omitted from the page and counted by the rejected-mesh counter while every valid sibling still
+serializes. This is what stops one malformed prim in a production asset from blanking a frame.
+
 ## Windows native Storm child
 
 The native child-host CTest proves the application-owned `WS_CHILD`, parent/process/creator-thread

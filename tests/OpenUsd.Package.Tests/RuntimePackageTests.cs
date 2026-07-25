@@ -21,7 +21,7 @@ public sealed class RuntimePackageTests
     private const ulong PreviousDataCapabilities = 0x7F;
     private const int RequiredStormAbiVersion = 5;
     private const int RequiredSilkSessionAbiVersion = 4;
-    private const int RequiredSilkPageAbiVersion = 2;
+    private const int RequiredSilkPageAbiVersion = 3;
     private const int RequiredStormChildAbiVersion = 7;
     private const int RequiredStormChildNavigationInputVersion = 1;
 
@@ -3925,7 +3925,7 @@ public sealed class RuntimePackageTests
                     bool incrementalUpload =
                         device.Backend == SilkGraphicsBackend.__BACKEND_ENUM__ &&
                         __SOFTWARE_REQUIREMENT__ &&
-                        first.AbiVersion == 2 &&
+                        first.AbiVersion == __SILK_PAGE_ABI__ &&
                         firstFrames == 1 &&
                         firstUpserts > 0 &&
                         firstRemovals == 0 &&
@@ -4250,6 +4250,10 @@ public sealed class RuntimePackageTests
         .Replace(
             "__STORM_CHILD_ABI__",
             stormChildAbiVersion.ToString(CultureInfo.InvariantCulture),
+            StringComparison.Ordinal)
+        .Replace(
+            "__SILK_PAGE_ABI__",
+            RequiredSilkPageAbiVersion.ToString(CultureInfo.InvariantCulture),
             StringComparison.Ordinal);
 
     private static void AssertPackageOnlyGraph(

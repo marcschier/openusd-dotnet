@@ -86,7 +86,7 @@ The current contracts are:
 - direct Storm ABI 5;
 - Storm child ABI 7;
 - hdSilk session ABI 4; and
-- hdSilk command-page ABI 2.
+- hdSilk command-page ABI 3.
 
 Do not work around a mismatch by suppressing initialization or editing a constant. Remove mixed native
 assets, align all managed and runtime package versions, and rebuild or republish.

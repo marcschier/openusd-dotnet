@@ -1001,7 +1001,7 @@ internal static class Program
             144,
             SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
         using ISilkGraphicsBuffer indices = device.CreateBuffer(
-            6,
+            12,
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
         using ISilkGraphicsBuffer uniforms = device.CreateBuffer(
             80,
@@ -1015,7 +1015,7 @@ internal static class Program
             -0.75f, -0.75f, 0, 1, 0, 0,
              0.75f, -0.75f, 0, 1, 0, 0
         ]));
-        indices.Write(MemoryMarshal.AsBytes<ushort>([4, 2, 5]));
+        indices.Write(MemoryMarshal.AsBytes<uint>([4, 2, 5]));
         uniforms.Write(MemoryMarshal.AsBytes<float>(
         [
             0.5f, 0, 0, 0,

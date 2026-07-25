@@ -6,6 +6,18 @@
 .\eng\run-viewer.ps1 -Rid win-x64 -StagePath test-assets\minimal.usda
 ```
 
+`-StagePath` alone stages exactly one file, which is sufficient for a self-contained `.usda` or
+`.usdz`. A multi-file USD project whose root layer references sibling assets must also pass
+`-StageAssetRoot` so the referenced payload tree is staged alongside the root layer:
+
+```powershell
+.\eng\run-viewer.ps1 -Rid win-x64 -StagePath assets\chess\chess_set.usda -StageAssetRoot assets\chess
+```
+
+Without it every reference fails to resolve, the Viewer opens an effectively empty stage, and the
+renderer legitimately reports zero draws while logging one `Could not open asset` warning per
+unresolved reference.
+
 ## Stage and session editing
 
 The stage panel shows the resolved root/session layer identities, default prim, traversable prim

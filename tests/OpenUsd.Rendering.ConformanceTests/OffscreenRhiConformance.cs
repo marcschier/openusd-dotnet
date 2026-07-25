@@ -326,7 +326,7 @@ internal static class OffscreenRhiConformance
             72,
             SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
         using ISilkGraphicsBuffer indices = device.CreateBuffer(
-            6,
+            12,
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
         using ISilkGraphicsBuffer uniforms = device.CreateBuffer(
             80,
@@ -337,7 +337,7 @@ internal static class OffscreenRhiConformance
              0.00f,  0.75f, 0, 1, 0, 0,
              0.75f, -0.75f, 0, 1, 0, 0
         ]));
-        indices.Write(MemoryMarshal.AsBytes<ushort>([0, 1, 2]));
+        indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
         uniforms.Write(MemoryMarshal.AsBytes<float>(
         [
             1, 0, 0, 0,
@@ -402,7 +402,7 @@ internal static class OffscreenRhiConformance
             72,
             SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
         ISilkGraphicsBuffer indices = device.CreateBuffer(
-            6,
+            12,
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
         ISilkGraphicsBuffer uniforms = device.CreateBuffer(
             80,
@@ -413,7 +413,7 @@ internal static class OffscreenRhiConformance
              0.00f,  0.75f, 0, 1, 0, 0,
              0.75f, -0.75f, 0, 1, 0, 0
         ]));
-        indices.Write(MemoryMarshal.AsBytes<ushort>([0, 1, 2]));
+        indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
         uniforms.Write(MemoryMarshal.AsBytes<float>(
         [
             1, 0, 0, 0,
@@ -749,9 +749,9 @@ internal static class OffscreenRhiConformance
             0.25f);
         using var graphics = new OrderedTriangleResources(device, shaderFormat, size);
         using ISilkGraphicsBuffer indices = device.CreateBuffer(
-            6,
+            12,
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
-        indices.Write(MemoryMarshal.AsBytes<ushort>([0, 1, 2]));
+        indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
         using ISilkGraphicsCommandList commands = device.CreateCommandList();
         compute.RecordFill(commands, elementCount);
         commands.BufferBarrier(compute.Output);
@@ -1016,7 +1016,7 @@ internal static class OffscreenRhiConformance
                 144,
                 SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
             Indices = device.CreateBuffer(
-                6,
+                12,
                 SilkBufferUsage.Index | SilkBufferUsage.Upload);
             Uniforms = device.CreateBuffer(
                 80,
@@ -1030,7 +1030,7 @@ internal static class OffscreenRhiConformance
                 -0.75f, -0.75f, 0, 1, 0, 0,
                  0.75f, -0.75f, 0, 1, 0, 0
             ]));
-            Indices.Write(MemoryMarshal.AsBytes<ushort>([4, 2, 5]));
+            Indices.Write(MemoryMarshal.AsBytes<uint>([4, 2, 5]));
             Uniforms.Write(MemoryMarshal.AsBytes<float>(
             [
                 0.5f, 0, 0, 0,

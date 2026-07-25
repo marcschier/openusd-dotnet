@@ -21,6 +21,8 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+struct HdSilkMeshRecord;
+
 /// HdSilkMesh is the only supported Rprim type in this walking skeleton. Its
 /// Sync() pulls topology, points, and transform from the scene delegate
 /// whenever Hydra marks them dirty, triangulates the topology with
@@ -51,6 +53,12 @@ protected:
     HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override;
 
 private:
+    /// Expands one published record into per-instance records. A prim with no
+    /// instancer yields exactly one record at instance index 0.
+    std::vector<HdSilkMeshRecord> _BuildInstanceRecords(
+        HdSceneDelegate* sceneDelegate,
+        HdSilkMeshRecord record);
+
     HdMeshTopology _topology;
     GfMatrix4d _transform;
     VtVec3fArray _points;
