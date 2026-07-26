@@ -86,6 +86,16 @@ if(WIN32)
         "PATH=path_list_prepend:${HDSILK_PROBE_RUNTIME_DIR}/bin"
         "PATH=path_list_prepend:${pxr_DIR}/lib"
         "PATH=path_list_prepend:${pxr_DIR}/bin")
+elseif(APPLE)
+    # The same double-load hazard as the Windows branch above. The probe links
+    # openusd_hdsilk_test through @rpath while the Plug system separately
+    # dlopen()s the copy under <runtime>. Pointing DYLD_LIBRARY_PATH at the
+    # runtime copy makes both resolve to one image. dyld ignores
+    # LD_LIBRARY_PATH, which is why the probe previously loaded the library
+    # twice and failed with "TfType ... already has a defined C++ type".
+    set(HDSILK_PROBE_ENV_MODS
+        "DYLD_LIBRARY_PATH=path_list_prepend:${HDSILK_PROBE_NATIVE_DIR}"
+        "DYLD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib")
 else()
     set(HDSILK_PROBE_ENV_MODS
         "LD_LIBRARY_PATH=path_list_prepend:${HDSILK_PROBE_NATIVE_DIR}"
