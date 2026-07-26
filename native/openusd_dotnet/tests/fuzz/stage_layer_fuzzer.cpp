@@ -194,7 +194,10 @@ void ExerciseParsedStage(openusd_stage* stage, openusd_error_buffer* error)
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
-    if (data == nullptr || size > MaxInputSize)
+    // libFuzzer executes the empty unit before the seed corpus. An empty layer
+    // can never parse, so it must not trip the known-good seed assertion that
+    // the preflight enables through OPENUSD_FUZZ_REQUIRE_PARSE.
+    if (data == nullptr || size == 0 || size > MaxInputSize)
     {
         return 0;
     }
@@ -223,6 +226,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         }
         if (RequireSuccessfulParse())
         {
+            std::fprintf(
+                stderr,
+                "Known-good seed failed to parse (%d): %s\n",
+                static_cast<int>(status),
+                errorText.data());
             std::abort();
         }
         return 0;
