@@ -42,6 +42,12 @@ public sealed class NativeAbiVersionTests
             "openusd_storm_child",
             "tests",
             "storm_child_probe.cpp"));
+        string macChildProbe = await File.ReadAllTextAsync(Path.Combine(
+            repositoryRoot,
+            "native",
+            "openusd_storm_child",
+            "tests",
+            "storm_child_probe_macos.mm"));
         string nativeWorkflow = await File.ReadAllTextAsync(Path.Combine(
             repositoryRoot,
             ".github",
@@ -64,7 +70,7 @@ public sealed class NativeAbiVersionTests
         await Assert.That(Regex.Count(
             childTests,
             @"SKIP_RETURN_CODE 125",
-            RegexOptions.CultureInvariant)).IsEqualTo(1);
+            RegexOptions.CultureInvariant)).IsEqualTo(2);
         await Assert.That(hydraProbe)
             .Contains("constexpr int CapabilityUnavailableExitCode = 125;");
         await Assert.That(hydraProbe)
@@ -75,6 +81,10 @@ public sealed class NativeAbiVersionTests
             .Contains("constexpr int CapabilityUnavailableExitCode = 125;");
         await Assert.That(childProbe)
             .Contains("\"WGL_ARB_create_context is unavailable.\"");
+        await Assert.That(macChildProbe)
+            .Contains("constexpr int CapabilityUnavailableExitCode = 125;");
+        await Assert.That(macChildProbe)
+            .Contains("\"macOS could not create the OpenGL 4.1 core pixel format.\"");
         await Assert.That(nativeWorkflow).Contains("runner: macos-15");
         await Assert.That(packageWorkflow).Contains("runner: macos-15");
         await Assert.That(nativeWorkflow).DoesNotContain("macos-15-intel");
