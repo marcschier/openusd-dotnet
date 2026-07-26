@@ -4,7 +4,7 @@
 param(
     [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
     [string]$Rid,
-    [ValidateSet('Full', 'Spirv')]
+    [ValidateSet('Full', 'Spirv', 'Metal')]
     [string]$ArtifactScope = 'Full',
     [string]$ToolRoot = (Join-Path $PSScriptRoot '.tools'),
     [string]$OutputRoot = (Join-Path $PSScriptRoot 'out')

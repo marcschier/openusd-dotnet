@@ -2,11 +2,13 @@
 
 import copy
 import pathlib
+import re
 import sys
 import unittest
 
 
 SCRIPT_ROOT = pathlib.Path(__file__).resolve().parents[1] / "scripts"
+SHADER_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPT_ROOT))
 
 import shader_model  # noqa: E402
@@ -155,6 +157,22 @@ class ShaderModelTests(unittest.TestCase):
                 require_metallib=True,
             ),
         )
+
+    def test_powershell_artifact_scopes_match_the_model(self) -> None:
+        pattern = re.compile(
+            r"\[ValidateSet\(([^)]*)\)\]\s*\[string\]\$ArtifactScope",
+            re.MULTILINE,
+        )
+        for name in ("build-shaders.ps1", "verify-shaders.ps1"):
+            with self.subTest(script=name):
+                text = (SHADER_ROOT / name).read_text(encoding="utf-8")
+                match = pattern.search(text)
+                self.assertIsNotNone(match, f"{name} must validate ArtifactScope")
+                declared = {
+                    value.strip().strip("'").lower()
+                    for value in match.group(1).split(",")
+                }
+                self.assertEqual(set(shader_model.ARTIFACT_SCOPES), declared)
 
     def test_required_checked_inputs_reject_carriage_returns(self) -> None:
         shader_model.validate_checked_input_bytes(

@@ -195,7 +195,7 @@
     },
     {
       "path": "eng/shaders/verify-shaders.ps1",
-      "sha256": "5f7e554af506fa6a918c5b8dc8ff5a31a17e37bcfc772b464a55a73266f38572"
+      "sha256": "c5a1f4a472f7708898ba855e8cde3b25398343ba5233ec075d2d71c035f5c722"
     },
     {
       "path": "eng/shaders/write-host-toolchain.ps1",
