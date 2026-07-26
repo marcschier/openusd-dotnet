@@ -7,8 +7,10 @@
 #include <X11/Xlib.h>
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
+#include <signal.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -52,6 +54,41 @@ bool Require(bool condition, const char* message)
         std::cerr << message << '\n';
     }
     return condition;
+}
+
+// The probe reports the stage it is entering so a stall is diagnosable from the
+// captured output alone. Everything before this was silent, which made the first
+// hosted hang impossible to place.
+void ReportStage(const char* stage)
+{
+    std::cerr << "probe stage: " << stage << std::endl;
+}
+
+// fork() in a process that has already loaded OpenUSD and started its worker
+// threads leaves the child holding locks no surviving thread can release, so a
+// bare blocking waitpid can never return. Bound the wait and kill the child so
+// the contract fails loudly instead of stalling the job.
+bool WaitForChildExit(pid_t child, int* status, int timeout_seconds)
+{
+    const int polls_per_second = 100;
+    for (int attempt = 0; attempt < timeout_seconds * polls_per_second; ++attempt)
+    {
+        const pid_t observed = waitpid(child, status, WNOHANG);
+        if (observed == child)
+        {
+            return true;
+        }
+        if (observed < 0)
+        {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    std::cerr << "The forked contract child did not exit within "
+        << timeout_seconds << " seconds.\n";
+    kill(child, SIGKILL);
+    waitpid(child, status, 0);
+    return false;
 }
 
 openusd_status RenderUntilConverged(
@@ -259,11 +296,13 @@ int main(int argc, char** argv)
             "Usage: storm_child_probe <plugin-path> <stage-path> <runtime-path>\n";
         return 2;
     }
+    ReportStage("XInitThreads");
     if (XInitThreads() == 0)
     {
         std::cerr << "XInitThreads failed.\n";
         return 3;
     }
+    ReportStage("dispatcher initialization contract fork");
     const pid_t initialization_contract_child = fork();
     if (initialization_contract_child == 0)
     {
@@ -298,16 +337,17 @@ int main(int argc, char** argv)
     }
     int initialization_contract_status = 0;
     if (initialization_contract_child < 0 ||
-        waitpid(
+        !WaitForChildExit(
             initialization_contract_child,
             &initialization_contract_status,
-            0) != initialization_contract_child ||
+            60) ||
         !WIFEXITED(initialization_contract_status) ||
         WEXITSTATUS(initialization_contract_status) != 0)
     {
         std::cerr << "The Linux dispatcher too-late contract failed.\n";
         return 3;
     }
+    ReportStage("dispatcher initialization");
     XSetErrorHandler(ProbeXErrorHandler);
     char initialization_error_data[1024]{};
     openusd_error_buffer initialization_error{
@@ -322,6 +362,7 @@ int main(int argc, char** argv)
         std::cerr << initialization_error_data << '\n';
         return 3;
     }
+    ReportStage("XOpenDisplay");
     Display* display = XOpenDisplay(nullptr);
     if (!Require(display != nullptr, "Could not open DISPLAY."))
     {
@@ -346,6 +387,7 @@ int main(int argc, char** argv)
     size_t plugin_count = 0;
     openusd_stage* stage = nullptr;
     openusd_storm_child* child = nullptr;
+    ReportStage("plugin registration, stage open and child create");
     bool passed =
         Require(
             openusd_storm_child_get_abi_version() ==
