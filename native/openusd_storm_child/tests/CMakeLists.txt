@@ -168,3 +168,11 @@ elseif(APPLE)
         TARGETS openusd_storm_child_probe
         RUNTIME DESTINATION bin)
 endif()
+
+# The probe drives a real window, context and render thread, so a lost wakeup
+# blocks forever rather than failing. It completes in about two seconds on every
+# supported host, so bound it: a hang must surface as a diagnosable timeout
+# instead of consuming the whole job budget with no captured output.
+set_tests_properties(
+    openusd_storm_child_probe
+    PROPERTIES TIMEOUT 300)
