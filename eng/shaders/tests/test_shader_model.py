@@ -133,11 +133,28 @@ class ShaderModelTests(unittest.TestCase):
                 "eng/shaders/out/dry-run",
                 "portable",
             )
-        with self.assertRaisesRegex(ValueError, "full artifact scope"):
+        with self.assertRaisesRegex(ValueError, "full or metal artifact scope"):
             shader_model.artifact_suffixes_for_scope(
                 "spirv",
                 require_metallib=True,
             )
+
+    def test_metal_scope_emits_only_metal_artifacts(self) -> None:
+        self.assertEqual(
+            ("metal",),
+            shader_model.command_names_for_artifact_scope("metal"),
+        )
+        self.assertEqual(
+            ("metal",),
+            shader_model.artifact_suffixes_for_scope("metal"),
+        )
+        self.assertEqual(
+            ("metal", "metallib"),
+            shader_model.artifact_suffixes_for_scope(
+                "metal",
+                require_metallib=True,
+            ),
+        )
 
     def test_required_checked_inputs_reject_carriage_returns(self) -> None:
         shader_model.validate_checked_input_bytes(

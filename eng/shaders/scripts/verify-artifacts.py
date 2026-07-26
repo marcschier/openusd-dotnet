@@ -54,28 +54,34 @@ def verify_program(
     for artifact in artifacts:
         require_file(artifact)
 
-    spirv = pathlib.Path(f"{base}.spv")
-    spirv_header = spirv.read_bytes()[:8]
-    if len(spirv_header) != 8:
-        raise ValueError(f"Invalid SPIR-V header: {spirv}")
-    magic, version = struct.unpack("<II", spirv_header)
-    if magic != SPIRV_MAGIC or version != expected_spirv_version:
-        raise ValueError(
-            f"Unexpected SPIR-V header in {spirv}: magic={magic:#x}, "
-            f"version={version:#x}"
-        )
+    if artifact_scope != "metal":
+        spirv = pathlib.Path(f"{base}.spv")
+        spirv_header = spirv.read_bytes()[:8]
+        if len(spirv_header) != 8:
+            raise ValueError(f"Invalid SPIR-V header: {spirv}")
+        magic, version = struct.unpack("<II", spirv_header)
+        if magic != SPIRV_MAGIC or version != expected_spirv_version:
+            raise ValueError(
+                f"Unexpected SPIR-V header in {spirv}: magic={magic:#x}, "
+                f"version={version:#x}"
+            )
 
     if artifact_scope == "spirv":
         return artifacts
 
-    dxil = pathlib.Path(f"{base}.dxil")
-    if dxil.read_bytes()[:4] != b"DXBC":
-        raise ValueError(f"Invalid DXIL container header: {dxil}")
+    if artifact_scope != "metal":
+        dxil = pathlib.Path(f"{base}.dxil")
+        if dxil.read_bytes()[:4] != b"DXBC":
+            raise ValueError(f"Invalid DXIL container header: {dxil}")
 
     metal = pathlib.Path(f"{base}.metal")
     metal_text = metal.read_text(encoding="utf-8")
     if "#include <metal_stdlib>" not in metal_text:
         raise ValueError(f"Invalid MSL source: {metal}")
+
+    # DXIL cannot be produced outside Windows, so the macOS scope stops here.
+    if artifact_scope == "metal":
+        return artifacts
 
     reflection = pathlib.Path(f"{base}.reflection.json")
     reflection_data = json.loads(reflection.read_text(encoding="utf-8"))

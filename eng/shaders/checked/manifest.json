@@ -107,11 +107,11 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "7f720ef86c4253d75101d9f4273e4f6b6d7ef5a5c29b288fc9121c86cc4babd5"
+      "sha256": "7b7f253ff86c551de0fc208eb8911424d018f559c8555746225bb0fd3bf0e7b9"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
-      "sha256": "e4ff0511716b66a483b9cca89a50f3570e246d8b1dd8230baaa78d589df3b88c"
+      "sha256": "d9b257003b94793fae8e23982bf239ed4cf05028c5ccdf59e510312d54d17932"
     },
     {
       "path": "eng/shaders/scripts/verify-metal-package.py",
@@ -195,7 +195,7 @@
     },
     {
       "path": "eng/shaders/verify-shaders.ps1",
-      "sha256": "ff1b6355952725062f554218a6785ab5ca77ae9da78d9bbf9b636711403c0ae0"
+      "sha256": "5f7e554af506fa6a918c5b8dc8ff5a31a17e37bcfc772b464a55a73266f38572"
     },
     {
       "path": "eng/shaders/write-host-toolchain.ps1",

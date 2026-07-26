@@ -28,14 +28,16 @@ METAL_LIBRARY_ENTRIES = (
     ("compute.fill", "fillMain", "compute"),
     ("compute.scale", "scaleMain", "compute"),
 )
-ARTIFACT_SCOPES = ("full", "spirv")
+ARTIFACT_SCOPES = ("full", "spirv", "metal")
 COMMAND_NAMES_BY_ARTIFACT_SCOPE = {
     "full": ("dxil", "spirv", "metal", "reflection", "spirvValidation"),
     "spirv": ("spirv", "spirvValidation"),
+    "metal": ("metal",),
 }
 ARTIFACT_SUFFIXES_BY_SCOPE = {
     "full": ("dxil", "spv", "metal", "reflection.json"),
     "spirv": ("spv",),
+    "metal": ("metal",),
 }
 REQUIRED_CHECKED_INPUTS = (
     ".github/workflows/ci.yml",
@@ -92,8 +94,10 @@ def artifact_suffixes_for_scope(
     require_metallib: bool = False,
 ) -> tuple[str, ...]:
     scope = validate_artifact_scope(value)
-    if require_metallib and scope != "full":
-        raise ValueError("A Metal library requires the full artifact scope")
+    if require_metallib and scope not in ("full", "metal"):
+        raise ValueError(
+            "A Metal library requires the full or metal artifact scope"
+        )
     suffixes = ARTIFACT_SUFFIXES_BY_SCOPE[scope]
     return (*suffixes, "metallib") if require_metallib else suffixes
 

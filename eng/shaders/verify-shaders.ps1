@@ -49,39 +49,48 @@ if ($Rid -eq 'linux-x64' -and $ArtifactScope -ne 'Spirv')
     throw 'Linux shader validation is restricted to the SPIR-V artifact scope.'
 }
 
-$executableSuffix = if ($IsWindows) { '.exe' } else { '' }
-$validator = Join-Path `
-    $ToolRoot `
-    "$Rid/spirv-tools/bin/spirv-val$executableSuffix"
-if (-not (Test-Path $validator))
+if ($Rid -eq 'osx-arm64' -and $ArtifactScope -ne 'Metal')
 {
-    throw "spirv-val was not found at $validator. Run build-toolchain.ps1 first."
+    throw 'macOS shader validation is restricted to the Metal artifact scope.'
 }
 
-$validatorVersion = (
-    & $validator --version 2>&1 |
-        Select-Object -First 1
-).ToString().Trim()
-if ($validatorVersion -notlike "*$($plan.toolchain.spirvToolsCommit)*")
+# The Metal scope never emits SPIR-V, so there is nothing for spirv-val to check.
+if ($ArtifactScope -ne 'Metal')
 {
-    throw "spirv-val is not stamped with commit $($plan.toolchain.spirvToolsCommit)."
-}
-
-Push-Location $repoRoot
-try
-{
-    foreach ($program in $plan.programs)
+    $executableSuffix = if ($IsWindows) { '.exe' } else { '' }
+    $validator = Join-Path `
+        $ToolRoot `
+        "$Rid/spirv-tools/bin/spirv-val$executableSuffix"
+    if (-not (Test-Path $validator))
     {
-        & $validator ([string[]]$program.commands.spirvValidation.arguments)
-        if ($LASTEXITCODE -ne 0)
+        throw "spirv-val was not found at $validator. Run build-toolchain.ps1 first."
+    }
+
+    $validatorVersion = (
+        & $validator --version 2>&1 |
+            Select-Object -First 1
+    ).ToString().Trim()
+    if ($validatorVersion -notlike "*$($plan.toolchain.spirvToolsCommit)*")
+    {
+        throw "spirv-val is not stamped with commit $($plan.toolchain.spirvToolsCommit)."
+    }
+
+    Push-Location $repoRoot
+    try
+    {
+        foreach ($program in $plan.programs)
         {
-            exit $LASTEXITCODE
+            & $validator ([string[]]$program.commands.spirvValidation.arguments)
+            if ($LASTEXITCODE -ne 0)
+            {
+                exit $LASTEXITCODE
+            }
         }
     }
-}
-finally
-{
-    Pop-Location
+    finally
+    {
+        Pop-Location
+    }
 }
 
 $arguments = @(
@@ -91,7 +100,7 @@ $arguments = @(
     '--lock', $lockPath,
     '--artifact-scope', $ArtifactScope.ToLowerInvariant()
 )
-if ($IsMacOS -and $ArtifactScope -eq 'Full')
+if ($IsMacOS -and ($ArtifactScope -eq 'Full' -or $ArtifactScope -eq 'Metal'))
 {
     $arguments += '--require-metallib'
 }
