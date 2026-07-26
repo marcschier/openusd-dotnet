@@ -244,6 +244,11 @@ WGL context-creation or framebuffer extension. Context creation and incomplete-f
 on a capable host remain failures. The separate `windows-wgl` platform smoke remains the required
 end-to-end proof on a WGL-capable Windows host.
 
+macOS CTest applies the same contract to the Storm child probe. A hosted macOS runner has no window
+server session that can vend an accelerated OpenGL 4.1 core pixel format, so the probe exits with
+the shared capability code and CTest records a skip. Every other failure, including a failure to
+create the context on a host that did provide the pixel format, remains a hard failure.
+
 ```powershell
 ctest --test-dir native/build/shim/win-x64 -C Release --output-on-failure
 ```

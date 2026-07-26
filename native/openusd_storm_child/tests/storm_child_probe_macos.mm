@@ -106,6 +106,14 @@ bool Require(bool condition, const char* message)
     return condition;
 }
 
+// A hosted macOS runner has no window server session that can vend an
+// accelerated OpenGL 4.1 core pixel format. That is a genuine capability gap
+// rather than a defect, so report it the same way the Windows probe reports a
+// missing WGL_ARB_create_context.
+constexpr int CapabilityUnavailableExitCode = 125;
+constexpr char MissingCoreProfileError[] =
+    "macOS could not create the OpenGL 4.1 core pixel format.";
+
 openusd_storm_child_navigation_input NavigationInput()
 {
     openusd_storm_child_navigation_input input{};
@@ -251,12 +259,21 @@ int main(int argc, char** argv)
                 error_data);
         if (!passed)
         {
+            const bool capability_unavailable =
+                std::strstr(error_data, MissingCoreProfileError) != nullptr;
             if (stage != nullptr)
             {
                 openusd_stage_release(stage);
             }
             [window close];
             [window release];
+            if (capability_unavailable)
+            {
+                std::cerr <<
+                    "Skipping Storm child probe: an accelerated OpenGL 4.1 "
+                    "core context is unavailable.\n";
+                return CapabilityUnavailableExitCode;
+            }
             return 3;
         }
         const openusd_render_camera automatic = AutomaticCamera();
