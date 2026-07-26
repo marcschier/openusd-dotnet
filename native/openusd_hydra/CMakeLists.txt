@@ -37,7 +37,11 @@ install(TARGETS openusd_hydra
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES include/openusd_hydra.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-option(OPENUSD_HYDRA_BUILD_TESTS "Build the Storm context diagnostic probe" ON)
+# The Storm probes link openusd_dotnet_renderer_test, which only exists when the
+# native test targets are built, so this must follow OPENUSD_BUILD_NATIVE_TESTS.
+option(OPENUSD_HYDRA_BUILD_TESTS
+    "Build the Storm context diagnostic probe"
+    ${OPENUSD_BUILD_NATIVE_TESTS})
 if(OPENUSD_HYDRA_BUILD_TESTS)
     add_library(openusd_hydra_test STATIC ${OPENUSD_HYDRA_SOURCES})
     configure_openusd_hydra_target(

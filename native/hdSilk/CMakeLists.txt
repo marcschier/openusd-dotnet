@@ -68,7 +68,12 @@ install(TARGETS openusd_hdsilk
 install(FILES include/openusd_hdsilk.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${HDSILK_CONFIGURED_PLUGINFO} DESTINATION plugin/usd/hdSilk/resources)
 
-option(OPENUSD_HDSILK_BUILD_TESTS "Build the hdSilk native probe" ON)
+# The hdSilk probe links openusd_dotnet_renderer_test, which only exists when the
+# native test targets are built, so this must follow OPENUSD_BUILD_NATIVE_TESTS.
+# The fuzzer configure turns native tests off and would otherwise fail generation.
+option(OPENUSD_HDSILK_BUILD_TESTS
+    "Build the hdSilk native probe"
+    ${OPENUSD_BUILD_NATIVE_TESTS})
 if(OPENUSD_HDSILK_BUILD_TESTS)
     add_library(openusd_hdsilk_test SHARED ${OPENUSD_HDSILK_SOURCES})
     configure_openusd_hdsilk_target(

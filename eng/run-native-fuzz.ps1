@@ -316,6 +316,7 @@ try
             "-DCMAKE_CXX_COMPILER=$clangxx",
             '-DCMAKE_BUILD_TYPE=RelWithDebInfo',
             "-DCMAKE_PREFIX_PATH=$openUsdRoot",
+            '-DOPENUSD_WITH_VULKAN=ON',
             '-DOPENUSD_BUILD_NATIVE_TESTS=OFF',
             '-DOPENUSD_BUILD_NATIVE_FUZZERS=ON') `
         -Description 'Native fuzzer CMake configure'
