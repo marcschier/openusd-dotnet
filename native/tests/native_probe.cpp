@@ -291,7 +291,7 @@ bool ReadPrimStringList(
 {
     openusd_string_list* list = nullptr;
     openusd_string_list_view view{
-        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0};
+        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0, 0};
     const openusd_status status = getter(stage, primPath, &list, &view, error);
     if (status != OPENUSD_STATUS_OK)
     {
@@ -1729,7 +1729,7 @@ bool ReadStageStringList(
 {
     openusd_string_list* list = nullptr;
     openusd_string_list_view view{
-        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0};
+        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0, 0};
     const openusd_status status = getter(stage, &list, &view, error);
     if (status != OPENUSD_STATUS_OK)
     {
@@ -4306,7 +4306,7 @@ int main(int argc, char** argv)
 
     openusd_string_list* missingList = nullptr;
     openusd_string_list_view missingView{
-        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0};
+        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0, 0};
     if (openusd_stage_get_prim_child_paths(
             stage,
             "/Missing",
@@ -5384,7 +5384,7 @@ int main(int argc, char** argv)
     std::vector<char> assetBuffer(assetRequired);
     openusd_string_list* sourceList = nullptr;
     openusd_string_list_view sourceView{
-        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0};
+        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0, 0};
     openusd_shade_attribute_type sourceType = OPENUSD_SHADE_ATTRIBUTE_INVALID;
     if (status != OPENUSD_STATUS_BUFFER_TOO_SMALL || assetRequired == 0 ||
         openusd_shade_get_input_string(
@@ -5900,7 +5900,7 @@ int main(int argc, char** argv)
     status = openusd_stage_open(usdSkelPath.string().c_str(), &stage, &error);
     openusd_string_list* readSkelJointsList = nullptr;
     openusd_string_list_view readSkelJointsView{
-        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0};
+        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0, 0};
     size_t skelMatrixRequired = 0;
     size_t skelTranslationRequired = 0;
     size_t skelRotationRequired = 0;

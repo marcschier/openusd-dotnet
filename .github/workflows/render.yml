@@ -506,6 +506,7 @@ jobs:
           ./eng/shaders/build-toolchain.ps1 -Rid osx-arm64
           ./eng/shaders/build-shaders.ps1 `
             -Rid osx-arm64 `
+            -ArtifactScope Metal `
             -OutputRoot eng/shaders/out/render-macos
           ./eng/shaders/prepare-metal-library.ps1 `
             -OutputRoot eng/shaders/out/checked-payload/osx-arm64

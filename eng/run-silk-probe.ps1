@@ -21,6 +21,7 @@ if ($MetalComposition -and -not $IsMacOS)
 }
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 . (Join-Path $PSScriptRoot 'shared-stage-soak-identity.ps1')
+. (Join-Path $PSScriptRoot 'vulkan-test-runtime-registry.ps1')
 $openUsdRoot = Join-Path $repoRoot "native/install/$Rid"
 $shimRoot = Join-Path $repoRoot "native/install/shim/$Rid"
 $publishRoot = Join-Path $repoRoot "artifacts/silk-probe/$Rid"
@@ -94,6 +95,7 @@ $oldRequireSwiftShader = $env:OPENUSD_REQUIRE_SWIFTSHADER
 $oldSoakSourceHash = $env:OPENUSD_SOAK_SOURCE_HASH
 $oldSoakExecutableHash = $env:OPENUSD_SOAK_EXECUTABLE_HASH
 $oldSoakExecutableTimestamp = $env:OPENUSD_SOAK_EXECUTABLE_TIMESTAMP_UTC
+$driverRegistration = $null
 try
 {
     $env:PATH = $binTarget + [System.IO.Path]::PathSeparator +
@@ -105,12 +107,16 @@ try
         $binTarget + [System.IO.Path]::PathSeparator + $oldDyldLibraryPath
     if ($IsWindows -or $IsLinux)
     {
+        # -Activate also puts the packaged loader on the search path and exports the
+        # loader/driver identity. Without it a runner with no system Vulkan runtime
+        # fails vkCreateInstance with ErrorIncompatibleDriver even though the ICD
+        # manifest is staged, which is exactly how hosted Windows failed.
         $swiftShaderIcd = & (Join-Path $PSScriptRoot 'prepare-vulkan-test-runtime.ps1') `
             -Root $publishRoot `
-            -Rid $Rid
-        $env:VK_ICD_FILENAMES = $swiftShaderIcd
-        $env:VK_DRIVER_FILES = $swiftShaderIcd
-        $env:OPENUSD_REQUIRE_SWIFTSHADER = '1'
+            -Rid $Rid `
+            -Activate
+        $driverRegistration = Register-VulkanTestRuntimeDriver `
+            -ManifestPath $swiftShaderIcd
     }
     if ($SharedStageSoak)
     {
@@ -154,6 +160,10 @@ try
 }
 finally
 {
+    if ($null -ne $driverRegistration)
+    {
+        Restore-VulkanTestRuntimeDriver -State $driverRegistration
+    }
     $env:PATH = $oldPath
     $env:LD_LIBRARY_PATH = $oldLdLibraryPath
     $env:DYLD_LIBRARY_PATH = $oldDyldLibraryPath

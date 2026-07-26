@@ -39,7 +39,10 @@ capabilities, validator environments, Metal language selection, and Xcode
 selection are all derived from `toolchain.lock.json`; manifest profiles that do
 not match the locked Shader Model are rejected. Linux validation uses
 `-ArtifactScope Spirv`, which emits and records only the ten SPIR-V targets and
-does not require DXC.
+does not require DXC. macOS validation uses `-ArtifactScope Metal`, which emits
+only the MSL text and the compiled `metallib`, because DXIL emission loads the
+`dxcompiler` and `dxil` libraries that exist only on Windows. Both restrictions
+are enforced by the script and asserted by `validate-workflow-paths.ps1`.
 
 Reflection schema 2 preserves separate D3D register/space and Vulkan
 set/binding contracts, resource access and shape, arrays and strides, recursive

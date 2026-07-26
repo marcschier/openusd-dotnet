@@ -74,16 +74,6 @@ struct Command
     std::condition_variable completion;
 };
 
-struct ChildState;
-
-@interface OpenUsdStormChildView : NSView
-{
-@public
-    ChildState* openUsdState;
-    NSTrackingArea* openUsdTrackingArea;
-}
-@end
-
 std::atomic_size_t g_live_count{0};
 std::atomic_size_t g_peak_count{0};
 std::atomic_uintptr_t g_next_token{0x10000};
@@ -147,6 +137,19 @@ bool IsFailpoint(const char* value) noexcept
     return configured != nullptr && std::strcmp(configured, value) == 0;
 }
 }
+
+// Objective-C declarations must live at global scope. Declaring the view inside the
+// anonymous namespace above bound its ivar to a namespace-local ChildState that is never
+// defined, so the global @implementation below could not see openUsdState at all.
+struct ChildState;
+
+@interface OpenUsdStormChildView : NSView
+{
+@public
+    ChildState* openUsdState;
+    NSTrackingArea* openUsdTrackingArea;
+}
+@end
 
 struct ChildState
 {

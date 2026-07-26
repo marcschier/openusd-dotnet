@@ -24,6 +24,11 @@ The Linux implementation generates, validates, and reproduces only the ten SPIR-
 requiring DXC. It also structurally validates the full committed checked payload and proves SPIR-V
 corruption rejection. The dashed edge remains until a hosted run provides green evidence.
 
+macOS is restricted the same way, to the Metal artifact scope. DXIL emission loads the `dxcompiler`
+and `dxil` libraries, which exist only on Windows, so the macOS job builds the MSL text and the
+compiled `metallib` and never attempts DXIL. Windows win-x64 remains the only host that produces the
+full checked payload.
+
 ## Checked artifacts
 
 The build-time shader scaffold is documented in

@@ -286,6 +286,7 @@ jobs:
         run: |
           ./eng/shaders/build-shaders.ps1 `
             -Rid osx-arm64 `
+            -ArtifactScope Metal `
             -OutputRoot eng/shaders/out/ci-macos *>&1 |
             Tee-Object "$env:SHADER_LOG_ROOT/build-shaders.log"
       - name: Validate ten-entry combined Metal library

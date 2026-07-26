@@ -89,7 +89,9 @@ function Assert-StepArtifactScope
 {
     param(
         [Parameter(Mandatory = $true)][string]$Job,
-        [Parameter(Mandatory = $true)][string]$Script
+        [Parameter(Mandatory = $true)][string]$Script,
+        [string]$Scope = 'Spirv',
+        [string]$Platform = 'Linux'
     )
 
     $pattern = (
@@ -99,11 +101,11 @@ function Assert-StepArtifactScope
     $match = [regex]::Match($Job, $pattern)
     if (-not $match.Success)
     {
-        throw "Linux shader workflow does not invoke $Script."
+        throw "$Platform shader workflow does not invoke $Script."
     }
-    if ($match.Value -notmatch '-ArtifactScope\s+Spirv')
+    if ($match.Value -notmatch "-ArtifactScope\s+$Scope")
     {
-        throw "Linux $Script invocation must use -ArtifactScope Spirv."
+        throw "$Platform $Script invocation must use -ArtifactScope $Scope."
     }
 }
 
@@ -119,6 +121,12 @@ if ([regex]::Matches($linuxJob, '-ArtifactScope\s+Spirv').Count -ne 2)
 {
     throw 'Linux shader workflow must contain exactly two SPIR-V scope gates.'
 }
+$macosJob = Get-WorkflowJob -Name 'macos-arm64'
+Assert-StepArtifactScope `
+    -Job $macosJob `
+    -Script 'build-shaders.ps1' `
+    -Scope 'Metal' `
+    -Platform 'macOS'
 foreach ($script in @(
     'validate-checked-payload.ps1',
     'test-checked-corruption.ps1'))

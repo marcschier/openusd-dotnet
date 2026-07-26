@@ -4,7 +4,7 @@
 param(
     [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
     [string]$Rid,
-    [ValidateSet('Full', 'Spirv')]
+    [ValidateSet('Full', 'Spirv', 'Metal')]
     [string]$ArtifactScope = 'Full',
     [string]$ToolRoot = (Join-Path $PSScriptRoot '.tools'),
     [string]$OutputRoot = (Join-Path $PSScriptRoot 'out')
@@ -41,6 +41,19 @@ if (-not $Rid)
 if ($Rid -eq 'linux-x64' -and $ArtifactScope -ne 'Spirv')
 {
     throw 'Linux shader generation is restricted to the SPIR-V artifact scope.'
+}
+
+# DXIL emission loads the dxcompiler and dxil libraries, which exist only on Windows.
+# macOS therefore builds the Metal scope, and Windows remains the authoritative producer
+# of the full checked payload.
+if ($Rid -eq 'osx-arm64' -and $ArtifactScope -ne 'Metal')
+{
+    throw 'macOS shader generation is restricted to the Metal artifact scope.'
+}
+
+if ($ArtifactScope -eq 'Metal' -and $Rid -ne 'osx-arm64')
+{
+    throw 'The Metal artifact scope is restricted to osx-arm64.'
 }
 
 $executableSuffix = if ($IsWindows) { '.exe' } else { '' }
@@ -105,14 +118,21 @@ try
             continue
         }
 
-        Invoke-Slang ([string[]]$program.commands.dxil.arguments)
-        Invoke-Slang ([string[]]$program.commands.spirv.arguments)
+        if ($ArtifactScope -eq 'Full')
+        {
+            Invoke-Slang ([string[]]$program.commands.dxil.arguments)
+            Invoke-Slang ([string[]]$program.commands.spirv.arguments)
+        }
+
         Invoke-Slang ([string[]]$program.commands.metal.arguments)
 
-        & python ([string[]]$program.commands.reflection.arguments)
-        if ($LASTEXITCODE -ne 0)
+        if ($ArtifactScope -eq 'Full')
         {
-            exit $LASTEXITCODE
+            & python ([string[]]$program.commands.reflection.arguments)
+            if ($LASTEXITCODE -ne 0)
+            {
+                exit $LASTEXITCODE
+            }
         }
 
         if ($IsMacOS)
