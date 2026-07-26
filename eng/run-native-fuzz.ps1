@@ -282,6 +282,23 @@ if (-not (Test-Path $seedRoot -PathType Container))
     throw "The native fuzz seed corpus was not found at $seedRoot."
 }
 
+# The configure resolves Vulkan the same way the ordinary native build does, which
+# exports VULKAN_SDK before configuring. This step runs on its own, so the locked
+# SDK has to be located here too or find_package(Vulkan REQUIRED) fails.
+if (-not $env:VULKAN_SDK)
+{
+    $lock = Get-Content (Join-Path $PSScriptRoot 'openusd.lock.json') -Raw |
+        ConvertFrom-Json
+    $localVulkanSdk = Join-Path `
+        $repoRoot `
+        "native/install/vulkan-sdk-$($lock.vulkanSdk.version)"
+    if (-not (Test-Path $localVulkanSdk -PathType Container))
+    {
+        throw "The locked Vulkan SDK was not found at $localVulkanSdk."
+    }
+    $env:VULKAN_SDK = $localVulkanSdk
+}
+
 Remove-Item $artifactRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
 $corpusRoot = Join-Path $workRoot 'corpus'
