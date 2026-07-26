@@ -159,11 +159,16 @@ After the locked `native/install/linux-x64` build exists, run a bounded ASAN/UBS
 
 The runner copies the deterministic corpus from `test-assets/fuzz-seeds/stage-layer`,
 first requires the known-good USDA seed to register plugins and parse successfully,
-then uses libFuzzer seed 1337 for the bounded mutation campaign. It cleans its mutable
-corpus and temporary files and retains reproducible crash artifacts under
-`artifacts/native-fuzz/linux-x64`. The native artifact workflow runs this only on its
-Linux source-build producer; archive-only package and render consumers do not run
-fuzzing.
+then uses libFuzzer seed 1337 for the bounded mutation campaign. libFuzzer executes
+the empty unit before the seed corpus, and an empty layer can never parse, so the
+harness returns early for a zero-length input rather than tripping that requirement.
+Leak detection stays enabled, with `eng/native-fuzz-lsan.supp` suppressing the
+OpenUSD and TBB process-lifetime singletons - the registry manager state, interned
+path nodes and tokens, and trace event lists - that are never freed by design. It
+cleans its mutable corpus and temporary files and retains reproducible crash
+artifacts under `artifacts/native-fuzz/linux-x64`. The native artifact workflow runs
+this only on its Linux source-build producer; archive-only package and render
+consumers do not run fuzzing.
 
 The `release.yml` reusable-workflow graph is the aggregate release check. It runs
 managed CI, deterministic performance safety, shader reproducibility, verified native

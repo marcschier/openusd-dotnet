@@ -312,6 +312,7 @@ Copy-Item (Join-Path $seedRoot 'minimal.usda') $preflightRoot -Force
 $savedEnvironment = @{
     ASAN_OPTIONS = $env:ASAN_OPTIONS
     UBSAN_OPTIONS = $env:UBSAN_OPTIONS
+    LSAN_OPTIONS = $env:LSAN_OPTIONS
     LLVM_SYMBOLIZER_PATH = $env:LLVM_SYMBOLIZER_PATH
     LD_LIBRARY_PATH = $env:LD_LIBRARY_PATH
     OPENUSD_FUZZ_PLUGIN_PATH = $env:OPENUSD_FUZZ_PLUGIN_PATH
@@ -356,6 +357,14 @@ try
         'abort_on_error=1:check_initialization_order=1:detect_leaks=1:' +
         'detect_stack_use_after_return=1:strict_string_checks=1:symbolize=1')
     $env:UBSAN_OPTIONS = 'halt_on_error=1:print_stacktrace=1'
+    # OpenUSD never frees its registry, path-token and trace singletons, so leak
+    # detection stays on and those owning modules are suppressed instead.
+    $suppressions = Join-Path $PSScriptRoot 'native-fuzz-lsan.supp'
+    if (-not (Test-Path $suppressions -PathType Leaf))
+    {
+        throw "The native fuzz leak suppressions were not found at $suppressions."
+    }
+    $env:LSAN_OPTIONS = "suppressions=$suppressions" + ':print_suppressions=0'
     $symbolizer = Get-Command llvm-symbolizer -ErrorAction SilentlyContinue
     if ($symbolizer)
     {

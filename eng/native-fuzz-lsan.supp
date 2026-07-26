@@ -1,0 +1,16 @@
+# LeakSanitizer suppressions for the native stage/layer fuzzer.
+#
+# OpenUSD deliberately keeps process-lifetime singletons that are never freed:
+# the TfRegistryManager library state, interned SdfPath nodes and their token
+# registry, the TfRegistryInit tables, and the trace event lists. TBB allocates
+# some of that state through its own callback machinery. LeakSanitizer reports
+# all of it at exit, which is not a defect and cannot be fixed from this
+# repository.
+#
+# Suppress by owning module so a newly reported OpenUSD singleton does not fail
+# the gate, while leaks that are genuinely ours - allocated by the fuzz harness
+# or by openusd_dotnet without passing through OpenUSD - are still reported.
+leak:libusd_ms.so
+leak:libtbb
+leak:Tf_RegistryManagerImpl
+leak:Tf_RegistryInit
