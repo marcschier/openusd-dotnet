@@ -55,7 +55,7 @@
     },
     {
       "path": ".github/workflows/shaders.yml",
-      "sha256": "0bbbe981bfc536045e21b0e897aef5fc43f6f5f1349deb31b006d6199e3184b5"
+      "sha256": "f578e28115a30ccfa922b3bee595cd9ea741fbe45117339cf23fdffba52c7707"
     },
     {
       "path": "eng/shaders/.gitignore",
@@ -183,7 +183,7 @@
     },
     {
       "path": "eng/shaders/validate-workflow-paths.ps1",
-      "sha256": "ae6fbdc8ae808ba64cf83d36c01312fb0dfc421b971f546507fbc0f8a1ccdd6d"
+      "sha256": "4e300b83b6423d71363c1b57ad877c34e85275414a7f4d0b54c7382e98dc44e3"
     },
     {
       "path": "eng/shaders/verify-checked.ps1",
@@ -191,7 +191,7 @@
     },
     {
       "path": "eng/shaders/verify-reproducibility.ps1",
-      "sha256": "f7082c0837b26f1b6db5321c2ab81f2986268a3c2d7275075e0f6731e93a5c0c"
+      "sha256": "64901cb47f1e54bb95f2bdff53dfc61f431c9187f471b492fa6a6b9bf808629d"
     },
     {
       "path": "eng/shaders/verify-shaders.ps1",

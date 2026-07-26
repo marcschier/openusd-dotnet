@@ -127,6 +127,15 @@ Assert-StepArtifactScope `
     -Script 'build-shaders.ps1' `
     -Scope 'Metal' `
     -Platform 'macOS'
+Assert-StepArtifactScope `
+    -Job $macosJob `
+    -Script 'verify-reproducibility.ps1' `
+    -Scope 'Metal' `
+    -Platform 'macOS'
+if ([regex]::Matches($macosJob, '-ArtifactScope\s+Metal').Count -ne 2)
+{
+    throw 'macOS shader workflow must contain exactly two Metal scope gates.'
+}
 foreach ($script in @(
     'validate-checked-payload.ps1',
     'test-checked-corruption.ps1'))

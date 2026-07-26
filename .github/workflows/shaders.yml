@@ -341,6 +341,7 @@ jobs:
         run: |
           ./eng/shaders/verify-reproducibility.ps1 `
             -Rid osx-arm64 `
+            -ArtifactScope Metal `
             -DeterministicIntermediatesOnly *>&1 |
             Tee-Object "$env:SHADER_LOG_ROOT/reproducibility.log"
       - name: Run shader Python tests

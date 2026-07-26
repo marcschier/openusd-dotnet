@@ -4,7 +4,7 @@
 param(
     [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
     [string]$Rid,
-    [ValidateSet('Full', 'Spirv')]
+    [ValidateSet('Full', 'Spirv', 'Metal')]
     [string]$ArtifactScope = 'Full',
     [string]$ToolRoot = (Join-Path $PSScriptRoot '.tools'),
     [string]$WorkRoot = (Join-Path $PSScriptRoot '.cache/reproducibility'),
@@ -44,6 +44,19 @@ try
     if ($ArtifactScope -eq 'Spirv')
     {
         $pattern = '\.spv$'
+    }
+    elseif ($ArtifactScope -eq 'Metal')
+    {
+        # The metallib embeds a build identifier, so only the MSL text is
+        # comparable when deterministic intermediates are requested.
+        $pattern = if ($DeterministicIntermediatesOnly)
+        {
+            '\.metal$'
+        }
+        else
+        {
+            '\.(metal|metallib)$'
+        }
     }
     elseif ($DeterministicIntermediatesOnly)
     {

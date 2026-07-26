@@ -163,7 +163,11 @@ class ShaderModelTests(unittest.TestCase):
             r"\[ValidateSet\(([^)]*)\)\]\s*\[string\]\$ArtifactScope",
             re.MULTILINE,
         )
-        for name in ("build-shaders.ps1", "verify-shaders.ps1"):
+        for name in (
+            "build-shaders.ps1",
+            "verify-shaders.ps1",
+            "verify-reproducibility.ps1",
+        ):
             with self.subTest(script=name):
                 text = (SHADER_ROOT / name).read_text(encoding="utf-8")
                 match = pattern.search(text)
