@@ -154,7 +154,9 @@ def build_lock_model(lock: dict[str, Any]) -> dict[str, Any]:
         "metalCapability": (
             f"METAL_{version_token(metal_version, 'Metal')}"
         ),
-        "metalStandard": f"metal{metal_version}",
+        # Xcode 16 rejects the unprefixed spelling, so the macOS platform prefix is
+        # part of the standard the metal compiler is invoked with.
+        "metalStandard": f"macos-metal{metal_version}",
         "xcodeVersion": xcode_version,
     }
 

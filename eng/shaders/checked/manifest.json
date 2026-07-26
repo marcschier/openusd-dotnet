@@ -25,7 +25,7 @@
     "spirvTargetEnv": "vulkan1.2",
     "metalVersion": "2.4",
     "metalCapability": "METAL_2_4",
-    "metalStandard": "metal2.4",
+    "metalStandard": "macos-metal2.4",
     "xcodeVersion": "16.4"
   },
   "inputs": [
@@ -71,7 +71,7 @@
     },
     {
       "path": "eng/shaders/checked/executed-commands.json",
-      "sha256": "4d30514fb64f77421dbae3b61c03dcbe718d913b62390b9e25f5feacc0459cfc"
+      "sha256": "1f403a08960bb8cd0df7eed43d7733e490b2f76c4663e240164414a90c4bf797"
     },
     {
       "path": "eng/shaders/expand-verified-archive.ps1",
@@ -107,7 +107,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "7b7f253ff86c551de0fc208eb8911424d018f559c8555746225bb0fd3bf0e7b9"
+      "sha256": "08ee01c3e10086a72e10148a5a23513e01383d5232f6d5aa1cf5f54987ee32ba"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",

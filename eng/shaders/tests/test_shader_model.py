@@ -100,7 +100,7 @@ class ShaderModelTests(unittest.TestCase):
             ["--target-env", "vulkan1.3", "eng/shaders/out/dry-run/compute.spv"],
             commands["spirvValidation"]["arguments"],
         )
-        self.assertEqual("metal3.0", plan["toolchain"]["metalStandard"])
+        self.assertEqual("macos-metal3.0", plan["toolchain"]["metalStandard"])
         self.assertEqual("17.0", plan["toolchain"]["xcodeVersion"])
 
     def test_spirv_scope_contains_only_spirv_commands_and_artifacts(self) -> None:

@@ -112,7 +112,7 @@ def valid_sidecar() -> dict:
                     "-sdk",
                     "macosx",
                     "metal",
-                    "-std=metal2.4",
+                    "-std=macos-metal2.4",
                     "-c",
                     source_path,
                     "-o",

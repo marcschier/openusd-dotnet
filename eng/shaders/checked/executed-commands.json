@@ -14,7 +14,7 @@
     "spirvTargetEnv": "vulkan1.2",
     "metalVersion": "2.4",
     "metalCapability": "METAL_2_4",
-    "metalStandard": "metal2.4",
+    "metalStandard": "macos-metal2.4",
     "xcodeVersion": "16.4"
   },
   "outputRoot": "eng/shaders/.cache/checked-build",
