@@ -33,22 +33,28 @@ std::atomic_int g_rebound_x_errors{0};
 
 constexpr int CapabilityUnavailableExitCode = 125;
 
-// Storm initialization drives real OpenGL. When Mesa has no DRI driver the GLX
-// context is still created, but silently falls back to indirect rendering, where
-// every GL call becomes an X round trip and Storm's setup stops making progress
-// instead of failing. That is what made this probe hang under Xvfb rather than
-// report anything, so the capability is checked before a child is created. The
-// check itself only creates and queries a context, so it cannot stall the way
-// the renderer does. Windows and macOS already skip on their equivalent missing
-// context capability.
-bool DirectRenderingAvailable(Display* display, std::string& reason)
+// A headless host can fail to provide usable OpenGL in a way that never returns
+// rather than one that reports an error: on Xvfb the GLX stack blocks inside
+// context creation, which is what made this probe burn its entire CTest budget
+// with no output instead of failing. Detecting that with more GLX calls only
+// moves the stall, so the capability check runs in a forked child with its own X
+// connection and a bounded wait. Any pathology, a hang included, is then
+// reported as an unavailable capability, and the probe skips the way Windows
+// and macOS already do for their equivalent missing context capability.
+bool ProbeDirectRendering()
 {
+    Display* display = XOpenDisplay(nullptr);
+    if (display == nullptr)
+    {
+        return false;
+    }
+
     // Named to avoid the glibc major/minor macros from <sys/sysmacros.h>.
     int glx_major = 0;
     int glx_minor = 0;
     if (glXQueryVersion(display, &glx_major, &glx_minor) == False)
     {
-        reason = "the GLX extension is unavailable";
+        XCloseDisplay(display);
         return false;
     }
 
@@ -75,7 +81,7 @@ bool DirectRenderingAvailable(Display* display, std::string& reason)
         {
             XFree(configs);
         }
-        reason = "no double-buffered GLX framebuffer configuration is available";
+        XCloseDisplay(display);
         return false;
     }
 
@@ -88,17 +94,13 @@ bool DirectRenderingAvailable(Display* display, std::string& reason)
     XFree(configs);
     if (context == nullptr)
     {
-        reason = "a GLX context could not be created";
+        XCloseDisplay(display);
         return false;
     }
 
     const bool direct = glXIsDirect(display, context) != False;
     glXDestroyContext(display, context);
-    if (!direct)
-    {
-        reason =
-            "GLX only offers indirect rendering, so Storm cannot make progress";
-    }
+    XCloseDisplay(display);
     return direct;
 }
 
@@ -156,10 +158,42 @@ bool WaitForChildExit(pid_t child, int* status, int timeout_seconds)
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    std::cerr << "The forked contract child did not exit within "
+    std::cerr << "The forked child did not exit within "
         << timeout_seconds << " seconds.\n";
     kill(child, SIGKILL);
     waitpid(child, status, 0);
+    return false;
+}
+
+bool DirectRenderingAvailable(std::string& reason)
+{
+    const pid_t probe = fork();
+    if (probe == 0)
+    {
+        _exit(ProbeDirectRendering() ? 0 : 1);
+    }
+
+    if (probe < 0)
+    {
+        reason = "the GLX capability probe could not be forked";
+        return false;
+    }
+
+    // Generous: the check completes in well under a second on a host that can
+    // actually render, so anything approaching this is the stall being bounded.
+    int probe_status = 0;
+    if (!WaitForChildExit(probe, &probe_status, 30))
+    {
+        reason = "the GLX capability probe stalled instead of reporting a context";
+        return false;
+    }
+
+    if (WIFEXITED(probe_status) && WEXITSTATUS(probe_status) == 0)
+    {
+        return true;
+    }
+
+    reason = "GLX cannot provide a direct rendering context";
     return false;
 }
 
@@ -374,6 +408,17 @@ int main(int argc, char** argv)
         std::cerr << "XInitThreads failed.\n";
         return 3;
     }
+    // Checked before the dispatcher starts and before any child is created, so
+    // the forked probe inherits as little state as possible and an unusable
+    // graphics environment is reported rather than entered.
+    ReportStage("GLX direct rendering capability");
+    std::string capability_reason;
+    if (!DirectRenderingAvailable(capability_reason))
+    {
+        std::cerr << "Skipping Storm child probe: " << capability_reason
+                  << ".\n";
+        return CapabilityUnavailableExitCode;
+    }
     ReportStage("dispatcher initialization contract fork");
     const pid_t initialization_contract_child = fork();
     if (initialization_contract_child == 0)
@@ -439,15 +484,6 @@ int main(int argc, char** argv)
     if (!Require(display != nullptr, "Could not open DISPLAY."))
     {
         return 4;
-    }
-    ReportStage("GLX direct rendering capability");
-    std::string capability_reason;
-    if (!DirectRenderingAvailable(display, capability_reason))
-    {
-        std::cerr << "Skipping Storm child probe: " << capability_reason
-                  << ".\n";
-        XCloseDisplay(display);
-        return CapabilityUnavailableExitCode;
     }
     const int screen = DefaultScreen(display);
     Window parent = XCreateSimpleWindow(
