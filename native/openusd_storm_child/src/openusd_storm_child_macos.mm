@@ -1724,7 +1724,7 @@ openusd_status ValidateChild(
             {
                 if (child == nullptr || child->view == nil)
                 {
-                    WriteError(error, "A valid macOS Storm native child is required.");
+                    WriteError(error, "A valid Storm native child is required.");
                     return OPENUSD_STATUS_INVALID_ARGUMENT;
                 }
                 return OPENUSD_STATUS_OK;
