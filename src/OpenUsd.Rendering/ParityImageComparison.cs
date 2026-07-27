@@ -12,6 +12,47 @@ internal readonly record struct ParityImage(int Width, int Height, ReadOnlyMemor
 
     internal long ExpectedByteCount => (long)Width * Height * BytesPerPixel;
 
+    /// <summary>
+    /// Creates a top-down capture from a bottom-up RGBA readback.
+    /// </summary>
+    /// <remarks>
+    /// OpenGL puts the framebuffer origin at the bottom-left, so Storm's <c>glReadPixels</c>
+    /// evidence arrives last row first, while every hdSilk backend reads back top-down.
+    /// Comparing the two without this conversion reports an exact vertical mirror, which is
+    /// indistinguishable from a genuine flip regression in the renderer under test.
+    /// </remarks>
+    internal static ParityImage FromBottomUpRgba(
+        int width,
+        int height,
+        ReadOnlySpan<byte> bottomUpRgba)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            throw new ArgumentException(
+                $"A capture must have a positive width and height; got {width}x{height}.",
+                nameof(width));
+        }
+
+        long expected = (long)width * height * BytesPerPixel;
+        if (bottomUpRgba.Length != expected)
+        {
+            throw new ArgumentException(
+                $"A bottom-up capture must contain exactly {expected} bytes for " +
+                $"{width}x{height}; got {bottomUpRgba.Length}.",
+                nameof(bottomUpRgba));
+        }
+
+        int stride = width * BytesPerPixel;
+        byte[] topDown = new byte[bottomUpRgba.Length];
+        for (int row = 0; row < height; row++)
+        {
+            bottomUpRgba.Slice(row * stride, stride)
+                .CopyTo(topDown.AsSpan((height - 1 - row) * stride, stride));
+        }
+
+        return new ParityImage(width, height, topDown);
+    }
+
     internal void Validate(string name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);

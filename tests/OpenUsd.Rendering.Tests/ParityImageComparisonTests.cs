@@ -7,6 +7,65 @@ public sealed class ParityImageComparisonTests
     private const uint Background = 0x0E0E0EFFU;
 
     [Test]
+    public async Task BottomUpReadbackConvertsToATopDownCapture()
+    {
+        // A shape in the top half of a top-down capture occupies the last rows of the
+        // bottom-up readback Storm produces, so the conversion must move it back.
+        ParityImage topDown = FilledRectangle(8, 8, 2, 1, 6, 3);
+        byte[] bottomUp = ReverseRows(topDown);
+
+        ParityImage converted = ParityImage.FromBottomUpRgba(8, 8, bottomUp);
+
+        ParityComparisonResult result = ParityImageComparer.Compare(
+            topDown,
+            converted,
+            Background,
+            ParityTolerance.Geometry);
+
+        await Assert.That(result.Passed).IsTrue();
+        await Assert.That(result.UnforgivenCoverageDifferencePixels).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task UnconvertedBottomUpReadbackLooksLikeAFlipRegression()
+    {
+        // Guards the conversion itself: comparing a vertically asymmetric capture against
+        // its raw bottom-up bytes must fail, otherwise a missing conversion would be
+        // silently indistinguishable from agreement.
+        ParityImage topDown = FilledRectangle(8, 8, 2, 1, 6, 3);
+        var unconverted = new ParityImage(8, 8, ReverseRows(topDown));
+
+        ParityComparisonResult result = ParityImageComparer.Compare(
+            topDown,
+            unconverted,
+            Background,
+            ParityTolerance.Geometry);
+
+        await Assert.That(result.Passed).IsFalse();
+    }
+
+    [Test]
+    public async Task BottomUpConversionRejectsAMismatchedByteCount()
+    {
+        await Assert.That(() => ParityImage.FromBottomUpRgba(4, 4, new byte[4 * 4 * 4 - 1]))
+            .Throws<ArgumentException>();
+    }
+
+    private static byte[] ReverseRows(ParityImage image)
+    {
+        int stride = image.Width * ParityImage.BytesPerPixel;
+        ReadOnlySpan<byte> source = image.Rgba.Span;
+        byte[] reversed = new byte[source.Length];
+        for (int row = 0; row < image.Height; row++)
+        {
+            source.Slice(row * stride, stride)
+                .CopyTo(reversed.AsSpan((image.Height - 1 - row) * stride, stride));
+        }
+
+        return reversed;
+    }
+
+    [Test]
     public async Task IdenticalCapturesAgreeExactly()
     {
         ParityImage image = FilledRectangle(16, 16, 4, 4, 12, 12);
