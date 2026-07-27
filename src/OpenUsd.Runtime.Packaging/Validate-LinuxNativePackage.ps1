@@ -55,10 +55,21 @@ function Get-LibraryEvidence
         throw "Linux runtime package input is missing: $Path"
     }
 
-    $dynamic = @(& $readElf.Source --dynamic --wide $Path 2>&1)
+    # stderr is deliberately not merged into the captured output. readelf writes
+    # its dynamic section to stdout beginning with a blank line, and merging a
+    # stderr warning into that stream under ErrorActionPreference Stop ends the
+    # capture at the first error record, leaving just that blank line and a
+    # binding failure that says nothing about what went wrong.
+    $dynamic = @(& $readElf.Source --dynamic --wide $Path 2>$null)
     if ($LASTEXITCODE -ne 0)
     {
-        throw "readelf could not inspect '$Path': $($dynamic -join [Environment]::NewLine)"
+        $diagnostics = @(& $readElf.Source --dynamic --wide $Path 2>&1)
+        throw "readelf could not inspect '$Path': $($diagnostics -join [Environment]::NewLine)"
+    }
+
+    if (-not ($dynamic | Where-Object { $_ -match '\S' }))
+    {
+        throw "readelf reported no dynamic section for '$Path'."
     }
 
     $dynamicEntries = @(Get-OpenUsdElfDynamicEntries -Lines $dynamic)
@@ -99,12 +110,13 @@ function Get-LibraryEvidence
 }
 
 $stormChildTopology = Get-OpenUsdStormChildFileTopology -LibraryPath $StormChildLibrary
-$symbols = @(& $readElf.Source --dyn-syms --wide $StormChildLibrary 2>&1)
+$symbols = @(& $readElf.Source --dyn-syms --wide $StormChildLibrary 2>$null)
 if ($LASTEXITCODE -ne 0)
 {
+    $symbolDiagnostics = @(& $readElf.Source --dyn-syms --wide $StormChildLibrary 2>&1)
     throw (
         "readelf could not inspect Storm child exports '$StormChildLibrary': " +
-        ($symbols -join [Environment]::NewLine))
+        ($symbolDiagnostics -join [Environment]::NewLine))
 }
 
 $requiredExports = @(
