@@ -3068,6 +3068,9 @@ public sealed class RuntimePackageTests
                 <packageSource key="nuget.org">
                   <package pattern="Microsoft.*" />
                   <package pattern="runtime.*" />
+                  <package pattern="SharpMetal" />
+                  <package pattern="Silk.NET.*" />
+                  <package pattern="Stride.*" />
                 </packageSource>
               </packageSourceMapping>
             </configuration>

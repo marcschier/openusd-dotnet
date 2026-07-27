@@ -39,7 +39,7 @@
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "fda806c9488d37c5ef4cb20271bf438451523344e0514dfc859ecfadddf0bfa6"
+      "sha256": "c26aad02b7971caa7ff7307295bdc06e8e2e6182e1fc450ff68f8688ca66e77a"
     },
     {
       "path": ".github/workflows/performance.yml",
@@ -207,7 +207,7 @@
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
-      "sha256": "d26d1778419e6523ec814c5673947645a5e85a3685e591f03c46841efedeba3c"
+      "sha256": "80d37c9e2e43a6a334c2aa347c0bc1a4acd45ac3c1b82e2141400e9380c9a39a"
     }
   ],
   "programs": [
