@@ -241,7 +241,7 @@ internal static class SilkMeshRendererConformance
             0,
             [0.7f, 0.7f, 0.7f, 1]);
 
-    private static byte[] CreateMeshCommand(
+    internal static byte[] CreateMeshCommand(
         ulong id,
         string pathValue,
         float[] points,

@@ -12,6 +12,7 @@ namespace OpenUsd.Rendering.ConformanceTests;
 /// other, and this is the gate that catches a backend-only regression such as an index format
 /// or vertex layout that only one RHI got right.
 /// </summary>
+[NotInParallel]
 public sealed class SilkCrossBackendParityTests
 {
     private const uint Size = 128;
@@ -64,6 +65,120 @@ public sealed class SilkCrossBackendParityTests
         await Assert.That(result.Passed)
             .IsFalse()
             .Because("A displaced mesh must not compare equal to the baseline.");
+    }
+
+    /// <summary>
+    /// A grid with more than 65,535 vertices cannot be drawn with 16-bit indices. Page ABI 3
+    /// widened indices to 32 bits end to end, and this locks that in: a backend that silently
+    /// truncated them would disagree with the one that did not.
+    /// </summary>
+    [Test]
+    public async Task BackendsAgreeOnAMeshBeyondTheSixteenBitIndexCeiling()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        (float[] points, uint[] indices) = CreateGrid(258);
+        await Assert.That(points.Length / 3).IsGreaterThan(ushort.MaxValue);
+
+        ParityImage direct3D = RenderGrid(
+            D3D12SilkGraphicsDevice.Create(useWarp: true),
+            points,
+            indices);
+        ParityImage vulkan = RenderGrid(
+            VulkanSilkGraphicsDevice.Create(),
+            points,
+            indices);
+
+        ParityComparisonResult result = ParityImageComparer.Compare(
+            direct3D,
+            vulkan,
+            Background,
+            ParityTolerance.Geometry);
+
+        await Assert.That(result.ReferenceCoveragePixels).IsGreaterThan(0);
+        await Assert.That(result.Passed)
+            .IsTrue()
+            .Because($"Wide-index geometry differs between backends: {result.Diagnostics}");
+    }
+
+    private static (float[] Points, uint[] Indices) CreateGrid(int resolution)
+    {
+        float[] points = new float[resolution * resolution * 3];
+        for (int row = 0; row < resolution; row++)
+        {
+            for (int column = 0; column < resolution; column++)
+            {
+                int offset = ((row * resolution) + column) * 3;
+                points[offset] = ((float)column / (resolution - 1) - 0.5f) * 0.8f;
+                points[offset + 1] = ((float)row / (resolution - 1) - 0.5f) * 0.8f;
+                points[offset + 2] = 0.4f;
+            }
+        }
+
+        int quads = (resolution - 1) * (resolution - 1);
+        uint[] indices = new uint[quads * 6];
+        int index = 0;
+        for (int row = 0; row < resolution - 1; row++)
+        {
+            for (int column = 0; column < resolution - 1; column++)
+            {
+                uint topLeft = (uint)((row * resolution) + column);
+                uint topRight = topLeft + 1;
+                uint bottomLeft = topLeft + (uint)resolution;
+                uint bottomRight = bottomLeft + 1;
+                indices[index++] = topLeft;
+                indices[index++] = bottomLeft;
+                indices[index++] = topRight;
+                indices[index++] = topRight;
+                indices[index++] = bottomLeft;
+                indices[index++] = bottomRight;
+            }
+        }
+
+        return (points, indices);
+    }
+
+    private static ParityImage RenderGrid(
+        ISilkGraphicsDevice device,
+        float[] points,
+        uint[] indices)
+    {
+        using (device)
+        {
+            using ISilkGraphicsTexture color = device.CreateTexture2D(
+                new SilkTextureDescriptor(
+                    Size,
+                    Size,
+                    SilkTextureFormat.Rgba8Unorm,
+                    SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+            using ISilkGraphicsTexture depth = device.CreateTexture2D(
+                SilkTextureDescriptor.DepthTarget(Size, Size));
+            using var renderer = new SilkMeshRenderer(device);
+
+            SilkMeshRendererConformance.Apply(
+                renderer,
+                revision: 1,
+                SilkMeshRendererConformance.CreateFrameCommand(
+                    Size,
+                    Size,
+                    SilkMeshRendererConformance.Identity()),
+                SilkMeshRendererConformance.CreateMeshCommand(
+                    1,
+                    "/Grid",
+                    points,
+                    indices,
+                    0,
+                    0,
+                    [1, 1, 1, 1]));
+            renderer.Render(color, depth);
+
+            byte[] pixels = new byte[Size * Size * ParityImage.BytesPerPixel];
+            color.ReadbackForTesting(pixels);
+            return new ParityImage(checked((int)Size), checked((int)Size), pixels);
+        }
     }
 
     private static ParityImage RenderScene(
