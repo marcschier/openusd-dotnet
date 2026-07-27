@@ -36,6 +36,7 @@ $published = @(
     'OpenUsd.Rendering.Silk.Metal'
     'OpenUsd.Rendering.Silk.Vulkan'
     'OpenUsd.Rendering.Storm'
+    'OpenUsd.Viewer'
     'OpenUsd.Runtime.Core.win-x64'
     'OpenUsd.Runtime.Core.linux-x64'
     'OpenUsd.Runtime.Core.osx-arm64'
@@ -61,7 +62,7 @@ if ($SkipMetal)
 # named here fails this script instead of quietly never shipping. This is checked
 # against the full set so it holds even when Metal is skipped locally.
 $notPublished = @{
-    'OpenUsd.Viewer' = 'Desktop application, distributed separately from NuGet.'
+    'OpenUsd.Viewer.App' = 'Desktop application shell, distributed separately from NuGet.'
 }
 
 $srcProjects = Get-ChildItem (Join-Path $Root 'src') -Directory |

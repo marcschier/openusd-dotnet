@@ -10,14 +10,22 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <OutputType>Library</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>OpenUsd.Viewer</AssemblyName>
     <RootNamespace>OpenUsd.Viewer</RootNamespace>
+    <!--
+      The viewer shell stays classified as an application project so the strict
+      production-library gates (AOT/trim analyzers, public-API tracking) are not
+      applied to ~25k lines of Avalonia UI code. It is nevertheless packed, because
+      hosts such as the OPC UA OpenUSD connector embed the viewport on a stage they
+      own themselves. OpenUsd.Viewer.App is the thin desktop entry point.
+    -->
     <IsApplicationProject>true</IsApplicationProject>
+    <IsPackable>true</IsPackable>
+    <Description>Avalonia viewport and inspector shell for OpenUSD stages, embeddable on a caller-owned stage scheduler.</Description>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

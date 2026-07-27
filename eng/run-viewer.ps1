@@ -42,7 +42,7 @@ else
 {
     [System.IO.Path]::GetFullPath($OutputPath)
 }
-$viewerProject = Join-Path $repoRoot 'src/OpenUsd.Viewer/OpenUsd.Viewer.csproj'
+$viewerProject = Join-Path $repoRoot 'src/OpenUsd.Viewer.App/OpenUsd.Viewer.App.csproj'
 $sourceIdentityBefore = $null
 $binaryIdentityBefore = $null
 
@@ -51,7 +51,7 @@ function Get-ViewerBinaryIdentity
     $entries = @(Get-ChildItem $publishRoot -File -Recurse |
         Where-Object {
             $_.Extension -in @('.dll', '.exe', '.so', '.dylib') -or
-            $_.Name -eq 'OpenUsd.Viewer'
+            $_.Name -eq 'OpenUsd.Viewer.App'
         } |
         Sort-Object FullName |
         ForEach-Object {
@@ -229,7 +229,7 @@ if (-not [string]::IsNullOrWhiteSpace($IdentityManifestPath))
     } | ConvertTo-Json -Depth 8 | Set-Content $identityPath
 }
 
-$executable = Join-Path $publishRoot 'OpenUsd.Viewer'
+$executable = Join-Path $publishRoot 'OpenUsd.Viewer.App'
 if ($IsWindows)
 {
     $executable += '.exe'

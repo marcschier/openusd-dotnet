@@ -22,6 +22,7 @@
     <Project Path="src/OpenUsd.Rendering.Storm/OpenUsd.Rendering.Storm.csproj" />
     <Project Path="src/OpenUsd.Rendering/OpenUsd.Rendering.csproj" />
     <Project Path="src/OpenUsd.Viewer/OpenUsd.Viewer.csproj" />
+    <Project Path="src/OpenUsd.Viewer.App/OpenUsd.Viewer.App.csproj" />
     <Project Path="src/OpenUsd/OpenUsd.csproj" />
   </Folder>
   <Folder Name="/tests/">

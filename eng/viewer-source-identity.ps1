@@ -82,6 +82,7 @@ function Get-ViewerSourceIdentity
     $root = [System.IO.Path]::GetFullPath($RepoRoot)
     $roots = @(
         'src/OpenUsd.Viewer',
+        'src/OpenUsd.Viewer.App',
         'src/OpenUsd',
         'src/OpenUsd.Interop',
         'src/OpenUsd.Rendering',

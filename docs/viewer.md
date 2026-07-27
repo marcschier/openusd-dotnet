@@ -6,6 +6,11 @@
 .\eng\run-viewer.ps1 -Rid win-x64 -StagePath test-assets\minimal.usda
 ```
 
+The project is split into an embeddable library (`src/OpenUsd.Viewer`) and a thin desktop entry point
+(`src/OpenUsd.Viewer.App`, which produces `OpenUsd.Viewer.App.exe`). The library is packable so a host
+application can run the same shell in its own process, which is how the OPC UA — OpenUSD connector
+renders a live digital twin. See [Embedding the viewer](#embedding-the-viewer).
+
 `-StagePath` alone stages exactly one file, which is sufficient for a self-contained `.usda` or
 `.usdz`. A multi-file USD project whose root layer references sibling assets must also pass
 `-StageAssetRoot` so the referenced payload tree is staged alongside the root layer:
@@ -17,6 +22,39 @@
 Without it every reference fails to resolve, the Viewer opens an effectively empty stage, and the
 renderer legitimately reports zero draws while logging one `Could not open asset` warning per
 unresolved reference.
+
+## Embedding the viewer
+
+`ViewerEntryPoint.Run(ViewerHostOptions)` runs the shell on the calling thread against a programmatic
+configuration instead of the command line. On Windows that thread must be single-threaded-apartment.
+
+```csharp
+ViewerEntryPoint.Run(new ViewerHostOptions
+{
+    StagePath = stagePath,
+    PluginPath = pluginPath,
+    Renderer = "Auto",
+    Title = "Live twin",
+    ShutdownToken = shutdownToken,
+    StageReadyAsync = (session, cancellationToken) =>
+    {
+        // Author into the viewer's own stage while it renders.
+        _ = Task.Run(() => PumpAsync(session.Scheduler, cancellationToken), CancellationToken.None);
+        return Task.CompletedTask;
+    }
+});
+```
+
+`StageReadyAsync` runs once on the UI thread after the startup stage is open and the render loop is
+running. It receives a `ViewerStageSession` exposing the `UsdStageScheduler` that owns the stage.
+A host **must** author only through that scheduler and must never reopen `StagePath`: a second open
+creates a second native stage identity and breaks authoring/render synchronisation. Edits made through
+the scheduler flow into its ordered change feed, which the viewer already pumps, so they invalidate and
+redraw without any further call. Blocking the callback stalls the UI thread, so start background work
+and return promptly; a failing callback is reported as a viewer error and never tears the shell down.
+
+`ShutdownToken` closes the window when cancelled, so a host that renders for a bounded time does not
+leave a window behind.
 
 ## Stage and session editing
 

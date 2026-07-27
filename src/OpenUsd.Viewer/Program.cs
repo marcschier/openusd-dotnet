@@ -16,6 +16,22 @@ internal static class Program
     {
         LinuxX11Threading.Initialize();
         ViewerStartupOptions.Initialize(args);
+        RunCore(args);
+    }
+
+    /// <summary>
+    /// Runs the shell for an embedding host that configured the viewer programmatically
+    /// instead of through the command line.
+    /// </summary>
+    internal static void RunHosted(ViewerHostOptions options)
+    {
+        LinuxX11Threading.Initialize();
+        ViewerStartupOptions.Initialize(options);
+        RunCore([]);
+    }
+
+    private static void RunCore(string[] args)
+    {
         ValidatePlatformOverride();
         ViewerPlatformDecision decision = GetPlatformDecision();
         if (decision.FailureReason is not null)

@@ -113,7 +113,7 @@ function Assert-ViewerRunEvidence
         }
     }
     foreach ($required in @(
-        'OpenUsd.Viewer.exe',
+        'OpenUsd.Viewer.App.exe',
         'OpenUsd.Viewer.dll',
         'bin\openusd_storm_child.dll'))
     {

@@ -72,8 +72,24 @@
            Text="OpenUsdRequireMetalShaderLibrary=true requires the ten-entry mesh.metallib validation manifest." />
   </Target>
 
+  <!--
+    Release packages are produced only on macOS with the Xcode-validated shader library.
+    A local development feed cannot satisfy that, yet OpenUsd.Viewer depends on this
+    package, so a host bootstrapping against a folder feed on Windows or Linux would be
+    unable to restore at all. OpenUsdMetalLocalDevelopmentPack is the explicit, loudly
+    warned escape hatch for that case, mirroring the existing -SkipMetal switch in
+    eng/pack-packages.ps1. The release workflow never sets it, so production packaging
+    still runs the full gate below.
+  -->
+  <Target Name="WarnMetalLocalDevelopmentPack"
+          BeforeTargets="GenerateNuspec;Pack"
+          Condition="'$(OpenUsdMetalLocalDevelopmentPack)' == 'true'">
+    <Warning Text="OpenUsd.Rendering.Silk.Metal is being packed without the validated ten-entry mesh.metallib. The result is a local development package only and must never be published." />
+  </Target>
+
   <Target Name="ValidateMetalPackageProduction"
-          BeforeTargets="GenerateNuspec;Pack">
+          BeforeTargets="GenerateNuspec;Pack"
+          Condition="'$(OpenUsdMetalLocalDevelopmentPack)' != 'true'">
     <Error Condition="!Exists('$(OpenUsdMetalShaderLibraryPath)')"
            Text="OpenUsd.Rendering.Silk.Metal cannot be packed without the validated combined ten-entry mesh.metallib." />
     <Error Condition="!Exists('$(OpenUsdMetalShaderManifestPath)')"

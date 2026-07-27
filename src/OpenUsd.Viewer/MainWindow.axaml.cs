@@ -35,6 +35,7 @@ internal enum ViewerLayerCommand
 public sealed partial class MainWindow : Window, IDisposable
 {
     private readonly CancellationTokenSource _viewerLifetime = new();
+    private readonly CancellationTokenRegistration _hostShutdown;
     private readonly SemaphoreSlim _documentGate = new(1, 1);
     private readonly RecentStageStore _recentStageStore;
     private readonly ViewerSettingsStore _settingsStore;
@@ -146,6 +147,17 @@ public sealed partial class MainWindow : Window, IDisposable
         };
         _stormNavigationTimer.Tick += OnStormNavigationTick;
         InitializeComponent();
+        if (ViewerStartupOptions.HostTitle is { Length: > 0 } hostTitle)
+        {
+            Title = hostTitle;
+        }
+        if (ViewerStartupOptions.HostShutdownToken.CanBeCanceled)
+        {
+            _hostShutdown = ViewerStartupOptions.HostShutdownToken.Register(
+                static state => Dispatcher.UIThread.Post(
+                    () => ((MainWindow)state!).Close()),
+                this);
+        }
         UpdateCameraStatus();
         if (ViewerStartupOptions.SwitchingEvidencePath is { } evidencePath)
         {
@@ -2554,6 +2566,7 @@ public sealed partial class MainWindow : Window, IDisposable
                         _documentLifetime.Token);
                 }
                 SetReady($"Opened {normalizedPath}");
+                await NotifyStageReadyAsync(_coordinator, normalizedPath, _documentLifetime.Token);
             }
             finally
             {
@@ -2587,6 +2600,93 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             _documentGate.Release();
         }
+    }
+
+    /// <summary>
+    /// Applies the embedding host's startup stage camera and invokes its stage-ready
+    /// callback, if either was supplied. A failing callback is reported as a viewer error
+    /// and never tears the shell down.
+    /// </summary>
+    private async Task NotifyStageReadyAsync(
+        ViewerRenderCoordinator coordinator,
+        string stagePath,
+        CancellationToken cancellationToken)
+    {
+        Func<ViewerStageSession, CancellationToken, Task>? callback =
+            ViewerStartupOptions.StageReadyAsync;
+        string? cameraPath = ViewerStartupOptions.HostStageCameraPath;
+        if (callback is null && string.IsNullOrEmpty(cameraPath))
+        {
+            return;
+        }
+        try
+        {
+            if (!string.IsNullOrEmpty(cameraPath))
+            {
+                await ApplyHostStageCameraAsync(coordinator, cameraPath!, cancellationToken);
+            }
+            if (callback is not null)
+            {
+                await callback(
+                    new ViewerStageSession(coordinator.Scheduler, stagePath),
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The document was closed while the host was starting; nothing to report.
+        }
+#pragma warning disable CA1031 // A host callback must not be able to tear down the shell.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            ShowError($"The viewer host failed to start: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Applies a stage camera the embedding host asked to start on, so a host can open
+    /// the viewport on, say, an overhead view instead of the automatic framing. A camera
+    /// that cannot be used is reported and leaves the automatic camera in place.
+    /// </summary>
+    private async Task ApplyHostStageCameraAsync(
+        ViewerRenderCoordinator coordinator,
+        string primPath,
+        CancellationToken cancellationToken)
+    {
+        double timeCode;
+        lock (_timelineGate)
+        {
+            timeCode = _currentTimeCode;
+        }
+        var time = new StageTime(timeCode);
+        ViewerStageCameraActivation activation =
+            _cameraNavigation.CaptureStageCameraActivation(primPath, timeCode);
+        var source = new ViewerSchedulerStageCameraSource(coordinator.Scheduler);
+        ViewerStageCameraQueryResult result = await ViewerStageCameraQuery.QueryAsync(
+            source,
+            primPath,
+            time,
+            cancellationToken);
+        if (result.Outcome != ViewerStageCameraQueryOutcome.Ready)
+        {
+            ShowCameraMessage(
+                $"{result.Error ?? $"Stage camera '{primPath}' is unavailable."} " +
+                "The camera stays Automatic.");
+            return;
+        }
+        if (!_cameraNavigation.TryActivateStageCamera(
+                activation,
+                result.Snapshot,
+                out CameraState camera))
+        {
+            return;
+        }
+        await coordinator.MutateStateAsync(
+            state => state.WithTime(time).WithCamera(camera),
+            cancellationToken);
+        UpdateCameraStatus();
+        ShowCameraMessage($"Using stage camera '{result.Snapshot.PrimPath}'.");
     }
 
     private async Task ReloadStageAsync(CancellationToken cancellationToken)
@@ -6200,6 +6300,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             StopStormNavigationPolling();
             _stormNavigationTimer.Tick -= OnStormNavigationTick;
+            _hostShutdown.Dispose();
             _pickLifetime?.Cancel();
             _viewerLifetime.Cancel();
             _viewerLifetime.Dispose();

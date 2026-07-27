@@ -44,6 +44,30 @@ internal static class ViewerStartupOptions
 
     internal static string? WindowsRenderingOverride { get; private set; }
 
+    /// <summary>
+    /// Callback supplied by an embedding host, invoked once the startup stage is open.
+    /// </summary>
+    internal static Func<ViewerStageSession, CancellationToken, Task>? StageReadyAsync
+    {
+        get;
+        private set;
+    }
+
+    /// <summary>
+    /// Window title override supplied by an embedding host.
+    /// </summary>
+    internal static string? HostTitle { get; private set; }
+
+    /// <summary>
+    /// Closes the shell when cancelled by an embedding host.
+    /// </summary>
+    internal static CancellationToken HostShutdownToken { get; private set; }
+
+    /// <summary>
+    /// Stage camera an embedding host asked the shell to start on.
+    /// </summary>
+    internal static string? HostStageCameraPath { get; private set; }
+
     internal static bool SwitchingEvidenceEnabled =>
         !string.IsNullOrWhiteSpace(SwitchingEvidencePath);
 
@@ -241,6 +265,33 @@ internal static class ViewerStartupOptions
             throw new ArgumentException(
                 "The stage-camera evidence scenario requires an absolute USD camera prim path.");
         }
+    }
+
+    /// <summary>
+    /// Initializes startup state for an embedding host. Environment defaults are applied
+    /// first, then the supplied options override them.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is <c>null</c>.</exception>
+    internal static void Initialize(ViewerHostOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        Initialize([]);
+        if (!string.IsNullOrWhiteSpace(options.StagePath))
+        {
+            StagePath = Path.GetFullPath(options.StagePath);
+        }
+        if (!string.IsNullOrWhiteSpace(options.PluginPath))
+        {
+            PluginPath = Path.GetFullPath(options.PluginPath);
+        }
+        if (!string.IsNullOrWhiteSpace(options.Renderer))
+        {
+            Renderer = NormalizeRenderer(options.Renderer);
+        }
+        HostTitle = options.Title;
+        HostShutdownToken = options.ShutdownToken;
+        HostStageCameraPath = options.StageCameraPath;
+        StageReadyAsync = options.StageReadyAsync;
     }
 
     private static string NormalizeWindowsRendering(string value)
