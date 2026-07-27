@@ -4,7 +4,7 @@ Use this guide to identify the managed and RID-specific packages a consumer need
 Core and Imaging assets reach publish output, and find the package-only resolution gates.
 
 **On this page:** [Package resolution](#package-resolution) ·
-[Package layout](#package-layout) · [Pack](#pack) ·
+[Package layout](#package-layout) · [Pack](#pack) · [Publish](#publish) ·
 [Core execution](#package-only-execution-gate) ·
 [Imaging execution](#package-only-imaging-execution-gate) ·
 [Required mode](#required-execution-mode) · [Related documentation](#related-documentation)
@@ -191,6 +191,44 @@ generated local feed. After a Release build, run them with:
   -Framework net10.0 `
   -Configuration Release
 ```
+
+## Publish
+
+Fourteen packages are published: the eight managed libraries (`OpenUsd`, `OpenUsd.Interop`,
+`OpenUsd.Rendering`, `OpenUsd.Rendering.Silk`, the three hdSilk backends, and
+`OpenUsd.Rendering.Storm`) and the six per-RID runtime packages. `eng/pack-packages.ps1` is the
+single source of truth for that set. It enumerates the packages explicitly rather than packing the
+solution, and asserts afterwards that the produced set matches exactly, so adding a project cannot
+silently ship it and a missing native input fails the run instead of publishing a partial release.
+
+`OpenUsd.Viewer` is an application, not a library, and is not published. Projects outside `src/`
+are never packable regardless of their name.
+
+Publishing runs from the `publish` job in `.github/workflows/release.yml`, which requires every
+release gate to pass first and only runs for a `v*` tag. The tag is authoritative: it is stamped
+into `version.json` before packing. The job runs on macOS because `mesh.metallib` is a hosted
+macOS/Xcode artifact that is never fabricated elsewhere, and because staging the Linux SONAME
+symlinks and the signed macOS Storm child requires a Unix filesystem. All three native archives are
+downloaded from the native job of the same run, so the published bytes are the bytes the gates
+verified.
+
+Packages go to two feeds:
+
+- The GitHub Packages feed at `https://nuget.pkg.github.com/marcschier/index.json`, authenticated
+  with the auto-issued `GITHUB_TOKEN`. Symbol packages are excluded because that feed rejects
+  `.snupkg`.
+- `nuget.org`, using the `NUGET_API_KEY` secret from the `release` environment. The step is skipped
+  when the secret is absent, so the rest of the release still completes.
+
+`.github/workflows/nuget.yml` is a manual promotion path for when the tagged run reached the GitHub
+feed but not `nuget.org`. It downloads the exact released bytes from the GitHub feed and pushes them
+using NuGet trusted publishing (OIDC) rather than a long-lived key, so promotion cannot alter what
+was verified. It requires a trusted-publishing policy on nuget.org bound to this repository, the
+`nuget.yml` workflow file, and the `release` environment, plus a `NUGET_USER` secret holding the
+nuget.org username.
+
+Both pushes use `--skip-duplicate`, so re-running a partially failed publish is safe. A version
+pushed to nuget.org can be unlisted but never withdrawn or replaced.
 
 ## Package-only execution gate
 

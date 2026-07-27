@@ -93,3 +93,125 @@ jobs:
           if ($results | Where-Object { $_ -cne 'success' }) {
             throw "Release gates failed: $($results -join ', ')."
           }
+
+  publish:
+    name: publish packages
+    # Only tags publish. A release/** branch run exercises every gate but must not push,
+    # because the version it would stamp is not the version the tag names.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: aggregate
+    runs-on: macos-latest
+    timeout-minutes: 120
+    environment: release
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    # Job-level so the nuget.org step can test for the secret in its own `if`: a step
+    # cannot read an env value declared in that same step's env block.
+    env:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.301
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Stamp the release version from the tag
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}' -replace '^v', ''
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$') {
+            throw "Tag '${{ github.ref_name }}' is not a semantic version."
+          }
+          $json = Get-Content version.json -Raw | ConvertFrom-Json
+          $json.version = $version
+          $json | ConvertTo-Json -Depth 10 | Set-Content version.json
+          "VERSION=$version" | Out-File $env:GITHUB_ENV -Append
+      # The runtime packages embed the locked native install, so every RID this
+      # repository ships has to be staged on this one runner before packing. The
+      # archives come from the native job in this same run, so the published bytes are
+      # the bytes the release gates verified.
+      - name: Download the verified win-x64 native archive
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.run_id }}
+          name: openusd-native-win-x64
+          path: artifacts/native-pipeline/win-x64
+      - name: Download the verified linux-x64 native archive
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.run_id }}
+          name: openusd-native-linux-x64
+          path: artifacts/native-pipeline/linux-x64
+      - name: Download the verified osx-arm64 native archive
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.run_id }}
+          name: openusd-native-osx-arm64
+          path: artifacts/native-pipeline/osx-arm64
+      # Staging runs on macOS rather than Windows so the Linux SONAME symlinks and the
+      # signed macOS Storm child survive extraction intact.
+      - name: Stage every native install
+        shell: pwsh
+        run: |
+          foreach ($rid in @('win-x64', 'linux-x64', 'osx-arm64')) {
+            ./eng/prepare-workflow-native-input.ps1 `
+              -Rid $rid `
+              -Source archive `
+              -PipelineRoot "artifacts/native-pipeline/$rid"
+            ./eng/native-install-metadata.ps1 -Operation Verify -Rid $rid
+          }
+      # mesh.metallib is a hosted macOS/Xcode artifact and is never fabricated
+      # elsewhere, which is why this job cannot run on Linux.
+      - name: Prepare the validated Metal library
+        shell: pwsh
+        run: |
+          ./eng/shaders/prepare-metal-library.ps1 `
+            -OutputRoot eng/shaders/out/package-metal-library
+      - name: Pack the published set
+        shell: pwsh
+        run: |
+          ./eng/pack-packages.ps1 -OutputPath artifacts/nupkg
+      # GITHUB_TOKEN is auto-issued and this job requests packages: write, so the
+      # GitHub Packages feed needs no additional secret. Every package goes here.
+      # --no-symbols is required: dotnet nuget push uploads an adjacent .snupkg
+      # automatically, and the GitHub feed rejects symbol packages.
+      - name: Push to the GitHub Packages NuGet feed
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dotnet nuget push 'artifacts/nupkg/*.nupkg' `
+            --api-key $env:GITHUB_TOKEN `
+            --source https://nuget.pkg.github.com/marcschier/index.json `
+            --no-symbols `
+            --skip-duplicate
+      # nuget.org is a one-way door: a pushed version can be unlisted but never
+      # replaced. NUGET_API_KEY is scoped by the release environment, and
+      # --skip-duplicate keeps a re-run of a partially failed push idempotent.
+      - name: Push to nuget.org
+        if: env.NUGET_API_KEY != ''
+        shell: pwsh
+        run: |
+          dotnet nuget push 'artifacts/nupkg/*.nupkg' `
+            --api-key $env:NUGET_API_KEY `
+            --source https://api.nuget.org/v3/index.json `
+            --skip-duplicate
+      - name: Upload the published packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openusd-${{ env.VERSION }}-nupkgs
+          path: artifacts/nupkg
+          if-no-files-found: error
+          retention-days: 90

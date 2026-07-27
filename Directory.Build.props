@@ -61,6 +61,20 @@
     <NoWarn>$(NoWarn);CS1591;CS1570;CS1571;CS1572;CS1573;CS1574;CS1580;CS1581;CS1584</NoWarn>
   </PropertyGroup>
 
+  <!--
+    Only projects under src/ are ever published. The classification above matches on
+    project name, and a sample, probe, or smoke application whose name matches none of
+    those patterns silently inherits IsPackable=true. That already applied to
+    OpenUsd.LiveAuthoring, OpenUsd.LiveAuthoring.Sample, OpenUsd.RhiProbe,
+    OpenUsd.D3D12CompositionSmoke, and OpenUsd.AvaloniaVulkanSmoke, so the release
+    workflow would have pushed samples and test applications to a public feed. Directory
+    layout is the durable signal, and a package published to nuget.org cannot be
+    withdrawn, so this guard is deliberately independent of project naming.
+  -->
+  <PropertyGroup Condition="!$(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src'))">
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(_IsProductionLibrary)' == 'true' AND ('$(TargetFramework)' == 'net8.0' OR '$(TargetFramework)' == 'net9.0' OR '$(TargetFramework)' == 'net10.0')">
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
