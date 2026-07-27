@@ -7,9 +7,11 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'LinuxElfValidation.ps1')
 
 $valid = @(
+    '',
     'Dynamic section at offset 0x123 contains 2 entries:',
     ' 0x000000000000001d (RUNPATH) Library runpath: [$ORIGIN]',
-    ' 0x000000000000000e (SONAME) Library soname: [libexample.so]')
+    ' 0x000000000000000e (SONAME) Library soname: [libexample.so]',
+    '')
 $entries = @(Get-OpenUsdElfDynamicEntries -Lines $valid)
 $parts = @(Assert-OpenUsdElfRunpath `
     -DynamicEntries $entries `
@@ -32,7 +34,7 @@ function Assert-Rejected
 {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
-        [Parameter(Mandatory = $true)][string[]]$Lines,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string[]]$Lines,
         [Parameter(Mandatory = $true)][string]$ExpectedMessage
     )
 
@@ -61,7 +63,7 @@ function Assert-SonameRejected
 {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
-        [Parameter(Mandatory = $true)][string[]]$Lines,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string[]]$Lines,
         [Parameter(Mandatory = $true)][string]$ExpectedMessage
     )
 

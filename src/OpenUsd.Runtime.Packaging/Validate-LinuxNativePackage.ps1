@@ -78,7 +78,12 @@ function Get-LibraryEvidence
         -LibraryPath $Path `
         -AllowedEntries $allowedRunpathEntries)
 
-    $soname = if ($null -ne $RequiredSoname)
+    # A [string] parameter cannot actually hold $null: PowerShell coerces the
+    # default to an empty string, so a null check here is always true and the
+    # libraries that require no particular SONAME were still sent down the
+    # assert path, where Assert-OpenUsdElfSoname rejects the empty value as a
+    # mandatory argument. Test for content instead.
+    $soname = if (-not [string]::IsNullOrEmpty($RequiredSoname))
     {
         Assert-OpenUsdElfSoname `
             -DynamicEntries $dynamicEntries `
