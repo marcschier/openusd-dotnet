@@ -147,9 +147,18 @@ function Assert-SafeLinks
             {
                 continue
             }
-            if ($item.PSIsContainer)
+            # A directory symlink is held to the same rules as a file symlink
+            # rather than rejected outright. The macOS install ships intra-tree
+            # directory links, and what makes a link unsafe is being absolute or
+            # resolving outside the install tree, not what it points at.
+            # Get-ChildItem does not follow reparse points, so this cannot loop.
+            $container = if ($item.PSIsContainer)
             {
-                throw "Native artifact contains a directory symlink: $($item.FullName)"
+                $item.Parent.FullName
+            }
+            else
+            {
+                $item.DirectoryName
             }
             foreach ($target in @($item.Target))
             {
@@ -159,7 +168,7 @@ function Assert-SafeLinks
                     throw "Native artifact contains an unsafe symlink: $($item.FullName)"
                 }
                 $targetPath = [System.IO.Path]::GetFullPath(
-                    (Join-Path $item.DirectoryName $target))
+                    (Join-Path $container $target))
                 if (-not $targetPath.StartsWith($rootPrefix, $comparison))
                 {
                     throw "Native artifact symlink escapes its install tree: $($item.FullName)"

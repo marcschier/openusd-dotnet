@@ -30,17 +30,12 @@ jobs:
   packages:
     needs: [ ci, shaders, native ]
     uses: ./.github/workflows/package.yml
-    with:
-      native-pipeline-run-id: ${{ github.run_id }}
-      linux-native-source: archive
-      macos-native-source: archive
 
   render:
     needs: packages
     uses: ./.github/workflows/render.yml
     with:
-      native-pipeline-run-id: ${{ github.run_id }}
-      native-source: archive
+      native-source: build
 
   aggregate:
     name: aggregate release evidence
