@@ -2,7 +2,12 @@
 
 function Get-OpenUsdElfDynamicEntries
 {
-    param([Parameter(Mandatory = $true)][string[]]$Lines)
+    # readelf separates its output with blank lines and begins the dynamic
+    # section with one. A Mandatory [string[]] rejects the whole array as "an
+    # empty string" if any single element is empty, so without AllowEmptyString
+    # this never accepted real readelf output at all. An entirely empty array is
+    # still rejected, because that means readelf produced nothing.
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string[]]$Lines)
 
     $entries = [System.Collections.Generic.List[object]]::new()
     foreach ($line in $Lines)
