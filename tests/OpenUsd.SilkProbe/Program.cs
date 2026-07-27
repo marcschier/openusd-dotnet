@@ -90,14 +90,29 @@ internal static partial class Program
                 return 4;
             }
 
-            var renderEvidence = new List<string>
-            {
-                RenderPage(session, first, device, width, height)
-            };
+            var renderEvidence = new List<string>();
+            (string primaryEvidence, ParityImage primaryImage) =
+                RenderPage(session, first, device, width, height);
+            renderEvidence.Add(primaryEvidence);
             if (OperatingSystem.IsWindows())
             {
                 using VulkanSilkGraphicsDevice vulkan = VulkanSilkGraphicsDevice.Create();
-                renderEvidence.Add(RenderPage(session, first, vulkan, width, height));
+                (string vulkanEvidence, ParityImage vulkanImage) =
+                    RenderPage(session, first, vulkan, width, height);
+                renderEvidence.Add(vulkanEvidence);
+
+                // Measure cross-backend agreement on a real stage. Colour is not compared
+                // because hdSilk still shades with an absolute-normal debug visualization.
+                // This reports rather than fails: the Vulkan backend currently renders
+                // vertically flipped relative to D3D12 because its viewport does not
+                // compensate for Vulkan's +Y-down clip space. Enforcement follows that fix.
+                ParityComparisonResult parity = ParityImageComparer.Compare(
+                    primaryImage,
+                    vulkanImage,
+                    0x000000FFU,
+                    ParityTolerance.Geometry);
+                Console.WriteLine(
+                    $"Backend parity: {parity.Diagnostics}; enforced=False");
             }
             Console.WriteLine($"Offscreen render: {string.Join("; ", renderEvidence)}");
             return 0;
@@ -515,7 +530,7 @@ internal static partial class Program
         return VulkanSilkGraphicsDevice.Create();
     }
 
-    private static string RenderPage(
+    private static (string Evidence, ParityImage Image) RenderPage(
         OpenUsdSilkSession session,
         OpenUsdSilkPage page,
         ISilkGraphicsDevice device,
@@ -570,8 +585,10 @@ internal static partial class Program
             throw new InvalidOperationException(
                 $"{device.Backend} produced only clear-color pixels.");
         }
-        return $"{device.Backend}:{result.DrawCount} draws/{coloredPixels} colored pixels " +
-            $"at ({minX},{minY})-({maxX},{maxY}), steadyUniformUploads={result.UniformUploads}";
+        return (
+            $"{device.Backend}:{result.DrawCount} draws/{coloredPixels} colored pixels " +
+            $"at ({minX},{minY})-({maxX},{maxY}), steadyUniformUploads={result.UniformUploads}",
+            new ParityImage(checked((int)width), checked((int)height), pixels));
     }
 
     private static (int Frames, int Upserts, int Removals) CountCommands(OpenUsdSilkPage page)
