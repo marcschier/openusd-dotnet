@@ -78,6 +78,7 @@ jobs:
             OpenUsd.Rendering.Silk.Metal
             OpenUsd.Rendering.Silk.Vulkan
             OpenUsd.Rendering.Storm
+            OpenUsd.Viewer
             OpenUsd.Runtime.Core.win-x64
             OpenUsd.Runtime.Core.linux-x64
             OpenUsd.Runtime.Core.osx-arm64
