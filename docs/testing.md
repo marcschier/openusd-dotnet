@@ -222,6 +222,14 @@ agreed background is black.
 one-pixel shifts, entirely missing geometry, colour opt-in, diff-image encoding, and rejection
 of mismatched dimensions, truncated buffers, and impossible tolerances.
 
+`SilkCrossBackendParityTests` is the first gate built on the comparer. Storm remains the eventual
+reference, but the hdSilk backends must first agree with each other, so it renders one retained
+scene offscreen through D3D12 WARP and through Vulkan SwiftShader and requires the two captures to
+match under the geometry tolerance. Both are software rasterizers, which keeps the comparison
+deterministic on any host. A companion case renders the same scene with one mesh displaced and
+requires the comparison to fail, so the gate cannot pass vacuously. This is what catches a
+backend-only regression such as an index format or vertex layout that only one RHI got right.
+
 ## Windows native Storm child
 
 The native child-host CTest proves the application-owned `WS_CHILD`, parent/process/creator-thread
