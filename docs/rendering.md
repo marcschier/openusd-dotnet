@@ -195,8 +195,13 @@ remain null. Edge, point, and back-face-culling requests are currently `Unsuppor
 The renderer consumes only `SilkPickIdentityTable.TryGetRange`, `TryResolve`, and `Revision`.
 Coalesced same-path Rprim recreation may therefore emit a logical old-prim removal plus new-prim
 upsert, or reset topology revision under the same prim ID, without exposing range internals.
-`SilkSceneGpuResources` applies that delta, the renderer looks up the current range by path for each
-draw, and deactivated ranges are pruned from searchable storage so old tokens cannot resolve.
+`SilkSceneGpuResources` applies that delta, the renderer looks up the current range by
+`(path, instance index)` for each draw, and deactivated ranges are pruned from searchable storage so
+old tokens cannot resolve. Pick identity is per instance, matching page ABI 3: a point-instanced
+prototype allocates one range per resolved instance, so picking selects the instance that was
+actually drawn, and retiring one instance leaves the others resolvable. The prim ID and path hash
+indexes are shared by every instance of a prototype and are retired only with the last one.
+`TryGetRange(path)` resolves the non-instanced record, which is instance index zero.
 `AllocatedRangeCount` remains a monotonic diagnostic rather than a retained-entry count, and the
 renderer does not depend on it or on `SilkMeshData.TopologyFingerprint`.
 Frame-only pages and property-only same-topology upserts leave the identity-table revision

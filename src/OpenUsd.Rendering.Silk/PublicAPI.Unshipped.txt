@@ -587,6 +587,7 @@ OpenUsd.Rendering.Silk.SilkPickIdentityTable.ActiveRangeCount.get -> int
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.AllocatedRangeCount.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.Revision.get -> ulong
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.SilkPickIdentityTable(uint maximumToken = 4294967295) -> void
+OpenUsd.Rendering.Silk.SilkPickIdentityTable.TryGetRange(string! path, int instanceIndex, out OpenUsd.Rendering.Silk.SilkPickTokenRange range) -> bool
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.TryGetRange(string! path, out OpenUsd.Rendering.Silk.SilkPickTokenRange range) -> bool
 OpenUsd.Rendering.Silk.SilkPickIdentityTable.TryResolve(uint token, out OpenUsd.Rendering.Silk.SilkPickIdentity identity) -> bool
 OpenUsd.Rendering.Silk.SilkPickParametersReflection

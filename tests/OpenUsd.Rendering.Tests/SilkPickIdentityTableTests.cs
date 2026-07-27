@@ -8,6 +8,84 @@ namespace OpenUsd.Rendering.Tests;
 
 public sealed class SilkPickIdentityTableTests
 {
+    /// <summary>
+    /// Page ABI 3 publishes one record per resolved instance of a prototype, so identity is
+    /// (path, instance index). Keying by path alone made the second instance look like the
+    /// same mesh changing identity and threw out of the scene state.
+    /// </summary>
+    [Test]
+    public async Task InstancesOfOnePrototypeKeepDistinctIdentities()
+    {
+        var table = new SilkPickIdentityTable();
+        SilkPickTokenRange first = table.Upsert(CreateMesh(
+            "/Proto",
+            primId: 5,
+            topologyRevision: 1,
+            triangleSubprims: [1, 2],
+            instanceId: 9,
+            instanceIndex: 0));
+        SilkPickTokenRange second = table.Upsert(CreateMesh(
+            "/Proto",
+            primId: 5,
+            topologyRevision: 1,
+            triangleSubprims: [1, 2],
+            instanceId: 9,
+            instanceIndex: 1));
+
+        await Assert.That(second.FirstToken).IsGreaterThan(first.LastToken);
+        await Assert.That(table.ActiveRangeCount).IsEqualTo(2);
+
+        await Assert.That(table.TryResolve(
+            first.FirstToken,
+            out SilkPickIdentity firstIdentity)).IsTrue();
+        await Assert.That(firstIdentity.InstanceIndex).IsEqualTo(0);
+        await Assert.That(table.TryResolve(
+            second.FirstToken,
+            out SilkPickIdentity secondIdentity)).IsTrue();
+        await Assert.That(secondIdentity.InstanceIndex).IsEqualTo(1);
+        await Assert.That(secondIdentity.InstanceId).IsEqualTo(9);
+        await Assert.That(secondIdentity.Path).IsEqualTo("/Proto");
+
+        await Assert.That(table.TryGetRange(
+            "/Proto",
+            1,
+            out SilkPickTokenRange instanceRange)).IsTrue();
+        await Assert.That(instanceRange).IsEqualTo(second);
+        await Assert.That(table.TryGetRange(
+            "/Proto",
+            out SilkPickTokenRange defaultRange)).IsTrue();
+        await Assert.That(defaultRange).IsEqualTo(first);
+    }
+
+    [Test]
+    public async Task RemovingOneInstanceLeavesTheOthersResolvable()
+    {
+        var table = new SilkPickIdentityTable();
+        SilkPickTokenRange first = table.Upsert(CreateMesh(
+            "/Proto",
+            primId: 5,
+            topologyRevision: 1,
+            triangleSubprims: [1],
+            instanceIndex: 0));
+        SilkPickTokenRange second = table.Upsert(CreateMesh(
+            "/Proto",
+            primId: 5,
+            topologyRevision: 1,
+            triangleSubprims: [1],
+            instanceIndex: 1));
+
+        await Assert.That(table.Remove("/Proto", 0)).IsTrue();
+        await Assert.That(table.TryGetRange("/Proto", 0, out _)).IsFalse();
+        await Assert.That(table.TryResolve(first.FirstToken, out _)).IsFalse();
+        await Assert.That(table.TryGetRange("/Proto", 1, out _)).IsTrue();
+        await Assert.That(table.TryResolve(second.FirstToken, out _)).IsTrue();
+        await Assert.That(table.ActiveRangeCount).IsEqualTo(1);
+
+        await Assert.That(table.Remove("/Proto", 1)).IsTrue();
+        await Assert.That(table.ActiveRangeCount).IsEqualTo(0);
+        await Assert.That(table.Remove("/Proto", 1)).IsFalse();
+    }
+
     [Test]
     public async Task PropertyUpdateKeepsRangeAndTopologyUpdateRebuildsIt()
     {
@@ -174,7 +252,7 @@ public sealed class SilkPickIdentityTableTests
             topologyRevision: 1,
             triangleSubprims: [4, 5]));
 
-        await Assert.That(table.Remove("/First")).IsTrue();
+        await Assert.That(table.Remove("/First", 0)).IsTrue();
         await Assert.That(table.Revision).IsEqualTo(2ul);
         await Assert.That(table.ActiveRangeCount).IsEqualTo(0);
         await Assert.That(table.AllocatedRangeCount).IsEqualTo(1ul);
@@ -226,7 +304,7 @@ public sealed class SilkPickIdentityTableTests
                 int action = random.Next(100);
                 if (action < 25)
                 {
-                    if (!table.Remove(path))
+                    if (!table.Remove(path, 0))
                     {
                         throw new InvalidOperationException(
                             $"Active path '{path}' could not be removed.");
@@ -275,7 +353,7 @@ public sealed class SilkPickIdentityTableTests
             }
             else if (random.Next(100) < 20)
             {
-                if (table.Remove(path))
+                if (table.Remove(path, 0))
                 {
                     throw new InvalidOperationException(
                         $"Missing path '{path}' was unexpectedly removed.");
@@ -596,7 +674,9 @@ public sealed class SilkPickIdentityTableTests
         int[] triangleSubprims,
         float[]? color = null,
         ulong? stableHash = null,
-        float[]? points = null)
+        float[]? points = null,
+        int instanceId = 0,
+        int instanceIndex = 0)
     {
         var indices = new uint[triangleSubprims.Length * 3];
         for (int triangle = 0; triangle < triangleSubprims.Length; triangle++)
@@ -610,8 +690,8 @@ public sealed class SilkPickIdentityTableTests
             primId,
             path,
             stableHash ?? SilkWireFormat.ComputeStableHash(path),
-            instanceId: 0,
-            instanceIndex: 0,
+            instanceId,
+            instanceIndex,
             SilkTopologyKind.TriangleList,
             topologyRevision,
             points ?? [0, 0, 0, 1, 0, 0, 0, 1, 0],

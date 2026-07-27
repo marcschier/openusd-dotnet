@@ -227,8 +227,9 @@ public sealed class SilkSceneState
         _meshesByPath.Remove(pathKey);
         _meshes.Remove(mesh.Id);
 
-        // The path hash index and pick identity are shared by every instance of
-        // a prototype, so retire them only once the last instance is gone.
+        // Pick identity is per instance, so it retires with this record. The path hash index
+        // is shared by every instance of a prototype, so it survives until the last one goes.
+        PickIdentities.Remove(mesh.Path, mesh.InstanceIndex);
         if (_instancesByPath.TryGetValue(removal.Path, out List<SilkMeshData>? instances))
         {
             int instanceIndex = removal.InstanceIndex;
@@ -238,7 +239,6 @@ public sealed class SilkSceneState
             {
                 _instancesByPath.Remove(removal.Path);
                 _pathsByHash.Remove(mesh.StableHash);
-                PickIdentities.Remove(mesh.Path);
             }
         }
         return true;

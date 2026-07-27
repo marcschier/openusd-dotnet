@@ -15,7 +15,15 @@ public sealed class SilkPickIdentityTable
 {
     private readonly uint _maximumToken;
     private readonly Func<string, ulong>? _pathHasher;
-    private readonly Dictionary<string, MeshEntry> _entriesByPath =
+
+    // Page ABI 3 publishes one record per resolved instance of a prototype, so identity is
+    // (path, instance index). Keying by path alone made the second instance of a prototype
+    // look like the same mesh changing identity without recreation evidence.
+    private readonly Dictionary<(string Path, int InstanceIndex), MeshEntry> _entries = [];
+
+    // The prim ID and path hash are shared by every instance of a prototype, so they are
+    // retired only once the last instance is gone.
+    private readonly Dictionary<string, int> _instanceCountsByPath =
         new(StringComparer.Ordinal);
     private readonly Dictionary<int, string> _pathsByPrimId = [];
     private readonly Dictionary<ulong, string> _pathsByHash = [];
@@ -58,11 +66,21 @@ public sealed class SilkPickIdentityTable
     internal ulong TopologyFingerprintComparisonCount =>
         _topologyFingerprintComparisonCount;
 
-    /// <summary>Gets the active token range for an authoritative path.</summary>
-    public bool TryGetRange(string path, out SilkPickTokenRange range)
+    /// <summary>
+    /// Gets the active token range for the non-instanced record of an authoritative path.
+    /// </summary>
+    public bool TryGetRange(string path, out SilkPickTokenRange range) =>
+        TryGetRange(path, 0, out range);
+
+    /// <summary>
+    /// Gets the active token range for one resolved instance of an authoritative path.
+    /// A prim with no instancer publishes instance index zero.
+    /// </summary>
+    public bool TryGetRange(string path, int instanceIndex, out SilkPickTokenRange range)
     {
         ArgumentNullException.ThrowIfNull(path);
-        if (_entriesByPath.TryGetValue(path, out MeshEntry? entry))
+        ArgumentOutOfRangeException.ThrowIfNegative(instanceIndex);
+        if (_entries.TryGetValue((path, instanceIndex), out MeshEntry? entry))
         {
             range = entry.Range;
             return true;
@@ -135,7 +153,9 @@ public sealed class SilkPickIdentityTable
                 $"'{primPath}' and '{mesh.Path}'.");
         }
 
-        if (_entriesByPath.TryGetValue(mesh.Path, out MeshEntry? existing))
+        if (_entries.TryGetValue(
+            (mesh.Path, mesh.InstanceIndex),
+            out MeshEntry? existing))
         {
             CompactPickIdentity previous = existing.Identity;
             if (previous.StableHash != mesh.StableHash)
@@ -184,26 +204,38 @@ public sealed class SilkPickIdentityTable
         CompactPickIdentity identity = CompactPickIdentity.CopyFrom(mesh);
         (SilkPickTokenRange newRange, TokenRangeEntry? newTokenRange) =
             AllocateRange(identity);
-        _entriesByPath.Add(
-            mesh.Path,
+        _entries.Add(
+            (mesh.Path, mesh.InstanceIndex),
             new MeshEntry(identity, newRange, newTokenRange));
-        _pathsByPrimId.Add(mesh.PrimId, mesh.Path);
-        _pathsByHash.Add(mesh.StableHash, mesh.Path);
+        _instanceCountsByPath.TryGetValue(mesh.Path, out int instanceCount);
+        _instanceCountsByPath[mesh.Path] = instanceCount + 1;
+        _pathsByPrimId[mesh.PrimId] = mesh.Path;
+        _pathsByHash[mesh.StableHash] = mesh.Path;
         _revision++;
         return newRange;
     }
 
-    internal bool Remove(string path)
+    internal bool Remove(string path, int instanceIndex)
     {
         ArgumentNullException.ThrowIfNull(path);
-        if (!_entriesByPath.TryGetValue(path, out MeshEntry? entry))
+        ArgumentOutOfRangeException.ThrowIfNegative(instanceIndex);
+        if (!_entries.TryGetValue((path, instanceIndex), out MeshEntry? entry))
         {
             return false;
         }
         EnsureRevisionAvailable();
-        _entriesByPath.Remove(path);
-        _pathsByPrimId.Remove(entry.Identity.PrimId);
-        _pathsByHash.Remove(entry.Identity.StableHash);
+        _entries.Remove((path, instanceIndex));
+        if (_instanceCountsByPath.TryGetValue(path, out int instanceCount) &&
+            instanceCount <= 1)
+        {
+            _instanceCountsByPath.Remove(path);
+            _pathsByPrimId.Remove(entry.Identity.PrimId);
+            _pathsByHash.Remove(entry.Identity.StableHash);
+        }
+        else
+        {
+            _instanceCountsByPath[path] = instanceCount - 1;
+        }
         Deactivate(entry.TokenRange);
         _revision++;
         return true;

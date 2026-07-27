@@ -1147,6 +1147,7 @@ public sealed class SilkMeshRenderer :
                 }
                 if (!Scene.PickIdentities.TryGetRange(
                     mesh.Mesh.Path,
+                    mesh.Mesh.InstanceIndex,
                     out SilkPickTokenRange tokenRange))
                 {
                     throw new InvalidDataException(

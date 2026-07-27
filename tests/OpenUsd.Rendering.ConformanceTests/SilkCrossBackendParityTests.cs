@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Buffers.Binary;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
 using OpenUsd.Rendering.Silk.Vulkan;
@@ -102,6 +103,95 @@ public sealed class SilkCrossBackendParityTests
         await Assert.That(result.Passed)
             .IsTrue()
             .Because($"Wide-index geometry differs between backends: {result.Diagnostics}");
+    }
+
+    /// <summary>
+    /// Page ABI 3 keys retained meshes by (path, instance index) so a point-instanced
+    /// prototype publishes one record per instance. If instances collapsed back to one entry
+    /// keyed by path alone, only a single draw would survive, so the draw count is asserted
+    /// alongside the image comparison.
+    /// </summary>
+    [Test]
+    public async Task BackendsAgreeOnPointInstancedPrototypes()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        (ParityImage direct3D, int direct3DDraws) = RenderInstances(
+            D3D12SilkGraphicsDevice.Create(useWarp: true));
+        (ParityImage vulkan, int vulkanDraws) = RenderInstances(
+            VulkanSilkGraphicsDevice.Create());
+
+        await Assert.That(direct3DDraws).IsEqualTo(3);
+        await Assert.That(vulkanDraws).IsEqualTo(3);
+
+        ParityComparisonResult result = ParityImageComparer.Compare(
+            direct3D,
+            vulkan,
+            Background,
+            ParityTolerance.Geometry);
+
+        await Assert.That(result.ReferenceCoveragePixels).IsGreaterThan(0);
+        await Assert.That(result.Passed)
+            .IsTrue()
+            .Because($"Instanced geometry differs between backends: {result.Diagnostics}");
+    }
+
+    private static (ParityImage Image, int Draws) RenderInstances(ISilkGraphicsDevice device)
+    {
+        using (device)
+        {
+            using ISilkGraphicsTexture color = device.CreateTexture2D(
+                new SilkTextureDescriptor(
+                    Size,
+                    Size,
+                    SilkTextureFormat.Rgba8Unorm,
+                    SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+            using ISilkGraphicsTexture depth = device.CreateTexture2D(
+                SilkTextureDescriptor.DepthTarget(Size, Size));
+            using var renderer = new SilkMeshRenderer(device);
+
+            SilkMeshRendererConformance.Apply(
+                renderer,
+                revision: 1,
+                SilkMeshRendererConformance.CreateFrameCommand(
+                    Size,
+                    Size,
+                    SilkMeshRendererConformance.Identity()),
+                CreateInstanceCommand(1, "/Proto", 0, -0.5),
+                CreateInstanceCommand(1, "/Proto", 1, 0.0),
+                CreateInstanceCommand(1, "/Proto", 2, 0.5));
+            SilkMeshRenderResult render = renderer.Render(color, depth);
+
+            byte[] pixels = new byte[Size * Size * ParityImage.BytesPerPixel];
+            color.ReadbackForTesting(pixels);
+            return (
+                new ParityImage(checked((int)Size), checked((int)Size), pixels),
+                render.DrawCount);
+        }
+    }
+
+    /// <summary>
+    /// Builds one instance record of a prototype: the path stays authoritative, the instance
+    /// index distinguishes the record, and a non-zero instancer id identifies the owner.
+    /// </summary>
+    private static byte[] CreateInstanceCommand(
+        ulong id,
+        string path,
+        int instanceIndex,
+        double x)
+    {
+        byte[] command = SilkMeshRendererConformance.CreateCubeCommand(
+            id,
+            path,
+            x,
+            0,
+            [0, 0, 1, 1]);
+        BinaryPrimitives.WriteInt32LittleEndian(command.AsSpan(20), 7);
+        BinaryPrimitives.WriteInt32LittleEndian(command.AsSpan(24), instanceIndex);
+        return command;
     }
 
     private static (float[] Points, uint[] Indices) CreateGrid(int resolution)
