@@ -203,7 +203,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk.Metal/OpenUsd.Rendering.Silk.Metal.csproj",
-      "sha256": "4dd68c284023e0d06b042819c90aa54963b8172e6b0eec4d72f84a05d7818ec5"
+      "sha256": "a8ab06f6bde3d41318805a538ab464e58130da9170d390fc1ca3eedf2241c480"
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
