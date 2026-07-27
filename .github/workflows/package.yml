@@ -182,7 +182,7 @@ jobs:
           sudo apt-get update &&
           sudo apt-get install -y
           clang
-          libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxcursor-dev
+          libgl1-mesa-dev libgl1-mesa-dri libglu1-mesa-dev libx11-dev libxcursor-dev
           libxi-dev libxinerama-dev libxrandr-dev libwayland-dev zlib1g-dev
       - name: Install Linux native build prerequisites
         if: >-

@@ -94,7 +94,7 @@ jobs:
           sudo apt-get update &&
           sudo apt-get install -y
           build-essential clang cmake ninja-build pkg-config
-          libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxcursor-dev
+          libgl1-mesa-dev libgl1-mesa-dri libglu1-mesa-dev libx11-dev libxcursor-dev
           libxi-dev libxinerama-dev libxrandr-dev libxt-dev libxtst-dev
           libwayland-dev x11-utils xvfb zlib1g-dev
       - name: Install macOS native prerequisites

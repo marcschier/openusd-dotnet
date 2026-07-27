@@ -155,6 +155,7 @@ elseif(UNIX AND NOT APPLE)
     set_tests_properties(
         openusd_storm_child_probe
         PROPERTIES
+            SKIP_RETURN_CODE 125
             ENVIRONMENT_MODIFICATION
                 "LD_LIBRARY_PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR};LD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib")
 elseif(APPLE)

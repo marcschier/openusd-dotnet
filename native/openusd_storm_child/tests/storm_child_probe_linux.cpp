@@ -4,6 +4,7 @@
 #include "storm_child_camera_test.h"
 #include "openusd_hydra.h"
 
+#include <GL/glx.h>
 #include <X11/Xlib.h>
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
@@ -29,6 +30,77 @@ using namespace openusd_storm_child_camera_test;
 
 std::atomic_int g_untrapped_x_errors{0};
 std::atomic_int g_rebound_x_errors{0};
+
+constexpr int CapabilityUnavailableExitCode = 125;
+
+// Storm initialization drives real OpenGL. When Mesa has no DRI driver the GLX
+// context is still created, but silently falls back to indirect rendering, where
+// every GL call becomes an X round trip and Storm's setup stops making progress
+// instead of failing. That is what made this probe hang under Xvfb rather than
+// report anything, so the capability is checked before a child is created. The
+// check itself only creates and queries a context, so it cannot stall the way
+// the renderer does. Windows and macOS already skip on their equivalent missing
+// context capability.
+bool DirectRenderingAvailable(Display* display, std::string& reason)
+{
+    // Named to avoid the glibc major/minor macros from <sys/sysmacros.h>.
+    int glx_major = 0;
+    int glx_minor = 0;
+    if (glXQueryVersion(display, &glx_major, &glx_minor) == False)
+    {
+        reason = "the GLX extension is unavailable";
+        return false;
+    }
+
+    const int attributes[] = {
+        GLX_X_RENDERABLE, True,
+        GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+        GLX_RENDER_TYPE, GLX_RGBA_BIT,
+        GLX_RED_SIZE, 8,
+        GLX_GREEN_SIZE, 8,
+        GLX_BLUE_SIZE, 8,
+        GLX_ALPHA_SIZE, 8,
+        GLX_DEPTH_SIZE, 24,
+        GLX_DOUBLEBUFFER, True,
+        None};
+    int count = 0;
+    GLXFBConfig* configs = glXChooseFBConfig(
+        display,
+        DefaultScreen(display),
+        attributes,
+        &count);
+    if (configs == nullptr || count <= 0)
+    {
+        if (configs != nullptr)
+        {
+            XFree(configs);
+        }
+        reason = "no double-buffered GLX framebuffer configuration is available";
+        return false;
+    }
+
+    GLXContext context = glXCreateNewContext(
+        display,
+        configs[0],
+        GLX_RGBA_TYPE,
+        nullptr,
+        True);
+    XFree(configs);
+    if (context == nullptr)
+    {
+        reason = "a GLX context could not be created";
+        return false;
+    }
+
+    const bool direct = glXIsDirect(display, context) != False;
+    glXDestroyContext(display, context);
+    if (!direct)
+    {
+        reason =
+            "GLX only offers indirect rendering, so Storm cannot make progress";
+    }
+    return direct;
+}
 
 int ProbeXErrorHandler(Display*, XErrorEvent*)
 {
@@ -367,6 +439,15 @@ int main(int argc, char** argv)
     if (!Require(display != nullptr, "Could not open DISPLAY."))
     {
         return 4;
+    }
+    ReportStage("GLX direct rendering capability");
+    std::string capability_reason;
+    if (!DirectRenderingAvailable(display, capability_reason))
+    {
+        std::cerr << "Skipping Storm child probe: " << capability_reason
+                  << ".\n";
+        XCloseDisplay(display);
+        return CapabilityUnavailableExitCode;
     }
     const int screen = DefaultScreen(display);
     Window parent = XCreateSimpleWindow(
