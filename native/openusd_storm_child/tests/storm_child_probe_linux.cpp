@@ -60,7 +60,7 @@ bool ProbeDirectRendering()
 
     const int attributes[] = {
         GLX_X_RENDERABLE, True,
-        GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+        GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT | GLX_PBUFFER_BIT,
         GLX_RENDER_TYPE, GLX_RGBA_BIT,
         GLX_RED_SIZE, 8,
         GLX_GREEN_SIZE, 8,
@@ -85,23 +85,63 @@ bool ProbeDirectRendering()
         return false;
     }
 
+    GLXFBConfig chosen = configs[0];
     GLXContext context = glXCreateNewContext(
         display,
-        configs[0],
+        chosen,
         GLX_RGBA_TYPE,
         nullptr,
         True);
-    XFree(configs);
     if (context == nullptr)
     {
+        XFree(configs);
         XCloseDisplay(display);
         return false;
     }
 
     const bool direct = glXIsDirect(display, context) != False;
+    bool accelerated = false;
+    if (direct)
+    {
+        // Direct rendering is necessary but not sufficient. A hosted runner has
+        // no GPU, so Mesa answers with llvmpipe, which is direct and completely
+        // functional yet far too slow for Storm to finish initializing: that is
+        // the stall this probe kept hitting inside openusd_storm_child_create.
+        // Ask the driver what it actually is rather than inferring it from how
+        // long the renderer takes.
+        const int pbuffer_attributes[] = {
+            GLX_PBUFFER_WIDTH, 1,
+            GLX_PBUFFER_HEIGHT, 1,
+            None};
+        GLXPbuffer pbuffer = glXCreatePbuffer(
+            display,
+            chosen,
+            pbuffer_attributes);
+        if (pbuffer != None)
+        {
+            if (glXMakeContextCurrent(display, pbuffer, pbuffer, context) !=
+                False)
+            {
+                const GLubyte* name = glGetString(GL_RENDERER);
+                if (name != nullptr)
+                {
+                    const std::string renderer(
+                        reinterpret_cast<const char*>(name));
+                    accelerated =
+                        renderer.find("llvmpipe") == std::string::npos &&
+                        renderer.find("softpipe") == std::string::npos &&
+                        renderer.find("swrast") == std::string::npos;
+                    std::cerr << "probe GL renderer: " << renderer << '\n';
+                }
+                glXMakeContextCurrent(display, None, None, nullptr);
+            }
+            glXDestroyPbuffer(display, pbuffer);
+        }
+    }
     glXDestroyContext(display, context);
+    XFree(configs);
     XCloseDisplay(display);
-    return direct;
+    return direct && accelerated;
 }
 
 int ProbeXErrorHandler(Display*, XErrorEvent*)
@@ -193,7 +233,8 @@ bool DirectRenderingAvailable(std::string& reason)
         return true;
     }
 
-    reason = "GLX cannot provide a direct rendering context";
+    reason =
+        "GLX offers no hardware-accelerated direct rendering context";
     return false;
 }
 
