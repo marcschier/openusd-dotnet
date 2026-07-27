@@ -101,18 +101,22 @@ internal static partial class Program
                     RenderPage(session, first, vulkan, width, height);
                 renderEvidence.Add(vulkanEvidence);
 
-                // Measure cross-backend agreement on a real stage. Colour is not compared
-                // because hdSilk still shades with an absolute-normal debug visualization.
-                // This reports rather than fails: the Vulkan backend currently renders
-                // vertically flipped relative to D3D12 because its viewport does not
-                // compensate for Vulkan's +Y-down clip space. Enforcement follows that fix.
+                // The backends must agree on the same real stage, not merely each draw
+                // something. Colour is not compared because hdSilk still shades with an
+                // absolute-normal debug visualization.
                 ParityComparisonResult parity = ParityImageComparer.Compare(
                     primaryImage,
                     vulkanImage,
                     0x000000FFU,
                     ParityTolerance.Geometry);
-                Console.WriteLine(
-                    $"Backend parity: {parity.Diagnostics}; enforced=False");
+                Console.WriteLine($"Backend parity: {parity.Diagnostics}; enforced=True");
+                if (!parity.Passed)
+                {
+                    Console.Error.WriteLine(
+                        "The hdSilk backends disagree on the same stage: " +
+                        parity.Diagnostics);
+                    return 5;
+                }
             }
             Console.WriteLine($"Offscreen render: {string.Join("; ", renderEvidence)}");
             return 0;

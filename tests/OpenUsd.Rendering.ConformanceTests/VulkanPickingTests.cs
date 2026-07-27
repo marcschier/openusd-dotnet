@@ -199,10 +199,10 @@ public sealed class VulkanPickingTests
                 width,
                 height,
                 SilkMeshRendererConformance.Identity()),
-            CreateQuadCommand(1, "/TopLeft", -1, -1, 0, 0),
-            CreateQuadCommand(2, "/TopRight", 0, -1, 1, 0),
-            CreateQuadCommand(3, "/BottomLeft", -1, 0, 0, 1),
-            CreateQuadCommand(4, "/BottomRight", 0, 0, 1, 1));
+            CreateQuadCommand(1, "/TopLeft", -1, 1, 0, 0),
+            CreateQuadCommand(2, "/TopRight", 0, 1, 1, 0),
+            CreateQuadCommand(3, "/BottomLeft", -1, 0, 0, -1),
+            CreateQuadCommand(4, "/BottomRight", 0, 0, 1, -1));
         var binding = new SilkPickFrameBinding(3, 4);
 
         (int X, int Y, string Path)[] cases =

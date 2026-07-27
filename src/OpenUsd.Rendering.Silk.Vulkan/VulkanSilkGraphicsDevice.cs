@@ -53,6 +53,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     /// <inheritdoc/>
     public SilkGraphicsCapabilities Capabilities { get; }
 
+    /// <inheritdoc/>
+    public bool ClipSpaceYPointsDown => true;
+
     /// <summary>Creates a headless Vulkan device and graphics queue.</summary>
     public static VulkanSilkGraphicsDevice Create()
     {

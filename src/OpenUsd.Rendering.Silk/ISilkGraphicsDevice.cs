@@ -13,6 +13,17 @@ public interface ISilkGraphicsDevice : IDisposable
     /// <summary>Gets immutable device capabilities.</summary>
     SilkGraphicsCapabilities Capabilities { get; }
 
+    /// <summary>
+    /// Gets whether the backend's clip space has +Y pointing down the render target.
+    /// </summary>
+    /// <remarks>
+    /// Direct3D and Metal clip space has +Y up, Vulkan has +Y down. Geometry is projected
+    /// once in renderer-neutral code, so the backend declares its convention and the scene
+    /// constants are mirrored for it. Without this the same stage rendered vertically
+    /// flipped on Vulkan relative to the other backends.
+    /// </remarks>
+    bool ClipSpaceYPointsDown => false;
+
     /// <summary>Creates a GPU buffer.</summary>
     ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage);
 

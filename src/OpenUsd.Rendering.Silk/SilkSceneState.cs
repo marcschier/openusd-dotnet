@@ -692,7 +692,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         Span<byte> constants = stackalloc byte[SilkSceneUniformWriter.ByteSize];
         foreach (SilkMeshGpuResource mesh in _meshes.Values)
         {
-            if (mesh.UpdateUniform(frame, constants))
+            if (mesh.UpdateUniform(frame, constants, _device.ClipSpaceYPointsDown))
             {
                 uploads++;
                 _uniformUploads++;
@@ -817,7 +817,10 @@ public sealed class SilkMeshGpuResource : IDisposable
         Mesh = mesh;
     }
 
-    internal bool UpdateUniform(SilkFrameState frame, Span<byte> destination)
+    internal bool UpdateUniform(
+        SilkFrameState frame,
+        Span<byte> destination,
+        bool flipClipSpaceY)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (ReferenceEquals(_uniformMesh, Mesh) &&
@@ -826,7 +829,7 @@ public sealed class SilkMeshGpuResource : IDisposable
             return false;
         }
 
-        SilkSceneUniformWriter.Write(Mesh, frame, destination);
+        SilkSceneUniformWriter.Write(Mesh, frame, destination, flipClipSpaceY);
         _uniformMesh = Mesh;
         _uniformFrameRevision = frame.Revision;
         if (destination.SequenceEqual(_uniformBytes))

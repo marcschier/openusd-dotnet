@@ -69,6 +69,49 @@ public sealed class SilkCrossBackendParityTests
     }
 
     /// <summary>
+    /// The parity scene must be vertically asymmetric, otherwise a backend rendering it upside
+    /// down would still compare equal and the gate above would pass vacuously. This is exactly
+    /// how the Vulkan clip-space flip survived undetected: a cube centred on Y is its own
+    /// mirror. Comparing the baseline against its own vertical mirror proves the scene can
+    /// distinguish the two orientations.
+    /// </summary>
+    [Test]
+    public async Task ComparisonDetectsAVerticallyFlippedRender()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        ParityImage baseline = RenderScene(
+            D3D12SilkGraphicsDevice.Create(useWarp: true));
+
+        ParityComparisonResult result = ParityImageComparer.Compare(
+            baseline,
+            MirrorVertically(baseline),
+            Background,
+            ParityTolerance.Geometry);
+
+        await Assert.That(result.Passed)
+            .IsFalse()
+            .Because("The parity scene is vertically symmetric and cannot detect a flip.");
+    }
+
+    private static ParityImage MirrorVertically(ParityImage image)
+    {
+        int stride = image.Width * ParityImage.BytesPerPixel;
+        ReadOnlySpan<byte> source = image.Rgba.Span;
+        byte[] mirrored = new byte[source.Length];
+        for (int row = 0; row < image.Height; row++)
+        {
+            source.Slice(row * stride, stride)
+                .CopyTo(mirrored.AsSpan((image.Height - 1 - row) * stride, stride));
+        }
+
+        return new ParityImage(image.Width, image.Height, mirrored);
+    }
+
+    /// <summary>
     /// A grid with more than 65,535 vertices cannot be drawn with 16-bit indices. Page ABI 3
     /// widened indices to 32 bits end to end, and this locks that in: a backend that silently
     /// truncated them would disagree with the one that did not.
@@ -187,7 +230,7 @@ public sealed class SilkCrossBackendParityTests
             id,
             path,
             x,
-            0,
+            0.25,
             [0, 0, 1, 1]);
         BinaryPrimitives.WriteInt32LittleEndian(command.AsSpan(20), 7);
         BinaryPrimitives.WriteInt32LittleEndian(command.AsSpan(24), instanceIndex);
@@ -203,7 +246,7 @@ public sealed class SilkCrossBackendParityTests
             {
                 int offset = ((row * resolution) + column) * 3;
                 points[offset] = ((float)column / (resolution - 1) - 0.5f) * 0.8f;
-                points[offset + 1] = ((float)row / (resolution - 1) - 0.5f) * 0.8f;
+                points[offset + 1] = (((float)row / (resolution - 1)) - 0.2f) * 0.8f;
                 points[offset + 2] = 0.4f;
             }
         }
@@ -294,11 +337,13 @@ public sealed class SilkCrossBackendParityTests
                     Size,
                     Size,
                     SilkMeshRendererConformance.Identity()),
+                // Offset in Y as well as X. A cube centred on Y is vertically symmetric, so
+                // a backend rendering the scene upside down would still compare equal.
                 SilkMeshRendererConformance.CreateCubeCommand(
                     1,
                     "/Cube",
                     cubeX,
-                    0,
+                    0.3,
                     [0, 0, 1, 1]));
             renderer.Render(color, depth);
 

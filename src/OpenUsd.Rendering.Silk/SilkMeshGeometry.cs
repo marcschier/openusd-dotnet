@@ -142,7 +142,8 @@ internal static class SilkSceneUniformWriter
     internal static void Write(
         SilkMeshData mesh,
         SilkFrameState frame,
-        Span<byte> destination)
+        Span<byte> destination,
+        bool flipClipSpaceY = false)
     {
         if (destination.Length != ByteSize)
         {
@@ -166,6 +167,10 @@ internal static class SilkSceneUniformWriter
         Multiply(transform, frame.View.Span, meshView);
         Multiply(meshView, frame.Projection.Span, projected);
         ConvertOpenGlDepthToZeroToOne(projected, objectToClip);
+        if (flipClipSpaceY)
+        {
+            MirrorClipSpaceY(objectToClip);
+        }
 
         for (int row = 0; row < 4; row++)
         {
@@ -201,6 +206,18 @@ internal static class SilkSceneUniformWriter
                 }
                 result[(row * 4) + column] = value;
             }
+        }
+    }
+
+    private static void MirrorClipSpaceY(Span<double> objectToClip)
+    {
+        // Vulkan clip space has +Y pointing down, Direct3D and Metal have +Y up. Negating
+        // the projected Y makes every backend rasterize the same stage the same way up.
+        // Only geometry drawn through these scene constants is affected, so fullscreen
+        // composite passes that address the render target directly stay untouched.
+        for (int row = 0; row < 4; row++)
+        {
+            objectToClip[(row * 4) + 1] = -objectToClip[(row * 4) + 1];
         }
     }
 

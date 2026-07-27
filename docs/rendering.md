@@ -81,6 +81,16 @@ time, and camera. Storm synchronous/asynchronous requests and the D3D12, Vulkan,
 session sync paths therefore cannot combine a new revision with an older camera. The legacy
 OpenGL compatibility host uses the same snapshot; automatic camera mode remains unchanged.
 
+hdSilk normalizes both clip-space conventions in renderer-neutral scene constants rather than per backend, so one
+`objectToClip` matrix drives every geometry pass on every RHI. Depth is converted from the OpenGL `[-1, 1]` range the
+Storm and Viewer cameras produce to the `[0, 1]` range D3D12, Vulkan, and Metal expect. Clip-space Y is mirrored when
+`ISilkGraphicsDevice.ClipSpaceYPointsDown` is set, which only the Vulkan backend reports, because Vulkan's framebuffer
+origin is top-left while D3D12 and Metal are bottom-left. Mirroring in the scene constants rather than through a
+negative-height viewport keeps fullscreen composite passes such as the selection outline upright: those share the
+backend's generic command-list viewport but never use `objectToClip`. `SilkCrossBackendParityTests` renders a
+vertically asymmetric scene and separately proves that scene compares unequal to its own vertical mirror, so a
+regression in either convention cannot pass the gate vacuously.
+
 ## Renderer-neutral picking contract
 
 `OpenUsd.Rendering` owns picking identity and revision semantics; Storm, hdSilk, RHIs, and the Viewer
