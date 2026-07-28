@@ -289,9 +289,15 @@ internal static partial class Program
             }
 
             await scheduler.EditAsync(
-                static stage => stage.GetPrim("/World/Cube").SetVec3fArray(
-                    "primvars:displayColor",
-                    [new UsdVec3f(0.95f, 0.1f, 0.05f)]),
+                // primvars:displayColor is a color3f[] on any Gprim, so the generic
+                // vec3f array setter cannot author it. This is the same native path
+                // the shared-stage soak uses for its controlled colour edit.
+                static stage => SharedStageNativeDiagnostics.SetDisplayColor(
+                    stage,
+                    "/World/Cube",
+                    0.95f,
+                    0.1f,
+                    0.05f),
                 UsdStageInvalidationKind.Property).ConfigureAwait(false);
             MetalProbeCapture colorEdited = await CaptureMetalFrameAsync(
                 presenter,
