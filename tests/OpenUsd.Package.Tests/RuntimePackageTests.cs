@@ -1042,7 +1042,19 @@ public sealed class RuntimePackageTests
             await Assert.That(result.Output).Contains("STORM_CHILD_MAP_PUBLISH_ROOT=true");
             await Assert.That(result.Output).Contains("OPENUSD_MAP_PUBLISH_ROOT=true");
             await Assert.That(result.Output).Contains("CWD_IS_PUBLISH=true");
-            await AssertNoSourcePathLeakageAsync(result.Output, repositoryRoot);
+            // APP_BASE_CANONICAL reports the consumer's own publish directory, which
+            // the harness creates under artifacts/, so it necessarily contains the
+            // repository path and is not leakage. That it is the publish root is
+            // already asserted by CWD_IS_PUBLISH and the map confinement above, so
+            // scan everything else for real source paths.
+            string leakageScan = string.Join(
+                '\n',
+                result.Output
+                    .Split('\n')
+                    .Where(line => !line.StartsWith(
+                        "APP_BASE_CANONICAL=",
+                        StringComparison.Ordinal)));
+            await AssertNoSourcePathLeakageAsync(leakageScan, repositoryRoot);
             await AssertPublishedLinuxStormChildTopologyAsync(consumer.PublishRoot);
 
             string[] stormLibraries = Directory.GetFiles(
