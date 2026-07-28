@@ -123,11 +123,9 @@ else
     Join-Path $Root $OutputPath
 }
 
-if (Test-Path $outputRoot)
-{
-    Remove-Item $outputRoot -Recurse -Force
-}
-
+# The output directory is not cleared. Splitting the release means several scoped
+# invocations pack into the same directory, and wiping it each time silently discarded
+# everything the previous scope produced.
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
 foreach ($id in $published)
@@ -166,8 +164,10 @@ $produced = Get-ChildItem $outputRoot -Filter '*.nupkg' |
     ForEach-Object { $_.Name -replace '\.\d+\.\d+\.\d+.*$', '' } |
     Sort-Object -Unique
 
+# The directory can already hold packages from another scope, so an unexpected package
+# is one that is not published at all rather than one outside this invocation's slice.
 $expected = $published | Sort-Object -Unique
-$unexpected = $produced | Where-Object { $expected -notcontains $_ }
+$unexpected = $produced | Where-Object { $allPublished -notcontains $_ }
 $missing = $expected | Where-Object { $produced -notcontains $_ }
 
 if ($unexpected)
