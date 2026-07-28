@@ -297,6 +297,11 @@ jobs:
         run: ./eng/run-silk-probe.ps1 -Rid ${{ matrix.rid }}
       - name: Build package tests
         shell: pwsh
+        # The MSVC developer environment exports Platform=x64, which makes MSBuild
+        # write to bin\x64\Release instead of bin\Release and leaves the executable
+        # the next step runs missing. Clear it for the managed build and run.
+        env:
+          Platform: ''
         run: dotnet build tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj -c Release
       - name: Verify Metal package staging
         if: runner.os == 'macOS'
@@ -314,10 +319,16 @@ jobs:
             --manifest eng/shaders/checked/mesh.metallib.manifest.json
       - name: Run required package execution gates
         shell: pwsh
+        env:
+          Platform: ''
         run: |
           $testApp = "tests/OpenUsd.Package.Tests/bin/Release/net10.0/OpenUsd.Package.Tests"
           if ($IsWindows) {
             $testApp += ".exe"
+          }
+          if (-not (Test-Path $testApp))
+          {
+            throw "The package test executable was not built at '$testApp'."
           }
           & $testApp --minimum-expected-tests 22
           exit $LASTEXITCODE
