@@ -103,7 +103,7 @@ jobs:
     # fixed rather than the failure being silently dropped.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [ ci, shaders, native, packages ]
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 120
     environment: release
     permissions:
