@@ -204,13 +204,19 @@ silently ship it and a missing native input fails the run instead of publishing 
 `OpenUsd.Viewer` is an application, not a library, and is not published. Projects outside `src/`
 are never packable regardless of their name.
 
-Publishing runs from the `publish` job in `.github/workflows/release.yml`, which requires every
-release gate to pass first and only runs for a `v*` tag. The tag is authoritative: it is stamped
-into `version.json` before packing. The job runs on macOS because `mesh.metallib` is a hosted
-macOS/Xcode artifact that is never fabricated elsewhere, and because staging the Linux SONAME
-symlinks and the signed macOS Storm child requires a Unix filesystem. All three native archives are
-downloaded from the native job of the same run, so the published bytes are the bytes the gates
-verified.
+Publishing runs from the `publish` job in `.github/workflows/release.yml`, which only runs for a
+`v*` tag. The tag is authoritative: it is stamped into `version.json` before packing. The job
+depends on `ci`, `shaders`, `native` and `packages`, which together build, verify and execute the
+exact packages it pushes, with `packages` running the package-only consumer gates on all three
+platforms. It deliberately does not depend on `render`, which covers viewer and windowing behaviour
+that no published package relies on and is currently a known-failing gate; the release aggregate
+still requires `render`, so a release run stays red until that is fixed rather than the failure
+being dropped.
+
+The job runs on macOS because `mesh.metallib` is a hosted macOS/Xcode artifact that is never
+fabricated elsewhere, and because staging the Linux SONAME symlinks and the signed macOS Storm
+child requires a Unix filesystem. All three native archives are downloaded from the native job of
+the same run, so the published bytes are the bytes the gates verified.
 
 Packages go to two feeds:
 
