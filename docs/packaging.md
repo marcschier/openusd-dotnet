@@ -204,19 +204,22 @@ silently ship it and a missing native input fails the run instead of publishing 
 `OpenUsd.Viewer` is an application, not a library, and is not published. Projects outside `src/`
 are never packable regardless of their name.
 
-Publishing runs from the `publish` job in `.github/workflows/release.yml`, which only runs for a
-`v*` tag. The tag is authoritative: it is stamped into `version.json` before packing. The job
-depends on `ci`, `shaders`, `native` and `packages`, which together build, verify and execute the
-exact packages it pushes, with `packages` running the package-only consumer gates on all three
-platforms. It deliberately does not depend on `render`, which covers viewer and windowing behaviour
-that no published package relies on and is currently a known-failing gate; the release aggregate
-still requires `render`, so a release run stays red until that is fixed rather than the failure
-being dropped.
+Publishing runs from `.github/workflows/release.yml` and only for a `v*` tag. The tag is
+authoritative: it is stamped into `version.json` before packing. Packing is split across a `pack`
+matrix, one job per RID, because no single host can produce every package without changing what is
+published: the Metal package embeds the macOS-only `mesh.metallib`, and the Linux and macOS Imaging
+packages run ELF and Mach-O validation that only their own platform can perform and whose evidence
+is embedded in the package. Each job stages its RID from the native archive of the same run, so the
+published bytes are the bytes the gates verified. The platform-neutral libraries are packed once, on
+Linux. A `publish` job then downloads every packed set, requires all fifteen packages to be present,
+and pushes.
 
-The job runs on macOS because `mesh.metallib` is a hosted macOS/Xcode artifact that is never
-fabricated elsewhere, and because staging the Linux SONAME symlinks and the signed macOS Storm
-child requires a Unix filesystem. All three native archives are downloaded from the native job of
-the same run, so the published bytes are the bytes the gates verified.
+Both jobs depend on `ci`, `shaders`, `native` and `packages`, which together build, verify and
+execute the exact packages that get pushed, with `packages` running the package-only consumer gates
+on all three platforms. They deliberately do not depend on `render`, which covers viewer and
+windowing behaviour that no published package relies on and is currently a known-failing gate; the
+release aggregate still requires `render`, so a release run stays red until that is fixed rather
+than the failure being dropped.
 
 Packages go to two feeds:
 

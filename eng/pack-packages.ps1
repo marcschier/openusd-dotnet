@@ -17,6 +17,14 @@
 #>
 [CmdletBinding()]
 param(
+    # Packing is split by platform because the artifacts cannot all be produced on one
+    # host: the Metal package needs the macOS-only mesh.metallib, and the Linux and macOS
+    # Imaging packages run ELF and Mach-O validation that only their own platform can
+    # perform and whose evidence is embedded in the package.
+    [ValidateSet('all', 'managed', 'metal', 'runtime')]
+    [string]$Scope = 'all',
+    [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
+    [string]$Rid,
     [string]$OutputPath = 'artifacts/nupkg',
     [string]$Configuration = 'Release',
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')),
@@ -45,9 +53,36 @@ $published = @(
     'OpenUsd.Runtime.Imaging.osx-arm64'
 )
 
-# Retained before the SkipMetal filter so the src/ classification check below always
-# covers the full set.
+# Retained before any scope or SkipMetal filter so the src/ classification check below
+# always covers the full set whichever slice this invocation packs.
 $allPublished = $published
+
+$metalPackage = 'OpenUsd.Rendering.Silk.Metal'
+switch ($Scope)
+{
+    'managed'
+    {
+        # Platform-neutral libraries. Metal is excluded because it embeds a macOS
+        # artifact, so it is packed by the metal scope on a macOS host.
+        $published = $published | Where-Object {
+            $_ -ne $metalPackage -and -not $_.StartsWith('OpenUsd.Runtime.', [StringComparison]::Ordinal)
+        }
+    }
+    'metal'
+    {
+        $published = @($metalPackage)
+    }
+    'runtime'
+    {
+        if ([string]::IsNullOrEmpty($Rid))
+        {
+            throw 'The runtime scope requires -Rid.'
+        }
+
+        $published = @("OpenUsd.Runtime.Core.$Rid", "OpenUsd.Runtime.Imaging.$Rid")
+    }
+}
+
 
 if ($SkipMetal)
 {

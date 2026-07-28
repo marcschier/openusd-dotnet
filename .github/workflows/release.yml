@@ -89,31 +89,38 @@ jobs:
             throw "Release gates failed: $($results -join ', ')."
           }
 
-  publish:
-    name: publish packages
-    # Only tags publish. A release/** branch run exercises every gate but must not push,
-    # because the version it would stamp is not the version the tag names.
+  pack:
+    name: pack ${{ matrix.rid }} packages
+    # Packing is split by platform out of necessity rather than preference. The Metal
+    # package embeds the macOS-only mesh.metallib, and the Linux and macOS Imaging
+    # packages run ELF and Mach-O validation that only their own platform can perform and
+    # whose evidence is embedded in the package, so a single host cannot produce all of
+    # them without changing what is published.
     #
-    # This depends on the gates that validate the artifacts being published rather than
-    # on the aggregate. ci, shaders, native and packages together build, verify and
-    # execute the exact packages this job pushes, with packages running the package-only
-    # consumer gates on all three platforms. render covers viewer and windowing
-    # behaviour, which no published package depends on, and is currently a known-failing
-    # gate; the aggregate below still requires it, so a release run stays red until it is
-    # fixed rather than the failure being silently dropped.
+    # This depends on the gates that validate these artifacts rather than on the
+    # aggregate. ci, shaders, native and packages together build, verify and execute the
+    # exact packages published here, with packages running the package-only consumer
+    # gates on all three platforms. render covers viewer and windowing behaviour that no
+    # published package depends on and is currently a known-failing gate; the aggregate
+    # still requires it, so a release run stays red until it is fixed rather than the
+    # failure being silently dropped.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [ ci, shaders, native, packages ]
-    runs-on: macos-15
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
-    environment: release
     permissions:
       contents: read
       actions: read
-      packages: write
-    # Job-level so the nuget.org step can test for the secret in its own `if`: a step
-    # cannot read an env value declared in that same step's env block.
-    env:
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+          - rid: linux-x64
+            runner: ubuntu-latest
+          - rid: osx-arm64
+            runner: macos-15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -138,54 +145,89 @@ jobs:
           $json.version = $version
           $json | ConvertTo-Json -Depth 10 | Set-Content version.json
           "VERSION=$version" | Out-File $env:GITHUB_ENV -Append
-      # The runtime packages embed the locked native install, so every RID this
-      # repository ships has to be staged on this one runner before packing. The
-      # archives come from the native job in this same run, so the published bytes are
-      # the bytes the release gates verified.
-      - name: Download the verified win-x64 native archive
+      # The archives come from the native job in this same run, so the published bytes
+      # are the bytes the release gates verified.
+      - name: Download the verified native archive
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.run_id }}
-          name: openusd-native-win-x64
-          path: artifacts/native-pipeline/win-x64
-      - name: Download the verified linux-x64 native archive
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.run_id }}
-          name: openusd-native-linux-x64
-          path: artifacts/native-pipeline/linux-x64
-      - name: Download the verified osx-arm64 native archive
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.run_id }}
-          name: openusd-native-osx-arm64
-          path: artifacts/native-pipeline/osx-arm64
-      # Staging runs on macOS rather than Windows so the Linux SONAME symlinks and the
-      # signed macOS Storm child survive extraction intact.
-      - name: Stage every native install
+          name: openusd-native-${{ matrix.rid }}
+          path: artifacts/native-pipeline/${{ matrix.rid }}
+      - name: Stage the native install
         shell: pwsh
         run: |
-          foreach ($rid in @('win-x64', 'linux-x64', 'osx-arm64')) {
-            ./eng/prepare-workflow-native-input.ps1 `
-              -Rid $rid `
-              -Source archive `
-              -PipelineRoot "artifacts/native-pipeline/$rid"
-            ./eng/native-install-metadata.ps1 -Operation Verify -Rid $rid
-          }
-      # mesh.metallib is a hosted macOS/Xcode artifact and is never fabricated
-      # elsewhere, which is why this job cannot run on Linux.
-      - name: Prepare the validated Metal library
+          ./eng/prepare-workflow-native-input.ps1 `
+            -Rid ${{ matrix.rid }} `
+            -Source archive `
+            -PipelineRoot artifacts/native-pipeline/${{ matrix.rid }}
+          ./eng/native-install-metadata.ps1 -Operation Verify -Rid ${{ matrix.rid }}
+      - name: Pack the runtime packages for this RID
+        shell: pwsh
+        env:
+          Platform: ''
+        run: |
+          ./eng/pack-packages.ps1 `
+            -Scope runtime `
+            -Rid ${{ matrix.rid }} `
+            -OutputPath artifacts/nupkg
+      # The platform-neutral libraries are packed once, on Linux, so the same bytes are
+      # not produced three times and then have to be reconciled.
+      - name: Pack the platform-neutral packages
+        if: matrix.rid == 'linux-x64'
+        shell: pwsh
+        run: ./eng/pack-packages.ps1 -Scope managed -OutputPath artifacts/nupkg
+      # mesh.metallib is a hosted macOS/Xcode artifact and is never fabricated elsewhere.
+      - name: Prepare the validated Metal library and pack it
+        if: matrix.rid == 'osx-arm64'
         shell: pwsh
         run: |
           ./eng/shaders/prepare-metal-library.ps1 `
             -OutputRoot eng/shaders/out/package-metal-library
-      - name: Pack the published set
+          ./eng/pack-packages.ps1 -Scope metal -OutputPath artifacts/nupkg
+      - name: Upload the packed packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openusd-nupkg-${{ matrix.rid }}
+          path: artifacts/nupkg
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    name: publish packages
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    # Job-level so the nuget.org step can test for the secret in its own `if`: a step
+    # cannot read an env value declared in that same step's env block.
+    env:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    steps:
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - name: Download every packed set
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: openusd-nupkg-*
+          merge-multiple: true
+          path: artifacts/nupkg
+      - name: Require the complete published set
         shell: pwsh
         run: |
-          ./eng/pack-packages.ps1 -OutputPath artifacts/nupkg
+          $expected = 15
+          $packages = @(Get-ChildItem artifacts/nupkg -Filter '*.nupkg')
+          Write-Host "Packed $($packages.Count) package(s):"
+          $packages | ForEach-Object { Write-Host "  $($_.Name)" }
+          if ($packages.Count -ne $expected)
+          {
+            throw "Expected $expected packages to publish; found $($packages.Count)."
+          }
       # GITHUB_TOKEN is auto-issued and this job requests packages: write, so the
       # GitHub Packages feed needs no additional secret. Every package goes here.
       # --no-symbols is required: dotnet nuget push uploads an adjacent .snupkg
@@ -214,7 +256,7 @@ jobs:
       - name: Upload the published packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: openusd-${{ env.VERSION }}-nupkgs
+          name: openusd-published-nupkgs
           path: artifacts/nupkg
           if-no-files-found: error
           retention-days: 90

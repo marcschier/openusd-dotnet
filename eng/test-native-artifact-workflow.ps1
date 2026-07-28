@@ -82,20 +82,23 @@ foreach ($calledWorkflow in @(
         "uses: ./.github/workflows/$calledWorkflow" `
         'Release gate workflow'
 }
-# The release gate still consumes the native archives produced by the native job
-# of the same run, but does it in the publish job, which is the one that produces
-# what is actually released. The packages and render gates build their own native
-# inputs because archive consumption fails on macOS and Linux, so binding the run
-# id there would not have been honoured anyway.
+# The release gate still consumes the native archives produced by the native job of the
+# same run, but does it in the pack jobs, which produce what is actually released. The
+# packages and render gates build their own native inputs because archive consumption
+# fails on macOS and Linux, so binding the run id there would not have been honoured.
 Assert-Contains `
     $releaseWorkflow `
     'run-id: ${{ github.run_id }}' `
+    'Release gate workflow'
+Assert-Contains `
+    $releaseWorkflow `
+    'name: openusd-native-${{ matrix.rid }}' `
     'Release gate workflow'
 foreach ($rid in @('win-x64', 'linux-x64', 'osx-arm64'))
 {
     Assert-Contains `
         $releaseWorkflow `
-        "name: openusd-native-$rid" `
+        "rid: $rid" `
         'Release gate workflow'
 }
 
