@@ -49,6 +49,32 @@ $members = @(
     "native/install/$Rid",
     "native/install/shim/$Rid"
 )
+$allowedPrefixes = @(
+    "native/install/$Rid/",
+    "native/install/shim/$Rid/"
+)
+if ($Rid -ceq 'win-x64')
+{
+    # The Windows Vulkan loader is built from locked source next to the per-RID
+    # install rather than inside it, and packing OpenUsd.Runtime.Core.win-x64
+    # requires it. Without it in the archive the win-x64 runtime packages can
+    # only ever be packed on a Windows host that built the loader, which the
+    # publish job is not. It is a verified output of this same native build, so
+    # it travels with the bytes it was verified alongside.
+    $vulkanSdkDirectories = @(
+        Get-ChildItem -LiteralPath $installPath -Directory -Filter 'vulkan-sdk-*')
+    if ($vulkanSdkDirectories.Count -ne 1)
+    {
+        throw (
+            "Exactly one native/install/vulkan-sdk-* directory is required for " +
+            "win-x64; found $($vulkanSdkDirectories.Count).")
+    }
+
+    $vulkanSdkName = $vulkanSdkDirectories[0].Name
+    $members += "native/install/$vulkanSdkName"
+    $allowedPrefixes += "native/install/$vulkanSdkName/"
+}
+
 & tar -czf $archivePath -C $archiveBase @members
 if ($LASTEXITCODE -ne 0)
 {
@@ -60,10 +86,6 @@ if ($LASTEXITCODE -ne 0 -or $listedMembers.Count -eq 0)
 {
     throw "Could not inspect the native archive '$archivePath'."
 }
-$allowedPrefixes = @(
-    "native/install/$Rid/",
-    "native/install/shim/$Rid/"
-)
 foreach ($member in $listedMembers)
 {
     $normalized = $member.Replace('\', '/')

@@ -295,23 +295,44 @@ else
     {
         throw "The archive must contain native/install/$Rid and native/install/shim/$Rid."
     }
+    # win-x64 archives also carry the locked Vulkan loader, which lives beside the
+    # per-RID install rather than inside it and which packing the win-x64 runtime
+    # packages requires. It is validated and transferred exactly like the other
+    # subtrees so a consumer that never built it still gets verified bytes.
+    $extraRelativeRoots = @()
+    if ($Rid -ceq 'win-x64')
+    {
+        $archiveVulkanRoots = @(
+            Get-ChildItem -LiteralPath $archiveInstallRoot -Directory -Filter 'vulkan-sdk-*')
+        if ($archiveVulkanRoots.Count -ne 1)
+        {
+            throw (
+                'A win-x64 archive must contain exactly one ' +
+                "native/install/vulkan-sdk-* directory; found $($archiveVulkanRoots.Count).")
+        }
+
+        $extraRelativeRoots = @($archiveVulkanRoots[0].Name)
+    }
+
+    $archiveExtraRoots = @(
+        $extraRelativeRoots | ForEach-Object { Join-Path $archiveInstallRoot $_ })
     Assert-SafeLinks `
         -Root $archiveInstallRoot `
-        -SearchRoots @($archiveOpenUsdRoot, $archiveShimRoot)
+        -SearchRoots (@($archiveOpenUsdRoot, $archiveShimRoot) + $archiveExtraRoots)
     Assert-NativeLayout $archiveOpenUsdRoot $archiveShimRoot
 
     Invoke-CheckedTar `
-        -Arguments @(
+        -Arguments (@(
             '-cf',
             $transferArchivePath,
             '-C',
             $archiveInstallRoot,
             $Rid,
-            "shim/$Rid") `
+            "shim/$Rid") + $extraRelativeRoots) `
         -FailureMessage 'Could not create the validated native subtree archive.'
     Get-ValidatedTarMembers `
         -Path $transferArchivePath `
-        -AllowedRoots @($Rid, "shim/$Rid") |
+        -AllowedRoots (@($Rid, "shim/$Rid") + $extraRelativeRoots) |
         Out-Null
 
     New-Item -ItemType Directory -Force -Path $stagedInstallRoot | Out-Null
@@ -322,11 +343,17 @@ else
     $stagedShimRoot = Join-Path $stagedInstallRoot "shim/$Rid"
     Assert-SafeLinks `
         -Root $stagedInstallRoot `
-        -SearchRoots @($stagedOpenUsdRoot, $stagedShimRoot)
+        -SearchRoots (@($stagedOpenUsdRoot, $stagedShimRoot) + @(
+            $extraRelativeRoots | ForEach-Object { Join-Path $stagedInstallRoot $_ }))
     Assert-NativeLayout $stagedOpenUsdRoot $stagedShimRoot
 
     Remove-Item $openUsdRoot -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item $shimRoot -Recurse -Force -ErrorAction SilentlyContinue
+    foreach ($extraRoot in $extraRelativeRoots)
+    {
+        Remove-Item (Join-Path $InstallRoot $extraRoot) `
+            -Recurse -Force -ErrorAction SilentlyContinue
+    }
     New-Item -ItemType Directory -Force -Path $InstallRoot |
         Out-Null
     Invoke-CheckedTar `
@@ -334,7 +361,8 @@ else
         -FailureMessage 'Could not install the validated native subtrees.'
     Assert-SafeLinks `
         -Root $InstallRoot `
-        -SearchRoots @($openUsdRoot, $shimRoot)
+        -SearchRoots (@($openUsdRoot, $shimRoot) + @(
+            $extraRelativeRoots | ForEach-Object { Join-Path $InstallRoot $_ }))
     Assert-NativeLayout $openUsdRoot $shimRoot
 
     $sourceMetadata = [ordered]@{

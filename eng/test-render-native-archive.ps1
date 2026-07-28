@@ -60,6 +60,18 @@ try
     New-Item -ItemType Directory -Force -Path (
         [System.IO.Path]::GetDirectoryName($archiveStormChildHeader)) |
         Out-Null
+    if ($rid -ceq 'win-x64')
+    {
+        # A real win-x64 install carries the locked Vulkan loader beside the
+        # per-RID subtree, and the archive now transports it so the runtime
+        # packages can be packed away from a Windows build host.
+        $sourceVulkanBin = Join-Path $sourceInstallRoot 'vulkan-sdk-1.4.321.0/bin'
+        New-Item -ItemType Directory -Force -Path $sourceVulkanBin | Out-Null
+        Set-Content `
+            -Path (Join-Path $sourceVulkanBin 'vulkan-1.dll') `
+            -Value 'synthetic vulkan loader' `
+            -NoNewline
+    }
     [System.IO.File]::Copy(
         $sourceStormChildHeader,
         $archiveStormChildHeader,
@@ -266,6 +278,22 @@ try
             Join-Path $pipelineInstallRoot "shim/$rid/include/openusd_dotnet.h")))
     {
         throw 'The workflow native input helper did not install the pipeline archive.'
+    }
+
+    if ($rid -ceq 'win-x64')
+    {
+        # The loader has to arrive where the runtime package targets look for it,
+        # otherwise the win-x64 packages can only be packed on a Windows host that
+        # built it, which is what carrying it in the archive exists to avoid.
+        $installedLoaders = @(Get-ChildItem `
+            -Path (Join-Path $installRoot 'vulkan-sdk-*/bin/vulkan-1.dll') `
+            -ErrorAction SilentlyContinue)
+        if ($installedLoaders.Count -ne 1)
+        {
+            throw (
+                'The archive did not install exactly one ' +
+                "vulkan-sdk-*/bin/vulkan-1.dll; found $($installedLoaders.Count).")
+        }
     }
 
     if ($IsWindows)
