@@ -430,8 +430,8 @@ shutdown completion and fresh post-teardown renderer fault and resource diagnost
 
 ## Render gate capability limits
 
-Two Windows render proofs need graphics capabilities that a hosted GitHub runner does not have. Both
-are narrowed rather than deleted: everything the runner can prove still runs and still blocks, the
+Three render proofs need graphics capabilities that a hosted GitHub runner does not have. All are
+narrowed rather than deleted: everything the runner can prove still runs and still blocks, the
 unprovable part records a `status: skipped` evidence artifact naming its reason, and the work needed to
 restore full coverage is listed below. Narrowing is deliberately not automatic. Each one is opt-in at
 the call site in `.github/workflows/render.yml`, so a capability regression on a capable host is still a
@@ -444,11 +444,18 @@ implementation, so Avalonia cannot create a WGL context. The skip is recorded in
 **Windows Avalonia Vulkan composition.** Hosted Windows has no GPU driver and therefore no system
 Vulkan ICD. The skip is recorded in `artifacts/render-capability/windows-vulkan.json`.
 
+**Linux X11 and Wayland Vulkan import.** The hosted Linux compositor accepts no external Vulkan
+images at all, reporting `supported image handles: (none)`, so the opaque-FD import this proves
+cannot be exercised. The skip is recorded in
+`artifacts/avalonia-vulkan-smoke/linux-x64/<platform>-capability.json`. Note that lavapipe itself is
+fine and is still used: the limit is the compositor, not the driver.
+
 What still blocks on the hosted runner: the Windows WGL job keeps the NativeAOT shared-stage soak,
 the native probe, and the soak identity gate; the Windows Vulkan job keeps the viewer source-identity
-and evidence contracts. Renderer-neutral and hdSilk Vulkan behaviour that does not need composition
-stays covered by the managed conformance suite in `ci.yml`, which runs against the pinned SwiftShader
-driver.
+and evidence contracts; the Linux job keeps its CTest suite, both X11 and XWayland shared-stage soaks,
+and the Storm child switching gates. Renderer-neutral and hdSilk Vulkan behaviour that does not need
+composition stays covered by the managed conformance suite in `ci.yml`, which runs against the pinned
+SwiftShader driver.
 
 ### Unblocking the WGL soak
 
@@ -463,13 +470,16 @@ The soak needs an OpenGL implementation that can create a WGL context, which mea
    `eng/vulkan-test-runtime-registry.ps1`. Mesa's llvmpipe does provide a WGL 4.x context, so this
    restores the proof without a GPU, at the cost of a new pinned third-party binary.
 
-### Unblocking the Vulkan composition gate
+### Unblocking the Vulkan composition gates
 
-This one cannot be solved in software. The proof exports a Vulkan image to a D3D11 shared handle and
-imports it into the Avalonia compositor with a keyed mutex, so it needs a Vulkan driver that both
-implements `VK_KHR_external_memory_win32` and `VK_KHR_external_semaphore_win32` **and** reports the
-same adapter LUID as the compositor. SwiftShader implements neither extension, which is directly
-observable:
+Neither the Windows nor the Linux Vulkan composition proof can be solved in software, and for the
+same underlying reason: both import a Vulkan image into the windowing system's compositor, so both
+need a real GPU stack on both sides of that import.
+
+On Windows the proof exports a Vulkan image to a D3D11 shared handle and imports it with a keyed
+mutex, so it needs a Vulkan driver that implements both `VK_KHR_external_memory_win32` and
+`VK_KHR_external_semaphore_win32` **and** reports the same adapter LUID as the compositor.
+SwiftShader implements neither extension, which is directly observable:
 
 ```powershell
 ./eng/run-managed-tests.ps1 `
@@ -479,13 +489,19 @@ observable:
   -TestArguments @('--treenode-filter', '/*/*/VulkanCompositionPresentationTests/*')
 ```
 
-Under SwiftShader that reports `SwiftShaderExportsAndReusesCompositionRingWhenSupported` skipping with
-`Vulkan external-object extensions are unavailable: VK_KHR_external_memory_win32,
+Under SwiftShader that reports `SwiftShaderExportsAndReusesCompositionRingWhenSupported` skipping
+with `Vulkan external-object extensions are unavailable: VK_KHR_external_memory_win32,
 VK_KHR_external_semaphore_win32`, and `D3D11BridgeImportsPixelsAndReusesKeyedMutex` skipping with
-`The Vulkan renderer and compositor use different adapter LUIDs`. The only way to restore this gate is
-a GPU-equipped Windows runner whose Vulkan and Direct3D devices are the same adapter. Once such a
-runner exists, the `Resolve system Vulkan ICD` step finds an ICD, reports `available=true`, and every
-guarded step below it runs unchanged.
+`The Vulkan renderer and compositor use different adapter LUIDs`.
+
+On Linux the driver is not the problem. Lavapipe is present and used, and the smoke reaches the
+compositor; the compositor is what reports `supported image handles: (none)`, so there is no handle
+type through which an external image could be imported.
+
+Both are restored the same way: run these jobs on a GPU-equipped self-hosted runner. On Windows,
+once an ICD exists the `Resolve system Vulkan ICD` step reports `available=true` and every guarded
+step below it runs unchanged. On Linux, drop `OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY` from the two
+import smoke steps.
 
 ## Related documentation
 

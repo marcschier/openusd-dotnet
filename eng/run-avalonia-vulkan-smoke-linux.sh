@@ -7,6 +7,11 @@ publish_root="${2:-artifacts/avalonia-vulkan-smoke/linux-x64}"
 loader_path="${3:-/usr/lib/x86_64-linux-gnu/libvulkan.so.1}"
 icd_path="${4:-/usr/share/vulkan/icd.d/lvp_icd.x86_64.json}"
 required="${OPENUSD_REQUIRE_VULKAN_PRESENTATION:-0}"
+# A hosted Linux runner has no compositor that can import external Vulkan images: it
+# reports "supported image handles: (none)". The switch is opt-in from the workflow and
+# narrow by construction, matching only that one report, so every other failure of a
+# required run stays fatal. See docs/testing.md, "Render gate capability limits".
+allow_unavailable="${OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY:-0}"
 timeout_seconds="${OPENUSD_AVALONIA_VULKAN_TIMEOUT_SECONDS:-90}"
 
 case "$platform" in
@@ -153,6 +158,15 @@ cat "$stdout_log" || true
 cat "$stderr_log" || true
 cat "$artifact" 2>/dev/null || true
 assert_identity
+if [[ "$exit_code" -ne 0 && "$allow_unavailable" == "1" ]] &&
+  grep -q 'supported image handles: (none)' "$artifact" 2>/dev/null; then
+  printf '{\n  "schemaVersion": 1,\n  "status": "skipped",\n  "platform": "%s",\n  "reason": "%s"\n}\n' \
+    "$platform" \
+    "This host has no compositor that accepts external Vulkan images." \
+    >"$publish_root/$platform-capability.json"
+  echo "[avalonia-vulkan-smoke] Skipped $platform: the compositor accepts no external Vulkan images."
+  exit 0
+fi
 [[ "$exit_code" -eq 0 ]] ||
   { echo "Avalonia Vulkan smoke exited with code $exit_code." >&2; exit "$exit_code"; }
 validate_openusd_vulkan_artifact "$artifact" "$platform" >/dev/null

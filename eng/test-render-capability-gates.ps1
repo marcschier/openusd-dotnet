@@ -15,6 +15,8 @@ $renderWorkflow = Get-Content (
     Join-Path $repoRoot '.github/workflows/render.yml') -Raw
 $platformSmoke = Get-Content (
     Join-Path $repoRoot 'eng/run-platform-smoke.ps1') -Raw
+$linuxSmoke = Get-Content (
+    Join-Path $repoRoot 'eng/run-avalonia-vulkan-smoke-linux.sh') -Raw
 $testingDoc = Get-Content (Join-Path $repoRoot 'docs/testing.md') -Raw
 $supportMatrixDoc = Get-Content (Join-Path $repoRoot 'docs/support-matrix.md') -Raw
 
@@ -107,6 +109,38 @@ Assert-OccurrenceCount `
     'Render workflow'
 Assert-Contains $renderWorkflow '-Platform windows-wgl' 'Render workflow'
 
+# The Linux import narrowing is opt-in at exactly its two call sites, X11 and Wayland.
+Assert-OccurrenceCount `
+    $renderWorkflow `
+    "OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY: '1'" `
+    2 `
+    'Render workflow'
+Assert-Contains `
+    $linuxSmoke `
+    'OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY' `
+    'Linux Vulkan smoke runner'
+Assert-Contains `
+    $linuxSmoke `
+    'supported image handles: (none)' `
+    'Linux Vulkan smoke runner'
+Assert-Contains $linuxSmoke '"status": "skipped"' 'Linux Vulkan smoke runner'
+# The narrowing must not swallow a passing-but-invalid run: identity is still asserted,
+# and a non-capability failure still exits non-zero.
+Assert-Contains $linuxSmoke 'assert_identity' 'Linux Vulkan smoke runner'
+Assert-Contains `
+    $linuxSmoke `
+    'Avalonia Vulkan smoke exited with code' `
+    'Linux Vulkan smoke runner'
+
+# The route back to full coverage is documented rather than left as tribal knowledge.
+Assert-Contains $testingDoc '## Render gate capability limits' 'Testing documentation'
+Assert-Contains $testingDoc '### Unblocking the WGL soak' 'Testing documentation'
+Assert-Contains $testingDoc '### Unblocking the Vulkan composition gates' 'Testing documentation'
+Assert-Contains $testingDoc 'VK_KHR_external_memory_win32' 'Testing documentation'
+Assert-Contains $testingDoc 'VK_KHR_external_semaphore_win32' 'Testing documentation'
+Assert-Contains $testingDoc 'supported image handles: (none)' 'Testing documentation'
+Assert-Contains $testingDoc 'artifacts/render-capability/windows-vulkan.json' 'Testing documentation'
+
 # The smoke runner confines the skip to windows-wgl and to Avalonia's own two markers for
 # a host without a WGL-capable OpenGL implementation.
 Assert-Contains $platformSmoke '[switch]$AllowUnavailableCapability' 'Platform smoke runner'
@@ -119,13 +153,6 @@ Assert-Contains `
 Assert-Contains $platformSmoke 'platform-smoke-capability.json' 'Platform smoke runner'
 Assert-Contains $platformSmoke "status = 'skipped'" 'Platform smoke runner'
 
-# The route back to full coverage is documented rather than left as tribal knowledge.
-Assert-Contains $testingDoc '## Render gate capability limits' 'Testing documentation'
-Assert-Contains $testingDoc '### Unblocking the WGL soak' 'Testing documentation'
-Assert-Contains $testingDoc '### Unblocking the Vulkan composition gate' 'Testing documentation'
-Assert-Contains $testingDoc 'VK_KHR_external_memory_win32' 'Testing documentation'
-Assert-Contains $testingDoc 'VK_KHR_external_semaphore_win32' 'Testing documentation'
-Assert-Contains $testingDoc 'artifacts/render-capability/windows-vulkan.json' 'Testing documentation'
 Assert-Contains `
     $testingDoc `
     'artifacts/platform-smoke/windows-wgl/platform-smoke-capability.json' `

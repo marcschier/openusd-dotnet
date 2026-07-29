@@ -93,22 +93,17 @@ jobs:
             rid: osx-arm64
     env:
       OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
-      NATIVE_PIPELINE_RUN_ID: >-
-        ${{ inputs['native-pipeline-run-id'] ||
-            (github.event_name == 'workflow_call' && github.run_id) || '' }}
+      NATIVE_PIPELINE_RUN_ID: ${{ inputs['native-pipeline-run-id'] }}
       WINDOWS_NATIVE_SOURCE: >-
-        ${{ (inputs['native-pipeline-run-id'] ||
-            github.event_name == 'workflow_call') && 'archive' || 'build' }}
+        ${{ inputs['native-pipeline-run-id'] && 'archive' || 'build' }}
       LINUX_NATIVE_SOURCE: >-
-        ${{ (inputs['native-pipeline-run-id'] ||
-            github.event_name == 'workflow_call') && 'archive' ||
+        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
             (github.event_name == 'workflow_dispatch' &&
             inputs['linux-native-source'] || 'build') }}
       LINUX_NATIVE_URL: ${{ inputs['linux-native-url'] }}
       LINUX_NATIVE_SHA256: ${{ inputs['linux-native-sha256'] }}
       MACOS_NATIVE_SOURCE: >-
-        ${{ (inputs['native-pipeline-run-id'] ||
-            github.event_name == 'workflow_call') && 'archive' ||
+        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
             (github.event_name == 'workflow_dispatch' &&
             inputs['macos-native-source'] || 'build') }}
       MACOS_NATIVE_URL: ${{ inputs['macos-native-url'] }}

@@ -81,12 +81,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
     env:
-      NATIVE_PIPELINE_RUN_ID: >-
-        ${{ inputs['native-pipeline-run-id'] ||
-            (github.event_name == 'workflow_call' && github.run_id) || '' }}
+      NATIVE_PIPELINE_RUN_ID: ${{ inputs['native-pipeline-run-id'] }}
       NATIVE_SOURCE: >-
-        ${{ (inputs['native-pipeline-run-id'] ||
-            github.event_name == 'workflow_call') && 'archive' ||
+        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
             inputs['native-source'] }}
       NATIVE_URL: ${{ inputs['windows-native-url'] }}
       NATIVE_SHA256: ${{ inputs['windows-native-sha256'] }}
@@ -157,12 +154,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
     env:
-      NATIVE_PIPELINE_RUN_ID: >-
-        ${{ inputs['native-pipeline-run-id'] ||
-            (github.event_name == 'workflow_call' && github.run_id) || '' }}
+      NATIVE_PIPELINE_RUN_ID: ${{ inputs['native-pipeline-run-id'] }}
       NATIVE_SOURCE: >-
-        ${{ (inputs['native-pipeline-run-id'] ||
-            github.event_name == 'workflow_call') && 'archive' ||
+        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
             inputs['native-source'] }}
       NATIVE_URL: ${{ inputs['windows-native-url'] }}
       NATIVE_SHA256: ${{ inputs['windows-native-sha256'] }}
@@ -302,12 +296,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      NATIVE_PIPELINE_RUN_ID: >-
-        ${{ inputs['native-pipeline-run-id'] ||
-            (github.event_name == 'workflow_call' && github.run_id) || '' }}
+      NATIVE_PIPELINE_RUN_ID: ${{ inputs['native-pipeline-run-id'] }}
       NATIVE_SOURCE: >-
-        ${{ (inputs['native-pipeline-run-id'] ||
-            github.event_name == 'workflow_call') && 'archive' ||
+        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
             inputs['native-source'] }}
       NATIVE_URL: ${{ inputs['linux-native-url'] }}
       NATIVE_SHA256: ${{ inputs['linux-native-sha256'] }}
@@ -489,6 +480,7 @@ jobs:
         if: steps.linux-vulkan.outputs.ready == 'true'
         env:
           OPENUSD_REQUIRE_VULKAN_PRESENTATION: '1'
+          OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY: '1'
         run: >
           ./eng/run-avalonia-vulkan-smoke-linux.sh
           x11
@@ -499,6 +491,7 @@ jobs:
         if: steps.linux-vulkan.outputs.ready == 'true'
         env:
           OPENUSD_REQUIRE_VULKAN_PRESENTATION: '1'
+          OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY: '1'
         run: >
           ./eng/run-avalonia-vulkan-smoke-linux.sh
           wayland
@@ -541,12 +534,9 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 360
     env:
-      NATIVE_PIPELINE_RUN_ID: >-
-        ${{ inputs['native-pipeline-run-id'] ||
-            (github.event_name == 'workflow_call' && github.run_id) || '' }}
+      NATIVE_PIPELINE_RUN_ID: ${{ inputs['native-pipeline-run-id'] }}
       NATIVE_SOURCE: >-
-        ${{ (inputs['native-pipeline-run-id'] ||
-            github.event_name == 'workflow_call') && 'archive' ||
+        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
             inputs['native-source'] }}
       NATIVE_URL: ${{ inputs['macos-native-url'] }}
       NATIVE_SHA256: ${{ inputs['macos-native-sha256'] }}

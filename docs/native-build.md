@@ -66,6 +66,12 @@ If `VULKAN_SDK` is not set, the build wrapper creates the required 1.4.321.0 hea
 shaderc, and VMA headers under `native/install` from the exact source revisions in the lock file. It
 does not require a machine-wide LunarG installation.
 
+While those Vulkan sources bootstrap their own dependencies, the log prints
+`error: No such remote 'known-good'`, sometimes several times. It comes from the upstream
+dependency scripts, not from this repository, and it does not affect the build: the pinned commits
+are still checked out and verified against the lock file. It is deliberately not filtered, because
+suppressing that stream would also hide genuine `git` failures from the same step.
+
 Run both the native C ABI probe and the NativeAOT managed probe:
 
 ```shell

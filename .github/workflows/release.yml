@@ -27,15 +27,22 @@ jobs:
   performance:
     uses: ./.github/workflows/performance.yml
 
+  # Both of these rebuilt OpenUSD from source on every job, because they guarded
+  # their archive path on github.event_name == 'workflow_call'. A called workflow
+  # sees the CALLER's event, which here is the tag push, so that guard never fired
+  # and the verified openusd-native-<rid> artifacts this run already produced went
+  # unused. Pass the run id explicitly instead.
   packages:
     needs: [ ci, shaders, native ]
     uses: ./.github/workflows/package.yml
+    with:
+      native-pipeline-run-id: ${{ github.run_id }}
 
   render:
     needs: packages
     uses: ./.github/workflows/render.yml
     with:
-      native-source: build
+      native-pipeline-run-id: ${{ github.run_id }}
 
   aggregate:
     name: aggregate release evidence

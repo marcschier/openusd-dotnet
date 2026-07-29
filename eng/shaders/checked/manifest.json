@@ -39,7 +39,7 @@
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "abd8722bbaf9b626b3a26f5c3d6a6e02f8b3147c28c3b3bce23953265f2d1b8e"
+      "sha256": "da7cd17044f689aedda05be371293e6805e503c42097757e3a4dcfbff14b2fa7"
     },
     {
       "path": ".github/workflows/performance.yml",
@@ -47,11 +47,11 @@
     },
     {
       "path": ".github/workflows/release.yml",
-      "sha256": "a5f45968d4262ae2da5ce61ff17ac57edb9ea231e5f98aa267a226fc9fbeeadc"
+      "sha256": "544a76ba777043f942b1d7728a731966e18d12f9d87647a2806eac4669cdd0c6"
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "68e8da14e09d7b1c30498a483261c5486b768ad72914463d19c011075830493d"
+      "sha256": "3fa1e8d7b93b5335e77b1388bec9b06bfeada6a7e276cd10134279bbc4df976d"
     },
     {
       "path": ".github/workflows/shaders.yml",

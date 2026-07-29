@@ -74,16 +74,16 @@ else
         $env:DYLD_LIBRARY_PATH = $oldDyldLibraryPath
     }
 }
-if ($LASTEXITCODE -ne 0)
-{
-    throw "The macOS native Storm child probe failed with $LASTEXITCODE."
-}
+$probeExitCode = $LASTEXITCODE
 $nativeProbe = Get-Content $nativeProbeLog -Raw
-# The probe reports an unusable graphics environment by skipping, and CTest records
-# that as a skip rather than a failure, so the exit code above is zero. Every gate
-# below needs the same accelerated OpenGL 4.1 core context the probe just said is
-# unavailable, so demanding its pass evidence here would contradict the probe's own
-# capability report. A hosted macOS runner has no such context.
+# The probe reports an unusable graphics environment by skipping. How that surfaces
+# depends on how it was run: CTest turns the probe's shared capability exit code 125
+# into a recorded skip and returns 0, while the archive branch above runs the probe
+# directly and so sees 125 itself. Read the probe's own report before judging the exit
+# code, or the archive path throws on a capability skip that the build path tolerates.
+# Every gate below needs the same accelerated OpenGL 4.1 core context the probe just
+# said is unavailable, so demanding its pass evidence here would contradict the probe's
+# own capability report. A hosted macOS runner has no such context.
 if ($nativeProbe -match 'Skipping Storm child probe: ')
 {
     Write-Host (
@@ -102,6 +102,12 @@ if ($nativeProbe -match 'Skipping Storm child probe: ')
         ConvertTo-Json -Depth 4 |
         Set-Content (Join-Path $outputRoot 'storm-metal-switching.json')
     return
+}
+
+# Not a capability skip, so any non-zero exit is a real failure.
+if ($probeExitCode -ne 0)
+{
+    throw "The macOS native Storm child probe failed with $probeExitCode."
 }
 
 foreach ($pattern in @(

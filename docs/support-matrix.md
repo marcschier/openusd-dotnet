@@ -81,13 +81,14 @@ Repository development uses SDK `10.0.301`, even when compiling `net8.0` and `ne
 | RID | Native build | Core package | Imaging package | Package gate | Render gate |
 | --- | --- | --- | --- | --- | --- |
 | `win-x64` | Implemented | Implemented | Implemented | Workflow-gated | Workflow-gated, partly narrowed |
-| `linux-x64` | Implemented | Implemented | Implemented | Workflow-gated | Workflow-gated |
+| `linux-x64` | Implemented | Implemented | Implemented | Workflow-gated | Workflow-gated, partly narrowed |
 | `osx-arm64` | Implemented | Implemented | Implemented | Workflow-gated | Workflow-gated, partly narrowed |
 
-The narrowed render proofs are the Windows WGL soak, the Windows Avalonia Vulkan composition gate, and
-the macOS Storm child probe. Each needs a graphics capability a hosted runner does not provide, each
-records a `status: skipped` evidence artifact instead of a silent pass, and each has a documented route
-back to full coverage in [Testing](testing.md#render-gate-capability-limits).
+The narrowed render proofs are the Windows WGL soak, the Windows Avalonia Vulkan composition gate,
+the Linux X11 and Wayland Vulkan import smokes, and the macOS Storm child probe. Each needs a
+graphics capability a hosted runner does not provide, each records a `status: skipped` evidence
+artifact instead of a silent pass, and each has a documented route back to full coverage in
+[Testing](testing.md#render-gate-capability-limits).
 
 No runtime package is currently defined for Windows arm64, Linux arm64, macOS x64, or mobile/browser
 RIDs.
