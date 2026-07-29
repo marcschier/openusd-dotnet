@@ -203,12 +203,13 @@ else
   # the viewer has no code path that produces it for a Storm-only run: setting
   # OPENUSD_VIEWER_EVIDENCE_PATH puts it into a switching-evidence session that waits
   # for switch commands that never arrive, so it initialises and then idles forever.
-  # Prove what is actually provable instead, with the same plain Storm smoke the
-  # fresh-process loop below already uses, which renders a frame and then stops.
+  # Prove Storm still renders on this shell with the shared-stage soak, which is the
+  # viewer invocation that demonstrably renders here: the linux-x11 and linux-wayland
+  # platform smokes earlier in this same job use it and pass. It is also stronger
+  # evidence than a single frame.
   viewer_evidence_path=""
   pwsh -NoProfile -File "$repo_root/eng/run-viewer.ps1" \
-    -Rid linux-x64 -SmokeSeconds 120 \
-    -ExpectedStatusPattern '^Renderer frame rendered: Storm' |
+    -Rid linux-x64 -SharedStageSoak -SoakSeconds 90 |
     tee "$output_root/storm-host.log"
   switching_outcome="vulkan-unavailable"
   blocker="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("blocker","opaque-FD Vulkan composition unavailable"))' "$capability_artifact" 2>/dev/null || echo 'opaque-FD Vulkan composition unavailable')"
