@@ -26,6 +26,8 @@
     <Project Path="src/OpenUsd/OpenUsd.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/OpenUsd.AvaloniaVulkanSmoke/OpenUsd.AvaloniaVulkanSmoke.csproj" />
+    <Project Path="tests/OpenUsd.D3D12CompositionSmoke/OpenUsd.D3D12CompositionSmoke.csproj" />
     <Project Path="tests/OpenUsd.Interop.Tests/OpenUsd.Interop.Tests.csproj" />
     <Project Path="tests/OpenUsd.LiveAuthoring.Tests/OpenUsd.LiveAuthoring.Tests.csproj" />
     <Project Path="tests/OpenUsd.Native.Tests/OpenUsd.Native.Tests.csproj" />

@@ -9,6 +9,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
 using Avalonia.Platform;
 using OpenUsd.Geom;
+using OpenUsd.Rendering;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.Vulkan;
 using OpenUsd.Viewer;

@@ -1,6 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Intentionally standalone; add to OpenUsd.slnx after parallel integration work settles. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenUsd\OpenUsd.csproj" />
     <ProjectReference Include="..\..\src\OpenUsd.Rendering.Silk\OpenUsd.Rendering.Silk.csproj" />
