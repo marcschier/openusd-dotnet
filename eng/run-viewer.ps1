@@ -19,6 +19,12 @@ param(
     [int]$SoakSeconds = 90,
     [string]$EvidencePath,
     [string]$EvidenceScenario = 'interactive',
+    # The evidence branch normally waits for the viewer to exit by itself, which only
+    # works for scenarios that self-complete, such as the switching soak, cleanup retry,
+    # retired-kind quarantine and stage-camera smokes. A scenario that only has to prove
+    # it rendered and wrote evidence never exits on its own, so waiting for that is an
+    # unconditional hang. This switch stops the viewer once its evidence is on disk.
+    [switch]$StopWhenEvidenceWritten,
     [string]$EvidenceCameraPath,
     [string]$PickSmokeEvidencePath,
     [string]$NativeRuntimeOverridePath,
@@ -504,7 +510,43 @@ try
             -RedirectStandardOutput $stdoutFile `
             -RedirectStandardError $stderrFile
         $deadlineSeconds = if ($SmokeSeconds -gt 0) { $SmokeSeconds } else { 600 }
-        if (-not $process.WaitForExit($deadlineSeconds * 1000))
+        $stoppedAfterEvidence = $false
+        if ($StopWhenEvidenceWritten)
+        {
+            $deadline = [DateTime]::UtcNow.AddSeconds($deadlineSeconds)
+            while ([DateTime]::UtcNow -lt $deadline)
+            {
+                $process.Refresh()
+                if ($process.HasExited)
+                {
+                    break
+                }
+                if (Test-Path $EvidencePath)
+                {
+                    # Only once it parses, so a partially flushed file is never mistaken
+                    # for completed evidence.
+                    try
+                    {
+                        Get-Content $EvidencePath -Raw | ConvertFrom-Json | Out-Null
+                        Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
+                        $process.WaitForExit()
+                        $stoppedAfterEvidence = $true
+                        break
+                    }
+                    catch
+                    {
+                        # Still being written.
+                    }
+                }
+                Start-Sleep -Milliseconds 250
+            }
+            $process.Refresh()
+            if (-not $process.HasExited)
+            {
+                throw "Viewer evidence scenario exceeded $deadlineSeconds seconds."
+            }
+        }
+        elseif (-not $process.WaitForExit($deadlineSeconds * 1000))
         {
             throw "Viewer evidence scenario exceeded $deadlineSeconds seconds."
         }
@@ -515,7 +557,7 @@ try
                     'Viewer diagnostic sequence failed|Viewer renderer shutdown failed)'
             } |
             Select-Object -Last 1
-        if ($process.ExitCode -ne 0 -or
+        if (($process.ExitCode -ne 0 -and -not $stoppedAfterEvidence) -or
             $null -ne $failure -or
             -not (Test-Path $EvidencePath))
         {

@@ -165,8 +165,11 @@ if [[ "$vulkan_available" -eq 1 ]]; then
   blocker=""
 else
   viewer_evidence_path="$output_root/storm-only-evidence.json"
+  # Storm-only is not a self-completing scenario, so the viewer never exits by itself
+  # here. Stop it once its evidence is on disk instead of waiting for an exit that
+  # cannot come.
   pwsh -NoProfile -File "$repo_root/eng/run-viewer.ps1" \
-    -Rid linux-x64 -SmokeSeconds 120 \
+    -Rid linux-x64 -SmokeSeconds 300 -StopWhenEvidenceWritten \
     -EvidencePath "$output_root/storm-only-evidence.json" \
     -EvidenceScenario "linux-$platform-storm-only" |
     tee "$output_root/storm-host.log"
