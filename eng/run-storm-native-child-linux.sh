@@ -95,8 +95,17 @@ else
 fi
 
 if [[ "$platform" == "x11" ]]; then
-  ctest --test-dir "$repo_root/native/build/shim/linux-x64" \
-    --output-on-failure | tee "$output_root/ctest.log"
+  # The shim build tree only exists when this run built the native inputs. A verified
+  # archive ships native/install without native/build, and its CTest evidence was
+  # already produced by the native workflow that created and verified the archive, so
+  # re-running it here is neither possible nor meaningful.
+  if [[ -d "$repo_root/native/build/shim/linux-x64" ]]; then
+    ctest --test-dir "$repo_root/native/build/shim/linux-x64" \
+      --output-on-failure | tee "$output_root/ctest.log"
+  else
+    echo "Skipping shim CTest: native input came from a verified archive, which has no build tree." |
+      tee "$output_root/ctest.log"
+  fi
   pwsh -NoProfile -File "$repo_root/eng/run-native-probe.ps1" \
     -Rid linux-x64 -SkipNativeAbiProbe |
     tee "$output_root/native-aot.log"
