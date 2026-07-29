@@ -158,6 +158,14 @@ elseif(UNIX AND NOT APPLE)
             SKIP_RETURN_CODE 125
             ENVIRONMENT_MODIFICATION
                 "LD_LIBRARY_PATH=path_list_prepend:${STORM_CHILD_PROBE_NATIVE_DIR};LD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib")
+    # Installed for the same reason as macOS: a run that consumes a verified archive has
+    # no build tree, so CTest cannot report the probe's capability skip. Without the
+    # installed probe the Linux switching gate has no way to learn that the host cannot
+    # provide direct rendering, and the Viewer hangs at renderer initialisation instead
+    # of reporting it.
+    install(
+        TARGETS openusd_storm_child_probe
+        RUNTIME DESTINATION bin)
 elseif(APPLE)
     set_tests_properties(
         openusd_storm_child_probe

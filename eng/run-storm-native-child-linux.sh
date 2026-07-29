@@ -102,15 +102,49 @@ fi
 
 if [[ "$platform" == "x11" ]]; then
   # The shim build tree only exists when this run built the native inputs. A verified
-  # archive ships native/install without native/build, and its CTest evidence was
-  # already produced by the native workflow that created and verified the archive, so
-  # re-running it here is neither possible nor meaningful.
+  # archive ships native/install without native/build, so run the installed probe
+  # directly, exactly as the macOS runner does. Either way the probe's own capability
+  # report is what decides, rather than the absence of a build tree.
+  probe_log="$output_root/native-storm-child.log"
   if [[ -d "$repo_root/native/build/shim/linux-x64" ]]; then
     ctest --test-dir "$repo_root/native/build/shim/linux-x64" \
-      --output-on-failure | tee "$output_root/ctest.log"
+      --output-on-failure | tee "$probe_log"
+    probe_exit=${PIPESTATUS[0]}
   else
-    echo "Skipping shim CTest: native input came from a verified archive, which has no build tree." |
-      tee "$output_root/ctest.log"
+    installed_probe="$repo_root/native/install/shim/linux-x64/bin/openusd_storm_child_probe"
+    if [[ -x "$installed_probe" ]]; then
+      set +e
+      LD_LIBRARY_PATH="$repo_root/native/install/shim/linux-x64/lib:$repo_root/native/install/linux-x64/lib:${LD_LIBRARY_PATH:-}" \
+        "$installed_probe" \
+        "$repo_root/native/install/linux-x64/plugin/usd" \
+        "$repo_root/test-assets/minimal.usda" 2>&1 | tee "$probe_log"
+      probe_exit=${PIPESTATUS[0]}
+      set -e
+    else
+      echo "The linux-x64 archive omitted the installed Storm child probe." | tee "$probe_log"
+      probe_exit=0
+    fi
+  fi
+  # 125 is the shared capability exit code. Every gate below needs the direct rendering
+  # the probe just said is unavailable, so demanding their evidence would contradict its
+  # own report, exactly as on macOS.
+  if grep -q 'Skipping Storm child probe: ' "$probe_log" 2>/dev/null; then
+    echo "Skipping the Linux Storm native-child evidence: the probe reported that direct rendering is unavailable on this host."
+    mkdir -p "$output_root"
+    python3 -c '
+import json, sys
+print(json.dumps({
+  "schemaVersion": 1,
+  "status": "skipped",
+  "platform": sys.argv[1],
+  "reason": "Direct rendering is unavailable on this host.",
+  "nativeProbe": sys.argv[2]
+}, indent=2))' "$platform" "$probe_log" | tee "$output_root/evidence.json"
+    exit 0
+  fi
+  if [[ "$probe_exit" -ne 0 ]]; then
+    echo "The Linux native Storm child probe failed with $probe_exit." >&2
+    exit "$probe_exit"
   fi
   pwsh -NoProfile -File "$repo_root/eng/run-native-probe.ps1" \
     -Rid linux-x64 -SkipNativeAbiProbe |
