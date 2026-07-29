@@ -449,6 +449,42 @@ jobs:
              throw 'The supplied Linux native archive lacks the required hdSilk runtime/plugin.'
            }
           }
+      - name: Resolve the Linux Vulkan loader and lavapipe ICD
+        id: linux-vulkan-runtime
+        if: steps.linux-vulkan.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # These were hardcoded and silently went stale: Ubuntu 24.04 ships Mesa 25.x,
+          # which no longer installs the lavapipe manifest where the old path expected it,
+          # so a required gate reported the ICD as unavailable. Discover both instead, and
+          # fail loudly with what was actually present rather than skipping, because
+          # lavapipe does implement the external-memory FD path this gate proves.
+          loader=""
+          for candidate in \
+            /usr/lib/x86_64-linux-gnu/libvulkan.so.1 \
+            /usr/lib/libvulkan.so.1; do
+            if [ -f "$candidate" ]; then loader="$candidate"; break; fi
+          done
+          if [ -z "$loader" ]; then
+            loader="$(ldconfig -p | awk '/libvulkan\.so\.1/ {print $NF; exit}')"
+          fi
+          if [ -z "$loader" ] || [ ! -f "$loader" ]; then
+            echo "::error::No Vulkan loader was found."
+            exit 1
+          fi
+          icd="$(find /usr/share/vulkan/icd.d /etc/vulkan/icd.d \
+            /usr/lib/x86_64-linux-gnu/vulkan/icd.d \
+            -name 'lvp_icd*.json' 2>/dev/null | sort | head -n1 || true)"
+          if [ -z "$icd" ]; then
+            echo "::error::No lavapipe ICD manifest was found. Present manifests:"
+            find /usr/share/vulkan /etc/vulkan /usr/lib/x86_64-linux-gnu/vulkan \
+              -name '*.json' 2>/dev/null || true
+            exit 1
+          fi
+          echo "Using Vulkan loader $loader and lavapipe ICD $icd."
+          echo "loader=$loader" >> "$GITHUB_OUTPUT"
+          echo "icd=$icd" >> "$GITHUB_OUTPUT"
       - name: Execute required X11 Vulkan import smoke
         if: steps.linux-vulkan.outputs.ready == 'true'
         env:
@@ -457,8 +493,8 @@ jobs:
           ./eng/run-avalonia-vulkan-smoke-linux.sh
           x11
           artifacts/avalonia-vulkan-smoke/linux-x64
-          /usr/lib/x86_64-linux-gnu/libvulkan.so.1
-          /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          '${{ steps.linux-vulkan-runtime.outputs.loader }}'
+          '${{ steps.linux-vulkan-runtime.outputs.icd }}'
       - name: Execute required Wayland Vulkan import smoke
         if: steps.linux-vulkan.outputs.ready == 'true'
         env:
@@ -467,8 +503,8 @@ jobs:
           ./eng/run-avalonia-vulkan-smoke-linux.sh
           wayland
           artifacts/avalonia-vulkan-smoke/linux-x64
-          /usr/lib/x86_64-linux-gnu/libvulkan.so.1
-          /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          '${{ steps.linux-vulkan-runtime.outputs.loader }}'
+          '${{ steps.linux-vulkan-runtime.outputs.icd }}'
       - name: Execute X11 Storm child switching gate
         env:
           OPENUSD_LINUX_STORM_SWITCH_COUNT: '100'
