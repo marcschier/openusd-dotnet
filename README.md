@@ -13,7 +13,7 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Current distribution:** public source repository, version `0.1.0-alpha`, and pre-1.0 APIs.
+> **Current distribution:** public source repository, version `0.2.0-alpha`, and pre-1.0 APIs.
 > Packages are built and exercised through local feeds and CI, but this project does not currently
 > advertise a public NuGet or GitHub Packages installation path.
 
@@ -292,7 +292,7 @@ tests and documentation. See [Contributing](CONTRIBUTING.md).
 
 ## Status
 
-OpenUsd is a substantial public `0.1.0-alpha` source baseline, not a stable release. Data, rendering,
+OpenUsd is a substantial public `0.2.0-alpha` source baseline, not a stable release. Data, rendering,
 Viewer, package, NativeAOT, shader, and performance gates exist, but public API and package identities
 may change before 1.0. Workflow badges above are the authoritative status for the default branch.
 

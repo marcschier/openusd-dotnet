@@ -128,7 +128,7 @@ Dependencies are limited to system libraries and safe `@rpath` or
 the package under `build/`.
 
 Each Imaging package has an exact dependency on its matching Core version, for example
-`[0.1.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
+`[0.2.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
 resource staging arrive when a consumer references only Imaging.
 
 ## Pack

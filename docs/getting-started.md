@@ -1,6 +1,6 @@
 # Getting started
 
-This guide covers the supported source workflow for the private `0.1.0-alpha` repository. It does not
+This guide covers the supported source workflow for the private `0.2.0-alpha` repository. It does not
 assume that OpenUsd packages are available from a public feed.
 
 ## 1. Choose the workflow
