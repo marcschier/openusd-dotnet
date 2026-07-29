@@ -79,6 +79,31 @@ if ($LASTEXITCODE -ne 0)
     throw "The macOS native Storm child probe failed with $LASTEXITCODE."
 }
 $nativeProbe = Get-Content $nativeProbeLog -Raw
+# The probe reports an unusable graphics environment by skipping, and CTest records
+# that as a skip rather than a failure, so the exit code above is zero. Every gate
+# below needs the same accelerated OpenGL 4.1 core context the probe just said is
+# unavailable, so demanding its pass evidence here would contradict the probe's own
+# capability report. A hosted macOS runner has no such context.
+if ($nativeProbe -match 'Skipping Storm child probe: ')
+{
+    Write-Host (
+        'Skipping the macOS Storm native-child evidence: the probe reported that an ' +
+        'accelerated OpenGL 4.1 core context is unavailable on this host.')
+    New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
+    $skipped = [ordered]@{
+        schemaVersion = 1
+        status = 'skipped'
+        completedAt = [DateTimeOffset]::UtcNow.ToString('O')
+        platform = 'macos-15'
+        reason = 'An accelerated OpenGL 4.1 core context is unavailable on this host.'
+        nativeProbe = $nativeProbeLog
+    }
+    $skipped |
+        ConvertTo-Json -Depth 4 |
+        Set-Content (Join-Path $outputRoot 'storm-metal-switching.json')
+    return
+}
+
 foreach ($pattern in @(
     'Storm macOS native child probe passed',
     'initialHash=\d+',
