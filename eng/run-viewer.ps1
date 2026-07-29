@@ -537,7 +537,7 @@ try
     }
 
     $process = Start-Process $executable -PassThru `
-        -ArgumentList @('--windows-rendering=angle') `
+        -ArgumentList $(if ($IsWindows) { @('--windows-rendering=angle') } else { @() }) `
         -RedirectStandardOutput $stdoutFile `
         -RedirectStandardError $stderrFile
     $deadline = [DateTime]::UtcNow.AddSeconds($SmokeSeconds)
