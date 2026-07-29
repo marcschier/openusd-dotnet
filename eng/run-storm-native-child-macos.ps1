@@ -101,7 +101,10 @@ if ($nativeProbe -match 'Skipping Storm child probe: ')
     $skipped |
         ConvertTo-Json -Depth 4 |
         Set-Content (Join-Path $outputRoot 'storm-metal-switching.json')
-    return
+    # Exit rather than return: the probe's capability exit code 125 is still the last
+    # native exit code, and the pwsh step wrapper propagates $LASTEXITCODE, so returning
+    # here would report a recorded skip as a failed step.
+    exit 0
 }
 
 # Not a capability skip, so any non-zero exit is a real failure.

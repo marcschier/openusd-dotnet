@@ -97,14 +97,26 @@ else
   command -v weston >/dev/null || { unavailable "Weston unavailable"; exit $?; }
   unset DISPLAY
   export WAYLAND_DISPLAY=openusd-vulkan-smoke
+  # --no-config and explicit dimensions match the two Weston invocations that do work
+  # here, in run-platform-smoke.ps1 and run-storm-native-child-linux.sh. Without
+  # --no-config Weston reads whatever configuration the host happens to have and can
+  # exit during startup.
   weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" --idle-time=0 \
+    --width=1280 --height=720 --no-config \
     >"$compositor_log" 2>&1 &
   compositor_pid=$!
 fi
 
+report_compositor() {
+  if [[ -f "$compositor_log" ]]; then
+    echo "----- $platform compositor log -----" >&2
+    cat "$compositor_log" >&2 || true
+  fi
+}
+
 for _ in $(seq 1 100); do
   kill -0 "$compositor_pid" 2>/dev/null ||
-    { echo "$platform compositor exited during startup." >&2; exit 3; }
+    { echo "$platform compositor exited during startup." >&2; report_compositor; exit 3; }
   if [[ "$platform" == "x11" ]] &&
     xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then break; fi
   if [[ "$platform" == "wayland" ]] && [[ -S "$runtime_dir/$WAYLAND_DISPLAY" ]]; then break; fi
@@ -112,10 +124,10 @@ for _ in $(seq 1 100); do
 done
 if [[ "$platform" == "x11" ]]; then
   xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 ||
-    { echo "Xvfb did not become ready." >&2; exit 3; }
+    { echo "Xvfb did not become ready." >&2; report_compositor; exit 3; }
 else
   [[ -S "$runtime_dir/$WAYLAND_DISPLAY" ]] ||
-    { echo "Weston did not become ready." >&2; exit 3; }
+    { echo "Weston did not become ready." >&2; report_compositor; exit 3; }
 fi
 
 export LD_LIBRARY_PATH="$(dirname "$loader_path"):$publish_root/lib:$publish_root/bin:${LD_LIBRARY_PATH:-}"
