@@ -50,6 +50,7 @@ not public-feed publication.
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Imaging runtime; Windows execution |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Imaging runtime; Windows/Linux execution |
 | `OpenUsd.Rendering.Silk.Metal` | 8/9/10 | Imaging runtime; macOS execution |
+| `OpenUsd.Viewer` | 8/9/10 | Backend runtime of the renderer it activates |
 | `OpenUsd.Runtime.Core.win-x64` | `net8.0` carrier | Windows x64 native install |
 | `OpenUsd.Runtime.Core.linux-x64` | `net8.0` carrier | Linux x64 native install |
 | `OpenUsd.Runtime.Core.osx-arm64` | `net8.0` carrier | macOS arm64 native install |
@@ -68,7 +69,8 @@ libraries they support target all three production frameworks.
 | Public API analyzer baseline | ✅ | ✅ | ✅ | Production managed libraries |
 | AOT, trim, single-file analyzers | ✅ | ✅ | ✅ | Enabled for production libraries |
 | `OpenUsd.LiveAuthoring` sample library | ✅ | ✅ | ✅ | Analyzer-enabled source sample |
-| Viewer | — | — | ✅ | Application project |
+| Viewer library | ✅ | ✅ | ✅ | Embeddable `OpenUsd.Viewer` package |
+| Viewer desktop application | — | — | ✅ | `OpenUsd.Viewer.App` entry point |
 | Executable samples and probes | — | — | ✅ | Development and evidence projects |
 | Runtime asset package projects | Carrier | — | — | Assets are RID-specific |
 

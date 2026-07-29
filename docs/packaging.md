@@ -194,15 +194,18 @@ generated local feed. After a Release build, run them with:
 
 ## Publish
 
-Fourteen packages are published: the eight managed libraries (`OpenUsd`, `OpenUsd.Interop`,
+Fifteen packages are published: the eight managed libraries (`OpenUsd`, `OpenUsd.Interop`,
 `OpenUsd.Rendering`, `OpenUsd.Rendering.Silk`, the three hdSilk backends, and
-`OpenUsd.Rendering.Storm`) and the six per-RID runtime packages. `eng/pack-packages.ps1` is the
+`OpenUsd.Rendering.Storm`), the embeddable `OpenUsd.Viewer` shell, and the six per-RID runtime
+packages. `eng/pack-packages.ps1` is the
 single source of truth for that set. It enumerates the packages explicitly rather than packing the
 solution, and asserts afterwards that the produced set matches exactly, so adding a project cannot
 silently ship it and a missing native input fails the run instead of publishing a partial release.
 
-`OpenUsd.Viewer` is an application, not a library, and is not published. Projects outside `src/`
-are never packable regardless of their name.
+`OpenUsd.Viewer` stays classified as an application project so the strict production-library gates
+are not applied to its Avalonia UI code, but it opts back into packing because hosts embed the
+viewport on a stage they own. `OpenUsd.Viewer.App` is the desktop entry point and is not published.
+Projects outside `src/` are never packable regardless of their name.
 
 Publishing runs from `.github/workflows/release.yml` and only for a `v*` tag. The tag is
 authoritative: it is stamped into `version.json` before packing. Packing is split across a `pack`

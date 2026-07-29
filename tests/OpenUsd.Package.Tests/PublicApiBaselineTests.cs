@@ -28,6 +28,19 @@ public sealed class PublicApiBaselineTests
         "OpenUsd.Runtime.Imaging.win-x64"
     ];
 
+    private static readonly string[] ExpectedPackableManagedProjects =
+    [
+        "OpenUsd",
+        "OpenUsd.Interop",
+        "OpenUsd.Rendering",
+        "OpenUsd.Rendering.Silk",
+        "OpenUsd.Rendering.Silk.D3D12",
+        "OpenUsd.Rendering.Silk.Metal",
+        "OpenUsd.Rendering.Silk.Vulkan",
+        "OpenUsd.Rendering.Storm",
+        "OpenUsd.Viewer"
+    ];
+
     [Test]
     public async Task CentralAnalyzerWiringIsVersionedPrivateAndScoped()
     {
@@ -152,6 +165,30 @@ public sealed class PublicApiBaselineTests
     }
 
     [Test]
+    public async Task PackableManagedProjectsTargetEveryProductionFramework()
+    {
+        string root = FindRepositoryRoot();
+        ProjectContract[] packable = Directory
+            .EnumerateFiles(
+                Path.Combine(root, "src"),
+                "*.csproj",
+                SearchOption.AllDirectories)
+            .Select(LoadProjectContract)
+            .Where(project => project.IsPackable && !project.IsContentOnly)
+            .ToArray();
+
+        await Assert.That(packable.Select(project => project.Name).ToArray())
+            .IsEquivalentTo(ExpectedPackableManagedProjects);
+
+        foreach (ProjectContract project in packable)
+        {
+            await Assert.That(project.TargetFrameworks)
+                .IsEqualTo("net8.0;net9.0;net10.0")
+                .Because(project.Name);
+        }
+    }
+
+    [Test]
     public async Task InteropBaselineExposesOnlyIntentionalTopLevelTypes()
     {
         string root = FindRepositoryRoot();
@@ -189,12 +226,29 @@ public sealed class PublicApiBaselineTests
         bool isContentOnly = project
             .Descendants("IncludeBuildOutput")
             .Any(element => IsFalse(element.Value));
+        bool isPackable = project
+            .Descendants("IsPackable")
+            .Any(element => IsTrue(element.Value)) ||
+            (!isApplication && !project
+                .Descendants("IsPackable")
+                .Any(element => IsFalse(element.Value)));
+        string targetFrameworks = project
+            .Descendants("TargetFrameworks")
+            .Select(element => element.Value)
+            .FirstOrDefault() ??
+            project
+                .Descendants("TargetFramework")
+                .Select(element => element.Value)
+                .FirstOrDefault() ??
+            "";
         return new ProjectContract(
             Path.GetFileNameWithoutExtension(path),
             Path.GetDirectoryName(path) ??
                 throw new InvalidOperationException($"Project path has no directory: {path}"),
             isApplication,
-            isContentOnly);
+            isContentOnly,
+            isPackable,
+            targetFrameworks);
     }
 
     private static bool IsTrue(string value) =>
@@ -219,5 +273,7 @@ public sealed class PublicApiBaselineTests
         string Name,
         string Directory,
         bool IsApplication,
-        bool IsContentOnly);
+        bool IsContentOnly,
+        bool IsPackable,
+        string TargetFrameworks);
 }

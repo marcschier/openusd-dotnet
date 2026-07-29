@@ -25,6 +25,10 @@ unresolved reference.
 
 ## Embedding the viewer
 
+The `OpenUsd.Viewer` package targets `net8.0`, `net9.0` and `net10.0`, so a host does not have to be
+on .NET 10 to embed the viewport. `OpenUsd.Viewer.App` remains `net10.0` because it is a development
+entry point rather than a published library. See [Support matrix](support-matrix.md#target-frameworks).
+
 `ViewerEntryPoint.Run(ViewerHostOptions)` runs the shell on the calling thread against a programmatic
 configuration instead of the command line. On Windows that thread must be single-threaded-apartment.
 
