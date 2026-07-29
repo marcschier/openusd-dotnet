@@ -39,6 +39,9 @@ cleanup() {
     kill "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
+  if [[ -n "${runtime_dir:-}" ]]; then
+    rm -rf "$runtime_dir"
+  fi
 }
 trap cleanup EXIT INT TERM
 
@@ -51,11 +54,20 @@ wait_for_x11() {
   return 1
 }
 
-runtime_dir="$output_root/runtime"
-rm -rf "$runtime_dir"
-mkdir -p "$runtime_dir"
+# A Unix domain socket path is capped at 108 bytes including the terminator, and
+# "$output_root/runtime" plus the Weston socket name exceeds that on a hosted runner,
+# so Weston died during startup with "File name too long". Keep it short and outside
+# the artifacts tree.
+runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/openusd-scl-XXXXXX")"
 chmod 700 "$runtime_dir"
 export XDG_RUNTIME_DIR="$runtime_dir"
+
+report_weston() {
+  if [[ -f "$output_root/weston.log" ]]; then
+    echo "----- weston log -----" >&2
+    cat "$output_root/weston.log" >&2 || true
+  fi
+}
 
 if [[ "$platform" == "x11" ]]; then
   command -v Xvfb >/dev/null || { echo "Xvfb is required." >&2; exit 3; }
@@ -80,7 +92,7 @@ else
   for _ in $(seq 1 200); do
     [[ -S "$runtime_dir/$WAYLAND_DISPLAY" ]] && break
     kill -0 "$server_pid" 2>/dev/null ||
-      { echo "Weston exited during startup." >&2; exit 3; }
+      { echo "Weston exited during startup." >&2; report_weston; exit 3; }
     sleep 0.05
   done
   for _ in $(seq 1 200); do
@@ -92,7 +104,7 @@ else
       break
     fi
     kill -0 "$server_pid" 2>/dev/null ||
-      { echo "Weston exited before its managed XWayland/XWM was ready." >&2; exit 3; }
+      { echo "Weston exited before its managed XWayland/XWM was ready." >&2; report_weston; exit 3; }
     sleep 0.05
   done
   [[ -n "${DISPLAY:-}" ]] ||
