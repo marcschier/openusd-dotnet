@@ -9,7 +9,14 @@ param(
     [string]$StagePath = (Join-Path $PSScriptRoot '../test-assets/minimal.usda'),
     [switch]$SharedStageSoak,
     [ValidateRange(90, 86400)]
-    [int]$SoakSeconds = 90
+    [int]$SoakSeconds = 90,
+    # A hosted Windows runner exposes only the generic GDI OpenGL 1.1 implementation, so
+    # Avalonia cannot create the WGL context this smoke drives. The switch is opt-in, and
+    # narrow by construction: it only ever applies to windows-wgl, and only when the viewer
+    # log carries Avalonia's own two markers for that exact condition. Every other failure,
+    # including a WGL failure on a host that did provide a context, stays fatal. See
+    # docs/testing.md, "Render gate capability limits", for how to unblock this.
+    [switch]$AllowUnavailableCapability
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +28,7 @@ $ownedProcess = $null
 $ownedProcesses = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
 $ownedRuntimeRoot = $null
 $runDefaultViewer = $true
+$capabilitySkipped = $false
 $oldEnvironment = @{}
 foreach ($name in @(
     'DISPLAY',
@@ -86,6 +94,52 @@ function Get-IsolatedDisplayNumber
     throw 'Could not reserve an isolated TCP X display number.'
 }
 
+function Test-MissingWglCapability
+{
+    param([string]$ViewerOutputPath)
+
+    # Avalonia reports this exact pair when the host has no WGL-capable OpenGL: it cannot
+    # resolve the WGL entry points, so the Wgl rendering mode ends up applying no options.
+    $required = @(
+        'Unable to initialize WGL',
+        'Win32PlatformOptions.RenderingMode has a value of "Wgl", but no options were applied')
+    $combined = [System.Text.StringBuilder]::new()
+    foreach ($name in @('viewer.log', 'viewer.stdout.log', 'viewer.stderr.log'))
+    {
+        $path = Join-Path $ViewerOutputPath $name
+        if (Test-Path $path)
+        {
+            [void]$combined.AppendLine((Get-Content $path -Raw))
+        }
+    }
+    $text = $combined.ToString()
+    foreach ($marker in $required)
+    {
+        if (-not $text.Contains($marker))
+        {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Write-CapabilitySkip
+{
+    param([string]$Reason)
+
+    $skipped = [ordered]@{
+        schemaVersion = 1
+        status = 'skipped'
+        completedAt = [DateTimeOffset]::UtcNow.ToString('O')
+        platform = $Platform
+        reason = $Reason
+    }
+    $skipped |
+        ConvertTo-Json -Depth 4 |
+        Set-Content (Join-Path $diagnosticRoot 'platform-smoke-capability.json')
+    Write-Host "[platform-smoke] Skipped $Platform : $Reason"
+}
+
 function Invoke-ViewerSmoke
 {
     param(
@@ -102,18 +156,41 @@ function Invoke-ViewerSmoke
     {
         $TimeoutSeconds
     }
-    & (Join-Path $PSScriptRoot 'run-viewer.ps1') `
-        -Rid $rid `
-        -StagePath $StagePath `
-        -SmokeSeconds $viewerTimeout `
-        -OutputPath $OutputPath `
-        -ExpectedStatusPattern $ExpectedStatusPattern `
-        -SharedStageSoak:$EnableSoak `
-        -SoakSeconds $SoakSeconds
-    if ($LASTEXITCODE -ne 0)
+    $failure = $null
+    try
     {
-        throw "Viewer smoke failed with exit code $LASTEXITCODE."
+        & (Join-Path $PSScriptRoot 'run-viewer.ps1') `
+            -Rid $rid `
+            -StagePath $StagePath `
+            -SmokeSeconds $viewerTimeout `
+            -OutputPath $OutputPath `
+            -ExpectedStatusPattern $ExpectedStatusPattern `
+            -SharedStageSoak:$EnableSoak `
+            -SoakSeconds $SoakSeconds
+        if ($LASTEXITCODE -ne 0)
+        {
+            $failure = "Viewer smoke failed with exit code $LASTEXITCODE."
+        }
     }
+    catch
+    {
+        $failure = $_
+    }
+    if ($null -eq $failure)
+    {
+        return
+    }
+    if ($AllowUnavailableCapability -and
+        $Platform -eq 'windows-wgl' -and
+        (Test-MissingWglCapability -ViewerOutputPath $OutputPath))
+    {
+        $script:capabilitySkipped = $true
+        Write-CapabilitySkip (
+            'This host has no WGL-capable OpenGL implementation, so Avalonia could not ' +
+            'create the WGL context the smoke drives.')
+        return
+    }
+    throw $failure
 }
 
 try

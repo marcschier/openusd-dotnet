@@ -31,7 +31,7 @@
   "inputs": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "55f3bfa84fbd12b668f11a262c2f3cf6dc9234dabf28d4e27e3c364dba85cf82"
+      "sha256": "5dabb0b13415818f9f11ed950a4c86ffd3e783d380a2f651557f51ea231708e3"
     },
     {
       "path": ".github/workflows/native.yml",
@@ -51,7 +51,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "7e0cc8024885de1ab34c2d88d995cafee55570e3ddc84e3cc90d773067ee6fcc"
+      "sha256": "9bebe0c7f66c963ef8fc09c9654b8ae437ccc983a3afd8f45b9beb13b99b283b"
     },
     {
       "path": ".github/workflows/shaders.yml",

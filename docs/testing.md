@@ -411,8 +411,10 @@ and one read in each five-operation cycle. It authors two meshes, changes render
 canonical display color, and proves a controlled color edit upserts only the target mesh. Exact
 invalidation counts, monotonic stage serials, page revisions, stable mesh IDs, removals, and steady pages
 are required. The final gate compares the complete sorted hdSilk mesh ID/path set with the initialized
-steady set, proves both soak meshes were removed and restored under their original IDs, and checks the
-default-time Mesh A display color exactly as `(0.92, 0.752, 0.416, 1)`.
+steady set, proves both soak meshes were removed and restored under their original **paths**, and checks the
+default-time Mesh A display color exactly as `(0.92, 0.752, 0.416, 1)`. Path, not prim ID, is the identity
+that survives a delete and recreate: Hydra assigns a fresh `PrimId` to a recreated prim and never reuses
+the retired one, so restoration can only be proven by path.
 
 Artifacts report source/build identity, ABI versions, timestamps, operation counts, serial and
 notification coalescing, Storm pre/post-loss frames and faults, hdSilk pages/upserts/removals, and
@@ -425,6 +427,65 @@ projects (including every Silk backend), native shim sources/CMake/resources, te
 root build/version/package inputs, rendering workflow, and engineering scripts while excluding generated
 build/install/download outputs. Viewer evidence is finalized only after the GL render pump reports
 shutdown completion and fresh post-teardown renderer fault and resource diagnostics are read.
+
+## Render gate capability limits
+
+Two Windows render proofs need graphics capabilities that a hosted GitHub runner does not have. Both
+are narrowed rather than deleted: everything the runner can prove still runs and still blocks, the
+unprovable part records a `status: skipped` evidence artifact naming its reason, and the work needed to
+restore full coverage is listed below. Narrowing is deliberately not automatic. Each one is opt-in at
+the call site in `.github/workflows/render.yml`, so a capability regression on a capable host is still a
+hard failure, and the narrowing is visible in the workflow rather than buried in a script.
+
+**`windows-wgl` shared-stage soak.** Hosted Windows exposes only the generic GDI OpenGL 1.1
+implementation, so Avalonia cannot create a WGL context. The skip is recorded in
+`artifacts/platform-smoke/windows-wgl/platform-smoke-capability.json`.
+
+**Windows Avalonia Vulkan composition.** Hosted Windows has no GPU driver and therefore no system
+Vulkan ICD. The skip is recorded in `artifacts/render-capability/windows-vulkan.json`.
+
+What still blocks on the hosted runner: the Windows WGL job keeps the NativeAOT shared-stage soak,
+the native probe, and the soak identity gate; the Windows Vulkan job keeps the viewer source-identity
+and evidence contracts. Renderer-neutral and hdSilk Vulkan behaviour that does not need composition
+stays covered by the managed conformance suite in `ci.yml`, which runs against the pinned SwiftShader
+driver.
+
+### Unblocking the WGL soak
+
+The soak needs an OpenGL implementation that can create a WGL context, which means either of:
+
+1. Run the job on a self-hosted Windows runner with a GPU driver. Nothing else changes: drop
+   `-AllowUnavailableCapability` from the `Execute mandatory WGL shared-stage soak` step and the proof
+   becomes blocking again.
+2. Pin a software OpenGL implementation the way `eng/vulkan-test-runtime.lock.json` pins SwiftShader.
+   That means adding a hash-locked Mesa `opengl32.dll` for `win-x64`, a staging helper alongside
+   `eng/prepare-vulkan-test-runtime.ps1`, and a registry entry in the same shape as
+   `eng/vulkan-test-runtime-registry.ps1`. Mesa's llvmpipe does provide a WGL 4.x context, so this
+   restores the proof without a GPU, at the cost of a new pinned third-party binary.
+
+### Unblocking the Vulkan composition gate
+
+This one cannot be solved in software. The proof exports a Vulkan image to a D3D11 shared handle and
+imports it into the Avalonia compositor with a keyed mutex, so it needs a Vulkan driver that both
+implements `VK_KHR_external_memory_win32` and `VK_KHR_external_semaphore_win32` **and** reports the
+same adapter LUID as the compositor. SwiftShader implements neither extension, which is directly
+observable:
+
+```powershell
+./eng/run-managed-tests.ps1 `
+  -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+  -Framework net10.0 `
+  -Configuration Release `
+  -TestArguments @('--treenode-filter', '/*/*/VulkanCompositionPresentationTests/*')
+```
+
+Under SwiftShader that reports `SwiftShaderExportsAndReusesCompositionRingWhenSupported` skipping with
+`Vulkan external-object extensions are unavailable: VK_KHR_external_memory_win32,
+VK_KHR_external_semaphore_win32`, and `D3D11BridgeImportsPixelsAndReusesKeyedMutex` skipping with
+`The Vulkan renderer and compositor use different adapter LUIDs`. The only way to restore this gate is
+a GPU-equipped Windows runner whose Vulkan and Direct3D devices are the same adapter. Once such a
+runner exists, the `Resolve system Vulkan ICD` step finds an ICD, reports `available=true`, and every
+guarded step below it runs unchanged.
 
 ## Related documentation
 

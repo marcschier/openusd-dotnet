@@ -70,6 +70,10 @@ jobs:
         if: runner.os == 'Linux'
         shell: pwsh
         run: ./eng/test-continuous-safety-workflow.ps1
+      - name: Validate render capability gates
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./eng/test-render-capability-gates.ps1
       - name: Verify Vulkan test runtime
         if: runner.os != 'macOS'
         shell: pwsh
