@@ -164,19 +164,23 @@ if [[ "$vulkan_available" -eq 1 ]]; then
   switching_outcome="passed"
   blocker=""
 else
-  viewer_evidence_path="$output_root/storm-only-evidence.json"
-  # Storm-only is not a self-completing scenario, so the viewer never exits by itself
-  # here. Stop it once its evidence is on disk instead of waiting for an exit that
-  # cannot come.
+  # Vulkan composition is unavailable on this host, so there is no renderer switch to
+  # evidence. schemaVersion 8 switching evidence is meaningless without a switch, and
+  # the viewer has no code path that produces it for a Storm-only run: setting
+  # OPENUSD_VIEWER_EVIDENCE_PATH puts it into a switching-evidence session that waits
+  # for switch commands that never arrive, so it initialises and then idles forever.
+  # Prove what is actually provable instead, with the same plain Storm smoke the
+  # fresh-process loop below already uses, which renders a frame and then stops.
+  viewer_evidence_path=""
   pwsh -NoProfile -File "$repo_root/eng/run-viewer.ps1" \
-    -Rid linux-x64 -SmokeSeconds 300 -StopWhenEvidenceWritten \
-    -EvidencePath "$output_root/storm-only-evidence.json" \
-    -EvidenceScenario "linux-$platform-storm-only" |
+    -Rid linux-x64 -SmokeSeconds 120 \
+    -ExpectedStatusPattern '^Renderer frame rendered: Storm' |
     tee "$output_root/storm-host.log"
   switching_outcome="vulkan-unavailable"
   blocker="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("blocker","opaque-FD Vulkan composition unavailable"))' "$capability_artifact" 2>/dev/null || echo 'opaque-FD Vulkan composition unavailable')"
 fi
 
+if [[ -n "$viewer_evidence_path" ]]; then
 python3 -c '
 import base64, hashlib, json, math, re, struct, sys
 def get(value, name, default=None):
@@ -246,6 +250,7 @@ if any(
 ):
     raise SystemExit("Storm Viewer pixels did not use the ABI 7 capture label.")
 ' "$viewer_evidence_path"
+fi
 
 for process_index in $(seq 1 "$fresh_process_count"); do
   if [[ "$vulkan_available" -eq 1 ]]; then
