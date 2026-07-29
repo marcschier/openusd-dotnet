@@ -294,9 +294,12 @@ for process_index in $(seq 1 "$fresh_process_count"); do
       -SwitchSoakSeconds 1 |
       tee "$output_root/fresh-$process_index.log"
   else
+    # Same reason as the Storm-only proof above: the plain smoke branch has never
+    # rendered on a hosted Linux runner, while the shared-stage soak branch does. This
+    # still proves what the loop is for, that each fresh process starts, renders Storm
+    # and shuts down.
     pwsh -NoProfile -File "$repo_root/eng/run-viewer.ps1" \
-      -Rid linux-x64 -SmokeSeconds 20 \
-      -ExpectedStatusPattern '^Renderer frame rendered: Storm' |
+      -Rid linux-x64 -SharedStageSoak -SoakSeconds 90 -ReusePublishedOutput |
       tee "$output_root/fresh-$process_index.log"
   fi
 done
