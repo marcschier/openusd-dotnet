@@ -197,6 +197,15 @@ vulkan_outcome="$(
 vulkan_available=0
 if [[ "$vulkan_outcome" == "passed" ]]; then
   vulkan_available=1
+else
+  # Without Vulkan there is no renderer switch, so the fresh-process loop below can
+  # only re-prove that a fresh viewer process renders Storm. The one Storm-only soak
+  # already proves that, and the only viewer invocation that renders on a hosted Linux
+  # runner is the shared-stage soak, whose long-run memory ceilings are about soak
+  # behaviour rather than process lifecycle: repeating it ten times imports those
+  # assertions into this gate and has already failed on working-set growth without
+  # telling us anything new. Run it once.
+  fresh_process_count=1
 fi
 
 if [[ "$vulkan_available" -eq 1 ]]; then
