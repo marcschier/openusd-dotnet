@@ -40,6 +40,9 @@ cleanup() {
     kill "$compositor_pid" 2>/dev/null || true
     wait "$compositor_pid" 2>/dev/null || true
   fi
+  if [[ -n "${runtime_dir:-}" ]]; then
+    rm -rf "$runtime_dir"
+  fi
 }
 trap cleanup EXIT INT TERM
 
@@ -81,9 +84,11 @@ identity_value() {
     "$identity_path" "$1"
 }
 assert_identity
-runtime_dir="$publish_root/runtime-$platform"
-rm -rf "$runtime_dir"
-mkdir -p "$runtime_dir"
+# A Unix domain socket path is capped at 108 bytes including the terminator, and the
+# publish root is deep enough on a hosted runner that Weston's socket exceeded it and
+# died with "File name too long". Keep the runtime directory short and outside the
+# publish tree.
+runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/openusd-vk-XXXXXX")"
 chmod 700 "$runtime_dir"
 export XDG_RUNTIME_DIR="$runtime_dir"
 
