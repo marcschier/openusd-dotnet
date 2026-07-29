@@ -581,9 +581,13 @@ The mandatory Windows WGL, Linux X11/XWayland, and headless NativeAOT gates emit
 `shared-stage-soak.json`. Each artifact carries a deterministic source hash, executable hash/timestamp,
 data/renderer ABI versions, exact invalidation and target-mesh evidence, renderer fault and post-loss
 frame counts, periodic retained-memory checkpoints/slopes, and baseline/peak/final lifecycle counters.
-They also record the exact initialized/final mesh ID/path sets, removal/restoration IDs, deterministic
-default-time final display color, and post-pump-shutdown diagnostics. Scripts reject artifacts whose
-source or executable identity no longer matches the current build.
+They also record the exact initialized/final mesh ID/path sets, the removed and restored prim paths,
+deterministic default-time final display color, and post-pump-shutdown diagnostics. Removal and
+restoration are proven by prim path because Hydra does not reuse a prim ID for a prim re-created at
+the same path: a soak run removes and restores four paths while allocating well over a hundred
+distinct IDs, so the final ID set legitimately differs from the initialized one. Path is the
+identity the renderer and pick table already resolve by. Scripts reject artifacts whose source or
+executable identity no longer matches the current build.
 
 The first stable release targets production viewport parity for meshes and subdivision, points and curves, instancing
 and skinning, cameras, lights, shadows, animation, textures, USD Preview Surface, and a documented MaterialX subset.

@@ -293,6 +293,10 @@ internal sealed record SharedStageSoakResult
 
     internal ulong[] RestoredMeshIds { get; init; } = [];
 
+    internal string[] RemovedMeshPaths { get; init; } = [];
+
+    internal string[] RestoredMeshPaths { get; init; } = [];
+
     internal long RendererShutdownCompletions { get; init; }
 
     internal bool ResourcesReleased { get; init; }
@@ -422,6 +426,8 @@ internal sealed record SharedStageSoakResult
         AppendMeshes(builder, "actualFinalMeshes", ActualFinalMeshes, comma: true);
         AppendUlongArray(builder, "removedMeshIds", RemovedMeshIds, comma: true);
         AppendUlongArray(builder, "restoredMeshIds", RestoredMeshIds, comma: true);
+        AppendStringArray(builder, "removedMeshPaths", RemovedMeshPaths, comma: true);
+        AppendStringArray(builder, "restoredMeshPaths", RestoredMeshPaths, comma: true);
         AppendResource(builder, "baselineResources", BaselineResources, comma: true);
         AppendResource(builder, "peakResources", PeakResources, comma: true);
         AppendResource(builder, "finalResources", FinalResources, comma: true);
@@ -590,6 +596,25 @@ internal sealed record SharedStageSoakResult
                 .AppendLine(index + 1 == meshes.Length ? string.Empty : ",");
         }
         builder.Append("  ]").AppendLine(comma ? "," : string.Empty);
+    }
+
+    private static void AppendStringArray(
+        StringBuilder builder,
+        string name,
+        string[] values,
+        bool comma)
+    {
+        builder.Append("  \"").Append(Escape(name)).Append("\": [");
+        for (int index = 0; index < values.Length; index++)
+        {
+            if (index != 0)
+            {
+                builder.Append(", ");
+            }
+            builder.Append('"').Append(Escape(values[index])).Append('"');
+        }
+        builder.Append(']');
+        builder.AppendLine(comma ? "," : string.Empty);
     }
 
     private static void AppendUlongArray(
@@ -804,9 +829,6 @@ internal static class SharedStageSoak
             throw new InvalidOperationException(
                 "The initialized steady hdSilk scene did not contain both soak meshes.");
         }
-        ulong primaryMeshId = expectedFinalMeshes.Single(mesh => mesh.Path == MeshPath).Id;
-        ulong secondaryMeshId = expectedFinalMeshes.Single(mesh => mesh.Path == MeshBPath).Id;
-
         SilkMeshData primaryBefore = sync.GetMesh(MeshPath);
         SilkMeshData secondaryBefore = sync.GetMesh(MeshBPath);
         (lastSerial, changed) = await ObserveAsync(
@@ -934,8 +956,8 @@ internal static class SharedStageSoak
                 {
                     await sync.WaitForLifecycleObservationAsync(
                         localIndex,
-                        primaryMeshId,
-                        secondaryMeshId,
+                        MeshPath,
+                        MeshBPath,
                         token).ConfigureAwait(false);
                 }
 
@@ -1084,11 +1106,13 @@ internal static class SharedStageSoak
         SharedStageMeshIdentity[] actualFinalMeshes = sync.GetMeshIdentities();
         ulong[] removedMeshIds = sync.GetRemovedMeshIds();
         ulong[] restoredMeshIds = sync.GetRestoredMeshIds();
+        string[] removedMeshPaths = sync.GetRemovedMeshPaths();
+        string[] restoredMeshPaths = sync.GetRestoredMeshPaths();
         ValidateFinalMeshState(
             expectedFinalMeshes,
             actualFinalMeshes,
-            removedMeshIds,
-            restoredMeshIds);
+            removedMeshPaths,
+            restoredMeshPaths);
         float[] expectedFinalDisplayColor = GetExpectedFinalDisplayColor();
         float[] actualFinalDisplayColor =
             sync.GetMesh(MeshPath).DisplayColor.ToArray();
@@ -1188,7 +1212,9 @@ internal static class SharedStageSoak
             ExpectedFinalMeshes = expectedFinalMeshes,
             ActualFinalMeshes = actualFinalMeshes,
             RemovedMeshIds = removedMeshIds,
-            RestoredMeshIds = restoredMeshIds
+            RestoredMeshIds = restoredMeshIds,
+            RemovedMeshPaths = removedMeshPaths,
+            RestoredMeshPaths = restoredMeshPaths
         };
     }
 
@@ -1776,33 +1802,39 @@ internal static class SharedStageSoak
     internal static void ValidateFinalMeshState(
         IReadOnlyList<SharedStageMeshIdentity> expected,
         IReadOnlyList<SharedStageMeshIdentity> actual,
-        IReadOnlyCollection<ulong> removedMeshIds,
-        IReadOnlyCollection<ulong> restoredMeshIds)
+        IReadOnlyCollection<string> removedMeshPaths,
+        IReadOnlyCollection<string> restoredMeshPaths)
     {
         ArgumentNullException.ThrowIfNull(expected);
         ArgumentNullException.ThrowIfNull(actual);
-        ArgumentNullException.ThrowIfNull(removedMeshIds);
-        ArgumentNullException.ThrowIfNull(restoredMeshIds);
-        SharedStageMeshIdentity[] expectedSorted = [.. expected
-            .OrderBy(mesh => mesh.Path, StringComparer.Ordinal)
-            .ThenBy(mesh => mesh.Id)];
-        SharedStageMeshIdentity[] actualSorted = [.. actual
-            .OrderBy(mesh => mesh.Path, StringComparer.Ordinal)
-            .ThenBy(mesh => mesh.Id)];
-        if (!expectedSorted.SequenceEqual(actualSorted))
+        ArgumentNullException.ThrowIfNull(removedMeshPaths);
+        ArgumentNullException.ThrowIfNull(restoredMeshPaths);
+        // Compared by path rather than by (path, ID). Hydra does not reuse a prim ID for
+        // a prim re-created at the same path, so requiring the final IDs to equal the
+        // initial ones would assert something the renderer never promised; the invariant
+        // that matters is that the soak ends with exactly the prims it started with.
+        string[] expectedPaths = [.. expected
+            .Select(mesh => mesh.Path)
+            .OrderBy(path => path, StringComparer.Ordinal)];
+        string[] actualPaths = [.. actual
+            .Select(mesh => mesh.Path)
+            .OrderBy(path => path, StringComparer.Ordinal)];
+        if (!expectedPaths.SequenceEqual(actualPaths, StringComparer.Ordinal))
         {
             throw new InvalidOperationException(
-                "The final hdSilk mesh ID/path set did not match the initialized steady set. " +
-                $"Expected=[{FormatMeshes(expectedSorted)}], actual=[{FormatMeshes(actualSorted)}].");
+                "The final hdSilk mesh path set did not match the initialized steady set. " +
+                $"Expected=[{FormatMeshes([.. expected])}], " +
+                $"actual=[{FormatMeshes([.. actual])}].");
         }
 
         foreach (string path in new[] { MeshPath, MeshBPath })
         {
-            ulong id = expectedSorted.Single(mesh => mesh.Path == path).Id;
-            if (!removedMeshIds.Contains(id) || !restoredMeshIds.Contains(id))
+            if (!removedMeshPaths.Contains(path) || !restoredMeshPaths.Contains(path))
             {
                 throw new InvalidOperationException(
-                    $"Mesh {path} ({id}) was not observed through both removal and stable-ID restoration.");
+                    $"Mesh {path} was not observed through both removal and restoration. " +
+                    $"Removed=[{string.Join(", ", removedMeshPaths.Order())}], " +
+                    $"restored=[{string.Join(", ", restoredMeshPaths.Order())}].");
             }
         }
     }
@@ -1858,6 +1890,13 @@ internal static class SharedStageSoak
         private ulong[] _lastUpsertedMeshIds = [];
         private readonly HashSet<ulong> _removedMeshIds = [];
         private readonly HashSet<ulong> _restoredMeshIds = [];
+        // Removal and restoration are tracked by prim path, not by prim ID. A prim ID is
+        // Hydra's and is not reused when a prim is deleted and re-created at the same
+        // path, which docs/rendering.md allows explicitly by permitting a logical
+        // old-prim removal plus new-prim upsert. Path is the identity the renderer and
+        // the pick table already resolve by, so it is what proves a prim came back.
+        private readonly HashSet<string> _removedMeshPaths = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _restoredMeshPaths = new(StringComparer.Ordinal);
 
         internal SilkSyncMonitor(
             OpenUsdSilkSession session,
@@ -1875,6 +1914,11 @@ internal static class SharedStageSoak
                     640,
                     360,
                     camera: CameraState.Default);
+                // Captured before the delta is applied so a removed ID can still be
+                // resolved to the path it belonged to.
+                Dictionary<ulong, string> pathsBeforeApply = _scene.Meshes.ToDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value.Path);
                 SilkSceneDelta delta = _scene.Apply(page);
                 _gpuResources?.Apply(_scene, delta);
                 _pages++;
@@ -1887,12 +1931,22 @@ internal static class SharedStageSoak
                 foreach (ulong id in delta.RemovedMeshIds.Span)
                 {
                     _removedMeshIds.Add(id);
+                    if (pathsBeforeApply.TryGetValue(id, out string? removedPath))
+                    {
+                        _removedMeshPaths.Add(removedPath);
+                    }
                 }
                 foreach (ulong id in delta.UpsertedMeshIds.Span)
                 {
                     if (_removedMeshIds.Contains(id))
                     {
                         _restoredMeshIds.Add(id);
+                    }
+
+                    if (_scene.Meshes.TryGetValue(id, out SilkMeshData? upserted) &&
+                        _removedMeshPaths.Contains(upserted.Path))
+                    {
+                        _restoredMeshPaths.Add(upserted.Path);
                     }
                 }
                 if (delta.MeshUpserts == 0 && delta.MeshRemovals == 0)
@@ -1955,20 +2009,20 @@ internal static class SharedStageSoak
 
         internal async Task WaitForLifecycleObservationAsync(
             int topologyIndex,
-            ulong primaryMeshId,
-            ulong secondaryMeshId,
+            string primaryMeshPath,
+            string secondaryMeshPath,
             CancellationToken cancellationToken)
         {
             int lifecycle = topologyIndex % 250;
-            (ulong id, bool restored) = lifecycle switch
+            (string? path, bool restored) = lifecycle switch
             {
-                245 => (primaryMeshId, false),
-                246 => (primaryMeshId, true),
-                247 => (secondaryMeshId, false),
-                248 => (secondaryMeshId, true),
+                245 => (primaryMeshPath, false),
+                246 => (primaryMeshPath, true),
+                247 => (secondaryMeshPath, false),
+                248 => (secondaryMeshPath, true),
                 _ => default
             };
-            if (id == 0)
+            if (path is null)
             {
                 return;
             }
@@ -1978,8 +2032,9 @@ internal static class SharedStageSoak
                 SyncOnce();
                 lock (_gate)
                 {
-                    HashSet<ulong> observed = restored ? _restoredMeshIds : _removedMeshIds;
-                    if (observed.Contains(id))
+                    HashSet<string> observed =
+                        restored ? _restoredMeshPaths : _removedMeshPaths;
+                    if (observed.Contains(path))
                     {
                         return;
                     }
@@ -1987,8 +2042,19 @@ internal static class SharedStageSoak
                 await Task.Delay(TimeSpan.FromMilliseconds(2), cancellationToken)
                     .ConfigureAwait(false);
             }
+
+            string observedRemoved = string.Join(", ", _removedMeshPaths.Order());
+            string observedRestored = string.Join(", ", _restoredMeshPaths.Order());
+            string currentMeshes = string.Join(
+                ", ",
+                _scene.Meshes.Values
+                    .Select(mesh => $"{mesh.Path}={mesh.Id}")
+                    .Order());
             throw new TimeoutException(
-                $"hdSilk did not observe mesh {id} {(restored ? "restoration" : "removal")}.");
+                $"hdSilk did not observe {path} " +
+                $"{(restored ? "restoration" : "removal")}. " +
+                $"Removed: [{observedRemoved}]. Restored: [{observedRestored}]. " +
+                $"Current: [{currentMeshes}].");
         }
 
         internal SilkMeshData GetMesh(string path)
@@ -2026,6 +2092,22 @@ internal static class SharedStageSoak
             lock (_gate)
             {
                 return [.. _removedMeshIds.Order()];
+            }
+        }
+
+        internal string[] GetRemovedMeshPaths()
+        {
+            lock (_gate)
+            {
+                return [.. _removedMeshPaths.Order(StringComparer.Ordinal)];
+            }
+        }
+
+        internal string[] GetRestoredMeshPaths()
+        {
+            lock (_gate)
+            {
+                return [.. _restoredMeshPaths.Order(StringComparer.Ordinal)];
             }
         }
 

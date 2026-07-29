@@ -194,21 +194,33 @@ public sealed class SharedStageSoakTests
             new(20, "/World/SoakMeshA"),
             new(30, "/World/SoakMeshB")
         ];
+        string[] bothPaths = ["/World/SoakMeshA", "/World/SoakMeshB"];
 
-        SharedStageSoak.ValidateFinalMeshState(expected, [.. expected], [20, 30], [20, 30]);
+        SharedStageSoak.ValidateFinalMeshState(expected, [.. expected], bothPaths, bothPaths);
+
+        // A prim that came back under a new ID is still the same prim, which is what
+        // Hydra actually does after a delete and re-create at the same path.
+        SharedStageMeshIdentity[] reidentified =
+        [
+            new(10, "/World/Existing"),
+            new(41, "/World/SoakMeshA"),
+            new(42, "/World/SoakMeshB")
+        ];
+        SharedStageSoak.ValidateFinalMeshState(expected, reidentified, bothPaths, bothPaths);
+
         await Assert.That(
             () => SharedStageSoak.ValidateFinalMeshState(
                 expected,
                 [.. expected, new SharedStageMeshIdentity(40, "/World/Unexpected")],
-                [20, 30],
-                [20, 30]))
+                bothPaths,
+                bothPaths))
             .Throws<InvalidOperationException>();
         await Assert.That(
             () => SharedStageSoak.ValidateFinalMeshState(
                 expected,
                 [.. expected],
-                [20, 30],
-                [20]))
+                bothPaths,
+                ["/World/SoakMeshA"]))
             .Throws<InvalidOperationException>();
     }
 

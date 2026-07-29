@@ -181,18 +181,25 @@ function Assert-OpenUsdSoakArtifact
     }
     $expectedMeshes = @($artifact.expectedFinalMeshes)
     $actualMeshes = @($artifact.actualFinalMeshes)
-    if ($expectedMeshes.Count -lt 2 -or
-        ($expectedMeshes | ConvertTo-Json -Compress) -ne
-            ($actualMeshes | ConvertTo-Json -Compress))
+    # Compared by path. The prim IDs legitimately differ once a prim has been removed
+    # and re-created, so requiring them to match would assert ID stability the renderer
+    # does not provide; that the same prims are present is the invariant that matters.
+    $expectedPaths = @($expectedMeshes | ForEach-Object { [string]$_.path } | Sort-Object)
+    $actualPaths = @($actualMeshes | ForEach-Object { [string]$_.path } | Sort-Object)
+    if ($expectedPaths.Count -lt 2 -or
+        ($expectedPaths -join '|') -cne ($actualPaths -join '|'))
     {
         throw "Shared-stage soak artifact has a stale or inexact final mesh identity set: $Path"
     }
     foreach ($meshPath in @('/World/SoakMeshA', '/World/SoakMeshB'))
     {
         $mesh = @($expectedMeshes | Where-Object path -EQ $meshPath)
+        # Asserted by path, not by prim ID. Hydra does not reuse a prim ID for a prim
+        # re-created at the same path, so an ID pairing here would require behaviour the
+        # renderer never promised.
         if ($mesh.Count -ne 1 -or
-            @($artifact.removedMeshIds) -notcontains [string]$mesh[0].id -or
-            @($artifact.restoredMeshIds) -notcontains [string]$mesh[0].id)
+            @($artifact.removedMeshPaths) -notcontains $meshPath -or
+            @($artifact.restoredMeshPaths) -notcontains $meshPath)
         {
             throw "Shared-stage soak artifact did not prove removal/restoration for $meshPath`: $Path"
         }
