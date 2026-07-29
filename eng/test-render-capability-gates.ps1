@@ -113,7 +113,7 @@ Assert-Contains $renderWorkflow '-Platform windows-wgl' 'Render workflow'
 Assert-OccurrenceCount `
     $renderWorkflow `
     "OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY: '1'" `
-    2 `
+    4 `
     'Render workflow'
 Assert-Contains `
     $linuxSmoke `

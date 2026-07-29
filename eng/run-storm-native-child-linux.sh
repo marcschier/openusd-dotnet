@@ -11,10 +11,16 @@ source "$repo_root/eng/storm-native-child-linux-lib.sh"
 output_root="$repo_root/artifacts/storm-native-child-linux/$platform"
 viewer_publish="$repo_root/artifacts/viewer/linux-x64"
 vulkan_publish="$repo_root/artifacts/avalonia-vulkan-smoke/linux-x64"
-loader="/usr/lib/x86_64-linux-gnu/libvulkan.so.1"
-icd="/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
+loader="$(openusd_linux_vulkan_loader)"
+icd="$(openusd_linux_vulkan_icd)"
 server_pid=""
 required="${OPENUSD_REQUIRE_VULKAN_PRESENTATION:-0}"
+# A hosted Linux compositor accepts no external Vulkan images, so requiring Vulkan
+# presentation here would demand evidence the host cannot produce. The allowance is
+# opt-in from the workflow; see docs/testing.md, "Render gate capability limits".
+if [[ "${OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY:-0}" == "1" ]]; then
+  required=0
+fi
 
 case "$platform" in
   x11|xwayland) ;;

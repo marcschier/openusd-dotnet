@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 # Copyright (c) marcschier. Licensed under the MIT License.
 
+# Both Linux runners hardcoded these paths, and the ICD one went stale: Ubuntu 24.04
+# ships Mesa 25.x, which renamed the lavapipe manifest from lvp_icd.x86_64.json to
+# lvp_icd.json. Discover them once here so there is a single place to be wrong.
+openusd_linux_vulkan_loader() {
+  local candidate
+  for candidate in /usr/lib/x86_64-linux-gnu/libvulkan.so.1 /usr/lib/libvulkan.so.1; do
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  ldconfig -p 2>/dev/null | awk '/libvulkan\.so\.1/ {print $NF; exit}'
+}
+
+openusd_linux_vulkan_icd() {
+  # find exits non-zero for a directory that does not exist, which under set -e would
+  # abort the caller before it could report anything useful.
+  find /usr/share/vulkan/icd.d /etc/vulkan/icd.d \
+    /usr/lib/x86_64-linux-gnu/vulkan/icd.d \
+    -name 'lvp_icd*.json' 2>/dev/null | sort | head -n1 || true
+}
+
 resolve_openusd_dotnet_root() {
   local candidate=""
   if [[ -n "${OPENUSD_DOTNET_ROOT:-}" ]]; then

@@ -504,6 +504,7 @@ jobs:
           OPENUSD_LINUX_STORM_SURVIVAL_SECONDS: '90'
           OPENUSD_LINUX_STORM_FRESH_PROCESS_COUNT: '10'
           OPENUSD_REQUIRE_VULKAN_PRESENTATION: ${{ steps.linux-vulkan.outputs.ready == 'true' && '1' || '0' }}
+          OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY: '1'
         run: bash ./eng/run-storm-native-child-linux.sh x11
       - name: Execute whole-shell XWayland Storm child switching gate
         env:
@@ -511,6 +512,7 @@ jobs:
           OPENUSD_LINUX_STORM_SURVIVAL_SECONDS: '90'
           OPENUSD_LINUX_STORM_FRESH_PROCESS_COUNT: '10'
           OPENUSD_REQUIRE_VULKAN_PRESENTATION: ${{ steps.linux-vulkan.outputs.ready == 'true' && '1' || '0' }}
+          OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY: '1'
         run: bash ./eng/run-storm-native-child-linux.sh xwayland
       - name: Upload diagnostics
         if: always()

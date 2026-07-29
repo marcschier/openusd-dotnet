@@ -4,8 +4,8 @@ set -euo pipefail
 
 platform="${1:-x11}"
 publish_root="${2:-artifacts/avalonia-vulkan-smoke/linux-x64}"
-loader_path="${3:-/usr/lib/x86_64-linux-gnu/libvulkan.so.1}"
-icd_path="${4:-/usr/share/vulkan/icd.d/lvp_icd.x86_64.json}"
+loader_argument="${3:-}"
+icd_argument="${4:-}"
 required="${OPENUSD_REQUIRE_VULKAN_PRESENTATION:-0}"
 # A hosted Linux runner has no compositor that can import external Vulkan images: it
 # reports "supported image handles: (none)". The switch is opt-in from the workflow and
@@ -21,6 +21,10 @@ esac
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$repo_root/eng/storm-native-child-linux-lib.sh"
+# Resolved after sourcing so both call sites share one discovery rather than each
+# carrying a literal path that can go stale independently.
+loader_path="${loader_argument:-$(openusd_linux_vulkan_loader)}"
+icd_path="${icd_argument:-$(openusd_linux_vulkan_icd)}"
 publish_root="$(cd "$repo_root" && realpath -m "$publish_root")"
 identity_path="$publish_root/build-identity.json"
 identity_script="$repo_root/eng/avalonia-vulkan-smoke-identity.ps1"
@@ -177,10 +181,15 @@ cat "$artifact" 2>/dev/null || true
 assert_identity
 if [[ "$exit_code" -ne 0 && "$allow_unavailable" == "1" ]] &&
   grep -q 'supported image handles: (none)' "$artifact" 2>/dev/null; then
+  capability_reason="This host has no compositor that accepts external Vulkan images."
+  # Rewrite the run artifact as typed unavailable evidence, which is the shape the
+  # switching gate's classifier already accepts, and keep the separate capability file
+  # that docs/testing.md points at as the recorded skip.
+  write_openusd_vulkan_unavailable "$artifact" "$platform" "$capability_reason"
   printf '{\n  "schemaVersion": 1,\n  "status": "skipped",\n  "platform": "%s",\n  "reason": "%s"\n}\n' \
-    "$platform" \
-    "This host has no compositor that accepts external Vulkan images." \
+    "$platform" "$capability_reason" \
     >"$publish_root/$platform-capability.json"
+  cat "$artifact"
   echo "[avalonia-vulkan-smoke] Skipped $platform: the compositor accepts no external Vulkan images."
   exit 0
 fi
