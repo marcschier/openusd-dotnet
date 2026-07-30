@@ -42,6 +42,20 @@ public readonly ref struct SilkCommand
         return new SilkMeshRemoveCommand(_bytes);
     }
 
+    /// <summary>Gets a material upsert command view.</summary>
+    public SilkMaterialUpsertCommand AsMaterialUpsert()
+    {
+        EnsureType(SilkCommandType.MaterialUpsert);
+        return new SilkMaterialUpsertCommand(_bytes);
+    }
+
+    /// <summary>Gets a material removal command view.</summary>
+    public SilkMaterialRemoveCommand AsMaterialRemove()
+    {
+        EnsureType(SilkCommandType.MaterialRemove);
+        return new SilkMaterialRemoveCommand(_bytes);
+    }
+
     private void EnsureType(SilkCommandType expected)
     {
         if (Type != expected)
@@ -410,7 +424,7 @@ public readonly ref struct SilkMeshAttributeEntry
         _nameLength = (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes[12..16]);
         _name = _nameLength == 0
             ? string.Empty
-            : SilkWireFormat.DecodePath(bytes.Slice(FixedSize, _nameLength));
+            : SilkWireFormat.DecodeText(bytes.Slice(FixedSize, _nameLength));
     }
 
     /// <summary>Gets the renderer-bound semantic.</summary>
@@ -495,9 +509,387 @@ public readonly ref struct SilkMeshRemoveCommand
     public string Path => _path;
 }
 
+/// <summary>
+/// Surface model a material describes. <see cref="Unsupported"/> is published
+/// rather than omitted so an unsupported shading graph is diagnosable instead
+/// of being silently approximated.
+/// </summary>
+public enum SilkSurfaceKind : uint
+{
+    /// <summary>The bound network is not a UsdPreviewSurface.</summary>
+    Unsupported = 0,
+
+    /// <summary>A UsdPreviewSurface network.</summary>
+    PreviewSurface = 1
+}
+
+/// <summary>
+/// A UsdPreviewSurface input carried by a material command. A parameter absent
+/// from both tables stays at the consumer's UsdPreviewSurface default.
+/// </summary>
+public enum SilkMaterialParameter : uint
+{
+    /// <summary>No parameter; never written to the wire.</summary>
+    None = 0,
+
+    /// <summary>diffuseColor, three components.</summary>
+    DiffuseColor = 1,
+
+    /// <summary>emissiveColor, three components.</summary>
+    EmissiveColor = 2,
+
+    /// <summary>specularColor, three components.</summary>
+    SpecularColor = 3,
+
+    /// <summary>metallic, one component.</summary>
+    Metallic = 4,
+
+    /// <summary>roughness, one component.</summary>
+    Roughness = 5,
+
+    /// <summary>clearcoat, one component.</summary>
+    Clearcoat = 6,
+
+    /// <summary>clearcoatRoughness, one component.</summary>
+    ClearcoatRoughness = 7,
+
+    /// <summary>opacity, one component.</summary>
+    Opacity = 8,
+
+    /// <summary>opacityThreshold, one component.</summary>
+    OpacityThreshold = 9,
+
+    /// <summary>ior, one component.</summary>
+    Ior = 10,
+
+    /// <summary>normal, three components.</summary>
+    Normal = 11,
+
+    /// <summary>displacement, one component.</summary>
+    Displacement = 12,
+
+    /// <summary>occlusion, one component.</summary>
+    Occlusion = 13,
+
+    /// <summary>useSpecularWorkflow, one component.</summary>
+    UseSpecularWorkflow = 14
+}
+
+/// <summary>UsdUVTexture wrap mode.</summary>
+public enum SilkTextureWrap : uint
+{
+    /// <summary>Sample black outside the unit range.</summary>
+    Black = 0,
+
+    /// <summary>Clamp to edge.</summary>
+    Clamp = 1,
+
+    /// <summary>Repeat.</summary>
+    Repeat = 2,
+
+    /// <summary>Mirror.</summary>
+    Mirror = 3
+}
+
+/// <summary>UsdUVTexture sourceColorSpace.</summary>
+public enum SilkColorSpace : uint
+{
+    /// <summary>Decided by the image's own metadata.</summary>
+    Auto = 0,
+
+    /// <summary>Linear, no transfer function applied.</summary>
+    Raw = 1,
+
+    /// <summary>sRGB transfer function applied on read.</summary>
+    Srgb = 2
+}
+
+/// <summary>
+/// One constant UsdPreviewSurface input carried with a material upsert.
+/// </summary>
+public readonly ref struct SilkMaterialScalarEntry
+{
+    internal const int FixedSize = 8;
+    private readonly ReadOnlySpan<byte> _bytes;
+
+    internal SilkMaterialScalarEntry(ReadOnlySpan<byte> bytes) => _bytes = bytes;
+
+    /// <summary>Gets the parameter this value drives.</summary>
+    public SilkMaterialParameter Parameter =>
+        (SilkMaterialParameter)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[0..4]);
+
+    /// <summary>Gets the component count, one to four.</summary>
+    public int ComponentCount =>
+        (int)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[4..8]);
+
+    /// <summary>Gets one component of the value.</summary>
+    public float GetComponent(int component)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(component);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(component, ComponentCount);
+        int offset = FixedSize + (component * sizeof(float));
+        return BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(offset, sizeof(float)));
+    }
+}
+
+/// <summary>
+/// One UsdPreviewSurface input driven by a connected UsdUVTexture.
+/// </summary>
+public readonly ref struct SilkMaterialTextureEntry
+{
+    internal const int FixedSize = 76;
+    private readonly ReadOnlySpan<byte> _bytes;
+    private readonly string _asset;
+    private readonly string _uvPrimvar;
+
+    internal SilkMaterialTextureEntry(ReadOnlySpan<byte> bytes)
+    {
+        _bytes = bytes;
+        int assetLength = (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes[16..20]);
+        int uvLength = (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes[20..24]);
+        _asset = SilkWireFormat.DecodeText(bytes.Slice(FixedSize, assetLength));
+        _uvPrimvar = uvLength == 0
+            ? string.Empty
+            : SilkWireFormat.DecodeText(bytes.Slice(FixedSize + assetLength, uvLength));
+    }
+
+    /// <summary>Gets the parameter this texture drives.</summary>
+    public SilkMaterialParameter Parameter =>
+        (SilkMaterialParameter)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[0..4]);
+
+    /// <summary>Gets the horizontal wrap mode.</summary>
+    public SilkTextureWrap WrapS =>
+        (SilkTextureWrap)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[4..8]);
+
+    /// <summary>Gets the vertical wrap mode.</summary>
+    public SilkTextureWrap WrapT =>
+        (SilkTextureWrap)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[8..12]);
+
+    /// <summary>Gets the authored source color space.</summary>
+    public SilkColorSpace SourceColorSpace =>
+        (SilkColorSpace)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[12..16]);
+
+    /// <summary>Gets how many channels the bound input consumes.</summary>
+    public int ComponentCount =>
+        (int)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[24..28]);
+
+    /// <summary>Gets one component of the multiply applied after sampling.</summary>
+    public float GetScale(int component) => ReadVector(28, component);
+
+    /// <summary>Gets one component of the offset applied after scaling.</summary>
+    public float GetBias(int component) => ReadVector(44, component);
+
+    /// <summary>Gets one component of the value used when the asset cannot load.</summary>
+    public float GetFallback(int component) => ReadVector(60, component);
+
+    /// <summary>Gets the resolved texture asset path.</summary>
+    public string Asset => _asset;
+
+    /// <summary>
+    /// Gets the primvar supplying texture coordinates, empty when the texture
+    /// has no resolvable reader connection.
+    /// </summary>
+    public string UvPrimvar => _uvPrimvar;
+
+    private float ReadVector(int baseOffset, int component)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(component);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(component, 4);
+        int offset = baseOffset + (component * sizeof(float));
+        return BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(offset, sizeof(float)));
+    }
+}
+
+/// <summary>
+/// A create or update command for one resolved material.
+/// </summary>
+public readonly ref struct SilkMaterialUpsertCommand
+{
+    private const int FixedSize = 32;
+    private readonly ReadOnlySpan<byte> _bytes;
+    private readonly string _path;
+    private readonly int _pathLength;
+
+    internal SilkMaterialUpsertCommand(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < FixedSize)
+        {
+            throw new InvalidDataException("The material upsert command is truncated.");
+        }
+        uint pathLength = BinaryPrimitives.ReadUInt32LittleEndian(bytes[16..20]);
+        if (pathLength is 0 or > int.MaxValue)
+        {
+            throw new InvalidDataException(
+                "The material upsert path must be present and within the managed page limit.");
+        }
+        _pathLength = (int)pathLength;
+        if (bytes.Length < FixedSize + _pathLength)
+        {
+            throw new InvalidDataException("The material upsert path is truncated.");
+        }
+        _path = SilkWireFormat.DecodePath(bytes.Slice(FixedSize, _pathLength));
+        _bytes = bytes;
+
+        // Walking both tables in the constructor means a truncated or
+        // inconsistent table fails once here rather than at an arbitrary later
+        // accessor, which is the same guarantee the mesh commands give.
+        int offset = FixedSize + _pathLength;
+        for (int index = 0; index < ScalarCount; index++)
+        {
+            offset = AdvanceScalar(bytes, offset);
+        }
+        for (int index = 0; index < TextureCount; index++)
+        {
+            offset = AdvanceTexture(bytes, offset);
+        }
+        if (offset != bytes.Length)
+        {
+            throw new InvalidDataException(
+                "The material upsert size does not match its parameter tables.");
+        }
+    }
+
+    /// <summary>Gets the FNV-1a path hash used only as an identity index.</summary>
+    public ulong StableHash => BinaryPrimitives.ReadUInt64LittleEndian(_bytes[8..16]);
+
+    /// <summary>Gets the surface model this material describes.</summary>
+    public SilkSurfaceKind SurfaceKind =>
+        (SilkSurfaceKind)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[20..24]);
+
+    /// <summary>Gets the number of constant inputs.</summary>
+    public int ScalarCount =>
+        (int)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[24..28]);
+
+    /// <summary>Gets the number of texture-driven inputs.</summary>
+    public int TextureCount =>
+        (int)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[28..32]);
+
+    /// <summary>Gets the authoritative USD material path.</summary>
+    public string Path => _path;
+
+    /// <summary>Gets one constant input.</summary>
+    public SilkMaterialScalarEntry GetScalar(int index)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, ScalarCount);
+        int offset = FixedSize + _pathLength;
+        for (int current = 0; current < index; current++)
+        {
+            offset = AdvanceScalar(_bytes, offset);
+        }
+        return new SilkMaterialScalarEntry(_bytes[offset..]);
+    }
+
+    /// <summary>Gets one texture-driven input.</summary>
+    public SilkMaterialTextureEntry GetTexture(int index)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, TextureCount);
+        int offset = FixedSize + _pathLength;
+        for (int current = 0; current < ScalarCount; current++)
+        {
+            offset = AdvanceScalar(_bytes, offset);
+        }
+        for (int current = 0; current < index; current++)
+        {
+            offset = AdvanceTexture(_bytes, offset);
+        }
+        return new SilkMaterialTextureEntry(_bytes[offset..]);
+    }
+
+    private static int AdvanceScalar(ReadOnlySpan<byte> bytes, int offset)
+    {
+        if (offset + SilkMaterialScalarEntry.FixedSize > bytes.Length)
+        {
+            throw new InvalidDataException("A material scalar entry is truncated.");
+        }
+        uint components =
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 4, 4));
+        if (components is 0 or > 4)
+        {
+            throw new InvalidDataException(
+                "A material scalar entry must carry one to four components.");
+        }
+        int size = SilkMaterialScalarEntry.FixedSize + ((int)components * sizeof(float));
+        if (offset + size > bytes.Length)
+        {
+            throw new InvalidDataException("A material scalar entry is truncated.");
+        }
+        return offset + size;
+    }
+
+    private static int AdvanceTexture(ReadOnlySpan<byte> bytes, int offset)
+    {
+        if (offset + SilkMaterialTextureEntry.FixedSize > bytes.Length)
+        {
+            throw new InvalidDataException("A material texture entry is truncated.");
+        }
+        uint assetLength =
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 16, 4));
+        uint uvLength =
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 20, 4));
+        uint components =
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 24, 4));
+        if (assetLength == 0)
+        {
+            throw new InvalidDataException(
+                "A material texture entry requires a resolved asset path.");
+        }
+        if (components is 0 or > 4)
+        {
+            throw new InvalidDataException(
+                "A material texture entry must consume one to four components.");
+        }
+        long size = SilkMaterialTextureEntry.FixedSize + (long)assetLength + uvLength;
+        if (offset + size > bytes.Length)
+        {
+            throw new InvalidDataException("A material texture entry is truncated.");
+        }
+        return offset + (int)size;
+    }
+}
+
+/// <summary>
+/// A removal command for one material.
+/// </summary>
+public readonly ref struct SilkMaterialRemoveCommand
+{
+    private const int FixedSize = 20;
+    private readonly ReadOnlySpan<byte> _bytes;
+    private readonly string _path;
+
+    internal SilkMaterialRemoveCommand(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < FixedSize)
+        {
+            throw new InvalidDataException("The material removal command is truncated.");
+        }
+        uint pathLength = BinaryPrimitives.ReadUInt32LittleEndian(bytes[16..20]);
+        if (pathLength is 0 or > int.MaxValue)
+        {
+            throw new InvalidDataException(
+                "The material removal path must be present and within the managed page limit.");
+        }
+        if (bytes.Length != FixedSize + (int)pathLength)
+        {
+            throw new InvalidDataException(
+                "The material removal size does not match its path length.");
+        }
+        _path = SilkWireFormat.DecodePath(bytes.Slice(FixedSize, (int)pathLength));
+        _bytes = bytes;
+    }
+
+    /// <summary>Gets the FNV-1a path hash used only as an identity index.</summary>
+    public ulong StableHash => BinaryPrimitives.ReadUInt64LittleEndian(_bytes[8..16]);
+
+    /// <summary>Gets the removed USD material path.</summary>
+    public string Path => _path;
+}
+
 /// <summary>Describes the pointer-free topology emitted by hdSilk.</summary>
 public enum SilkTopologyKind : uint
 {
+
     /// <summary>Three indices and one authored face mapping per triangle.</summary>
     TriangleList = 1
 }
@@ -530,8 +922,39 @@ internal static class SilkWireFormat
         return path;
     }
 
+    /// <summary>
+    /// Decodes a UTF-8 text field that is not a prim path, such as a texture
+    /// asset path or a primvar name. These are validated as strict UTF-8 without
+    /// a NUL, but must not be forced to look like an absolute USD path.
+    /// </summary>
+    internal static string DecodeText(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length == 0)
+        {
+            return string.Empty;
+        }
+        string text;
+        try
+        {
+            text = StrictUtf8.GetString(bytes);
+        }
+        catch (DecoderFallbackException exception)
+        {
+            throw new InvalidDataException(
+                "A material text field is not valid UTF-8.",
+                exception);
+        }
+        if (text.Contains('\0'))
+        {
+            throw new InvalidDataException(
+                "A material text field must not contain a NUL.");
+        }
+        return text;
+    }
+
     internal static ulong ComputeStableHash(string path)
     {
+
         ArgumentNullException.ThrowIfNull(path);
         ulong hash = 14695981039346656037;
         foreach (byte value in Encoding.UTF8.GetBytes(path))

@@ -207,7 +207,7 @@ Coalesced same-path Rprim recreation may therefore emit a logical old-prim remov
 upsert, or reset topology revision under the same prim ID, without exposing range internals.
 `SilkSceneGpuResources` applies that delta, the renderer looks up the current range by
 `(path, instance index)` for each draw, and deactivated ranges are pruned from searchable storage so
-old tokens cannot resolve. Pick identity is per instance, matching page ABI 4: a point-instanced
+old tokens cannot resolve. Pick identity is per instance, matching page ABI 5: a point-instanced
 prototype allocates one range per resolved instance, so picking selects the instance that was
 actually drawn, and retiring one instance leaves the others resolvable. The prim ID and path hash
 indexes are shared by every instance of a prototype and are retired only with the last one.

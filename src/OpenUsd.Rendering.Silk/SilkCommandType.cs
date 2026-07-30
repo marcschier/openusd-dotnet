@@ -14,5 +14,11 @@ public enum SilkCommandType : uint
     MeshUpsert = 2,
 
     /// <summary>Remove a mesh resource.</summary>
-    MeshRemove = 3
+    MeshRemove = 3,
+
+    /// <summary>Create or update a material resource.</summary>
+    MaterialUpsert = 4,
+
+    /// <summary>Remove a material resource.</summary>
+    MaterialRemove = 5
 }

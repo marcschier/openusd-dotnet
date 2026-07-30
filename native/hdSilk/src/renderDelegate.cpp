@@ -4,6 +4,7 @@
 
 #include "openusd_hdsilk.h"
 #include "instancer.h"
+#include "material.h"
 #include "mesh.h"
 #include "renderPass.h"
 
@@ -38,6 +39,9 @@ const TfTokenVector HdSilkRenderDelegate::SUPPORTED_SPRIM_TYPES =
     // creates the computation, and pulling computed primvars dereferences a
     // prim that does not exist.
     HdPrimTypeTokens->extComputation,
+    // Without the material Sprim the render index never resolves a binding, so
+    // a mesh's materialPath would always be empty no matter what is authored.
+    HdPrimTypeTokens->material,
 };
 
 const TfTokenVector HdSilkRenderDelegate::SUPPORTED_BPRIM_TYPES =
@@ -183,6 +187,10 @@ HdSilkRenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprimId)
     {
         return new HdExtComputation(sprimId);
     }
+    if (typeId == HdPrimTypeTokens->material)
+    {
+        return new HdSilkMaterial(sprimId);
+    }
     TF_CODING_ERROR("Unknown Sprim type=%s id=%s", typeId.GetText(), sprimId.GetText());
     return nullptr;
 }
@@ -194,6 +202,10 @@ HdSilkRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
     {
         return new HdExtComputation(SdfPath::EmptyPath());
     }
+    if (typeId == HdPrimTypeTokens->material)
+    {
+        return new HdSilkMaterial(SdfPath::EmptyPath());
+    }
     TF_CODING_ERROR("Creating unknown fallback sprim type=%s", typeId.GetText());
     return nullptr;
 }
@@ -201,6 +213,14 @@ HdSilkRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
 void
 HdSilkRenderDelegate::DestroySprim(HdSprim* sprim)
 {
+    // A destroyed material must retire its published record, or a consumer
+    // keeps shading with a material the scene no longer has.
+    if (sprim != nullptr && _sceneState != nullptr &&
+        dynamic_cast<HdSilkMaterial*>(sprim) != nullptr &&
+        !sprim->GetId().IsEmpty())
+    {
+        _sceneState->RemoveMaterial(sprim->GetId().GetString());
+    }
     delete sprim;
 }
 

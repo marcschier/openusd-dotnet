@@ -87,6 +87,40 @@ struct HdSilkMeshRecord
     std::vector<HdSilkMeshAttribute> attributes;
 };
 
+/// One scalar or vector UsdPreviewSurface input, already resolved to floats.
+struct HdSilkMaterialScalar
+{
+    uint32_t parameter = 0;
+    uint32_t componentCount = 0;
+    float value[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+};
+
+/// One UsdPreviewSurface input driven by a connected UsdUVTexture.
+struct HdSilkMaterialTexture
+{
+    uint32_t parameter = 0;
+    uint32_t wrapS = 2;
+    uint32_t wrapT = 2;
+    uint32_t sourceColorSpace = 0;
+    uint32_t componentCount = 4;
+    float scale[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    float bias[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float fallback[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    std::string asset;
+    std::string uvPrimvar;
+};
+
+/// A single material Sprim's resolved shading data. An unsupported surface is
+/// still recorded, with empty tables, so it can be diagnosed rather than
+/// silently approximated.
+struct HdSilkMaterialRecord
+{
+    std::string path;
+    uint32_t surfaceKind = 0;
+    std::vector<HdSilkMaterialScalar> scalars;
+    std::vector<HdSilkMaterialTexture> textures;
+};
+
 /// Derives a stable, non-zero 31-bit identifier for an instancer path. The
 /// value is diagnostic only: (path, instanceIndex) remains the authoritative
 /// identity of a published record.
@@ -150,10 +184,20 @@ public:
     void RemoveMesh(const std::string& path);
     void SetFrame(const HdSilkFrameState& frame);
 
+    /// Publishes or replaces one material. The path is the authoritative
+    /// identity, matching MESH_UPSERT's material_path.
+    void ReplaceMaterial(HdSilkMaterialRecord record);
+    void RemoveMaterial(const std::string& path);
+
     /// Number of mesh records rejected by wire validation since process
     /// start. Rejected records are skipped with a diagnostic so that one
     /// malformed prim cannot blank an otherwise renderable scene.
     static uint64_t GetRejectedMeshCount();
+
+    /// Number of material records rejected by wire validation since process
+    /// start, counted separately from meshes so a shading failure is not
+    /// mistaken for a geometry failure.
+    static uint64_t GetRejectedMaterialCount();
 
     /// Builds a serialized page containing the current frame state plus any
     /// mesh upserts/removals queued since the previous call, then clears
@@ -169,10 +213,18 @@ private:
         bool dirty = true;
     };
 
+    struct _MaterialEntry
+    {
+        HdSilkMaterialRecord record;
+        bool dirty = true;
+    };
+
     mutable std::mutex _mutex;
     std::unordered_map<HdSilkMeshKey, _Entry, HdSilkMeshKeyHash> _meshes;
     std::unordered_map<std::string, std::vector<int32_t>> _instancesByPath;
     std::vector<HdSilkMeshKey> _pendingRemovals;
+    std::unordered_map<std::string, _MaterialEntry> _materials;
+    std::vector<std::string> _pendingMaterialRemovals;
     HdSilkFrameState _frame;
     uint64_t _revision = 0;
 };

@@ -32,8 +32,12 @@ namespace
 {
 constexpr char SharedMeshPath[] = "/World/SharedStageProbeMesh";
 constexpr char TopologyMeshPath[] = "/World/TopologyProbeMesh";
+constexpr char MaterialPath[] = "/World/ProbeMaterial";
+constexpr char SurfaceShaderPath[] = "/World/ProbeMaterial/Surface";
+constexpr char TextureShaderPath[] = "/World/ProbeMaterial/Texture";
+constexpr char MaterialTextureAsset[] = "textures/probe-albedo.png";
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 4);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 4);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 5);
 
 openusd_render_camera AutomaticCamera()
 {
@@ -108,6 +112,20 @@ struct ParsedPage
     std::vector<std::string> upsert_paths;
     std::vector<std::string> remove_paths;
     std::vector<ParsedMeshIdentity> mesh_identities;
+    uint32_t material_upsert_count = 0;
+    uint32_t material_remove_count = 0;
+    bool material_valid = true;
+    bool found_material_upsert = false;
+    std::string material_path;
+    std::string shared_material_binding;
+    uint32_t material_surface_kind = 0;
+    uint32_t material_scalar_count = 0;
+    uint32_t material_texture_count = 0;
+    float material_roughness = -1.0F;
+    std::string material_texture_asset;
+    std::string material_texture_uv;
+    uint32_t material_texture_parameter = 0;
+    std::vector<std::string> material_remove_paths;
     int32_t frame_width = 0;
     int32_t frame_height = 0;
     std::array<double, 16> frame_view{};
@@ -371,6 +389,10 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                         result.shared_topology_revision = topologyRevision;
                         result.shared_triangle_count = triangleCount;
                         result.shared_subprims = std::move(subprims);
+                        result.shared_material_binding.assign(
+                            reinterpret_cast<const char*>(
+                                data + subprimOffset + subprimBytes),
+                            materialPathSize);
                     }
                     else if (path == TopologyMeshPath)
                     {
@@ -400,6 +422,116 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     pathSize);
                 result.remove_paths.push_back(path);
                 result.found_shared_remove = path == SharedMeshPath;
+            }
+        }
+        else if (type == OPENUSD_SILK_COMMAND_MATERIAL_UPSERT)
+        {
+            ++result.material_upsert_count;
+            uint64_t stableHash = 0;
+            uint32_t pathSize = 0;
+            uint32_t surfaceKind = 0;
+            uint32_t scalarCount = 0;
+            uint32_t textureCount = 0;
+            constexpr size_t pathOffset = 32;
+            if (!ReadValue(data, size, offset + 8, &stableHash) ||
+                !ReadValue(data, size, offset + 16, &pathSize) ||
+                !ReadValue(data, size, offset + 20, &surfaceKind) ||
+                !ReadValue(data, size, offset + 24, &scalarCount) ||
+                !ReadValue(data, size, offset + 28, &textureCount))
+            {
+                result.material_valid = false;
+                offset += byteSize;
+                ++result.parsed_count;
+                continue;
+            }
+            size_t cursor = pathOffset;
+            bool valid = AddSize(&cursor, pathSize);
+            const std::string path(
+                reinterpret_cast<const char*>(data + offset + pathOffset),
+                pathSize);
+            float roughness = -1.0F;
+            for (uint32_t scalar = 0; valid && scalar < scalarCount; ++scalar)
+            {
+                uint32_t parameter = 0;
+                uint32_t componentCount = 0;
+                const size_t entry = offset + cursor;
+                valid = ReadValue(data, size, entry, &parameter) &&
+                    ReadValue(data, size, entry + 4, &componentCount) &&
+                    componentCount >= 1 && componentCount <= 4;
+                if (valid && parameter == OPENUSD_SILK_MATERIAL_ROUGHNESS)
+                {
+                    valid = ReadValue(data, size, entry + 8, &roughness);
+                }
+                size_t valueBytes = 0;
+                valid = valid &&
+                    MultiplySize(componentCount, sizeof(float), &valueBytes) &&
+                    AddSize(&cursor, 8) &&
+                    AddSize(&cursor, valueBytes);
+            }
+            std::string textureAsset;
+            std::string textureUv;
+            uint32_t textureParameter = 0;
+            for (uint32_t texture = 0; valid && texture < textureCount; ++texture)
+            {
+                uint32_t parameter = 0;
+                uint32_t assetSize = 0;
+                uint32_t uvSize = 0;
+                const size_t entry = offset + cursor;
+                valid = ReadValue(data, size, entry, &parameter) &&
+                    ReadValue(data, size, entry + 16, &assetSize) &&
+                    ReadValue(data, size, entry + 20, &uvSize) &&
+                    assetSize != 0;
+                if (valid && texture == 0)
+                {
+                    textureParameter = parameter;
+                    textureAsset.assign(
+                        reinterpret_cast<const char*>(data + entry + 76),
+                        assetSize);
+                    textureUv.assign(
+                        reinterpret_cast<const char*>(data + entry + 76 + assetSize),
+                        uvSize);
+                }
+                valid = valid &&
+                    AddSize(&cursor, 76) &&
+                    AddSize(&cursor, assetSize) &&
+                    AddSize(&cursor, uvSize);
+            }
+            // Requiring the exact size means an unaccounted byte fails here rather
+            // than surfacing as a silently mis-read parameter later.
+            valid = valid && cursor == byteSize &&
+                !path.empty() && path.front() == '/' &&
+                stableHash == ComputeStableHash(path);
+            result.material_valid &= valid;
+            if (valid)
+            {
+                result.found_material_upsert = true;
+                result.material_path = path;
+                result.material_surface_kind = surfaceKind;
+                result.material_scalar_count = scalarCount;
+                result.material_texture_count = textureCount;
+                result.material_roughness = roughness;
+                result.material_texture_asset = std::move(textureAsset);
+                result.material_texture_uv = std::move(textureUv);
+                result.material_texture_parameter = textureParameter;
+            }
+        }
+        else if (type == OPENUSD_SILK_COMMAND_MATERIAL_REMOVE)
+        {
+            ++result.material_remove_count;
+            uint32_t pathSize = 0;
+            constexpr size_t pathOffset = 20;
+            if (ReadValue(data, size, offset + 16, &pathSize) &&
+                pathOffset <= byteSize &&
+                static_cast<size_t>(pathSize) ==
+                    static_cast<size_t>(byteSize) - pathOffset)
+            {
+                result.material_remove_paths.emplace_back(
+                    reinterpret_cast<const char*>(data + offset + pathOffset),
+                    pathSize);
+            }
+            else
+            {
+                result.material_valid = false;
             }
         }
         else
@@ -779,8 +911,91 @@ bool AuthorSharedMesh(
             error) == OPENUSD_STATUS_OK;
 }
 
+/// Authors a UsdPreviewSurface with one constant input and one connected
+/// UsdUVTexture, then binds it to the shared mesh. This exercises the real
+/// Hydra path end to end rather than the serializer alone: the resolution
+/// depends on Hydra building the network map from these authored opinions.
+bool AuthorSharedMaterial(openusd_stage* stage, openusd_error_buffer* error)
+{
+    return openusd_shade_define_material(stage, MaterialPath, error) ==
+            OPENUSD_STATUS_OK &&
+        openusd_shade_define_shader(stage, SurfaceShaderPath, error) ==
+            OPENUSD_STATUS_OK &&
+        openusd_shade_shader_set_source_id(
+            stage, SurfaceShaderPath, "UsdPreviewSurface", error) ==
+            OPENUSD_STATUS_OK &&
+        openusd_shade_create_input(
+            stage,
+            SurfaceShaderPath,
+            "roughness",
+            OPENUSD_SHADE_VALUE_FLOAT,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_shade_set_input_float(
+            stage, SurfaceShaderPath, "roughness", 0.375F, error) ==
+            OPENUSD_STATUS_OK &&
+        openusd_shade_create_input(
+            stage,
+            SurfaceShaderPath,
+            "diffuseColor",
+            OPENUSD_SHADE_VALUE_COLOR3F,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_shade_create_output(
+            stage,
+            SurfaceShaderPath,
+            "surface",
+            OPENUSD_SHADE_VALUE_TOKEN,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_shade_define_shader(stage, TextureShaderPath, error) ==
+            OPENUSD_STATUS_OK &&
+        openusd_shade_shader_set_source_id(
+            stage, TextureShaderPath, "UsdUVTexture", error) ==
+            OPENUSD_STATUS_OK &&
+        openusd_shade_create_input(
+            stage,
+            TextureShaderPath,
+            "file",
+            OPENUSD_SHADE_VALUE_ASSET,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_shade_set_input_string(
+            stage,
+            TextureShaderPath,
+            "file",
+            OPENUSD_SHADE_VALUE_ASSET,
+            MaterialTextureAsset,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_shade_create_output(
+            stage,
+            TextureShaderPath,
+            "rgb",
+            OPENUSD_SHADE_VALUE_FLOAT3,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_shade_connect(
+            stage,
+            SurfaceShaderPath,
+            "diffuseColor",
+            OPENUSD_SHADE_ATTRIBUTE_INPUT,
+            TextureShaderPath,
+            "rgb",
+            OPENUSD_SHADE_ATTRIBUTE_OUTPUT,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_shade_material_create_surface_output(stage, MaterialPath, error) ==
+            OPENUSD_STATUS_OK &&
+        openusd_shade_connect(
+            stage,
+            MaterialPath,
+            "surface",
+            OPENUSD_SHADE_ATTRIBUTE_OUTPUT,
+            SurfaceShaderPath,
+            "surface",
+            OPENUSD_SHADE_ATTRIBUTE_OUTPUT,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_shade_material_bind(stage, SharedMeshPath, MaterialPath, error) ==
+            OPENUSD_STATUS_OK;
+}
+
 bool EditSharedMeshPoints(
     openusd_stage* stage,
+
     float firstX,
     openusd_error_buffer* error)
 {
@@ -1133,7 +1348,8 @@ int main(int argc, char** argv)
         openusd_stage_retain(stage, &error) != OPENUSD_STATUS_OK ||
         openusd_stage_set_edit_target_session_layer(stage, &error) != OPENUSD_STATUS_OK ||
         !AuthorSharedMesh(stage, 0.0F, &error) ||
-        !AuthorTopologyMesh(stage, &error))
+        !AuthorTopologyMesh(stage, &error) ||
+        !AuthorSharedMaterial(stage, &error))
     {
         openusd_stage_release(stage);
         std::cerr << "Stage setup failed: " << errorText.data() << "\n";
@@ -1213,6 +1429,35 @@ int main(int argc, char** argv)
             << initial.frame_width << 'x' << initial.frame_height
             << " view[0]=" << initial.frame_view[0]
             << " projection[0]=" << initial.frame_projection[0] << "\n";
+        return 5;
+    }
+    // ABI v5: the bound UsdPreviewSurface must arrive resolved, and the mesh must
+    // reference it by path. Asserting both together is what proves the material
+    // Sprim, the binding, and the wire agree, rather than each in isolation.
+    if (!initial.material_valid ||
+        !initial.found_material_upsert ||
+        initial.material_upsert_count != 1 ||
+        initial.material_path != MaterialPath ||
+        initial.material_surface_kind != OPENUSD_SILK_SURFACE_PREVIEW_SURFACE ||
+        initial.material_scalar_count != 1 ||
+        initial.material_roughness != 0.375F ||
+        initial.material_texture_count != 1 ||
+        initial.material_texture_parameter !=
+            OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR ||
+        initial.material_texture_asset.find(MaterialTextureAsset) ==
+            std::string::npos ||
+        initial.shared_material_binding != MaterialPath)
+    {
+        openusd_silk_session_release(session);
+        openusd_stage_release(stage);
+        std::cerr
+            << "hdSilk material was not published as expected: path='"
+            << initial.material_path << "' kind=" << initial.material_surface_kind
+            << " scalars=" << initial.material_scalar_count
+            << " roughness=" << initial.material_roughness
+            << " textures=" << initial.material_texture_count
+            << " asset='" << initial.material_texture_asset
+            << "' binding='" << initial.shared_material_binding << "'\n";
         return 5;
     }
 

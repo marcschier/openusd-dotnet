@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 4u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 5u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 4u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -123,10 +123,95 @@ extern "C" {
 ///
 /// A removal retires exactly one (path, instance_index) identity, so a
 /// shrinking instancer emits one removal per dropped instance.
+///
+/// MATERIAL_UPSERT (type = 4), added by ABI v5:
+///   Offset Size Type     Field
+///        8    8 uint64   material_id_hash
+///       16    4 uint32   path_byte_count
+///       20    4 uint32   surface_kind (OPENUSD_SILK_SURFACE_*)
+///       24    4 uint32   scalar_count
+///       28    4 uint32   texture_count
+///       32    * uint8    path[path_byte_count] (UTF-8, no NUL)
+///        *    *          scalars[scalar_count]
+///        *    *          textures[texture_count]
+///
+/// Each scalar entry is:
+///        0    4 uint32   parameter (OPENUSD_SILK_MATERIAL_*)
+///        4    4 uint32   component_count (1..4)
+///        8    * float    value[component_count]
+///
+/// Each texture entry is:
+///        0    4 uint32   parameter (OPENUSD_SILK_MATERIAL_*)
+///        4    4 uint32   wrap_s (OPENUSD_SILK_WRAP_*)
+///        8    4 uint32   wrap_t (OPENUSD_SILK_WRAP_*)
+///       12    4 uint32   source_color_space (OPENUSD_SILK_COLOR_SPACE_*)
+///       16    4 uint32   asset_byte_count
+///       20    4 uint32   uv_primvar_byte_count
+///       24    4 uint32   component_count (1..4)
+///       28   16 float    scale[4]
+///       44   16 float    bias[4]
+///       60   16 float    fallback[4]
+///       76    * uint8    asset[asset_byte_count] (UTF-8, resolved, no NUL)
+///        *    * uint8    uv_primvar[uv_primvar_byte_count] (UTF-8, no NUL)
+///
+/// Like the vertex attribute table, both tables are keyed by an explicit
+/// parameter id, so supporting a further UsdPreviewSurface input needs a new
+/// id rather than another ABI bump. A parameter appears in at most one table:
+/// the scalar table carries its authored constant, the texture table carries
+/// its connected UsdUVTexture, and a parameter present in neither is left at
+/// the consumer's documented UsdPreviewSurface default.
+///
+/// surface_kind is OPENUSD_SILK_SURFACE_UNSUPPORTED when the bound network is
+/// not a UsdPreviewSurface. Such a material is still published, with empty
+/// tables, so the consumer can diagnose it visibly instead of silently
+/// approximating an unsupported shading graph.
+///
+/// material_id_hash is 64-bit FNV-1a over the exact path bytes and is an index
+/// only: path stays the authoritative identity, exactly as for meshes. It
+/// matches MESH_UPSERT's material_binding_hash for the same path.
+///
+/// MATERIAL_REMOVE (type = 5), added by ABI v5:
+///   uint64 material_id_hash
+///   uint32 path_byte_count
+///   uint8  path[path_byte_count]  (UTF-8, no NUL)
 #define OPENUSD_SILK_COMMAND_FRAME 1u
 #define OPENUSD_SILK_COMMAND_MESH_UPSERT 2u
 #define OPENUSD_SILK_COMMAND_MESH_REMOVE 3u
+#define OPENUSD_SILK_COMMAND_MATERIAL_UPSERT 4u
+#define OPENUSD_SILK_COMMAND_MATERIAL_REMOVE 5u
 #define OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST 1u
+
+/// Surface models the material table can describe. UNSUPPORTED is published
+/// rather than omitted so an unsupported graph is diagnosable.
+#define OPENUSD_SILK_SURFACE_UNSUPPORTED 0u
+#define OPENUSD_SILK_SURFACE_PREVIEW_SURFACE 1u
+
+/// UsdPreviewSurface inputs carried by the ABI v5 material tables.
+#define OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR 1u
+#define OPENUSD_SILK_MATERIAL_EMISSIVE_COLOR 2u
+#define OPENUSD_SILK_MATERIAL_SPECULAR_COLOR 3u
+#define OPENUSD_SILK_MATERIAL_METALLIC 4u
+#define OPENUSD_SILK_MATERIAL_ROUGHNESS 5u
+#define OPENUSD_SILK_MATERIAL_CLEARCOAT 6u
+#define OPENUSD_SILK_MATERIAL_CLEARCOAT_ROUGHNESS 7u
+#define OPENUSD_SILK_MATERIAL_OPACITY 8u
+#define OPENUSD_SILK_MATERIAL_OPACITY_THRESHOLD 9u
+#define OPENUSD_SILK_MATERIAL_IOR 10u
+#define OPENUSD_SILK_MATERIAL_NORMAL 11u
+#define OPENUSD_SILK_MATERIAL_DISPLACEMENT 12u
+#define OPENUSD_SILK_MATERIAL_OCCLUSION 13u
+#define OPENUSD_SILK_MATERIAL_USE_SPECULAR_WORKFLOW 14u
+
+/// UsdUVTexture wrap modes.
+#define OPENUSD_SILK_WRAP_BLACK 0u
+#define OPENUSD_SILK_WRAP_CLAMP 1u
+#define OPENUSD_SILK_WRAP_REPEAT 2u
+#define OPENUSD_SILK_WRAP_MIRROR 3u
+
+/// UsdUVTexture sourceColorSpace values.
+#define OPENUSD_SILK_COLOR_SPACE_AUTO 0u
+#define OPENUSD_SILK_COLOR_SPACE_RAW 1u
+#define OPENUSD_SILK_COLOR_SPACE_SRGB 2u
 
 /// Vertex attribute semantics carried by the ABI v4 attribute table. CUSTOM
 /// means the entry is identified by its authored primvar name alone.

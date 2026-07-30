@@ -390,13 +390,124 @@ void AppendMeshRemove(std::vector<uint8_t>& buffer, const HdSilkMeshKey& key)
 
     AppendCommand(buffer, OPENUSD_SILK_COMMAND_MESH_REMOVE, payload);
 }
+
+void AppendMaterialUpsert(
+    std::vector<uint8_t>& buffer,
+    const HdSilkMaterialRecord& record)
+{
+    ValidatePath(record.path);
+    if (record.surfaceKind != OPENUSD_SILK_SURFACE_UNSUPPORTED &&
+        record.surfaceKind != OPENUSD_SILK_SURFACE_PREVIEW_SURFACE)
+    {
+        throw std::invalid_argument("The hdSilk material surface kind is unknown.");
+    }
+    for (const HdSilkMaterialScalar& scalar : record.scalars)
+    {
+        if (scalar.parameter == 0 ||
+            scalar.componentCount == 0 || scalar.componentCount > 4)
+        {
+            throw std::invalid_argument(
+                "An hdSilk material scalar needs a parameter and 1 to 4 components.");
+        }
+    }
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (texture.parameter == 0 ||
+            texture.componentCount == 0 || texture.componentCount > 4)
+        {
+            throw std::invalid_argument(
+                "An hdSilk material texture needs a parameter and 1 to 4 components.");
+        }
+        if (texture.wrapS > OPENUSD_SILK_WRAP_MIRROR ||
+            texture.wrapT > OPENUSD_SILK_WRAP_MIRROR ||
+            texture.sourceColorSpace > OPENUSD_SILK_COLOR_SPACE_SRGB)
+        {
+            throw std::invalid_argument(
+                "An hdSilk material texture has an unknown wrap or color space.");
+        }
+        if (texture.asset.empty())
+        {
+            throw std::invalid_argument(
+                "An hdSilk material texture requires a resolved asset path.");
+        }
+    }
+
+    const uint32_t pathByteCount = CheckedCount(record.path.size(), "path byte count");
+    std::vector<uint8_t> payload;
+    payload.reserve(24 + pathByteCount);
+    AppendU64(payload, ComputeStableHash(record.path));
+    AppendU32(payload, pathByteCount);
+    AppendU32(payload, record.surfaceKind);
+    AppendU32(payload, CheckedCount(record.scalars.size(), "material scalar count"));
+    AppendU32(payload, CheckedCount(record.textures.size(), "material texture count"));
+    AppendBytes(payload, record.path.data(), record.path.size());
+
+    for (const HdSilkMaterialScalar& scalar : record.scalars)
+    {
+        AppendU32(payload, scalar.parameter);
+        AppendU32(payload, scalar.componentCount);
+        for (uint32_t index = 0; index < scalar.componentCount; ++index)
+        {
+            AppendF32(payload, scalar.value[index]);
+        }
+    }
+
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        AppendU32(payload, texture.parameter);
+        AppendU32(payload, texture.wrapS);
+        AppendU32(payload, texture.wrapT);
+        AppendU32(payload, texture.sourceColorSpace);
+        AppendU32(payload, CheckedCount(texture.asset.size(), "material asset byte count"));
+        AppendU32(
+            payload,
+            CheckedCount(texture.uvPrimvar.size(), "material uv primvar byte count"));
+        AppendU32(payload, texture.componentCount);
+        for (int index = 0; index < 4; ++index)
+        {
+            AppendF32(payload, texture.scale[index]);
+        }
+        for (int index = 0; index < 4; ++index)
+        {
+            AppendF32(payload, texture.bias[index]);
+        }
+        for (int index = 0; index < 4; ++index)
+        {
+            AppendF32(payload, texture.fallback[index]);
+        }
+        AppendBytes(payload, texture.asset.data(), texture.asset.size());
+        AppendBytes(payload, texture.uvPrimvar.data(), texture.uvPrimvar.size());
+    }
+
+    AppendCommand(buffer, OPENUSD_SILK_COMMAND_MATERIAL_UPSERT, payload);
+}
+
+void AppendMaterialRemove(std::vector<uint8_t>& buffer, const std::string& path)
+{
+    ValidatePath(path);
+    const uint32_t pathByteCount = CheckedCount(path.size(), "path byte count");
+    std::vector<uint8_t> payload;
+    payload.reserve(8 + 4 + pathByteCount);
+    AppendU64(payload, ComputeStableHash(path));
+    AppendU32(payload, pathByteCount);
+    AppendBytes(payload, path.data(), path.size());
+
+    AppendCommand(buffer, OPENUSD_SILK_COMMAND_MATERIAL_REMOVE, payload);
+}
 std::atomic<uint64_t> _rejectedMeshCount{0};
+std::atomic<uint64_t> _rejectedMaterialCount{0};
 }
 
 uint64_t
 HdSilkSceneState::GetRejectedMeshCount()
 {
     return _rejectedMeshCount.load(std::memory_order_relaxed);
+}
+
+uint64_t
+HdSilkSceneState::GetRejectedMaterialCount()
+{
+    return _rejectedMaterialCount.load(std::memory_order_relaxed);
 }
 
 void
@@ -488,6 +599,38 @@ HdSilkSceneState::SetFrame(const HdSilkFrameState& frame)
     _frame = frame;
 }
 
+void
+HdSilkSceneState::ReplaceMaterial(HdSilkMaterialRecord record)
+{
+    if (record.path.empty())
+    {
+        throw std::invalid_argument("An hdSilk material record requires a path.");
+    }
+    std::lock_guard<std::mutex> lock(_mutex);
+    const std::string path = record.path;
+    _MaterialEntry& entry = _materials[path];
+    entry.record = std::move(record);
+    entry.dirty = true;
+    // A queued removal for a material that is alive again must be dropped, so a
+    // rapid destroy/recreate cannot erase the replacement.
+    _pendingMaterialRemovals.erase(
+        std::remove(
+            _pendingMaterialRemovals.begin(),
+            _pendingMaterialRemovals.end(),
+            path),
+        _pendingMaterialRemovals.end());
+}
+
+void
+HdSilkSceneState::RemoveMaterial(const std::string& path)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    if (_materials.erase(path) != 0)
+    {
+        _pendingMaterialRemovals.push_back(path);
+    }
+}
+
 std::vector<uint8_t>
 HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
 {
@@ -537,6 +680,68 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
 
     AppendFrame(buffer, _frame);
     size_t appendedCommands = 1;
+
+    // Materials precede meshes so a consumer that applies the page in order
+    // always has the material available when the mesh that binds it arrives.
+    std::vector<_MaterialEntry*> dirtyMaterials;
+    dirtyMaterials.reserve(_materials.size());
+    for (auto& entry : _materials)
+    {
+        if (entry.second.dirty)
+        {
+            dirtyMaterials.push_back(&entry.second);
+        }
+    }
+    std::sort(
+        dirtyMaterials.begin(),
+        dirtyMaterials.end(),
+        [](_MaterialEntry* left, _MaterialEntry* right)
+        {
+            return Utf8PathLess(left->record.path, right->record.path);
+        });
+
+    std::vector<std::string> materialRemovals = _pendingMaterialRemovals;
+    std::sort(materialRemovals.begin(), materialRemovals.end(), Utf8PathLess);
+    materialRemovals.erase(
+        std::unique(materialRemovals.begin(), materialRemovals.end()),
+        materialRemovals.end());
+
+    for (const _MaterialEntry* entry : dirtyMaterials)
+    {
+        const size_t bufferSize = buffer.size();
+        try
+        {
+            AppendMaterialUpsert(buffer, entry->record);
+            ++appendedCommands;
+        }
+        catch (const std::exception& error)
+        {
+            buffer.resize(bufferSize);
+            _rejectedMaterialCount.fetch_add(1, std::memory_order_relaxed);
+            TF_WARN(
+                "hdSilk skipped material '%s': %s",
+                entry->record.path.c_str(),
+                error.what());
+        }
+    }
+
+    for (const std::string& path : materialRemovals)
+    {
+        const size_t bufferSize = buffer.size();
+        try
+        {
+            AppendMaterialRemove(buffer, path);
+            ++appendedCommands;
+        }
+        catch (const std::exception& error)
+        {
+            buffer.resize(bufferSize);
+            TF_WARN(
+                "hdSilk skipped removal of material '%s': %s",
+                path.c_str(),
+                error.what());
+        }
+    }
 
     for (const _Entry* entry : dirtyEntries)
     {
@@ -588,6 +793,11 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         entry->dirty = false;
     }
     _pendingRemovals.clear();
+    for (_MaterialEntry* entry : dirtyMaterials)
+    {
+        entry->dirty = false;
+    }
+    _pendingMaterialRemovals.clear();
 
     ++_revision;
     if (outRevision != nullptr)
