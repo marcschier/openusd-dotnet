@@ -174,6 +174,43 @@ public sealed class SilkMeshRendererTests
         await Assert.That(ReadSingle(device.Buffers[2].Data, 19)).IsEqualTo(0.5f);
     }
 
+    [Test]
+    public async Task PointInstancesShareUploadedPrototypeGeometry()
+    {
+        var scene = new SilkSceneState();
+        using var device = new TestGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(device);
+        byte[] frame = CreateFrameCommand();
+        byte[] firstMesh = CreateMeshCommand([1, 0, 0, 1], instanceIndex: 0);
+        byte[] secondMesh = CreateMeshCommand(
+            [1, 0, 0, 1],
+            instanceIndex: 1,
+            transform:
+            [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                2, 0, 0, 1,
+            ]);
+        byte[] page = new byte[frame.Length + firstMesh.Length + secondMesh.Length];
+        frame.CopyTo(page, 0);
+        firstMesh.CopyTo(page, frame.Length);
+        secondMesh.CopyTo(page, frame.Length + firstMesh.Length);
+
+        resources.Apply(scene, scene.Apply(page, 3, revision: 1));
+        SilkMeshGpuResource first = resources.Meshes[7];
+        SilkMeshGpuResource second = resources.Meshes[(1UL << 63) | (7UL << 32) | 1UL];
+
+        await Assert.That(device.Buffers).Count().IsEqualTo(4);
+        await Assert.That(first.VertexBuffer).IsSameReferenceAs(second.VertexBuffer);
+        await Assert.That(first.IndexBuffer).IsSameReferenceAs(second.IndexBuffer);
+        await Assert.That(first.UniformBuffer).IsNotSameReferenceAs(second.UniformBuffer);
+        await Assert.That(resources.Statistics.GeometryBuilds).IsEqualTo(1ul);
+        await Assert.That(resources.Statistics.VertexUploads).IsEqualTo(1ul);
+        await Assert.That(resources.Statistics.IndexUploads).IsEqualTo(1ul);
+        await Assert.That(resources.Statistics.MeshCount).IsEqualTo(2);
+    }
+
     private static SilkMeshData CreateMesh(
         float[] points,
         uint[] indices,
@@ -222,7 +259,10 @@ public sealed class SilkMeshRendererTests
         return bytes;
     }
 
-    private static byte[] CreateMeshCommand(float[] color)
+    private static byte[] CreateMeshCommand(
+        float[] color,
+        int instanceIndex = 0,
+        double[]? transform = null)
     {
         byte[] path = Encoding.UTF8.GetBytes("/Triangle");
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
@@ -242,6 +282,8 @@ public sealed class SilkMeshRendererTests
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(28),
             (uint)SilkTopologyKind.TriangleList);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(20), instanceIndex == 0 ? 0 : 11);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(24), instanceIndex);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), (uint)path.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44), 3);
@@ -255,7 +297,7 @@ public sealed class SilkMeshRendererTests
         {
             BinaryPrimitives.WriteDoubleLittleEndian(
                 bytes.AsSpan(72 + (i * 8)),
-                i % 5 == 0 ? 1 : 0);
+                transform is null ? i % 5 == 0 ? 1 : 0 : transform[i]);
         }
         path.CopyTo(bytes, 216);
         int pointsOffset = 216 + path.Length;

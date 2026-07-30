@@ -212,6 +212,9 @@ prototype allocates one range per resolved instance, so picking selects the inst
 actually drawn, and retiring one instance leaves the others resolvable. The prim ID and path hash
 indexes are shared by every instance of a prototype and are retired only with the last one.
 `TryGetRange(path)` resolves the non-instanced record, which is instance index zero.
+`SilkSceneGpuResources` may share the prototype vertex/index upload across same-path instance
+records, but it deliberately keeps a separate uniform buffer and pick range per instance while page
+ABI 5 still publishes one mesh record per resolved instance.
 `AllocatedRangeCount` remains a monotonic diagnostic rather than a retained-entry count, and the
 renderer does not depend on it or on `SilkMeshData.TopologyFingerprint`.
 Frame-only pages and property-only same-topology upserts leave the identity-table revision
