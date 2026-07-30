@@ -457,7 +457,7 @@ public sealed class SilkCommandParserTests
         resources.Apply(scene, firstDelta);
         resources.Apply(scene, scene.Apply(frame, 1, revision: 2));
 
-        await Assert.That(device.Buffers).Count().IsEqualTo(3);
+        await Assert.That(device.Buffers).Count().IsEqualTo(4);
         await Assert.That(resources.Meshes.ContainsKey(42)).IsTrue();
         await Assert.That(
             BinaryPrimitives.ReadSingleLittleEndian(device.Buffers[0].Data))

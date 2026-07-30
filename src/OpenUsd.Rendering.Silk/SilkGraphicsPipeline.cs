@@ -319,7 +319,10 @@ public enum SilkBindingKind
     SampledTexture = 1,
 
     /// <summary>A sampler.</summary>
-    Sampler = 2
+    Sampler = 2,
+
+    /// <summary>A read-only structured/storage buffer.</summary>
+    StorageBuffer = 3
 }
 
 /// <summary>
@@ -336,11 +339,12 @@ public readonly record struct SilkBindingSlot(
     public void Validate()
     {
         if (Kind is not (SilkBindingKind.UniformBuffer or
-            SilkBindingKind.SampledTexture or SilkBindingKind.Sampler))
+            SilkBindingKind.SampledTexture or SilkBindingKind.Sampler or
+            SilkBindingKind.StorageBuffer))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(Kind),
-                "A binding slot kind must be uniform buffer, sampled texture, or sampler.");
+                "A binding slot kind must be uniform buffer, storage buffer, sampled texture, or sampler.");
         }
         if (Kind == SilkBindingKind.UniformBuffer)
         {
@@ -390,7 +394,18 @@ public readonly record struct SilkBindingLayoutDescriptor(
         0,
         0,
         SilkCheckedShaderAssets.SceneParameters.ByteSize,
-        SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment);
+        SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment)
+    {
+        MaterialSlots =
+        [
+            new(
+                0,
+                6,
+                SilkBindingKind.StorageBuffer,
+                0,
+                SilkShaderStageVisibility.Vertex)
+        ]
+    };
 
     /// <summary>Creates a material layout from its slots.</summary>
     public static SilkBindingLayoutDescriptor ForMaterial(
@@ -404,8 +419,15 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 nameof(slots));
         }
         // Slot 0 stays the SceneParameters uniform so a material pipeline keeps the
-        // same scene constants at the same place as every existing pipeline.
-        return SceneParameters with { MaterialSlots = slots };
+        // same scene constants at the same place as every existing pipeline. The
+        // checked mesh vertex shader also always declares the instance buffer.
+        var materialSlots = new SilkBindingSlot[slots.Count + 1];
+        materialSlots[0] = SceneParameters.MaterialSlots[0];
+        for (int index = 0; index < slots.Count; index++)
+        {
+            materialSlots[index + 1] = slots[index];
+        }
+        return SceneParameters with { MaterialSlots = materialSlots };
     }
 
     /// <summary>Validates the layout.</summary>

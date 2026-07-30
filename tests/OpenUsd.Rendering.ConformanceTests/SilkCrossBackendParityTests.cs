@@ -149,10 +149,9 @@ public sealed class SilkCrossBackendParityTests
     }
 
     /// <summary>
-    /// Page ABI 3 keys retained meshes by (path, instance index) so a point-instanced
-    /// prototype publishes one record per instance. If instances collapsed back to one entry
-    /// keyed by path alone, only a single draw would survive, so the draw count is asserted
-    /// alongside the image comparison.
+    /// Shared point-instanced prototypes should preserve image coverage across backends.
+    /// D3D12 uses one hardware-instanced draw; Vulkan remains on the proven per-instance
+    /// path until its storage-buffer instancing path matches D3D12 under SwiftShader.
     /// </summary>
     [Test]
     public async Task BackendsAgreeOnPointInstancedPrototypes()
@@ -167,7 +166,7 @@ public sealed class SilkCrossBackendParityTests
         (ParityImage vulkan, int vulkanDraws) = RenderInstances(
             VulkanSilkGraphicsDevice.Create());
 
-        await Assert.That(direct3DDraws).IsEqualTo(3);
+        await Assert.That(direct3DDraws).IsEqualTo(1);
         await Assert.That(vulkanDraws).IsEqualTo(3);
 
         ParityComparisonResult result = ParityImageComparer.Compare(

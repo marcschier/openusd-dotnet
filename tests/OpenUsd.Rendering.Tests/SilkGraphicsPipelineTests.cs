@@ -29,11 +29,11 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(material.Set).IsEqualTo(0u);
         await Assert.That(material.Binding).IsEqualTo(0u);
         await Assert.That(material.UniformByteSize).IsEqualTo(80u);
-        await Assert.That(material.MaterialSlots.Count).IsEqualTo(3);
+        await Assert.That(material.MaterialSlots.Count).IsEqualTo(4);
 
-        // The default layout stays empty, so nothing existing gains slots by accident.
+        // The mesh layout includes the always-on instance buffer without multiplying permutations.
         await Assert.That(SilkBindingLayoutDescriptor.SceneParameters.MaterialSlots.Count)
-            .IsEqualTo(0);
+            .IsEqualTo(1);
     }
 
     [Test]
@@ -101,10 +101,10 @@ public sealed class SilkGraphicsPipelineTests
 
         await Assert.That(reflection).IsEqualTo(
             new SilkSceneParametersReflection(true, 0, 64, 64, 16, 80));
-        await Assert.That(dxilVertex.Code.Length).IsEqualTo(4180);
-        await Assert.That(dxilFragment.Code.Length).IsEqualTo(3832);
-        await Assert.That(spirvVertex.Code.Length).IsEqualTo(984);
-        await Assert.That(spirvFragment.Code.Length).IsEqualTo(904);
+        await Assert.That(dxilVertex.Code.Length).IsEqualTo(4908);
+        await Assert.That(dxilFragment.Code.Length).IsEqualTo(3284);
+        await Assert.That(spirvVertex.Code.Length).IsEqualTo(1548);
+        await Assert.That(spirvFragment.Code.Length).IsEqualTo(596);
         await Assert.That(dxilVertex.EntryPoint).IsEqualTo("vertexMain");
         await Assert.That(dxilFragment.EntryPoint).IsEqualTo("fragmentMain");
         await Assert.That(spirvVertex.EntryPoint).IsEqualTo("main");
@@ -237,7 +237,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
         await Assert.That(device.DisposedPipelineCount).IsEqualTo(1);
         await Assert.That(device.CreatedFragmentShaders).IsEqualTo(2);
-        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(2);
+        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(3);
     }
 
     [Test]

@@ -1148,6 +1148,10 @@ public sealed class SilkPickingTests
         {
         }
 
+        public void DrawIndexedInstanced(uint indexCount, uint instanceCount)
+        {
+        }
+
         public void EndRendering()
         {
         }
@@ -1170,8 +1174,9 @@ public sealed class SilkPickingTests
         public void SetStorageBuffer(
             uint setIndex,
             uint binding,
-            ISilkGraphicsBuffer buffer) =>
-            throw new NotSupportedException();
+            ISilkGraphicsBuffer buffer)
+        {
+        }
 
         public void SetComputeUniformBuffer(
             uint setIndex,

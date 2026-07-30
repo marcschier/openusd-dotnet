@@ -85,6 +85,36 @@ public sealed class SilkPageAbiVersionContractTests
         await Assert.That(uint.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture)).IsEqualTo(locked);
     }
 
+    [Test]
+    public async Task NativeProbeStaticAssertMatchesTheLockedRenderCommandAbi()
+    {
+        // The probe's static_assert is a fifth independent statement of the page
+        // ABI, and it was missing from this file's original coverage. That gap
+        // was not theoretical: a change once bumped the header, lock, parser and
+        // package constant to 6 while leaving the probe at 5, which would have
+        // failed the native build, and was only caught by reading the diff.
+        string root = FindRepositoryRoot();
+        string probe = await File.ReadAllTextAsync(
+            Path.Combine(root, "native", "hdSilk", "tests", "hdsilk_probe.cpp"));
+        Match match = Regex.Match(
+            probe,
+            @"static_assert\(OPENUSD_SILK_PAGE_ABI_VERSION\s*==\s*(\d+)\)",
+            RegexOptions.None,
+            TimeSpan.FromSeconds(5));
+        await Assert.That(match.Success).IsTrue();
+
+        using JsonDocument lockFile = JsonDocument.Parse(
+            await File.ReadAllTextAsync(
+                Path.Combine(root, "eng", "openusd.lock.json")));
+        uint locked = lockFile.RootElement
+            .GetProperty("abi")
+            .GetProperty("renderCommands")
+            .GetUInt32();
+
+        await Assert.That(uint.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture))
+            .IsEqualTo(locked);
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

@@ -542,6 +542,7 @@ public sealed partial class MetalSilkGraphicsDevice
                                 command.Binding,
                                 SilkBindingKind.SampledTexture,
                                 command.Texture,
+                                null,
                                 null));
                         break;
                     case SilkGraphicsCommandKind.SetSampler:
@@ -552,9 +553,11 @@ public sealed partial class MetalSilkGraphicsDevice
                                 command.Binding,
                                 SilkBindingKind.Sampler,
                                 null,
-                                command.Sampler));
+                                command.Sampler,
+                                null));
                         break;
                     case SilkGraphicsCommandKind.DrawIndexed:
+                    case SilkGraphicsCommandKind.DrawIndexedInstanced:
                         if (!rendering || colorAttachment is null ||
                             depthAttachment is null ||
                             (currentPipeline is null &&
@@ -672,7 +675,10 @@ public sealed partial class MetalSilkGraphicsDevice
                                     command.IndexCount,
                                     MTLIndexType.UInt32,
                                     indexBuffer.Buffer,
-                                    0);
+                                    0,
+                                    command.Kind == SilkGraphicsCommandKind.DrawIndexedInstanced
+                                        ? command.ElementCount
+                                        : 1);
                                 encoder.EndEncoding();
                             }
                             finally
@@ -702,6 +708,17 @@ public sealed partial class MetalSilkGraphicsDevice
                     case SilkGraphicsCommandKind.SetStorageBuffer:
                         storageBuffer = command.Buffer!;
                         storageBuffer.ThrowIfDisposed();
+                        if (rendering && currentPipeline is not null)
+                        {
+                            RecordMaterialBinding(
+                                materialBindings,
+                                new MetalMaterialBinding(
+                                    command.Binding,
+                                    SilkBindingKind.StorageBuffer,
+                                    null,
+                                    null,
+                                    storageBuffer));
+                        }
                         break;
                     case SilkGraphicsCommandKind.SetComputeUniformBuffer:
                         computeUniformBuffer = command.Buffer!;
@@ -885,6 +902,12 @@ public sealed partial class MetalSilkGraphicsDevice
         foreach (MetalMaterialBinding binding in bindings)
         {
             _ = layout.RequireMaterialSlot(0, binding.Binding, binding.Kind);
+            if (binding.Kind == SilkBindingKind.StorageBuffer)
+            {
+                encoder.SetVertexBuffer(binding.Buffer!.Buffer, 0, binding.Binding);
+                encoder.SetFragmentBuffer(binding.Buffer.Buffer, 0, binding.Binding);
+                continue;
+            }
             if (binding.Kind == SilkBindingKind.SampledTexture)
             {
                 encoder.SetFragmentTexture(binding.Texture!.Texture, binding.Binding);
@@ -1081,7 +1104,8 @@ internal readonly record struct MetalMaterialBinding(
     uint Binding,
     SilkBindingKind Kind,
     MetalSilkGraphicsTexture? Texture,
-    MetalSilkGraphicsSampler? Sampler);
+    MetalSilkGraphicsSampler? Sampler,
+    MetalSilkGraphicsBuffer? Buffer);
 
 [SupportedOSPlatform("macos")]
 internal sealed class MetalSilkGraphicsSampler(
@@ -1418,6 +1442,13 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
         _commands.Add(MetalGraphicsCommand.DrawIndexed(indexCount));
     }
 
+    public void DrawIndexedInstanced(uint indexCount, uint instanceCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(instanceCount);
+        DrawIndexed(indexCount);
+        _commands[^1] = MetalGraphicsCommand.DrawIndexedInstanced(indexCount, instanceCount);
+    }
+
     public void EndRendering()
     {
         ThrowIfRendering();
@@ -1603,10 +1634,24 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
         uint binding,
         ISilkGraphicsBuffer buffer)
     {
-        ThrowIfOutsideRendering();
+        ThrowIfUnavailable();
         MetalSilkGraphicsBuffer metalBuffer = ValidateBuffer(buffer);
-        if (setIndex != 0 || binding != 0 ||
-            !metalBuffer.Usage.HasFlag(SilkBufferUsage.Storage))
+        if (!metalBuffer.Usage.HasFlag(SilkBufferUsage.Storage))
+        {
+            throw new ArgumentException(
+                "A storage binding requires a storage buffer.",
+                nameof(buffer));
+        }
+        if (_rendering)
+        {
+            RequireMaterialSlot(setIndex, binding, SilkBindingKind.StorageBuffer);
+            _commands.Add(MetalGraphicsCommand.SetStorageBuffer(
+                setIndex,
+                binding,
+                metalBuffer));
+            return;
+        }
+        if (setIndex != 0 || binding != 0)
         {
             throw new ArgumentException(
                 "outputValues requires a storage buffer at set 0, binding 0.",
@@ -1890,6 +1935,12 @@ internal readonly record struct MetalGraphicsCommand(
 
     internal static MetalGraphicsCommand DrawIndexed(uint indexCount) =>
         Create(SilkGraphicsCommandKind.DrawIndexed, indexCount: indexCount);
+
+    internal static MetalGraphicsCommand DrawIndexedInstanced(uint indexCount, uint instanceCount) =>
+        Create(
+            SilkGraphicsCommandKind.DrawIndexedInstanced,
+            indexCount: indexCount,
+            elementCount: instanceCount);
 
     internal static MetalGraphicsCommand EndRendering() =>
         Create(SilkGraphicsCommandKind.EndRendering);

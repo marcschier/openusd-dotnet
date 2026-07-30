@@ -1553,3 +1553,6 @@ static OpenUsd.Rendering.Silk.SilkShaderPermutationId.operator !=(OpenUsd.Render
 static OpenUsd.Rendering.Silk.SilkShaderPermutationId.operator ==(OpenUsd.Rendering.Silk.SilkShaderPermutationId left, OpenUsd.Rendering.Silk.SilkShaderPermutationId right) -> bool
 OpenUsd.Rendering.Silk.ISilkGraphicsPipelineLease
 OpenUsd.Rendering.Silk.ISilkGraphicsPipelineLease.Pipeline.get -> OpenUsd.Rendering.Silk.ISilkGraphicsPipeline!
+OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.DrawIndexedInstanced(uint indexCount, uint instanceCount) -> void
+OpenUsd.Rendering.Silk.SilkBindingKind.StorageBuffer = 3 -> OpenUsd.Rendering.Silk.SilkBindingKind
+OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.DrawIndexedInstanced = 25 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind

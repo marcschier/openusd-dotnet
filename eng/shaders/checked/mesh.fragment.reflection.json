@@ -155,6 +155,23 @@
           "scalarType": "float32"
         }
       }
+    },
+    {
+      "name": "tint",
+      "semantic": {
+        "name": "COLOR",
+        "index": 0,
+        "systemValue": false
+      },
+      "location": 1,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
     }
   ],
   "stageOutputs": [

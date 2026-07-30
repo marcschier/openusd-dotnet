@@ -851,6 +851,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                                 command.Binding,
                                 SilkBindingKind.SampledTexture,
                                 materialTexture,
+                                null,
                                 null));
                         break;
                     case SilkGraphicsCommandKind.SetSampler:
@@ -861,9 +862,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                                 command.Binding,
                                 SilkBindingKind.Sampler,
                                 null,
-                                command.Sampler));
+                                command.Sampler,
+                                null));
                         break;
                     case SilkGraphicsCommandKind.DrawIndexed:
+                    case SilkGraphicsCommandKind.DrawIndexedInstanced:
                         if (!rendering || colorAttachment is null ||
                             depthAttachment is null ||
                             (pipeline is null &&
@@ -879,13 +882,33 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         nativeCommands->SetGraphicsRootConstantBufferView(
                             0,
                             uniformBuffer.Resource->GetGPUVirtualAddress());
-                        if (materialBindings.Count != 0 && pipeline is not null)
+                        if (pipeline is not null)
                         {
+                            IReadOnlyList<D3D12MaterialBinding> bindingsForDraw = materialBindings;
+                            if (!HasStorageBinding(materialBindings, 6))
+                            {
+                                PrepareBufferState(
+                                    nativeCommands,
+                                    finalBufferStates,
+                                    pendingUavWrites,
+                                    uniformBuffer,
+                                    ResourceStates.NonPixelShaderResource);
+                                bindingsForDraw =
+                                [
+                                    .. materialBindings,
+                                    new D3D12MaterialBinding(
+                                        6,
+                                        SilkBindingKind.StorageBuffer,
+                                        null,
+                                        null,
+                                        uniformBuffer)
+                                ];
+                            }
                             BindMaterialDescriptorTables(
                                 nativeCommands,
                                 descriptorHeaps,
                                 pipeline.BindingLayout,
-                                materialBindings,
+                                bindingsForDraw,
                                 materialHeaps);
                         }
                         if (pickPipeline is not null)
@@ -901,7 +924,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             D3DPrimitiveTopology.D3DPrimitiveTopologyTrianglelist);
                         nativeCommands->DrawIndexedInstanced(
                             command.IndexCount,
-                            1,
+                            command.Kind == SilkGraphicsCommandKind.DrawIndexedInstanced
+                                ? command.ElementCount
+                                : 1,
                             0,
                             0,
                             0);
@@ -991,6 +1016,23 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     case SilkGraphicsCommandKind.SetStorageBuffer:
                         storageBuffer = command.Buffer!;
                         storageBuffer.ThrowIfDisposed();
+                        if (rendering && pipeline is not null)
+                        {
+                            PrepareBufferState(
+                                nativeCommands,
+                                finalBufferStates,
+                                pendingUavWrites,
+                                storageBuffer,
+                                ResourceStates.NonPixelShaderResource);
+                            RecordMaterialBinding(
+                                materialBindings,
+                                new D3D12MaterialBinding(
+                                    command.Binding,
+                                    SilkBindingKind.StorageBuffer,
+                                    null,
+                                    null,
+                                    storageBuffer));
+                        }
                         break;
                     case SilkGraphicsCommandKind.SetComputeUniformBuffer:
                         computeUniformBuffer = command.Buffer!;
@@ -1239,7 +1281,12 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         IReadOnlyList<D3D12MaterialBinding> bindings,
         List<nint> retainedHeaps)
     {
-        if (MaterialDescriptorTables is { } descriptorTables &&
+        bool hasStorageBinding = false;
+        foreach (D3D12MaterialBinding binding in bindings)
+        {
+            hasStorageBinding |= binding.Kind == SilkBindingKind.StorageBuffer;
+        }
+        if (!hasStorageBinding && MaterialDescriptorTables is { } descriptorTables &&
             TryBindSharedMaterialDescriptorTables(
                 commands,
                 descriptorHeaps,
@@ -1282,11 +1329,10 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         {
             descriptorHeaps[heapCount++] = samplerHeap;
         }
-        if (heapCount == 0)
+        if (heapCount != 0)
         {
-            return;
+            commands->SetDescriptorHeaps(heapCount, descriptorHeaps);
         }
-        commands->SetDescriptorHeaps(heapCount, descriptorHeaps);
         uint viewIncrement = _device->GetDescriptorHandleIncrementSize(
             DescriptorHeapType.CbvSrvUav);
         uint samplerIncrement = _device->GetDescriptorHandleIncrementSize(
@@ -1300,6 +1346,13 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 0,
                 binding.Binding,
                 binding.Kind) + 1;
+            if (binding.Kind == SilkBindingKind.StorageBuffer)
+            {
+                commands->SetGraphicsRootShaderResourceView(
+                    rootParameter,
+                    binding.Buffer!.Resource->GetGPUVirtualAddress());
+                continue;
+            }
             if (binding.Kind == SilkBindingKind.SampledTexture)
             {
                 CpuDescriptorHandle destination = new(
@@ -1333,6 +1386,21 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     (samplerIndex * samplerIncrement)));
             samplerIndex++;
         }
+    }
+
+    private static bool HasStorageBinding(
+        IReadOnlyList<D3D12MaterialBinding> bindings,
+        uint binding)
+    {
+        foreach (D3D12MaterialBinding materialBinding in bindings)
+        {
+            if (materialBinding.Binding == binding &&
+                materialBinding.Kind == SilkBindingKind.StorageBuffer)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private bool TryBindSharedMaterialDescriptorTables(
@@ -2012,6 +2080,13 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
         _commands.Add(D3D12GraphicsCommand.DrawIndexed(indexCount));
     }
 
+    public void DrawIndexedInstanced(uint indexCount, uint instanceCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(instanceCount);
+        DrawIndexed(indexCount);
+        _commands[^1] = D3D12GraphicsCommand.DrawIndexedInstanced(indexCount, instanceCount);
+    }
+
     public void EndRendering()
     {
         ThrowIfRendering();
@@ -2043,10 +2118,24 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
         uint binding,
         ISilkGraphicsBuffer buffer)
     {
-        ThrowIfOutsideRendering();
+        ThrowIfUnavailable();
         D3D12SilkGraphicsBuffer d3d12Buffer = ValidateBuffer(buffer);
-        if (setIndex != 0 || binding != 0 ||
-            !d3d12Buffer.Usage.HasFlag(SilkBufferUsage.Storage))
+        if (!d3d12Buffer.Usage.HasFlag(SilkBufferUsage.Storage))
+        {
+            throw new ArgumentException(
+                "A storage binding requires a storage buffer.",
+                nameof(buffer));
+        }
+        if (_rendering)
+        {
+            RequireMaterialSlot(setIndex, binding, SilkBindingKind.StorageBuffer);
+            _commands.Add(D3D12GraphicsCommand.SetStorageBuffer(
+                setIndex,
+                binding,
+                d3d12Buffer));
+            return;
+        }
+        if (setIndex != 0 || binding != 0)
         {
             throw new ArgumentException(
                 "outputValues requires a storage buffer at set 0, binding 0.",
@@ -2218,7 +2307,8 @@ internal readonly record struct D3D12MaterialBinding(
     uint Binding,
     SilkBindingKind Kind,
     D3D12SilkGraphicsTexture? Texture,
-    D3D12SilkGraphicsSampler? Sampler);
+    D3D12SilkGraphicsSampler? Sampler,
+    D3D12SilkGraphicsBuffer? Buffer);
 
 internal readonly record struct D3D12GraphicsCommand(
     SilkGraphicsCommandKind Kind,
@@ -2402,6 +2492,12 @@ internal readonly record struct D3D12GraphicsCommand(
 
     internal static D3D12GraphicsCommand DrawIndexed(uint indexCount) =>
         Create(SilkGraphicsCommandKind.DrawIndexed, indexCount: indexCount);
+
+    internal static D3D12GraphicsCommand DrawIndexedInstanced(uint indexCount, uint instanceCount) =>
+        Create(
+            SilkGraphicsCommandKind.DrawIndexedInstanced,
+            indexCount: indexCount,
+            elementCount: instanceCount);
 
     internal static D3D12GraphicsCommand EndRendering() =>
         Create(SilkGraphicsCommandKind.EndRendering);

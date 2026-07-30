@@ -73,6 +73,19 @@
             "binding": 0,
             "set": 0
           }
+        },
+        {
+          "name": "instanceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 6,
+            "set": 0
+          }
         }
       ]
     },

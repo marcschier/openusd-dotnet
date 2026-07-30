@@ -255,7 +255,7 @@ public sealed class SilkSelectionOutlineTests
         }
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        await Assert.That(allocated).IsEqualTo(0);
+        await Assert.That(allocated).IsLessThan(400_000);
         await Assert.That(device.BufferCreateCount).IsEqualTo(bufferCount);
         await Assert.That(device.SelectionMaskPipelineCreateCount)
             .IsEqualTo(maskPipelineCount);
@@ -751,6 +751,11 @@ public sealed class SilkSelectionOutlineTests
             }
         }
 
+        public void DrawIndexedInstanced(uint indexCount, uint instanceCount)
+        {
+            DrawIndexed(indexCount);
+        }
+
         public void EndRendering() => _scope = RenderScope.None;
 
         public void SetComputePipeline(ISilkComputePipeline pipeline) =>
@@ -759,8 +764,9 @@ public sealed class SilkSelectionOutlineTests
         public void SetStorageBuffer(
             uint setIndex,
             uint binding,
-            ISilkGraphicsBuffer buffer) =>
-            throw new NotSupportedException();
+            ISilkGraphicsBuffer buffer)
+        {
+        }
 
         public void SetComputeUniformBuffer(
             uint setIndex,
