@@ -239,13 +239,15 @@ buffers, and selection crosses the ABI once as a packed update.
 ### Hydra to Silk
 
 `openusd_hdsilk` session ABI 4 registers the hdSilk Hydra plugin against the exact retained stage.
-Each sync returns a native-owned immutable page. Managed code validates page ABI 3, copies the page
+Each sync returns a native-owned immutable page. Managed code validates page ABI 4, copies the page
 bytes once, and releases the native page.
 
 The wire format is pointer-free and little-endian. Commands currently describe the frame,
 triangulated mesh upserts, and mesh removals. Paths are length-prefixed UTF-8 and remain the
-authoritative identity; hashes are collision-checked indexes. Page ABI 3 makes instance identity
-meaningful, so a retained mesh is keyed by `(path, instance index)` rather than by path alone.
+authoritative identity; hashes are collision-checked indexes. Page ABI 3 made instance identity
+meaningful, so a retained mesh is keyed by `(path, instance index)` rather than by path alone. Page
+ABI 4 adds the vertex attribute table and the material binding, which is how authored normals,
+texture coordinates and arbitrary primvars travel without a further ABI bump.
 
 hdSilk creates mesh Rprims, an `extComputation` Sprim so skinned points can be pulled from computed
 primvars, and a point instancer that resolves one record per instance. A prim that cannot be

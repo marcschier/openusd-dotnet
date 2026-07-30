@@ -178,7 +178,7 @@ commit and artifact set.
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 3 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 4 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 Instance identity has dedicated coverage. One case serializes a point-instanced scene and
