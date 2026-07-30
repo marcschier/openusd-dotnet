@@ -163,15 +163,21 @@ public sealed class SilkMeshRendererTests
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         await Assert.That(second).IsSameReferenceAs(first);
-        await Assert.That(device.Buffers).Count().IsEqualTo(4);
+        // One vertex, one index and one uniform. No instance buffer: it is only
+        // allocated by an instanced draw, and this test never renders.
+        await Assert.That(device.Buffers).Count().IsEqualTo(3);
         await Assert.That(firstUniformUploads).IsEqualTo(1);
         await Assert.That(secondUniformUploads).IsEqualTo(1);
         await Assert.That(steadyUploads).IsEqualTo(0);
         await Assert.That(allocated).IsEqualTo(0);
         await Assert.That(resources.Statistics.GeometryBuilds).IsEqualTo(1ul);
         await Assert.That(resources.Statistics.UniformUploads).IsEqualTo(2ul);
-        await Assert.That(ReadSingle(device.Buffers[3].Data, 17)).IsEqualTo(1f);
-        await Assert.That(ReadSingle(device.Buffers[3].Data, 19)).IsEqualTo(0.5f);
+        // Resolved from the mesh rather than by buffer index: positional indexing
+        // silently pointed at the wrong buffer once the instance buffer stopped
+        // being allocated eagerly.
+        var uniform = (TestGraphicsBuffer)second.UniformBuffer;
+        await Assert.That(ReadSingle(uniform.Data, 17)).IsEqualTo(1f);
+        await Assert.That(ReadSingle(uniform.Data, 19)).IsEqualTo(0.5f);
     }
 
     [Test]
@@ -201,7 +207,9 @@ public sealed class SilkMeshRendererTests
         SilkMeshGpuResource first = resources.Meshes[7];
         SilkMeshGpuResource second = resources.Meshes[(1UL << 63) | (7UL << 32) | 1UL];
 
-        await Assert.That(device.Buffers).Count().IsEqualTo(5);
+        // One shared vertex and index plus one uniform per instance. The
+        // per-instance transform buffer is allocated only by an instanced draw.
+        await Assert.That(device.Buffers).Count().IsEqualTo(4);
         await Assert.That(first.VertexBuffer).IsSameReferenceAs(second.VertexBuffer);
         await Assert.That(first.IndexBuffer).IsSameReferenceAs(second.IndexBuffer);
         await Assert.That(first.UniformBuffer).IsNotSameReferenceAs(second.UniformBuffer);

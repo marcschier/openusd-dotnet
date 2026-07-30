@@ -629,11 +629,15 @@ public sealed class SilkMeshRenderer :
             }
             batch.Add(mesh);
         }
-        bool useInstancedDraws = _device.Backend != SilkGraphicsBackend.Vulkan;
+        bool instancingSupported = _device.Backend != SilkGraphicsBackend.Vulkan;
         foreach (KeyValuePair<SilkMeshGpuGeometryResource, List<SilkMeshGpuResource>> batch in batches)
         {
             SilkMeshGpuResource first = batch.Value[0];
-            if (!useInstancedDraws)
+            // A batch of one gains nothing from instancing and would cost an
+            // instance storage buffer per unique geometry, which for a scene of
+            // mostly distinct meshes is a pure allocation regression. The
+            // per-mesh uniform path already carries the single transform.
+            if (!instancingSupported || batch.Value.Count < 2)
             {
                 commands.SetVertexBuffer(first.VertexBuffer);
                 commands.SetIndexBuffer(first.IndexBuffer);
@@ -653,7 +657,7 @@ public sealed class SilkMeshRenderer :
             commands.SetVertexBuffer(first.VertexBuffer);
             commands.SetIndexBuffer(first.IndexBuffer);
             commands.SetUniformBuffer(0, 0, first.UniformBuffer);
-            commands.SetStorageBuffer(0, 6, batch.Key.InstanceBuffer);
+            commands.SetStorageBuffer(0, 6, batch.Key.RequireInstanceBuffer());
             commands.DrawIndexedInstanced(first.IndexCount, checked((uint)batch.Value.Count));
             drawCount++;
         }
