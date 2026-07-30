@@ -100,7 +100,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         RegisterDependentObject();
         try
         {
-            CreateRootSignature(out rootSignature);
+            CreateRootSignature(program.BindingLayout.Descriptor, out rootSignature);
             CreatePipelineState(
                 descriptor,
                 program,
@@ -127,15 +127,58 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         }
     }
 
-    private void CreateRootSignature(out ID3D12RootSignature* rootSignature)
+    private static ShaderVisibility ToD3D12Visibility(SilkShaderStageVisibility visibility)
     {
-        var parameter = new RootParameter(
+        bool vertex = visibility.HasFlag(SilkShaderStageVisibility.Vertex);
+        bool fragment = visibility.HasFlag(SilkShaderStageVisibility.Fragment);
+        if (vertex && !fragment)
+        {
+            return ShaderVisibility.Vertex;
+        }
+        return !vertex && fragment ? ShaderVisibility.Pixel : ShaderVisibility.All;
+    }
+
+    private void CreateRootSignature(
+        SilkBindingLayoutDescriptor layout,
+        out ID3D12RootSignature* rootSignature)
+    {
+        IReadOnlyList<SilkBindingSlot> slots = layout.MaterialSlots ?? [];
+        // Root parameter 0 stays the SceneParameters CBV at b0 so every existing
+        // pipeline keeps its exact root signature. Material slots become descriptor
+        // ranges in one table each, which is what a descriptor heap binds.
+        int parameterCount = 1 + slots.Count;
+        RootParameter* parameters = stackalloc RootParameter[parameterCount];
+        DescriptorRange* ranges = stackalloc DescriptorRange[Math.Max(slots.Count, 1)];
+        parameters[0] = new RootParameter(
             RootParameterType.TypeCbv,
             shaderVisibility: ShaderVisibility.All,
             descriptor: new RootDescriptor(0, 0));
+        for (int index = 0; index < slots.Count; index++)
+        {
+            SilkBindingSlot slot = slots[index];
+            if (slot.Kind == SilkBindingKind.UniformBuffer)
+            {
+                parameters[index + 1] = new RootParameter(
+                    RootParameterType.TypeCbv,
+                    shaderVisibility: ToD3D12Visibility(slot.Visibility),
+                    descriptor: new RootDescriptor(slot.Binding, slot.Set));
+                continue;
+            }
+            ranges[index] = new DescriptorRange(
+                slot.Kind == SilkBindingKind.SampledTexture
+                    ? DescriptorRangeType.Srv
+                    : DescriptorRangeType.Sampler,
+                1,
+                slot.Binding,
+                slot.Set);
+            parameters[index + 1] = new RootParameter(
+                RootParameterType.TypeDescriptorTable,
+                shaderVisibility: ToD3D12Visibility(slot.Visibility),
+                descriptorTable: new RootDescriptorTable(1, &ranges[index]));
+        }
         var description = new RootSignatureDesc(
-            1,
-            &parameter,
+            (uint)parameterCount,
+            parameters,
             flags: RootSignatureFlags.AllowInputAssemblerInputLayout);
         ID3D10Blob* serialized = null;
         ID3D10Blob* errors = null;

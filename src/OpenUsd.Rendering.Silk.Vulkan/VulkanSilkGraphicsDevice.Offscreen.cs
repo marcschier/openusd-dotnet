@@ -975,6 +975,56 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
     }
 
+    /// <summary>
+    /// Fills <paramref name="sizes"/> with one entry per descriptor type the layout
+    /// uses, including the SceneParameters uniform buffer, and returns the count.
+    /// Returns zero when the layout declares no material slots, so the existing
+    /// single-uniform pool is used unchanged.
+    /// </summary>
+    private static uint DescribeMaterialPoolSizes(
+        SilkBindingLayoutDescriptor layout,
+        DescriptorPoolSize* sizes)
+    {
+        IReadOnlyList<SilkBindingSlot> slots = layout.MaterialSlots ?? [];
+        if (slots.Count == 0)
+        {
+            return 0;
+        }
+        uint uniformBuffers = 1;
+        uint sampledImages = 0;
+        uint samplers = 0;
+        for (int index = 0; index < slots.Count; index++)
+        {
+            switch (slots[index].Kind)
+            {
+                case SilkBindingKind.UniformBuffer:
+                    uniformBuffers++;
+                    break;
+                case SilkBindingKind.SampledTexture:
+                    sampledImages++;
+                    break;
+                default:
+                    samplers++;
+                    break;
+            }
+        }
+        uint count = 0;
+        sizes[count++] = new DescriptorPoolSize(
+            DescriptorType.UniformBuffer,
+            uniformBuffers);
+        if (sampledImages != 0)
+        {
+            sizes[count++] = new DescriptorPoolSize(
+                DescriptorType.SampledImage,
+                sampledImages);
+        }
+        if (samplers != 0)
+        {
+            sizes[count++] = new DescriptorPoolSize(DescriptorType.Sampler, samplers);
+        }
+        return count;
+    }
+
     private VulkanDrawSubmissionResource CreateDrawSubmissionResource(
         VulkanDrawState command)
     {
@@ -990,6 +1040,18 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 PoolSizeCount = 1,
                 PPoolSizes = &poolSize
             };
+            DescriptorPoolSize* materialSizes = stackalloc DescriptorPoolSize[3];
+            uint materialSizeCount = DescribeMaterialPoolSizes(
+                command.Pipeline.BindingLayout,
+                materialSizes);
+            if (materialSizeCount != 0)
+            {
+                // The set layout now also declares the material slots, so the pool has
+                // to supply their descriptor types or vkAllocateDescriptorSets fails
+                // with ErrorOutOfPoolMemory.
+                poolInfo.PoolSizeCount = materialSizeCount;
+                poolInfo.PPoolSizes = materialSizes;
+            }
             ThrowIfFailed(
                 _api.CreateDescriptorPool(
                     _device,

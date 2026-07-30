@@ -11,6 +11,81 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkGraphicsPipelineTests
 {
     [Test]
+    public async Task MaterialLayoutKeepsSceneParametersAndValidatesItsSlots()
+    {
+        SilkBindingLayoutDescriptor material = SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(
+                0, 1, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+            new SilkBindingSlot(
+                0, 2, SilkBindingKind.Sampler, 0, SilkShaderStageVisibility.Fragment),
+            new SilkBindingSlot(
+                0, 3, SilkBindingKind.UniformBuffer, 32, SilkShaderStageVisibility.Fragment),
+        ]);
+        material.Validate();
+
+        // SceneParameters must stay exactly where every existing pipeline expects it,
+        // so a material pipeline is additive rather than a different contract.
+        await Assert.That(material.Set).IsEqualTo(0u);
+        await Assert.That(material.Binding).IsEqualTo(0u);
+        await Assert.That(material.UniformByteSize).IsEqualTo(80u);
+        await Assert.That(material.MaterialSlots.Count).IsEqualTo(3);
+
+        // The default layout stays empty, so nothing existing gains slots by accident.
+        await Assert.That(SilkBindingLayoutDescriptor.SceneParameters.MaterialSlots.Count)
+            .IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task MaterialLayoutRejectsCollisionsAndMalformedSlots()
+    {
+        // Colliding slots would silently overwrite one another in a descriptor set.
+        await Assert.That(() => SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(
+                0, 1, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+            new SilkBindingSlot(
+                0, 1, SilkBindingKind.Sampler, 0, SilkShaderStageVisibility.Fragment),
+        ]).Validate()).Throws<ArgumentException>();
+
+        // Set 0 binding 0 is SceneParameters and cannot be reused.
+        await Assert.That(() => SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(
+                0, 0, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+        ]).Validate()).Throws<ArgumentException>();
+
+        // A texture slot has no uniform size, and a uniform slot must have one.
+        await Assert.That(() => SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(
+                0, 1, SilkBindingKind.SampledTexture, 16, SilkShaderStageVisibility.Fragment),
+        ]).Validate()).Throws<ArgumentException>();
+        await Assert.That(() => SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(
+                0, 1, SilkBindingKind.UniformBuffer, 0, SilkShaderStageVisibility.Fragment),
+        ]).Validate()).Throws<ArgumentOutOfRangeException>();
+
+        // A slot no stage can see is a silently dead binding.
+        await Assert.That(() => SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(0, 1, SilkBindingKind.Sampler, 0, 0),
+        ]).Validate()).Throws<ArgumentException>();
+
+        // No backend binds a second set, so describing one must fail rather than
+        // silently produce a binding nothing can reach.
+        await Assert.That(() => SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(
+                1, 0, SilkBindingKind.Sampler, 0, SilkShaderStageVisibility.Fragment),
+        ]).Validate()).Throws<ArgumentException>();
+
+        await Assert.That(() => SilkBindingLayoutDescriptor.ForMaterial([]))
+            .Throws<ArgumentException>();
+    }
+
+    [Test]
     public async Task CheckedMeshAssetsExposeValidatedReflectionAndBinaries()
     {
         SilkSceneParametersReflection reflection =

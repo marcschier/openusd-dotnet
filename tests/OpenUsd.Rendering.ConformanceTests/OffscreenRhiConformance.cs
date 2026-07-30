@@ -301,6 +301,50 @@ internal static class OffscreenRhiConformance
         SilkShaderBinaryFormat shaderFormat)
     {
         const uint size = 64;
+        byte[] pixels = RenderCheckedTriangle(
+            device, shaderFormat, SilkBindingLayoutDescriptor.SceneParameters);
+        byte[] background = Pixel(pixels, size, 2, 2).ToArray();
+        byte[] interior = Pixel(pixels, size, 32, 32).ToArray();
+        await Assert.That(background.SequenceEqual(new byte[] { 0, 0, 0, 255 })).IsTrue();
+        await Assert.That(interior[0]).IsGreaterThanOrEqualTo((byte)240);
+        await Assert.That(interior[1]).IsLessThanOrEqualTo((byte)10);
+        await Assert.That(interior[2]).IsLessThanOrEqualTo((byte)10);
+        await Assert.That(interior[3]).IsGreaterThanOrEqualTo((byte)240);
+    }
+
+    internal static async Task MaterialBindingLayoutDrawsIdenticallyToSceneParameters(
+        ISilkGraphicsDevice device,
+        SilkShaderBinaryFormat shaderFormat)
+    {
+        SilkBindingLayoutDescriptor material = SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(
+                0, 1, SilkBindingKind.UniformBuffer, 64, SilkShaderStageVisibility.Fragment),
+            new SilkBindingSlot(
+                0, 2, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+            new SilkBindingSlot(
+                0, 3, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+            new SilkBindingSlot(
+                0, 4, SilkBindingKind.Sampler, 0, SilkShaderStageVisibility.Fragment),
+        ]);
+
+        byte[] baseline = RenderCheckedTriangle(
+            device, shaderFormat, SilkBindingLayoutDescriptor.SceneParameters);
+        byte[] withMaterial = RenderCheckedTriangle(device, shaderFormat, material);
+
+        // The material slots widen the root signature / descriptor set layout without
+        // changing what the shader binds, so the image must be byte-identical. A
+        // difference would mean the wider layout shifted the SceneParameters binding.
+        await Assert.That(withMaterial.SequenceEqual(baseline)).IsTrue();
+        await Assert.That(baseline.Any(static value => value != 0)).IsTrue();
+    }
+
+    private static byte[] RenderCheckedTriangle(
+        ISilkGraphicsDevice device,
+        SilkShaderBinaryFormat shaderFormat,
+        SilkBindingLayoutDescriptor layout)
+    {
+        const uint size = 64;
         using ISilkGraphicsTexture color = device.CreateTexture2D(
             SilkTextureDescriptor.ColorTarget(size, size));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
@@ -309,8 +353,7 @@ internal static class OffscreenRhiConformance
             SilkCheckedShaderAssets.LoadMeshVertex(shaderFormat));
         using ISilkGraphicsShaderModule fragmentShader = device.CreateShaderModule(
             SilkCheckedShaderAssets.LoadMeshFragment(shaderFormat));
-        using ISilkGraphicsBindingLayout bindingLayout = device.CreateBindingLayout(
-            SilkBindingLayoutDescriptor.SceneParameters);
+        using ISilkGraphicsBindingLayout bindingLayout = device.CreateBindingLayout(layout);
         using ISilkGraphicsShaderProgram program = device.CreateShaderProgram(
             new SilkShaderProgramDescriptor(
                 vertexShader,
@@ -364,13 +407,7 @@ internal static class OffscreenRhiConformance
 
         byte[] pixels = new byte[size * size * 4];
         color.ReadbackForTesting(pixels);
-        byte[] background = Pixel(pixels, size, 2, 2).ToArray();
-        byte[] interior = Pixel(pixels, size, 32, 32).ToArray();
-        await Assert.That(background.SequenceEqual(new byte[] { 0, 0, 0, 255 })).IsTrue();
-        await Assert.That(interior[0]).IsGreaterThanOrEqualTo((byte)240);
-        await Assert.That(interior[1]).IsLessThanOrEqualTo((byte)10);
-        await Assert.That(interior[2]).IsLessThanOrEqualTo((byte)10);
-        await Assert.That(interior[3]).IsGreaterThanOrEqualTo((byte)240);
+        return pixels;
     }
 
     internal static async Task IndexedDrawSubmissionLeasesResources(

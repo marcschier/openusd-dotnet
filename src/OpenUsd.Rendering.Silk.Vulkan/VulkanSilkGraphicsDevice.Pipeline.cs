@@ -66,18 +66,47 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         bool success = false;
         try
         {
-            var binding = new DescriptorSetLayoutBinding
+            IReadOnlyList<SilkBindingSlot> slots = descriptor.MaterialSlots ?? [];
+            // Set 0 binding 0 is always SceneParameters; material slots follow it in
+            // the same set, because a second set would need a second layout object
+            // and the pipeline contract binds exactly one.
+            int count = 1 + slots.Count;
+            DescriptorSetLayoutBinding* bindings =
+                stackalloc DescriptorSetLayoutBinding[count];
+            bindings[0] = new DescriptorSetLayoutBinding
             {
                 Binding = descriptor.Binding,
                 DescriptorType = DescriptorType.UniformBuffer,
                 DescriptorCount = 1,
                 StageFlags = ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit
             };
+            for (int index = 0; index < slots.Count; index++)
+            {
+                SilkBindingSlot slot = slots[index];
+                if (slot.Set != 0)
+                {
+                    throw new ArgumentException(
+                        "The Vulkan backend binds one descriptor set, so material slots must use set 0.",
+                        nameof(descriptor));
+                }
+                bindings[index + 1] = new DescriptorSetLayoutBinding
+                {
+                    Binding = slot.Binding,
+                    DescriptorType = slot.Kind switch
+                    {
+                        SilkBindingKind.UniformBuffer => DescriptorType.UniformBuffer,
+                        SilkBindingKind.SampledTexture => DescriptorType.SampledImage,
+                        _ => DescriptorType.Sampler
+                    },
+                    DescriptorCount = 1,
+                    StageFlags = ToVulkanStages(slot.Visibility)
+                };
+            }
             var createInfo = new DescriptorSetLayoutCreateInfo
             {
                 SType = StructureType.DescriptorSetLayoutCreateInfo,
-                BindingCount = 1,
-                PBindings = &binding
+                BindingCount = (uint)count,
+                PBindings = bindings
             };
             ThrowIfFailed(
                 _api.CreateDescriptorSetLayout(_device, &createInfo, null, &layout),
@@ -101,6 +130,24 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 ReleaseDependentObject();
             }
         }
+    }
+
+    private static ShaderStageFlags ToVulkanStages(SilkShaderStageVisibility visibility)
+    {
+        ShaderStageFlags flags = 0;
+        if (visibility.HasFlag(SilkShaderStageVisibility.Vertex))
+        {
+            flags |= ShaderStageFlags.VertexBit;
+        }
+        if (visibility.HasFlag(SilkShaderStageVisibility.Fragment))
+        {
+            flags |= ShaderStageFlags.FragmentBit;
+        }
+        if (visibility.HasFlag(SilkShaderStageVisibility.Compute))
+        {
+            flags |= ShaderStageFlags.ComputeBit;
+        }
+        return flags;
     }
 
     /// <inheritdoc/>
@@ -553,6 +600,13 @@ internal sealed class VulkanSilkGraphicsPipeline(
     internal Pipeline Pipeline => _pipeline;
 
     internal DescriptorSetLayout DescriptorSetLayout { get; } = descriptorSetLayout;
+
+    /// <summary>
+    /// Gets the binding layout this pipeline was created from, so a submission can
+    /// size its descriptor pool for the slots the layout actually declares.
+    /// </summary>
+    internal SilkBindingLayoutDescriptor BindingLayout { get; } =
+        descriptor.Program.BindingLayout.Descriptor;
 
     internal IDisposable AcquireLease() => AcquireResourceLease();
 

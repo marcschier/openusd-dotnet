@@ -293,6 +293,38 @@ binding 0 and the 16-byte `PickParameters` uint4 at set 0 / binding 1. Checked M
 the same pinned Windows authority workflow. The combined ten-entry `mesh.metallib` remains a hosted
 macOS/Xcode 16.4 artifact and is never fabricated on Windows.
 
+### Material binding layout
+
+`SilkBindingLayoutDescriptor` originally described exactly one 80-byte `SceneParameters` uniform
+buffer at set 0 / binding 0, so a draw could bind no textures or samplers at all. It now carries an
+additive `MaterialSlots` list, built through `SilkBindingLayoutDescriptor.ForMaterial`, where each
+`SilkBindingSlot` declares a set, binding, `SilkBindingKind` (uniform buffer, sampled texture, or
+sampler), uniform byte size, and stage visibility.
+
+The contract is deliberately narrow so it cannot describe a binding no backend can reach:
+
+- `SceneParameters` stays at set 0 / binding 0 with 80 bytes and vertex plus fragment visibility, so
+  every pipeline that existed before material slots keeps its exact layout.
+- A material slot must use set 0, because Vulkan binds one descriptor set and neither D3D12 nor
+  Metal has a set concept.
+- A material slot cannot occupy set 0 / binding 0, and two slots cannot collide on the same binding.
+- Only a uniform-buffer slot carries a byte size, which must be a non-zero multiple of 16.
+- A slot invisible to every stage is rejected rather than silently ignored.
+
+Each backend maps the slots to its own binding model. Vulkan appends one `DescriptorSetLayoutBinding`
+per slot to the single set-0 layout and sizes the draw submission's descriptor pool from the slot
+kinds, because a pool holding only uniform-buffer descriptors fails `vkAllocateDescriptorSets` with
+`VK_ERROR_OUT_OF_POOL_MEMORY` as soon as the layout declares an image or sampler. D3D12 keeps root
+parameter 0 as the `SceneParameters` root CBV, adds a root CBV per uniform slot, and groups sampled
+textures and samplers into SRV and sampler descriptor tables. Metal has no layout object at all,
+since resources bind by argument index at encode time, so its layout only carries and validates the
+descriptor.
+
+Conformance proves the widening is inert: on both D3D12 WARP and Vulkan SwiftShader the checked
+triangle rendered through a material layout is byte-identical to the same triangle rendered through
+the plain `SceneParameters` layout, so a wider root signature or descriptor set cannot have shifted
+the scene-constant binding.
+
 D3D12 binds the checked pick shaders through one generation-tagged RGBA8/D32 PSO. `SceneParameters`
 uses root CBV b0 and the mesh token base uses four 32-bit root constants at b1, so a draw does not
 allocate a token upload buffer. D3D12 keeps three persistently mapped 256-byte readback slots; each

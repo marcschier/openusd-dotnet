@@ -1,6 +1,8 @@
 #nullable enable
 ~override OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.ToString() -> string
+~override OpenUsd.Rendering.Silk.SilkBindingSlot.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkBindingSlot.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkColor.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkColor.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.Equals(object obj) -> bool
@@ -227,11 +229,17 @@ OpenUsd.Rendering.Silk.SilkAttributeSemantic.Custom = 0 -> OpenUsd.Rendering.Sil
 OpenUsd.Rendering.Silk.SilkAttributeSemantic.Normal = 1 -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
 OpenUsd.Rendering.Silk.SilkAttributeSemantic.Tangent = 4 -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
 OpenUsd.Rendering.Silk.SilkAttributeSemantic.TexCoord = 2 -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
+OpenUsd.Rendering.Silk.SilkBindingKind
+OpenUsd.Rendering.Silk.SilkBindingKind.SampledTexture = 1 -> OpenUsd.Rendering.Silk.SilkBindingKind
+OpenUsd.Rendering.Silk.SilkBindingKind.Sampler = 2 -> OpenUsd.Rendering.Silk.SilkBindingKind
+OpenUsd.Rendering.Silk.SilkBindingKind.UniformBuffer = 0 -> OpenUsd.Rendering.Silk.SilkBindingKind
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Binding.get -> uint
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Binding.init -> void
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Deconstruct(out uint Set, out uint Binding, out uint UniformByteSize, out OpenUsd.Rendering.Silk.SilkShaderStageVisibility Visibility) -> void
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Equals(OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor other) -> bool
+OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.MaterialSlots.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkBindingSlot>!
+OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.MaterialSlots.init -> void
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Set.get -> uint
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Set.init -> void
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SilkBindingLayoutDescriptor() -> void
@@ -241,6 +249,22 @@ OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.UniformByteSize.init -> void
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Validate() -> void
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Visibility.get -> OpenUsd.Rendering.Silk.SilkShaderStageVisibility
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Visibility.init -> void
+OpenUsd.Rendering.Silk.SilkBindingSlot
+OpenUsd.Rendering.Silk.SilkBindingSlot.Binding.get -> uint
+OpenUsd.Rendering.Silk.SilkBindingSlot.Binding.init -> void
+OpenUsd.Rendering.Silk.SilkBindingSlot.Deconstruct(out uint Set, out uint Binding, out OpenUsd.Rendering.Silk.SilkBindingKind Kind, out uint UniformByteSize, out OpenUsd.Rendering.Silk.SilkShaderStageVisibility Visibility) -> void
+OpenUsd.Rendering.Silk.SilkBindingSlot.Equals(OpenUsd.Rendering.Silk.SilkBindingSlot other) -> bool
+OpenUsd.Rendering.Silk.SilkBindingSlot.Kind.get -> OpenUsd.Rendering.Silk.SilkBindingKind
+OpenUsd.Rendering.Silk.SilkBindingSlot.Kind.init -> void
+OpenUsd.Rendering.Silk.SilkBindingSlot.Set.get -> uint
+OpenUsd.Rendering.Silk.SilkBindingSlot.Set.init -> void
+OpenUsd.Rendering.Silk.SilkBindingSlot.SilkBindingSlot() -> void
+OpenUsd.Rendering.Silk.SilkBindingSlot.SilkBindingSlot(uint Set, uint Binding, OpenUsd.Rendering.Silk.SilkBindingKind Kind, uint UniformByteSize, OpenUsd.Rendering.Silk.SilkShaderStageVisibility Visibility) -> void
+OpenUsd.Rendering.Silk.SilkBindingSlot.UniformByteSize.get -> uint
+OpenUsd.Rendering.Silk.SilkBindingSlot.UniformByteSize.init -> void
+OpenUsd.Rendering.Silk.SilkBindingSlot.Validate() -> void
+OpenUsd.Rendering.Silk.SilkBindingSlot.Visibility.get -> OpenUsd.Rendering.Silk.SilkShaderStageVisibility
+OpenUsd.Rendering.Silk.SilkBindingSlot.Visibility.init -> void
 OpenUsd.Rendering.Silk.SilkBufferUsage
 OpenUsd.Rendering.Silk.SilkBufferUsage.Index = 2 -> OpenUsd.Rendering.Silk.SilkBufferUsage
 OpenUsd.Rendering.Silk.SilkBufferUsage.Storage = 8 -> OpenUsd.Rendering.Silk.SilkBufferUsage
@@ -1206,6 +1230,7 @@ OpenUsd.Rendering.Silk.SilkViewport.X.init -> void
 OpenUsd.Rendering.Silk.SilkViewport.Y.get -> float
 OpenUsd.Rendering.Silk.SilkViewport.Y.init -> void
 override OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.GetHashCode() -> int
+override OpenUsd.Rendering.Silk.SilkBindingSlot.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkColor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkComputeParameters.GetHashCode() -> int
@@ -1256,9 +1281,12 @@ override OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkViewport.GetHashCode() -> int
 static OpenUsd.Rendering.Silk.OpenUsdSilkRuntime.Create(string! pluginPath, OpenUsd.UsdStageRenderSource! source) -> OpenUsd.Rendering.Silk.OpenUsdSilkSession!
 static OpenUsd.Rendering.Silk.OpenUsdSilkRuntime.Create(string! pluginPath, string! stagePath) -> OpenUsd.Rendering.Silk.OpenUsdSilkSession!
+static OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.ForMaterial(System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkBindingSlot>! slots) -> OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor
 static OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SceneParameters.get -> OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor
+static OpenUsd.Rendering.Silk.SilkBindingSlot.operator !=(OpenUsd.Rendering.Silk.SilkBindingSlot left, OpenUsd.Rendering.Silk.SilkBindingSlot right) -> bool
+static OpenUsd.Rendering.Silk.SilkBindingSlot.operator ==(OpenUsd.Rendering.Silk.SilkBindingSlot left, OpenUsd.Rendering.Silk.SilkBindingSlot right) -> bool
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.Compute.get -> OpenUsd.Rendering.Silk.SilkComputeReflection
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.HasPinnedMetalLibrary.get -> bool
 static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadComputeFill(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor

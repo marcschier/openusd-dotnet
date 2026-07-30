@@ -163,6 +163,63 @@ public enum SilkShaderStageVisibility
     Compute = 4
 }
 
+/// <summary>The kind of resource occupying one binding slot.</summary>
+public enum SilkBindingKind
+{
+    /// <summary>A uniform (constant) buffer.</summary>
+    UniformBuffer = 0,
+
+    /// <summary>A texture read through a sampler.</summary>
+    SampledTexture = 1,
+
+    /// <summary>A sampler.</summary>
+    Sampler = 2
+}
+
+/// <summary>
+/// One slot in a material binding layout.
+/// </summary>
+public readonly record struct SilkBindingSlot(
+    uint Set,
+    uint Binding,
+    SilkBindingKind Kind,
+    uint UniformByteSize,
+    SilkShaderStageVisibility Visibility)
+{
+    /// <summary>Validates one slot in isolation.</summary>
+    public void Validate()
+    {
+        if (Kind is not (SilkBindingKind.UniformBuffer or
+            SilkBindingKind.SampledTexture or SilkBindingKind.Sampler))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(Kind),
+                "A binding slot kind must be uniform buffer, sampled texture, or sampler.");
+        }
+        if (Kind == SilkBindingKind.UniformBuffer)
+        {
+            if (UniformByteSize == 0 || (UniformByteSize % 16) != 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(UniformByteSize),
+                    "A uniform buffer slot must be a non-zero multiple of 16 bytes.");
+            }
+        }
+        else if (UniformByteSize != 0)
+        {
+            throw new ArgumentException(
+                "Only a uniform buffer slot carries a byte size.",
+                nameof(UniformByteSize));
+        }
+        if (Visibility == 0)
+        {
+            throw new ArgumentException(
+                "A binding slot must be visible to at least one stage.",
+                nameof(Visibility));
+        }
+    }
+}
+
 /// <summary>Reflected SceneParameters binding layout.</summary>
 public readonly record struct SilkBindingLayoutDescriptor(
     uint Set,
@@ -170,6 +227,18 @@ public readonly record struct SilkBindingLayoutDescriptor(
     uint UniformByteSize,
     SilkShaderStageVisibility Visibility)
 {
+    /// <summary>
+    /// Gets the material slots, empty for the checked SceneParameters layout.
+    /// </summary>
+    /// <remarks>
+    /// Additive on purpose. The renderer-neutral device interface is implemented by
+    /// three backends and several test doubles, so widening the layout through this
+    /// descriptor keeps every existing implementation and caller compiling unchanged
+    /// while letting a material layout be described at all, which the single
+    /// SceneParameters slot could not express.
+    /// </remarks>
+    public IReadOnlyList<SilkBindingSlot> MaterialSlots { get; init; } = [];
+
     /// <summary>Creates the checked mesh SceneParameters layout.</summary>
     public static SilkBindingLayoutDescriptor SceneParameters => new(
         0,
@@ -177,7 +246,23 @@ public readonly record struct SilkBindingLayoutDescriptor(
         SilkCheckedShaderAssets.SceneParameters.ByteSize,
         SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment);
 
-    /// <summary>Validates the supported first-release layout.</summary>
+    /// <summary>Creates a material layout from its slots.</summary>
+    public static SilkBindingLayoutDescriptor ForMaterial(
+        IReadOnlyList<SilkBindingSlot> slots)
+    {
+        ArgumentNullException.ThrowIfNull(slots);
+        if (slots.Count == 0)
+        {
+            throw new ArgumentException(
+                "A material binding layout requires at least one slot.",
+                nameof(slots));
+        }
+        // Slot 0 stays the SceneParameters uniform so a material pipeline keeps the
+        // same scene constants at the same place as every existing pipeline.
+        return SceneParameters with { MaterialSlots = slots };
+    }
+
+    /// <summary>Validates the layout.</summary>
     public void Validate()
     {
         if (Set != 0 || Binding != 0)
@@ -196,6 +281,33 @@ public readonly record struct SilkBindingLayoutDescriptor(
             throw new ArgumentException(
                 "SceneParameters must be visible to vertex and fragment stages.",
                 nameof(Visibility));
+        }
+        IReadOnlyList<SilkBindingSlot> slots = MaterialSlots ?? [];
+        for (int index = 0; index < slots.Count; index++)
+        {
+            SilkBindingSlot slot = slots[index];
+            slot.Validate();
+            if (slot.Set != 0)
+            {
+                // Every backend binds exactly one set today: Vulkan binds set 0, and
+                // D3D12 and Metal have no set concept at all. Accepting a second set
+                // would describe a binding no backend could ever reach.
+                throw new ArgumentException(
+                    "A material slot must use set 0, the only set the backends bind.");
+            }
+            if (slot.Set == 0 && slot.Binding == 0)
+            {
+                throw new ArgumentException(
+                    "A material slot cannot occupy set 0, binding 0, which is SceneParameters.");
+            }
+            for (int other = 0; other < index; other++)
+            {
+                if (slots[other].Set == slot.Set && slots[other].Binding == slot.Binding)
+                {
+                    throw new ArgumentException(
+                        $"Material slots collide at set {slot.Set}, binding {slot.Binding}.");
+                }
+            }
         }
     }
 }

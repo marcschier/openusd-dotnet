@@ -28,6 +28,11 @@ public sealed partial class MetalSilkGraphicsDevice
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Metal has no descriptor set layout object: resources bind by argument index at
+    /// encode time. The layout therefore only carries and validates the descriptor,
+    /// including its material slots, which the encoder consumes when binding.
+    /// </remarks>
     public ISilkGraphicsBindingLayout CreateBindingLayout(
         SilkBindingLayoutDescriptor descriptor)
     {

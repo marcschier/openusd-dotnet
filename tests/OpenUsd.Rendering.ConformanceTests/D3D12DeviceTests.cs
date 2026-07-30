@@ -604,6 +604,22 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
+    public async Task WarpDrawsIdenticallyThroughAMaterialBindingLayout()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+
+        await OffscreenRhiConformance.MaterialBindingLayoutDrawsIdenticallyToSceneParameters(
+            device,
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
     public async Task WarpRendersRetainedSilkMeshes()
     {
         if (!OperatingSystem.IsWindows())

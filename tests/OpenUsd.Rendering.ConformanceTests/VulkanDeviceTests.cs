@@ -168,6 +168,21 @@ public sealed class VulkanDeviceTests
     }
 
     [Test]
+    public async Task SwiftShaderDrawsIdenticallyThroughAMaterialBindingLayout()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.MaterialBindingLayoutDrawsIdenticallyToSceneParameters(
+            device,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
     public async Task SwiftShaderRendersRetainedSilkMeshes()
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
