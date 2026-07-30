@@ -96,6 +96,10 @@ try
         @{
             Source = 'native/include/openusd_render_pick.h'
             Name = 'openusd_render_pick.h'
+        },
+        @{
+            Source = 'native/include/openusd_render_lighting.h'
+            Name = 'openusd_render_lighting.h'
         }))
     {
         [System.IO.File]::Copy(
