@@ -1523,3 +1523,31 @@ static OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.operator ==(OpenUsd.Ren
 static OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.PositionNormal.get -> OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor
 static OpenUsd.Rendering.Silk.SilkViewport.operator !=(OpenUsd.Rendering.Silk.SilkViewport left, OpenUsd.Rendering.Silk.SilkViewport right) -> bool
 static OpenUsd.Rendering.Silk.SilkViewport.operator ==(OpenUsd.Rendering.Silk.SilkViewport left, OpenUsd.Rendering.Silk.SilkViewport right) -> bool
+~override OpenUsd.Rendering.Silk.SilkShaderPermutationId.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkShaderPermutationId.ToString() -> string
+OpenUsd.Rendering.Silk.SilkGraphicsPipelineCache
+OpenUsd.Rendering.Silk.SilkGraphicsPipelineCache.Dispose() -> void
+OpenUsd.Rendering.Silk.SilkGraphicsPipelineCache.GetOrCreateMeshPipeline(OpenUsd.Rendering.Silk.SilkShaderPermutationId permutation, OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor vertexLayout, OpenUsd.Rendering.Silk.SilkTextureFormat colorFormat, OpenUsd.Rendering.Silk.SilkTextureFormat depthFormat) -> OpenUsd.Rendering.Silk.ISilkGraphicsPipeline!
+OpenUsd.Rendering.Silk.SilkGraphicsPipelineCache.SilkGraphicsPipelineCache(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, OpenUsd.Rendering.Silk.SilkShaderBinaryFormat shaderFormat) -> void
+OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.BaseColorMap = 2 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.EmissiveMap = 16 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.None = 0 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.NormalMap = 4 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.RoughnessMetallicMap = 8 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.Uv = 1 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderPermutationId
+OpenUsd.Rendering.Silk.SilkShaderPermutationId.Equals(OpenUsd.Rendering.Silk.SilkShaderPermutationId other) -> bool
+OpenUsd.Rendering.Silk.SilkShaderPermutationId.Features.get -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderPermutationId.MeshFragmentArtifactName.get -> string!
+OpenUsd.Rendering.Silk.SilkShaderPermutationId.MeshVertexArtifactName.get -> string!
+OpenUsd.Rendering.Silk.SilkShaderPermutationId.SilkShaderPermutationId() -> void
+OpenUsd.Rendering.Silk.SilkShaderPermutationId.SilkShaderPermutationId(OpenUsd.Rendering.Silk.SilkShaderFeatures features) -> void
+override OpenUsd.Rendering.Silk.SilkShaderPermutationId.GetHashCode() -> int
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadMeshFragment(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, OpenUsd.Rendering.Silk.SilkShaderPermutationId permutation) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkCheckedShaderAssets.LoadMeshVertex(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, OpenUsd.Rendering.Silk.SilkShaderPermutationId permutation) -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+static OpenUsd.Rendering.Silk.SilkShaderPermutationId.None.get -> OpenUsd.Rendering.Silk.SilkShaderPermutationId
+static OpenUsd.Rendering.Silk.SilkShaderPermutationId.operator !=(OpenUsd.Rendering.Silk.SilkShaderPermutationId left, OpenUsd.Rendering.Silk.SilkShaderPermutationId right) -> bool
+static OpenUsd.Rendering.Silk.SilkShaderPermutationId.operator ==(OpenUsd.Rendering.Silk.SilkShaderPermutationId left, OpenUsd.Rendering.Silk.SilkShaderPermutationId right) -> bool
+OpenUsd.Rendering.Silk.ISilkGraphicsPipelineLease
+OpenUsd.Rendering.Silk.ISilkGraphicsPipelineLease.Pipeline.get -> OpenUsd.Rendering.Silk.ISilkGraphicsPipeline!

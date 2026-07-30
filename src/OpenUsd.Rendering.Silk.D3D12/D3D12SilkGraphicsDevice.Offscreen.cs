@@ -1796,6 +1796,9 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
     {
         ThrowIfRendering();
         ArgumentNullException.ThrowIfNull(pipeline);
+        pipeline = pipeline is ISilkGraphicsPipelineLease lease
+            ? lease.Pipeline
+            : pipeline;
         if (pipeline is not D3D12SilkGraphicsPipeline d3d12Pipeline ||
             !ReferenceEquals(d3d12Pipeline.Device, Device))
         {
