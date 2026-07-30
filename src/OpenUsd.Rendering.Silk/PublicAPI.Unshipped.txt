@@ -490,6 +490,15 @@ OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.Usage.get -> OpenUsd.Rendering.Si
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ValidateDepthReadback(int destinationLength) -> int
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ValidateReadback(int destinationLength) -> int
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.Width.get -> uint
+OpenUsd.Rendering.Silk.SilkMaterialData
+OpenUsd.Rendering.Silk.SilkMaterialData.GetScalar(OpenUsd.Rendering.Silk.SilkMaterialParameter parameter) -> System.ReadOnlySpan<float>
+OpenUsd.Rendering.Silk.SilkMaterialData.GetTexture(OpenUsd.Rendering.Silk.SilkMaterialParameter parameter) -> OpenUsd.Rendering.Silk.SilkMaterialTexture?
+OpenUsd.Rendering.Silk.SilkMaterialData.IsSupported.get -> bool
+OpenUsd.Rendering.Silk.SilkMaterialData.Path.get -> string!
+OpenUsd.Rendering.Silk.SilkMaterialData.Scalars.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkMaterialScalar!>!
+OpenUsd.Rendering.Silk.SilkMaterialData.StableHash.get -> ulong
+OpenUsd.Rendering.Silk.SilkMaterialData.SurfaceKind.get -> OpenUsd.Rendering.Silk.SilkSurfaceKind
+OpenUsd.Rendering.Silk.SilkMaterialData.Textures.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkMaterialTexture!>!
 OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialParameter.Clearcoat = 6 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialParameter.ClearcoatRoughness = 7 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
@@ -510,11 +519,25 @@ OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand
 OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand.SilkMaterialRemoveCommand() -> void
 OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand.StableHash.get -> ulong
+OpenUsd.Rendering.Silk.SilkMaterialScalar
+OpenUsd.Rendering.Silk.SilkMaterialScalar.Parameter.get -> OpenUsd.Rendering.Silk.SilkMaterialParameter
+OpenUsd.Rendering.Silk.SilkMaterialScalar.Values.get -> System.Collections.Generic.IReadOnlyList<float>!
 OpenUsd.Rendering.Silk.SilkMaterialScalarEntry
 OpenUsd.Rendering.Silk.SilkMaterialScalarEntry.ComponentCount.get -> int
 OpenUsd.Rendering.Silk.SilkMaterialScalarEntry.GetComponent(int component) -> float
 OpenUsd.Rendering.Silk.SilkMaterialScalarEntry.Parameter.get -> OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialScalarEntry.SilkMaterialScalarEntry() -> void
+OpenUsd.Rendering.Silk.SilkMaterialTexture
+OpenUsd.Rendering.Silk.SilkMaterialTexture.Asset.get -> string!
+OpenUsd.Rendering.Silk.SilkMaterialTexture.Bias.get -> System.Collections.Generic.IReadOnlyList<float>!
+OpenUsd.Rendering.Silk.SilkMaterialTexture.ComponentCount.get -> int
+OpenUsd.Rendering.Silk.SilkMaterialTexture.Fallback.get -> System.Collections.Generic.IReadOnlyList<float>!
+OpenUsd.Rendering.Silk.SilkMaterialTexture.Parameter.get -> OpenUsd.Rendering.Silk.SilkMaterialParameter
+OpenUsd.Rendering.Silk.SilkMaterialTexture.Scale.get -> System.Collections.Generic.IReadOnlyList<float>!
+OpenUsd.Rendering.Silk.SilkMaterialTexture.SourceColorSpace.get -> OpenUsd.Rendering.Silk.SilkColorSpace
+OpenUsd.Rendering.Silk.SilkMaterialTexture.UvPrimvar.get -> string!
+OpenUsd.Rendering.Silk.SilkMaterialTexture.WrapS.get -> OpenUsd.Rendering.Silk.SilkTextureWrap
+OpenUsd.Rendering.Silk.SilkMaterialTexture.WrapT.get -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.Asset.get -> string!
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.ComponentCount.get -> int
@@ -918,6 +941,7 @@ OpenUsd.Rendering.Silk.SilkSceneState
 OpenUsd.Rendering.Silk.SilkSceneState.Apply(OpenUsd.Rendering.Silk.OpenUsdSilkPage! page) -> OpenUsd.Rendering.Silk.SilkSceneDelta
 OpenUsd.Rendering.Silk.SilkSceneState.Apply(System.ReadOnlySpan<byte> data, uint commandCount, ulong revision) -> OpenUsd.Rendering.Silk.SilkSceneDelta
 OpenUsd.Rendering.Silk.SilkSceneState.Frame.get -> OpenUsd.Rendering.Silk.SilkFrameState!
+OpenUsd.Rendering.Silk.SilkSceneState.Materials.get -> System.Collections.Generic.IReadOnlyDictionary<string!, OpenUsd.Rendering.Silk.SilkMaterialData!>!
 OpenUsd.Rendering.Silk.SilkSceneState.Meshes.get -> System.Collections.Generic.IReadOnlyDictionary<ulong, OpenUsd.Rendering.Silk.SilkMeshData!>!
 OpenUsd.Rendering.Silk.SilkSceneState.MeshesByPath.get -> System.Collections.Generic.IReadOnlyDictionary<(string! Path, int InstanceIndex), OpenUsd.Rendering.Silk.SilkMeshData!>!
 OpenUsd.Rendering.Silk.SilkSceneState.PickIdentities.get -> OpenUsd.Rendering.Silk.SilkPickIdentityTable!
@@ -1391,6 +1415,7 @@ static OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.operator !=(OpenUsd.Rende
 static OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.operator ==(OpenUsd.Rendering.Silk.SilkGraphicsCapabilities left, OpenUsd.Rendering.Silk.SilkGraphicsCapabilities right) -> bool
 static OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor left, OpenUsd.Rendering.Silk.SilkGraphicsPipelineDescriptor right) -> bool
+static OpenUsd.Rendering.Silk.SilkMaterialData.CopyFrom(OpenUsd.Rendering.Silk.SilkMaterialUpsertCommand command) -> OpenUsd.Rendering.Silk.SilkMaterialData!
 static OpenUsd.Rendering.Silk.SilkMeshRenderOptions.Default.get -> OpenUsd.Rendering.Silk.SilkMeshRenderOptions!
 static OpenUsd.Rendering.Silk.SilkMeshRenderOptions.operator !=(OpenUsd.Rendering.Silk.SilkMeshRenderOptions? left, OpenUsd.Rendering.Silk.SilkMeshRenderOptions? right) -> bool
 static OpenUsd.Rendering.Silk.SilkMeshRenderOptions.operator ==(OpenUsd.Rendering.Silk.SilkMeshRenderOptions? left, OpenUsd.Rendering.Silk.SilkMeshRenderOptions? right) -> bool

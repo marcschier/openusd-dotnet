@@ -15,6 +15,8 @@ public sealed class SilkSceneState
     private readonly Dictionary<ulong, string> _pathsByHash = [];
     private readonly Dictionary<string, List<SilkMeshData>> _instancesByPath =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SilkMaterialData> _materials =
+        new(StringComparer.Ordinal);
     private readonly Func<string, ulong>? _pathHasher;
 
     /// <summary>Initializes an empty retained scene and pick identity table.</summary>
@@ -48,6 +50,12 @@ public sealed class SilkSceneState
 
     /// <summary>Gets retained future-GPU token ranges and resolved identities.</summary>
     public SilkPickIdentityTable PickIdentities { get; }
+
+    /// <summary>
+    /// Gets retained materials keyed by USD material path, which is what a mesh's
+    /// <see cref="SilkMeshData.MaterialPath"/> references.
+    /// </summary>
+    public IReadOnlyDictionary<string, SilkMaterialData> Materials => _materials;
 
     /// <summary>Applies one dirty page and returns resource-change counts.</summary>
     public SilkSceneDelta Apply(OpenUsdSilkPage page)
@@ -95,6 +103,20 @@ public sealed class SilkSceneState
                             (removals ??= []).Add(removedId);
                         }
                         break;
+                    case SilkCommandType.MaterialUpsert:
+                        SilkMaterialData material = SilkMaterialData.CopyFrom(
+                            commands.Current.AsMaterialUpsert());
+                        VerifyStableHash(material.Path, material.StableHash);
+                        _materials[material.Path] = material;
+                        break;
+                    case SilkCommandType.MaterialRemove:
+                        SilkMaterialRemoveCommand materialRemoval =
+                            commands.Current.AsMaterialRemove();
+                        VerifyStableHash(
+                            materialRemoval.Path,
+                            materialRemoval.StableHash);
+                        _ = _materials.Remove(materialRemoval.Path);
+                        break;
                     default:
                         throw new InvalidDataException(
                             $"Unsupported hdSilk command {commands.Current.Type}.");
@@ -108,8 +130,26 @@ public sealed class SilkSceneState
             removals?.ToArray() ?? []);
     }
 
+    /// <summary>
+    /// Requires the wire hash to match the path it indexes. The hash is an index
+    /// only, so a mismatch means the page is inconsistent rather than merely
+    /// colliding, and must fail loudly here.
+    /// </summary>
+    private void VerifyStableHash(string path, ulong stableHash)
+    {
+        ulong expected = _pathHasher is null
+            ? SilkWireFormat.ComputeStableHash(path)
+            : _pathHasher(path);
+        if (stableHash != expected)
+        {
+            throw new InvalidDataException(
+                $"The hdSilk material hash for '{path}' does not match its path.");
+        }
+    }
+
     private ulong? UpsertMesh(SilkMeshData mesh)
     {
+
         ulong expectedHash = _pathHasher is null
             ? SilkWireFormat.ComputeStableHash(mesh.Path)
             : _pathHasher(mesh.Path);

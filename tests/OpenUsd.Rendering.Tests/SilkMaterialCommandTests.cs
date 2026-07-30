@@ -213,6 +213,88 @@ public sealed class SilkMaterialCommandTests
             .Throws<InvalidDataException>();
     }
 
+    [Test]
+    public async Task RetainsAndRemovesMaterialsInSceneState()
+    {
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/Brick",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [(SilkMaterialParameter.Roughness, [0.4f])],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "textures/brick.png",
+                    UvPrimvar: "st"),
+            ]);
+
+        SilkSceneState state = new();
+
+        // Before this landed, Apply threw on any command it did not know, so a
+        // real stage with a bound material would have failed the whole page.
+        _ = state.Apply(upsert, 1, 1);
+
+        await Assert.That(state.Materials.Count).IsEqualTo(1);
+        SilkMaterialData material = state.Materials["/World/Materials/Brick"];
+        await Assert.That(material.IsSupported).IsTrue();
+        await Assert.That(material.GetScalar(SilkMaterialParameter.Roughness)[0])
+            .IsEqualTo(0.4f);
+        await Assert.That(material.GetScalar(SilkMaterialParameter.Metallic).Length)
+            .IsEqualTo(0);
+        SilkMaterialTexture? diffuse =
+            material.GetTexture(SilkMaterialParameter.DiffuseColor);
+        await Assert.That(diffuse).IsNotNull();
+        await Assert.That(diffuse!.Asset).IsEqualTo("textures/brick.png");
+        await Assert.That(diffuse.UvPrimvar).IsEqualTo("st");
+        await Assert.That(material.GetTexture(SilkMaterialParameter.Roughness))
+            .IsNull();
+
+        byte[] remove = CreateMaterialRemove("/World/Materials/Brick");
+        _ = state.Apply(remove, 1, 2);
+        await Assert.That(state.Materials.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task RetainsAnUnsupportedMaterialSoItCanBeDiagnosed()
+    {
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/Exotic",
+            SilkSurfaceKind.Unsupported,
+            scalars: [],
+            textures: []);
+
+        SilkSceneState state = new();
+        _ = state.Apply(upsert, 1, 1);
+
+        SilkMaterialData material = state.Materials["/World/Materials/Exotic"];
+        await Assert.That(material.IsSupported).IsFalse();
+        await Assert.That(material.Scalars.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task RejectsAMaterialWhoseHashDoesNotMatchItsPath()
+    {
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/Brick",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [(SilkMaterialParameter.Roughness, [0.4f])],
+            textures: []);
+        // Corrupt the index hash. It is only an index, but a mismatch means the
+        // page is inconsistent rather than merely colliding.
+        BinaryPrimitives.WriteUInt64LittleEndian(upsert.AsSpan(8, 8), 1234);
+
+        SilkSceneState state = new();
+        await Assert.That(() => state.Apply(upsert, 1, 1))
+            .Throws<InvalidDataException>();
+    }
+
     private sealed record TextureSpec(
         SilkMaterialParameter Parameter,
         SilkTextureWrap WrapS,

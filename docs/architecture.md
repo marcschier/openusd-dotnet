@@ -259,6 +259,12 @@ marked unsupported with empty tables, so the consumer can diagnose it rather tha
 approximate it. A prim that cannot be serialized is skipped and counted rather than aborting the
 page, so a single malformed prim cannot blank an entire frame.
 
+`SilkSceneState` retains materials by USD material path, which is exactly what a mesh's
+`MaterialPath` references, alongside the retained meshes. An unsupported material is retained rather
+than dropped, so a consumer reports which material it could not shade instead of quietly rendering a
+default. Because the retained state rejects any command it does not know, a new command kind must be
+handled there in the same change that starts emitting it.
+
 `SilkSceneState` applies dirty pages into retained managed scene state. Geometry resources are
 rebuilt only when topology changes. Frame and property updates reuse retained resources where their
 contracts allow. `SilkMeshRenderer` then records backend-neutral RHI work using 32-bit indices.
