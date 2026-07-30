@@ -609,7 +609,13 @@ public readonly record struct SilkGraphicsCapabilities(
     string DeviceName,
     string ApiVersion,
     bool SupportsCompute,
-    bool IsSoftware);
+    bool IsSoftware)
+{
+    /// <summary>
+    /// Gets whether material textures can be bound through a descriptor-indexed table.
+    /// </summary>
+    public bool SupportsDescriptorIndexedTextureTables { get; init; }
+}
 
 /// <summary>
 /// Describes intended GPU buffer use.

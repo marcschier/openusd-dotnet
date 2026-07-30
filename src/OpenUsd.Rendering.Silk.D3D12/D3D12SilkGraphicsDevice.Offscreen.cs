@@ -1223,15 +1223,14 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     }
 
     /// <summary>
-    /// Copies each bound resource into a shader-visible heap and points the matching
+    /// Copies each bound resource into a shader-visible table and points the matching
     /// root descriptor table at it.
     /// </summary>
     /// <remarks>
     /// D3D12 requires descriptor tables to read from shader-visible heaps, while the
     /// per-resource views live in non-shader-visible heaps, so the descriptors must be
-    /// copied. One heap per kind is created per draw and released with the submission,
-    /// which is correct but deliberately simple; a shared ring belongs to
-    /// <c>perf-bindless-textures</c> rather than to the binding model itself.
+    /// copied. Tier-2+ devices use a shared descriptor-indexed table; lower tiers fall
+    /// back to the previous per-draw heap path so unsupported adapters remain correct.
     /// </remarks>
     private void BindMaterialDescriptorTables(
         ID3D12GraphicsCommandList* commands,
@@ -1240,6 +1239,17 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         IReadOnlyList<D3D12MaterialBinding> bindings,
         List<nint> retainedHeaps)
     {
+        if (MaterialDescriptorTables is { } descriptorTables &&
+            TryBindSharedMaterialDescriptorTables(
+                commands,
+                descriptorHeaps,
+                descriptorTables,
+                layout,
+                bindings))
+        {
+            return;
+        }
+
         uint viewCount = 0;
         uint samplerCount = 0;
         foreach (D3D12MaterialBinding binding in bindings)
@@ -1323,6 +1333,51 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     (samplerIndex * samplerIncrement)));
             samplerIndex++;
         }
+    }
+
+    private bool TryBindSharedMaterialDescriptorTables(
+        ID3D12GraphicsCommandList* commands,
+        ID3D12DescriptorHeap** descriptorHeaps,
+        D3D12DescriptorIndexedTextureTables descriptorTables,
+        SilkBindingLayoutDescriptor layout,
+        IReadOnlyList<D3D12MaterialBinding> bindings)
+    {
+        if (bindings.Count == 0)
+        {
+            return true;
+        }
+
+        var handles = new GpuDescriptorHandle[bindings.Count];
+        for (int index = 0; index < bindings.Count; index++)
+        {
+            D3D12MaterialBinding binding = bindings[index];
+            bool copied = binding.Kind == SilkBindingKind.SampledTexture
+                ? descriptorTables.TryCopySampledTexture(
+                    binding.Texture!.ShaderResourceView,
+                    out handles[index])
+                : descriptorTables.TryCopySampler(
+                    binding.Sampler!.Heap->GetCPUDescriptorHandleForHeapStart(),
+                    out handles[index]);
+            if (!copied)
+            {
+                return false;
+            }
+        }
+
+        uint heapCount = descriptorTables.FillDescriptorHeaps(descriptorHeaps);
+        commands->SetDescriptorHeaps(heapCount, descriptorHeaps);
+        for (int index = 0; index < bindings.Count; index++)
+        {
+            D3D12MaterialBinding binding = bindings[index];
+            uint rootParameter = (uint)layout.RequireMaterialSlot(
+                0,
+                binding.Binding,
+                binding.Kind) + 1;
+            commands->SetGraphicsRootDescriptorTable(
+                rootParameter,
+                handles[index]);
+        }
+        return true;
     }
 
     private ID3D12DescriptorHeap* CreateShaderVisibleHeap(

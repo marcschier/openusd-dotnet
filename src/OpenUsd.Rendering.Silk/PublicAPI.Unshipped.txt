@@ -426,6 +426,8 @@ OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SilkGraphicsCapabilities() -> vo
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SilkGraphicsCapabilities(string! DeviceName, string! ApiVersion, bool SupportsCompute, bool IsSoftware) -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsCompute.get -> bool
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsCompute.init -> void
+OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsDescriptorIndexedTextureTables.get -> bool
+OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsDescriptorIndexedTextureTables.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.BeginRendering = 3 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.BeginSelectionMaskRendering = 17 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
