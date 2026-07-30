@@ -70,7 +70,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v5 and
-hdSilk session ABI v4; the hdSilk page ABI is v3. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v4; the hdSilk page ABI is v4. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -207,7 +207,7 @@ Coalesced same-path Rprim recreation may therefore emit a logical old-prim remov
 upsert, or reset topology revision under the same prim ID, without exposing range internals.
 `SilkSceneGpuResources` applies that delta, the renderer looks up the current range by
 `(path, instance index)` for each draw, and deactivated ranges are pruned from searchable storage so
-old tokens cannot resolve. Pick identity is per instance, matching page ABI 3: a point-instanced
+old tokens cannot resolve. Pick identity is per instance, matching page ABI 4: a point-instanced
 prototype allocates one range per resolved instance, so picking selects the instance that was
 actually drawn, and retiring one instance leaves the others resolvable. The prim ID and path hash
 indexes are shared by every instance of a prototype and are retired only with the last one.
@@ -531,6 +531,25 @@ instance ordinal, `instance_id` is a stable non-zero diagnostic identifier for t
 carries its own fully resolved transform. Consumers must therefore key retained meshes by `(path, instance_index)`
 rather than by path alone. A `MESH_REMOVE` retires exactly one such identity, so a shrinking instancer emits one
 removal per dropped instance, and a selected path highlights all of its instances.
+
+Page ABI v4 adds the vertex attribute table and the material binding, and is the transport every material
+feature depends on. Each `MESH_UPSERT` carries `attribute_count` entries of `(semantic, component_count,
+interpolation, name, element_count, float data)`, plus a `material_binding_hash` and the authoritative bound
+`material_path`, empty when the mesh has no binding. Every fixed offset through `transform` is unchanged from
+v3; only the variable section moved, so the addition is structural rather than a re-layout.
+
+The table is how every per-vertex value other than position travels, so authored normals, texture coordinates
+and arbitrary primvars all use one mechanism and a new attribute needs no further ABI bump. Attribute data is
+always float and always already resolved onto the emitted triangle-list vertices, so a consumer never
+re-indexes it against the topology: `element_count` equals `point_count` for vertex interpolation and 1 for
+constant interpolation, which the consumer expands.
+
+Authored normals are the first attribute to use it, and they close a real gap. Before v4 the renderer
+recomputed area-weighted vertex normals from topology because the page could not carry them, so authored
+normals were silently discarded. hdSilk now publishes them when it can resolve them directly onto emitted
+vertices; when it cannot, it publishes none and the renderer computes them exactly as before, rather than
+this delegate guessing at a re-indexing it cannot verify. Both paths still normalise and reject a degenerate
+normal, so an authored zero or non-finite value never reaches the GPU.
 
 hdSilk registers `extComputation` as a supported Sprim type. Without that Sprim, Hydra never creates the computation
 that UsdSkel depends on, and pulling computed primvars for a skinned mesh faults. Skinned points are therefore read

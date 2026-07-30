@@ -253,7 +253,7 @@ public sealed class D3D12SelectionOutlineTests
         uint[] indices = [0, 1, 2, 0, 2, 3];
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         int triangleCount = indices.Length / 3;
-        int size = 200 +
+        int size = 216 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -298,8 +298,8 @@ public sealed class D3D12SelectionOutlineTests
                 bytes.AsSpan(72 + (index * sizeof(double))),
                 transform[index]);
         }
-        path.CopyTo(bytes, 200);
-        int pointsOffset = 200 + path.Length;
+        path.CopyTo(bytes, 216);
+        int pointsOffset = 216 + path.Length;
         for (int index = 0; index < points.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

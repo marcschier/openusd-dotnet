@@ -310,7 +310,7 @@ public sealed class MetalSelectionOutlineConformanceTests
             left, bottom, z
         ];
         uint[] indices = [0, 1, 2, 0, 2, 3];
-        int size = 200 +
+        int size = 216 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -348,8 +348,8 @@ public sealed class MetalSelectionOutlineConformanceTests
                 bytes.AsSpan(72 + (index * sizeof(double))),
                 index % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 200);
-        int pointsOffset = 200 + path.Length;
+        path.CopyTo(bytes, 216);
+        int pointsOffset = 216 + path.Length;
         for (int index = 0; index < points.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

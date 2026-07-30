@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 3u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 4u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 4u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -60,10 +60,42 @@ extern "C" {
 ///       52    4 uint32   triangle_count
 ///       56   16 float    display_color[4]
 ///       72  128 double   transform[16] (row-major)
-///      200    * uint8    path[path_byte_count] (UTF-8, no NUL)
+///      200    8 uint64   material_binding_hash
+///      208    4 uint32   material_path_byte_count
+///      212    4 uint32   attribute_count
+///      216    * uint8    path[path_byte_count] (UTF-8, no NUL)
 ///        *    * float    points[point_count * 3]
 ///        *    * uint32   indices[index_count] (triangle list)
 ///        *    * uint32   triangle_subprims[triangle_count]
+///        *    * uint8    material_path[material_path_byte_count]
+///        *    *          attributes[attribute_count]
+///
+/// ABI v4 adds the vertex attribute table and the material binding. Every fixed
+/// offset up to and including transform is unchanged from v3; only the variable
+/// section moved, so the additions are structural rather than a re-layout.
+///
+/// Each attribute entry is:
+///        0    4 uint32   semantic (OPENUSD_SILK_ATTRIBUTE_*)
+///        4    4 uint32   component_count (1..4)
+///        8    4 uint32   interpolation (OPENUSD_SILK_INTERPOLATION_*)
+///       12    4 uint32   name_byte_count
+///       16    4 uint32   element_count
+///       20    * uint8    name[name_byte_count] (UTF-8, no NUL)
+///        *    * float    data[element_count * component_count]
+///
+/// The table is how every per-vertex value other than position travels, so
+/// authored normals, texture coordinates and arbitrary primvars all use one
+/// mechanism and a new attribute needs no further ABI bump. Data is always
+/// float and always already resolved to the emitted triangle-list vertices, so
+/// element_count equals point_count for vertex and varying interpolation and 1
+/// for constant interpolation. A semantic of
+/// OPENUSD_SILK_ATTRIBUTE_CUSTOM carries its authored primvar name; the named
+/// semantics are the ones the renderer binds by contract.
+///
+/// material_binding_hash is 64-bit FNV-1a over the exact bound material path
+/// bytes, and is zero with an empty path when the mesh has no material binding.
+/// It is an index only: material_path stays authoritative, exactly as prim path
+/// does for mesh identity.
 ///
 /// All offsets are from the command header's first byte. stable_id_hash is
 /// 64-bit FNV-1a over the exact path bytes and is an index only: path is the
@@ -95,6 +127,19 @@ extern "C" {
 #define OPENUSD_SILK_COMMAND_MESH_UPSERT 2u
 #define OPENUSD_SILK_COMMAND_MESH_REMOVE 3u
 #define OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST 1u
+
+/// Vertex attribute semantics carried by the ABI v4 attribute table. CUSTOM
+/// means the entry is identified by its authored primvar name alone.
+#define OPENUSD_SILK_ATTRIBUTE_CUSTOM 0u
+#define OPENUSD_SILK_ATTRIBUTE_NORMAL 1u
+#define OPENUSD_SILK_ATTRIBUTE_TEXCOORD 2u
+#define OPENUSD_SILK_ATTRIBUTE_COLOR 3u
+#define OPENUSD_SILK_ATTRIBUTE_TANGENT 4u
+
+/// Interpolation of an attribute, already resolved onto emitted triangle-list
+/// vertices. CONSTANT carries exactly one element for the whole mesh.
+#define OPENUSD_SILK_INTERPOLATION_CONSTANT 0u
+#define OPENUSD_SILK_INTERPOLATION_VERTEX 1u
 
 typedef struct openusd_silk_session openusd_silk_session;
 typedef struct openusd_silk_page openusd_silk_page;

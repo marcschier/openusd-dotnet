@@ -78,6 +78,106 @@ public sealed class SilkCommandParserTests
     }
 
     [Test]
+    public async Task CarriesAuthoredNormalsAndMaterialBindingOverTheWire()
+    {
+        // A normal that no area-weighted computation would produce, so the test
+        // cannot pass by accident if the authored value were silently dropped.
+        float[] authored =
+        [
+            0f, 0f, -1f,
+            0f, 0f, -1f,
+            0f, 0f, -1f,
+        ];
+        byte[] page = BuildPage(CreateMeshCommand(
+            authoredNormals: authored,
+            materialPath: "/World/Looks/Brass"));
+
+        string materialPath;
+        ulong materialHash;
+        int attributeCount;
+        SilkAttributeSemantic semantic;
+        SilkAttributeInterpolation interpolation;
+        int elementCount;
+        float lastComponent;
+        using (var pageHandle = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 1, page, (uint)page.Length))
+        {
+            using SilkCommandEnumerator commands = pageHandle.GetEnumerator();
+            commands.MoveNext();
+            SilkMeshUpsertCommand mesh = commands.Current.AsMeshUpsert();
+            materialPath = mesh.MaterialPath;
+            materialHash = mesh.MaterialBindingHash;
+            attributeCount = mesh.AttributeCount;
+            SilkMeshAttributeEntry attribute = mesh.GetAttribute(0);
+            semantic = attribute.Semantic;
+            interpolation = attribute.Interpolation;
+            elementCount = attribute.ElementCount;
+            lastComponent = attribute.GetComponent(2, 2);
+        }
+
+        await Assert.That(materialPath).IsEqualTo("/World/Looks/Brass");
+        await Assert.That(materialHash)
+            .IsEqualTo(SilkWireFormat.ComputeStableHash("/World/Looks/Brass"));
+        await Assert.That(attributeCount).IsEqualTo(1);
+        await Assert.That(semantic).IsEqualTo(SilkAttributeSemantic.Normal);
+        await Assert.That(interpolation).IsEqualTo(SilkAttributeInterpolation.Vertex);
+        await Assert.That(elementCount).IsEqualTo(3);
+        await Assert.That(lastComponent).IsEqualTo(-1f);
+    }
+
+    [Test]
+    public async Task AuthoredNormalsReachTheVertexBufferInsteadOfComputedOnes()
+    {
+        float[] authored =
+        [
+            0f, 0f, -1f,
+            0f, 0f, -1f,
+            0f, 0f, -1f,
+        ];
+        SilkMeshData authoredMesh = ReadSingleMesh(
+            CreateMeshCommand(authoredNormals: authored));
+        SilkMeshData computedMesh = ReadSingleMesh(CreateMeshCommand());
+
+        await Assert.That(authoredMesh.AuthoredNormals.Length).IsEqualTo(9);
+        await Assert.That(computedMesh.AuthoredNormals.Length).IsEqualTo(0);
+
+        float[] authoredVertices = SilkMeshGeometryBuilder.Build(authoredMesh).Vertices;
+        float[] computedVertices = SilkMeshGeometryBuilder.Build(computedMesh).Vertices;
+
+        // Positions identical, normals not: the authored value is what shipped.
+        await Assert.That(authoredVertices[0]).IsEqualTo(computedVertices[0]);
+        await Assert.That(authoredVertices[5]).IsEqualTo(-1f);
+        await Assert.That(computedVertices[5]).IsNotEqualTo(-1f);
+    }
+
+    [Test]
+    public async Task ConstantAuthoredNormalsExpandToEveryVertex()
+    {
+        SilkMeshData mesh = ReadSingleMesh(CreateMeshCommand(
+            authoredNormals: [0f, -1f, 0f],
+            constantNormals: true));
+
+        await Assert.That(mesh.AuthoredNormals.Length).IsEqualTo(9);
+        float[] vertices = SilkMeshGeometryBuilder.Build(mesh).Vertices;
+        for (int vertex = 0; vertex < 3; vertex++)
+        {
+            await Assert.That(vertices[(vertex * 6) + 4]).IsEqualTo(-1f);
+        }
+    }
+
+    private static SilkMeshData ReadSingleMesh(byte[] meshCommand)
+    {
+        byte[] page = BuildPage(meshCommand);
+        using var pageHandle = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 1, page, (uint)page.Length);
+        using SilkCommandEnumerator commands = pageHandle.GetEnumerator();
+        commands.MoveNext();
+        return SilkMeshData.CopyFrom(commands.Current.AsMeshUpsert());
+    }
+
+    private static byte[] BuildPage(byte[] meshCommand) => meshCommand;
+
+    [Test]
     public async Task RejectsPageAbiV1AndAcceptsCurrent()
     {
         await Assert.That(() => new OpenUsdSilkPage(1, 1, [], 0))
@@ -115,7 +215,7 @@ public sealed class SilkCommandParserTests
             2);
 
         byte[] invalidUtf8 = CreateMeshCommand();
-        invalidUtf8[200] = 0xFF;
+        invalidUtf8[216] = 0xFF;
 
         // Page ABI v3 makes instance identity meaningful, so a non-zero
         // instancer id is legitimate. A negative instance ordinal is not.
@@ -430,10 +530,10 @@ public sealed class SilkCommandParserTests
             case 7:
                 page = RemoveAt(
                     page,
-                    random.Next(meshOffset + 200, page.Length));
+                    random.Next(meshOffset + 216, page.Length));
                 break;
             case 8:
-                page[meshOffset + 200 + random.Next("/Cube".Length)] = 0xff;
+                page[meshOffset + 216 + random.Next("/Cube".Length)] = 0xff;
                 break;
             case 9:
                 uint[] commandCounts = [0, 1, 3, uint.MaxValue];
@@ -483,19 +583,30 @@ public sealed class SilkCommandParserTests
         ulong? stableHash = null,
         int primId = 42,
         ulong topologyRevision = 1,
-        int[]? triangleSubprims = null)
+        int[]? triangleSubprims = null,
+        float[]? authoredNormals = null,
+        bool constantNormals = false,
+        string materialPath = "")
     {
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
+        byte[] material = Encoding.UTF8.GetBytes(materialPath);
         stableHash ??= SilkWireFormat.ComputeStableHash(pathValue);
         const int pointCount = 3;
         const int indexCount = 3;
         triangleSubprims ??= [17];
         int triangleCount = triangleSubprims.Length;
-        int size = 200 +
+        int normalElements = constantNormals ? 1 : pointCount;
+        int attributeCount = authoredNormals is null ? 0 : 1;
+        int attributeBytes = authoredNormals is null
+            ? 0
+            : 20 + (normalElements * 3 * sizeof(float));
+        int size = 216 +
             path.Length +
             (pointCount * 12) +
             (indexCount * 4) +
-            (triangleCount * sizeof(uint));
+            (triangleCount * sizeof(uint)) +
+            material.Length +
+            attributeBytes;
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0, 4), (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4, 4), (uint)size);
@@ -519,8 +630,8 @@ public sealed class SilkCommandParserTests
         {
             BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(72 + (i * 8), 8), i % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 200);
-        int pointsOffset = 200 + path.Length;
+        path.CopyTo(bytes, 216);
+        int pointsOffset = 216 + path.Length;
         for (int i = 0; i < pointCount * 3; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(pointsOffset + (i * 4), 4), i);
@@ -536,6 +647,36 @@ public sealed class SilkCommandParserTests
             BinaryPrimitives.WriteUInt32LittleEndian(
                 bytes.AsSpan(subprimsOffset + (i * sizeof(uint))),
                 checked((uint)triangleSubprims[i]));
+        }
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            bytes.AsSpan(200, 8),
+            material.Length == 0 ? 0 : SilkWireFormat.ComputeStableHash(materialPath));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(208, 4), (uint)material.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(212, 4), (uint)attributeCount);
+        int materialOffset = subprimsOffset + (triangleCount * sizeof(uint));
+        material.CopyTo(bytes, materialOffset);
+        if (authoredNormals is not null)
+        {
+            int attributeOffset = materialOffset + material.Length;
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(attributeOffset, 4),
+                (uint)SilkAttributeSemantic.Normal);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(attributeOffset + 4, 4), 3);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(attributeOffset + 8, 4),
+                (uint)(constantNormals
+                    ? SilkAttributeInterpolation.Constant
+                    : SilkAttributeInterpolation.Vertex));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(attributeOffset + 12, 4), 0);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(attributeOffset + 16, 4),
+                (uint)normalElements);
+            for (int i = 0; i < authoredNormals.Length; i++)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(
+                    bytes.AsSpan(attributeOffset + 20 + (i * sizeof(float)), 4),
+                    authoredNormals[i]);
+            }
         }
         return bytes;
     }

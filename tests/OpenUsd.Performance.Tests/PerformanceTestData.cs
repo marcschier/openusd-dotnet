@@ -48,7 +48,7 @@ internal static class PerformanceTestData
         const int pointCount = 3;
         int indexCount = checked(triangleCount * 3);
         int size = checked(
-            200 +
+            216 +
             path.Length +
             (pointCount * 3 * sizeof(float)) +
             (indexCount * sizeof(uint)) +
@@ -73,9 +73,9 @@ internal static class PerformanceTestData
                 component == 3 ? 1 : color);
         }
         WriteIdentityMatrix(bytes.AsSpan(72, 16 * sizeof(double)));
-        path.CopyTo(bytes, 200);
+        path.CopyTo(bytes, 216);
 
-        int pointsOffset = 200 + path.Length;
+        int pointsOffset = 216 + path.Length;
         ReadOnlySpan<float> points = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         for (int index = 0; index < points.Length; index++)
         {

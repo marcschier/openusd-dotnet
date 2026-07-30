@@ -546,7 +546,7 @@ internal static class Program
              0.75f, -0.75f, 0.25f
         ];
         uint[] indices = [0, 1, 2];
-        int size = 200 +
+        int size = 216 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -584,8 +584,8 @@ internal static class Program
                 bytes.AsSpan(72 + (index * sizeof(double))),
                 index % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 200);
-        int pointOffset = 200 + path.Length;
+        path.CopyTo(bytes, 216);
+        int pointOffset = 216 + path.Length;
         for (int index = 0; index < points.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

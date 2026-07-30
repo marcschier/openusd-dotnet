@@ -50,6 +50,18 @@ struct HdSilkFrameState
         0.0, 0.0, 0.0, 1.0};
 };
 
+/// One entry in the ABI v4 vertex attribute table. Data is always float and
+/// always already resolved onto the emitted triangle-list vertices, so the
+/// consumer never has to re-index it.
+struct HdSilkMeshAttribute
+{
+    std::string name;
+    uint32_t semantic = 0;
+    uint32_t componentCount = 0;
+    uint32_t interpolation = 1;
+    std::vector<float> data;
+};
+
 /// A single mesh Rprim's renderable data, captured by HdSilkMesh::Sync and
 /// consumed by HdSilkSceneState::BuildPage. Every field is plain-old-data so
 /// it can be appended directly to the wire buffer without ever exposing a
@@ -71,6 +83,8 @@ struct HdSilkMeshRecord
     std::vector<uint32_t> indices;  // 3 indices per triangle.
     std::vector<uint32_t> triangleSubprims; // Authored USD face per triangle.
     float displayColor[4] = {0.7f, 0.7f, 0.7f, 1.0f};
+    std::string materialPath;       // Empty when the mesh has no binding.
+    std::vector<HdSilkMeshAttribute> attributes;
 };
 
 /// Derives a stable, non-zero 31-bit identifier for an instancer path. The

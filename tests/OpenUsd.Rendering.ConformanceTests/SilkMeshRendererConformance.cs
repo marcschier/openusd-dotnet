@@ -252,7 +252,7 @@ internal static class SilkMeshRendererConformance
     {
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         int triangleCount = indices.Length / 3;
-        int size = 200 +
+        int size = 216 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -287,8 +287,8 @@ internal static class SilkMeshRendererConformance
                 bytes.AsSpan(72 + (i * 8)),
                 transform[i]);
         }
-        path.CopyTo(bytes, 200);
-        int pointsOffset = 200 + path.Length;
+        path.CopyTo(bytes, 216);
+        int pointsOffset = 216 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

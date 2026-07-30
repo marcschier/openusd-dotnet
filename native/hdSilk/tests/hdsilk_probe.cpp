@@ -33,7 +33,7 @@ namespace
 constexpr char SharedMeshPath[] = "/World/SharedStageProbeMesh";
 constexpr char TopologyMeshPath[] = "/World/TopologyProbeMesh";
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 4);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 3);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 4);
 
 openusd_render_camera AutomaticCamera()
 {
@@ -255,7 +255,9 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             uint32_t pointCount = 0;
             uint32_t indexCount = 0;
             uint32_t triangleCount = 0;
-            constexpr size_t pathOffset = 200;
+            uint32_t materialPathSize = 0;
+            uint32_t attributeCount = 0;
+            constexpr size_t pathOffset = 216;
             if (ReadValue(data, size, offset + 8, &stableHash) &&
                 ReadValue(data, size, offset + 16, &primId) &&
                 ReadValue(data, size, offset + 20, &instanceId) &&
@@ -265,13 +267,15 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 ReadValue(data, size, offset + 40, &pathSize) &&
                 ReadValue(data, size, offset + 44, &pointCount) &&
                 ReadValue(data, size, offset + 48, &indexCount) &&
-                ReadValue(data, size, offset + 52, &triangleCount))
+                ReadValue(data, size, offset + 52, &triangleCount) &&
+                ReadValue(data, size, offset + 208, &materialPathSize) &&
+                ReadValue(data, size, offset + 212, &attributeCount))
             {
                 size_t pointBytes = 0;
                 size_t indexBytes = 0;
                 size_t subprimBytes = 0;
                 size_t expectedSize = pathOffset;
-                const bool sizesValid =
+                bool sizesValid =
                     MultiplySize(pointCount, 3 * sizeof(float), &pointBytes) &&
                     MultiplySize(indexCount, sizeof(uint32_t), &indexBytes) &&
                     MultiplySize(
@@ -282,6 +286,29 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     AddSize(&expectedSize, pointBytes) &&
                     AddSize(&expectedSize, indexBytes) &&
                     AddSize(&expectedSize, subprimBytes) &&
+                    AddSize(&expectedSize, materialPathSize);
+                // Walk the ABI v4 attribute table so the exact-size check stays
+                // exact rather than being relaxed to accommodate it.
+                for (uint32_t attribute = 0;
+                     sizesValid && attribute < attributeCount;
+                     ++attribute)
+                {
+                    uint32_t componentCount = 0;
+                    uint32_t nameSize = 0;
+                    uint32_t elementCount = 0;
+                    size_t dataBytes = 0;
+                    const size_t entry = offset + expectedSize;
+                    sizesValid =
+                        ReadValue(data, size, entry + 4, &componentCount) &&
+                        ReadValue(data, size, entry + 12, &nameSize) &&
+                        ReadValue(data, size, entry + 16, &elementCount) &&
+                        MultiplySize(elementCount, componentCount, &dataBytes) &&
+                        MultiplySize(dataBytes, sizeof(float), &dataBytes) &&
+                        AddSize(&expectedSize, 20) &&
+                        AddSize(&expectedSize, nameSize) &&
+                        AddSize(&expectedSize, dataBytes);
+                }
+                sizesValid = sizesValid &&
                     expectedSize == byteSize &&
                     static_cast<uint64_t>(triangleCount) * 3 == indexCount;
                 if (!sizesValid)

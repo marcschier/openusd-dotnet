@@ -75,6 +75,13 @@ internal static class SilkMeshGeometryBuilder
             Accumulate(normals, pc, nx, ny, nz);
         }
 
+        // Authored normals win when the delegate resolved them onto emitted
+        // vertices; otherwise they are area-weighted from topology as before.
+        // Both paths still normalise and reject a degenerate normal, so an
+        // authored zero or non-finite value cannot reach the GPU.
+        ReadOnlySpan<float> authored = mesh.AuthoredNormals.Span;
+        bool useAuthored = authored.Length == points.Length;
+
         float[] vertices = new float[checked(pointCount * 6)];
         for (int point = 0; point < pointCount; point++)
         {
@@ -84,9 +91,9 @@ internal static class SilkMeshGeometryBuilder
             vertices[destination + 1] = points[source + 1];
             vertices[destination + 2] = points[source + 2];
 
-            double nx = normals[source];
-            double ny = normals[source + 1];
-            double nz = normals[source + 2];
+            double nx = useAuthored ? authored[source] : normals[source];
+            double ny = useAuthored ? authored[source + 1] : normals[source + 1];
+            double nz = useAuthored ? authored[source + 2] : normals[source + 2];
             double lengthSquared = (nx * nx) + (ny * ny) + (nz * nz);
             if (!double.IsFinite(lengthSquared) || lengthSquared <= NormalEpsilonSquared)
             {

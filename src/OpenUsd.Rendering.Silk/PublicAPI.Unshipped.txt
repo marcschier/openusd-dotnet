@@ -91,7 +91,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsResourceBase.ReleaseNative() -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(System.Span<byte> destination) -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(System.Span<float> destination) -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 3 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 4 -> uint
 const OpenUsd.Rendering.Silk.SilkPickTokenEncoding.ByteSize = 4 -> int
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MaximumWidth = 16 -> float
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MinimumWidth = 1 -> float
@@ -218,6 +218,15 @@ OpenUsd.Rendering.Silk.OpenUsdSilkRuntime
 OpenUsd.Rendering.Silk.OpenUsdSilkSession
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.Dispose() -> void
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.Sync(int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.OpenUsdSilkPage!
+OpenUsd.Rendering.Silk.SilkAttributeInterpolation
+OpenUsd.Rendering.Silk.SilkAttributeInterpolation.Constant = 0 -> OpenUsd.Rendering.Silk.SilkAttributeInterpolation
+OpenUsd.Rendering.Silk.SilkAttributeInterpolation.Vertex = 1 -> OpenUsd.Rendering.Silk.SilkAttributeInterpolation
+OpenUsd.Rendering.Silk.SilkAttributeSemantic
+OpenUsd.Rendering.Silk.SilkAttributeSemantic.Color = 3 -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
+OpenUsd.Rendering.Silk.SilkAttributeSemantic.Custom = 0 -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
+OpenUsd.Rendering.Silk.SilkAttributeSemantic.Normal = 1 -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
+OpenUsd.Rendering.Silk.SilkAttributeSemantic.Tangent = 4 -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
+OpenUsd.Rendering.Silk.SilkAttributeSemantic.TexCoord = 2 -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Binding.get -> uint
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Binding.init -> void
@@ -444,12 +453,22 @@ OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.Usage.get -> OpenUsd.Rendering.Si
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ValidateDepthReadback(int destinationLength) -> int
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ValidateReadback(int destinationLength) -> int
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.Width.get -> uint
+OpenUsd.Rendering.Silk.SilkMeshAttributeEntry
+OpenUsd.Rendering.Silk.SilkMeshAttributeEntry.ComponentCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshAttributeEntry.ElementCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshAttributeEntry.GetComponent(int elementIndex, int component) -> float
+OpenUsd.Rendering.Silk.SilkMeshAttributeEntry.Interpolation.get -> OpenUsd.Rendering.Silk.SilkAttributeInterpolation
+OpenUsd.Rendering.Silk.SilkMeshAttributeEntry.Name.get -> string!
+OpenUsd.Rendering.Silk.SilkMeshAttributeEntry.Semantic.get -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
+OpenUsd.Rendering.Silk.SilkMeshAttributeEntry.SilkMeshAttributeEntry() -> void
 OpenUsd.Rendering.Silk.SilkMeshData
+OpenUsd.Rendering.Silk.SilkMeshData.AuthoredNormals.get -> System.ReadOnlyMemory<float>
 OpenUsd.Rendering.Silk.SilkMeshData.DisplayColor.get -> System.ReadOnlyMemory<float>
 OpenUsd.Rendering.Silk.SilkMeshData.Id.get -> ulong
 OpenUsd.Rendering.Silk.SilkMeshData.Indices.get -> System.ReadOnlyMemory<uint>
 OpenUsd.Rendering.Silk.SilkMeshData.InstanceId.get -> int
 OpenUsd.Rendering.Silk.SilkMeshData.InstanceIndex.get -> int
+OpenUsd.Rendering.Silk.SilkMeshData.MaterialPath.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshData.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshData.Points.get -> System.ReadOnlyMemory<float>
 OpenUsd.Rendering.Silk.SilkMeshData.PrimId.get -> int
@@ -513,6 +532,8 @@ OpenUsd.Rendering.Silk.SilkMeshRenderResult.Statistics.init -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderResult.UniformUploads.get -> int
 OpenUsd.Rendering.Silk.SilkMeshRenderResult.UniformUploads.init -> void
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.AttributeCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetAttribute(int attributeIndex) -> OpenUsd.Rendering.Silk.SilkMeshAttributeEntry
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetDisplayColor(int index) -> float
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetIndex(int index) -> uint
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetPointComponent(int pointIndex, int component) -> float
@@ -521,6 +542,8 @@ OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetTriangleSubprim(int triangleInde
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.IndexCount.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.InstanceId.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.InstanceIndex.get -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.MaterialBindingHash.get -> ulong
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.MaterialPath.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.PointCount.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.PrimId.get -> int

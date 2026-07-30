@@ -2,6 +2,8 @@
 
 #include "mesh.h"
 
+#include "openusd_hdsilk.h"
+
 #include "instancer.h"
 #include "renderDelegate.h"
 #include "sceneState.h"
@@ -104,6 +106,8 @@ HdSilkMesh::Sync(
         HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points);
     const bool displayColorDirty =
         HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->displayColor);
+    const bool normalsDirty =
+        HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->normals);
     const bool transformDirty = HdChangeTracker::IsTransformDirty(*dirtyBits, id);
 
     const bool topologyRefreshed = topologyDirty || _topologyRevision == 0;
@@ -238,6 +242,35 @@ HdSilkMesh::Sync(
         }
     }
 
+    if (normalsDirty || topologyRefreshed)
+    {
+        // Only the interpolations that map directly onto emitted triangle-list
+        // vertices are resolved here. Anything else leaves _normals empty so
+        // the consumer computes them, which is the pre-ABI-4 behaviour, rather
+        // than this delegate guessing at a re-indexing it cannot verify.
+        _normals.clear();
+        _normalsAreConstant = false;
+        const VtValue value = sceneDelegate->Get(id, HdTokens->normals);
+        if (value.IsHolding<VtVec3fArray>())
+        {
+            const VtVec3fArray& normals = value.UncheckedGet<VtVec3fArray>();
+            if (normals.size() == _points.size())
+            {
+                _normals = normals;
+            }
+            else if (normals.size() == 1)
+            {
+                _normals = normals;
+                _normalsAreConstant = true;
+            }
+        }
+        else if (value.IsHolding<GfVec3f>())
+        {
+            _normals = VtVec3fArray(1, value.UncheckedGet<GfVec3f>());
+            _normalsAreConstant = true;
+        }
+    }
+
     // Instancer state must be refreshed before instance transforms are read,
     // and parent instancers are synced by Rprim reference in Hydra.
     _UpdateInstancer(sceneDelegate, dirtyBits);
@@ -250,7 +283,7 @@ HdSilkMesh::Sync(
         HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
 
     if (topologyRefreshed || pointsDirty || transformDirty ||
-        displayColorDirty || instancerDirty)
+        displayColorDirty || normalsDirty || instancerDirty)
     {
         HdSilkMeshRecord record;
         record.path = id.GetString();
@@ -276,6 +309,24 @@ HdSilkMesh::Sync(
 
         record.indices = _triangleIndices;
         record.triangleSubprims = _triangleSubprims;
+
+        if (!_normals.empty())
+        {
+            HdSilkMeshAttribute normals;
+            normals.semantic = OPENUSD_SILK_ATTRIBUTE_NORMAL;
+            normals.componentCount = 3;
+            normals.interpolation = _normalsAreConstant
+                ? OPENUSD_SILK_INTERPOLATION_CONSTANT
+                : OPENUSD_SILK_INTERPOLATION_VERTEX;
+            normals.data.reserve(_normals.size() * 3);
+            for (const GfVec3f& normal : _normals)
+            {
+                normals.data.push_back(normal[0]);
+                normals.data.push_back(normal[1]);
+                normals.data.push_back(normal[2]);
+            }
+            record.attributes.push_back(std::move(normals));
+        }
 
         // Capture the key before the record is moved; argument evaluation
         // order relative to the moved-from object is otherwise unspecified.

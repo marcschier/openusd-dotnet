@@ -227,7 +227,7 @@ public sealed class SilkMeshRendererTests
         byte[] path = Encoding.UTF8.GetBytes("/Triangle");
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
-        int size = 200 +
+        int size = 216 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -257,8 +257,8 @@ public sealed class SilkMeshRendererTests
                 bytes.AsSpan(72 + (i * 8)),
                 i % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 200);
-        int pointsOffset = 200 + path.Length;
+        path.CopyTo(bytes, 216);
+        int pointsOffset = 216 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(pointsOffset + (i * 4)), points[i]);

@@ -93,13 +93,18 @@ public readonly ref struct SilkFrameCommand
 /// </summary>
 public readonly ref struct SilkMeshUpsertCommand
 {
-    private const int FixedSize = 200;
+    private const int FixedSize = 216;
+    private const int AttributeFixedSize = 20;
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly string _path;
+    private readonly string _materialPath;
     private readonly int _pathLength;
     private readonly int _pointCount;
     private readonly int _indexCount;
     private readonly int _triangleCount;
+    private readonly int _materialPathLength;
+    private readonly int _attributeCount;
+    private readonly int _attributeOffset;
 
     internal SilkMeshUpsertCommand(ReadOnlySpan<byte> bytes)
     {
@@ -112,18 +117,21 @@ public readonly ref struct SilkMeshUpsertCommand
         _pointCount = ReadCount(bytes, 44, "point");
         _indexCount = ReadCount(bytes, 48, "index");
         _triangleCount = ReadCount(bytes, 52, "triangle");
+        _materialPathLength = ReadCount(bytes, 208, "material path byte");
+        _attributeCount = ReadCount(bytes, 212, "attribute");
         if ((long)_triangleCount * 3 != _indexCount)
         {
             throw new InvalidDataException(
                 "The mesh index count must equal three times the triangle count.");
         }
 
-        long expected = FixedSize +
+        long fixedAndArrays = FixedSize +
             _pathLength +
             ((long)_pointCount * 12) +
             ((long)_indexCount * sizeof(uint)) +
-            ((long)_triangleCount * sizeof(uint));
-        if (expected > int.MaxValue || bytes.Length != expected)
+            ((long)_triangleCount * sizeof(uint)) +
+            _materialPathLength;
+        if (fixedAndArrays > int.MaxValue || bytes.Length < fixedAndArrays)
         {
             throw new InvalidDataException(
                 "The mesh command size does not match its declared counts.");
@@ -159,6 +167,53 @@ public readonly ref struct SilkMeshUpsertCommand
                 throw new InvalidDataException(
                     "A mesh triangle subprim index exceeds the managed identity range.");
             }
+        }
+        int materialPathOffset = checked(subprimOffset + (_triangleCount * sizeof(uint)));
+        _materialPath = _materialPathLength == 0
+            ? string.Empty
+            : SilkWireFormat.DecodePath(bytes.Slice(materialPathOffset, _materialPathLength));
+        _attributeOffset = checked(materialPathOffset + _materialPathLength);
+
+        // Walk the table once so every accessor can trust its bounds, and so a
+        // truncated or over-long command fails here rather than mid-render.
+        long walked = _attributeOffset;
+        for (int attribute = 0; attribute < _attributeCount; attribute++)
+        {
+            if (walked + AttributeFixedSize > bytes.Length)
+            {
+                throw new InvalidDataException("A mesh attribute header is truncated.");
+            }
+            int start = (int)walked;
+            int componentCount = ReadCount(bytes, start + 4, "attribute component");
+            int nameLength = ReadCount(bytes, start + 12, "attribute name byte");
+            int elementCount = ReadCount(bytes, start + 16, "attribute element");
+            if (componentCount is < 1 or > 4)
+            {
+                throw new InvalidDataException(
+                    "A mesh attribute must have one to four components.");
+            }
+            uint interpolation = BinaryPrimitives.ReadUInt32LittleEndian(
+                bytes.Slice(start + 8, sizeof(uint)));
+            int expectedElements = interpolation == (uint)SilkAttributeInterpolation.Constant
+                ? 1
+                : _pointCount;
+            if (interpolation > (uint)SilkAttributeInterpolation.Vertex)
+            {
+                throw new InvalidDataException(
+                    "A mesh attribute interpolation is unsupported.");
+            }
+            if (elementCount != expectedElements)
+            {
+                throw new InvalidDataException(
+                    "A mesh attribute element count does not match its interpolation.");
+            }
+            walked = checked(walked + AttributeFixedSize + nameLength +
+                ((long)elementCount * componentCount * sizeof(float)));
+        }
+        if (walked != bytes.Length)
+        {
+            throw new InvalidDataException(
+                "The mesh command size does not match its declared counts.");
         }
         _bytes = bytes;
     }
@@ -255,6 +310,40 @@ public readonly ref struct SilkMeshUpsertCommand
             _bytes.Slice(offset, sizeof(uint))));
     }
 
+    /// <summary>Gets the bound material path, empty when the mesh has none.</summary>
+    public string MaterialPath => _materialPath;
+
+    /// <summary>Gets the FNV-1a material path hash used only as an identity index.</summary>
+    public ulong MaterialBindingHash =>
+        BinaryPrimitives.ReadUInt64LittleEndian(_bytes[200..208]);
+
+    /// <summary>Gets the number of vertex attributes carried with the mesh.</summary>
+    public int AttributeCount => _attributeCount;
+
+    /// <summary>Gets one vertex attribute.</summary>
+    public SilkMeshAttributeEntry GetAttribute(int attributeIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(attributeIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
+            attributeIndex,
+            _attributeCount);
+        int offset = _attributeOffset;
+        for (int index = 0; index < attributeIndex; index++)
+        {
+            offset = checked(offset + AttributeSize(offset));
+        }
+        return new SilkMeshAttributeEntry(_bytes.Slice(offset, AttributeSize(offset)));
+    }
+
+    private int AttributeSize(int offset)
+    {
+        int componentCount = ReadCount(_bytes, offset + 4, "attribute component");
+        int nameLength = ReadCount(_bytes, offset + 12, "attribute name byte");
+        int elementCount = ReadCount(_bytes, offset + 16, "attribute element");
+        return checked(AttributeFixedSize + nameLength +
+            (elementCount * componentCount * sizeof(float)));
+    }
+
     private static int ReadCount(ReadOnlySpan<byte> bytes, int offset, string name)
     {
         uint count = BinaryPrimitives.ReadUInt32LittleEndian(
@@ -265,6 +354,94 @@ public readonly ref struct SilkMeshUpsertCommand
                 $"The mesh {name} count exceeds the managed page limit.");
         }
         return (int)count;
+    }
+}
+
+/// <summary>
+/// Interpolation of a mesh vertex attribute, already resolved onto the emitted
+/// triangle-list vertices.
+/// </summary>
+public enum SilkAttributeInterpolation
+{
+    /// <summary>One element for the whole mesh.</summary>
+    Constant = 0,
+
+    /// <summary>One element per emitted vertex.</summary>
+    Vertex = 1
+}
+
+/// <summary>
+/// Semantic of a mesh vertex attribute. <see cref="Custom"/> is identified by
+/// its authored primvar name alone.
+/// </summary>
+public enum SilkAttributeSemantic
+{
+    /// <summary>An authored primvar with no renderer-bound meaning.</summary>
+    Custom = 0,
+
+    /// <summary>Authored surface normals.</summary>
+    Normal = 1,
+
+    /// <summary>Texture coordinates.</summary>
+    TexCoord = 2,
+
+    /// <summary>Colour.</summary>
+    Color = 3,
+
+    /// <summary>Surface tangents.</summary>
+    Tangent = 4
+}
+
+/// <summary>
+/// One vertex attribute carried with a mesh upsert. The data is always float
+/// and always already resolved onto the emitted vertices, so a consumer never
+/// re-indexes it against the topology.
+/// </summary>
+public readonly ref struct SilkMeshAttributeEntry
+{
+    private const int FixedSize = 20;
+    private readonly ReadOnlySpan<byte> _bytes;
+    private readonly string _name;
+    private readonly int _nameLength;
+
+    internal SilkMeshAttributeEntry(ReadOnlySpan<byte> bytes)
+    {
+        _bytes = bytes;
+        _nameLength = (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes[12..16]);
+        _name = _nameLength == 0
+            ? string.Empty
+            : SilkWireFormat.DecodePath(bytes.Slice(FixedSize, _nameLength));
+    }
+
+    /// <summary>Gets the renderer-bound semantic.</summary>
+    public SilkAttributeSemantic Semantic =>
+        (SilkAttributeSemantic)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[0..4]);
+
+    /// <summary>Gets the component count, one to four.</summary>
+    public int ComponentCount =>
+        (int)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[4..8]);
+
+    /// <summary>Gets the interpolation.</summary>
+    public SilkAttributeInterpolation Interpolation =>
+        (SilkAttributeInterpolation)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[8..12]);
+
+    /// <summary>Gets the authored primvar name, empty for a bound semantic.</summary>
+    public string Name => _name;
+
+    /// <summary>Gets the number of elements.</summary>
+    public int ElementCount =>
+        (int)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[16..20]);
+
+    /// <summary>Gets one component of one element.</summary>
+    public float GetComponent(int elementIndex, int component)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(elementIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(elementIndex, ElementCount);
+        ArgumentOutOfRangeException.ThrowIfNegative(component);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(component, ComponentCount);
+        int offset = FixedSize + _nameLength +
+            (((elementIndex * ComponentCount) + component) * sizeof(float));
+        return BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(offset, sizeof(float)));
     }
 }
 

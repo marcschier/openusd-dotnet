@@ -66,6 +66,12 @@ private:
     std::vector<uint32_t> _triangleSubprims;
     uint64_t _topologyRevision = 0;
     GfVec3f _displayColor{0.7f};
+    // Authored normals, published over the ABI v4 attribute table so the
+    // consumer stops recomputing them from topology. Empty when the mesh
+    // authors none, or authors them with an interpolation this delegate does
+    // not yet resolve, in which case the consumer computes as before.
+    VtVec3fArray _normals;
+    bool _normalsAreConstant = false;
 
     HdSilkMesh(const HdSilkMesh&) = delete;
     HdSilkMesh& operator=(const HdSilkMesh&) = delete;

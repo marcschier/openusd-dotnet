@@ -18,7 +18,13 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 namespace
 {
-constexpr size_t MeshFixedPayloadSize = 192;
+// The fixed MESH_UPSERT payload, excluding the 8-byte command header: through
+// transform (192) plus the ABI v4 material binding hash, material path byte
+// count and attribute count.
+constexpr size_t MeshFixedPayloadSize = 208;
+
+// semantic, component_count, interpolation, name_byte_count, element_count.
+constexpr size_t MeshAttributeFixedSize = 20;
 
 void AppendU32(std::vector<uint8_t>& buffer, uint32_t value)
 {
@@ -223,6 +229,37 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
                 "An hdSilk triangle index is outside the point array.");
         }
     }
+    for (const HdSilkMeshAttribute& attribute : record.attributes)
+    {
+        if (attribute.componentCount < 1 || attribute.componentCount > 4)
+        {
+            throw std::invalid_argument(
+                "An hdSilk mesh attribute must have one to four components.");
+        }
+        if (attribute.interpolation != OPENUSD_SILK_INTERPOLATION_CONSTANT &&
+            attribute.interpolation != OPENUSD_SILK_INTERPOLATION_VERTEX)
+        {
+            throw std::invalid_argument(
+                "An hdSilk mesh attribute has an unsupported interpolation.");
+        }
+        // Resolved onto emitted vertices before it reaches the wire, so the
+        // consumer never has to re-index an attribute against the topology.
+        const size_t elementCount =
+            attribute.interpolation == OPENUSD_SILK_INTERPOLATION_CONSTANT
+                ? 1u
+                : pointCount;
+        if (attribute.data.size() != elementCount * attribute.componentCount)
+        {
+            throw std::invalid_argument(
+                "An hdSilk mesh attribute length does not match its interpolation.");
+        }
+        if (attribute.semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
+            attribute.name.empty())
+        {
+            throw std::invalid_argument(
+                "An hdSilk custom mesh attribute requires its authored name.");
+        }
+    }
 
     size_t payloadSize = MeshFixedPayloadSize;
     payloadSize = CheckedAdd(
@@ -242,6 +279,17 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
             sizeof(uint32_t),
             "triangle subprim"),
         "mesh payload");
+    payloadSize = CheckedAdd(
+        payloadSize, record.materialPath.size(), "mesh payload");
+    for (const HdSilkMeshAttribute& attribute : record.attributes)
+    {
+        payloadSize = CheckedAdd(payloadSize, MeshAttributeFixedSize, "mesh payload");
+        payloadSize = CheckedAdd(payloadSize, attribute.name.size(), "mesh payload");
+        payloadSize = CheckedAdd(
+            payloadSize,
+            CheckedByteCount(attribute.data.size(), sizeof(float), "attribute"),
+            "mesh payload");
+    }
     if (payloadSize >
         static_cast<size_t>(std::numeric_limits<uint32_t>::max()) - 8)
     {
@@ -282,6 +330,11 @@ void AppendMeshUpsert(std::vector<uint8_t>& buffer, const HdSilkMeshRecord& reco
     {
         AppendF64(payload, value);
     }
+    AppendU64(
+        payload,
+        record.materialPath.empty() ? 0ull : ComputeStableHash(record.materialPath));
+    AppendU32(payload, CheckedCount(record.materialPath.size(), "material path byte count"));
+    AppendU32(payload, CheckedCount(record.attributes.size(), "attribute count"));
     AppendBytes(payload, record.path.data(), record.path.size());
     for (float value : record.points)
     {
@@ -294,6 +347,24 @@ void AppendMeshUpsert(std::vector<uint8_t>& buffer, const HdSilkMeshRecord& reco
     for (uint32_t value : record.triangleSubprims)
     {
         AppendU32(payload, value);
+    }
+    AppendBytes(payload, record.materialPath.data(), record.materialPath.size());
+    for (const HdSilkMeshAttribute& attribute : record.attributes)
+    {
+        AppendU32(payload, attribute.semantic);
+        AppendU32(payload, attribute.componentCount);
+        AppendU32(payload, attribute.interpolation);
+        AppendU32(payload, CheckedCount(attribute.name.size(), "attribute name byte count"));
+        AppendU32(
+            payload,
+            CheckedCount(
+                attribute.data.size() / attribute.componentCount,
+                "attribute element count"));
+        AppendBytes(payload, attribute.name.data(), attribute.name.size());
+        for (float value : attribute.data)
+        {
+            AppendF32(payload, value);
+        }
     }
 
     AppendCommand(buffer, OPENUSD_SILK_COMMAND_MESH_UPSERT, payload);

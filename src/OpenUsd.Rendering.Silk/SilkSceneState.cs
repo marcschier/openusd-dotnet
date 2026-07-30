@@ -298,6 +298,7 @@ public sealed class SilkMeshData
     private readonly int[] _triangleSubprims;
     private readonly float[] _displayColor;
     private readonly double[] _transform;
+    private readonly float[] _authoredNormals = [];
 
     /// <summary>Initializes immutable retained mesh data.</summary>
     public SilkMeshData(
@@ -367,6 +368,51 @@ public sealed class SilkMeshData
         _transform = transform;
         TopologyFingerprint = topologyFingerprint;
     }
+
+    internal SilkMeshData(
+        int primId,
+        string path,
+        ulong stableHash,
+        int instanceId,
+        int instanceIndex,
+        SilkTopologyKind topologyKind,
+        ulong topologyRevision,
+        float[] points,
+        uint[] indices,
+        int[] triangleSubprims,
+        float[] displayColor,
+        double[] transform,
+        ulong topologyFingerprint,
+        float[] authoredNormals,
+        string materialPath)
+        : this(
+            primId,
+            path,
+            stableHash,
+            instanceId,
+            instanceIndex,
+            topologyKind,
+            topologyRevision,
+            points,
+            indices,
+            triangleSubprims,
+            displayColor,
+            transform,
+            topologyFingerprint)
+    {
+        _authoredNormals = authoredNormals;
+        MaterialPath = materialPath;
+    }
+
+    /// <summary>
+    /// Gets the authored per-vertex normals, empty when the mesh authored none
+    /// that this delegate could resolve onto emitted vertices. When empty the
+    /// renderer computes normals from topology as it always has.
+    /// </summary>
+    public ReadOnlyMemory<float> AuthoredNormals => _authoredNormals;
+
+    /// <summary>Gets the bound material path, empty when the mesh has none.</summary>
+    public string MaterialPath { get; } = string.Empty;
 
     /// <summary>
     /// Initializes non-instanced triangle data for callers that do not retain wire identity.
@@ -504,6 +550,31 @@ public sealed class SilkMeshData
             transform[i] = command.GetTransformElement(i);
         }
 
+        float[] authoredNormals = [];
+        for (int index = 0; index < command.AttributeCount; index++)
+        {
+            SilkMeshAttributeEntry attribute = command.GetAttribute(index);
+            if (attribute.Semantic != SilkAttributeSemantic.Normal ||
+                attribute.ComponentCount != 3)
+            {
+                continue;
+            }
+            // A constant normal is expanded here so the vertex builder only ever
+            // sees one shape, and so the GPU layout stays identical either way.
+            authoredNormals = new float[command.PointCount * 3];
+            bool constant = attribute.Interpolation == SilkAttributeInterpolation.Constant;
+            for (int point = 0; point < command.PointCount; point++)
+            {
+                int element = constant ? 0 : point;
+                for (int component = 0; component < 3; component++)
+                {
+                    authoredNormals[(point * 3) + component] =
+                        attribute.GetComponent(element, component);
+                }
+            }
+            break;
+        }
+
         return new SilkMeshData(
             command.PrimId,
             command.Path,
@@ -517,7 +588,9 @@ public sealed class SilkMeshData
             triangleSubprims,
             color,
             transform,
-            fingerprint.Value);
+            fingerprint.Value,
+            authoredNormals,
+            command.MaterialPath);
     }
 }
 
