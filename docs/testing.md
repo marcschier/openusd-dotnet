@@ -509,3 +509,41 @@ import smoke steps.
 - [Native build](native-build.md) defines the verified archives reused by package and render jobs.
 - [Packaging](packaging.md) defines clean-feed and package-only execution gates.
 - [Shader pipeline](shader-pipeline.md) defines authoritative and platform shader validation.
+
+### Parity capture driver contract
+
+`StormSilkParityCaptureDriverTests` is the first automated producer for the
+`ParityImageComparer` contract. The renderer-neutral driver opens one stage
+through `UsdStageScheduler`, acquires one `UsdStageRenderSource`, and renders the
+same retained stage twice: Storm through an `IStormGlContext` supplied by the
+platform shim, then hdSilk through each requested `SilkParityBackend`. The Windows
+shim is `WindowsWglStormContextFactory`; it owns only the hidden WGL window,
+current OpenGL context, framebuffer, depth renderbuffer, `glReadPixels`, and the
+bottom-up to top-down row conversion. A Linux GLX/Xvfb follow-up should add a new
+`IStormGlContextFactory` implementation without changing the driver.
+
+Every input that can otherwise create false parity failures is pinned by
+`ParityCaptureInput`: stage path, time code, resolution, explicit matrix camera,
+clear colour, and the published Storm headlight. The driver validates that the
+requested `RenderHeadlight` exactly equals `OpenUsdStormRuntime.Headlight` before
+capturing, so the harness does not silently compare unlike lighting conventions.
+Storm and hdSilk both render with opaque black clear in the initial gate.
+
+Normalisation is intentionally narrow. Storm readback uses OpenGL `glReadPixels`,
+so the WGL shim converts row order with `ParityImage.FromBottomUpRgba`; hdSilk
+readbacks are already top-down. The driver also maps the exact captured corner background to the requested clear
+colour and forces alpha to opaque for both captures. This corrects clear and
+background representation differences without altering covered RGB pixels. No
+colour-space, premultiplication, material colour, or threshold massaging is
+performed; colour remains a separate opt-in comparer metric because hdSilk still
+shades with its debug absolute-normal model rather than the Storm material and
+headlight path.
+
+The conformance test runs each capture twice and requires identical SHA-256 input
+bytes for Storm and for every hdSilk backend it exercises. It also writes a small
+text artifact under `TestResults/parity-capture/` with source-bound evidence:
+backend name, draw count, hdSilk revision, raw and adjusted coverage IoU,
+coverage disagreement fraction, colour metrics, hashes, and perturbation
+results. The perturbation test compares against a deliberate vertical mirror and
+a shifted camera; both must fail the geometry tolerance so the gate proves it can
+observe real differences.
