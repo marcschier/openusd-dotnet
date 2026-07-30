@@ -811,6 +811,8 @@ public sealed class SilkSceneGpuResources : IDisposable
 {
     private readonly ISilkGraphicsDevice _device;
     private readonly Dictionary<ulong, SilkMeshGpuResource> _meshes = [];
+    private readonly Dictionary<SilkMeshGpuGeometryKey, List<SilkMeshGpuGeometryResource>> _geometries =
+        [];
     private bool _disposed;
 
     /// <summary>Initializes GPU resource retention for one backend device.</summary>
@@ -854,7 +856,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         {
             if (_meshes.Remove(id, out SilkMeshGpuResource? removed))
             {
-                removed.Dispose();
+                DisposeMesh(removed);
             }
         }
 
@@ -876,7 +878,7 @@ public sealed class SilkSceneGpuResources : IDisposable
             SilkMeshGpuResource replacement = CreateMesh(mesh);
             if (_meshes.Remove(id, out SilkMeshGpuResource? previous))
             {
-                previous.Dispose();
+                DisposeMesh(previous);
             }
             _meshes.Add(id, replacement);
         }
@@ -913,21 +915,56 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
         foreach (SilkMeshGpuResource mesh in _meshes.Values)
         {
-            mesh.Dispose();
+            DisposeMesh(mesh);
         }
         _meshes.Clear();
+        _geometries.Clear();
         _disposed = true;
         SilkManagedDiagnostics.GpuSceneDestroyed();
     }
 
     private SilkMeshGpuResource CreateMesh(SilkMeshData mesh)
     {
+        SilkMeshGpuGeometryResource geometryResource = GetOrCreateGeometry(mesh);
+        ISilkGraphicsBuffer? uniformBuffer = null;
+        try
+        {
+            uniformBuffer = _device.CreateBuffer(
+                SilkSceneUniformWriter.ByteSize,
+                SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+            return new SilkMeshGpuResource(
+                mesh,
+                geometryResource,
+                uniformBuffer);
+        }
+        catch
+        {
+            uniformBuffer?.Dispose();
+            ReleaseGeometry(geometryResource);
+            throw;
+        }
+    }
+
+    private SilkMeshGpuGeometryResource GetOrCreateGeometry(SilkMeshData mesh)
+    {
+        var key = SilkMeshGpuGeometryKey.Create(mesh);
+        if (_geometries.TryGetValue(key, out List<SilkMeshGpuGeometryResource>? matches))
+        {
+            foreach (SilkMeshGpuGeometryResource candidate in matches)
+            {
+                if (candidate.HasSameGeometry(mesh))
+                {
+                    candidate.AddReference();
+                    return candidate;
+                }
+            }
+        }
+
         SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
         ReadOnlySpan<byte> vertexBytes = MemoryMarshal.AsBytes(geometry.Vertices.AsSpan());
         ReadOnlySpan<byte> indexBytes = MemoryMarshal.AsBytes(geometry.Indices.AsSpan());
         ISilkGraphicsBuffer? vertexBuffer = null;
         ISilkGraphicsBuffer? indexBuffer = null;
-        ISilkGraphicsBuffer? uniformBuffer = null;
         try
         {
             vertexBuffer = _device.CreateBuffer(
@@ -946,24 +983,51 @@ public sealed class SilkSceneGpuResources : IDisposable
                 indexBuffer.Write(indexBytes);
                 _indexUploads++;
             }
-            uniformBuffer = _device.CreateBuffer(
-                SilkSceneUniformWriter.ByteSize,
-                SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
-            _geometryBuilds++;
-            return new SilkMeshGpuResource(
+
+            var resource = new SilkMeshGpuGeometryResource(
+                key,
                 mesh,
                 geometry.IndexCount,
                 vertexBuffer,
-                indexBuffer,
-                uniformBuffer);
+                indexBuffer);
+            (matches ??= []).Add(resource);
+            _geometries[key] = matches;
+            _geometryBuilds++;
+            return resource;
         }
         catch
         {
-            uniformBuffer?.Dispose();
             indexBuffer?.Dispose();
             vertexBuffer?.Dispose();
             throw;
         }
+    }
+
+    private void DisposeMesh(SilkMeshGpuResource mesh)
+    {
+        SilkMeshGpuGeometryResource geometry = mesh.Geometry;
+        mesh.Dispose();
+        ReleaseGeometry(geometry);
+    }
+
+    private void ReleaseGeometry(SilkMeshGpuGeometryResource geometry)
+    {
+        if (geometry.ReleaseReference())
+        {
+            return;
+        }
+
+        if (_geometries.TryGetValue(
+                geometry.Key,
+                out List<SilkMeshGpuGeometryResource>? matches))
+        {
+            _ = matches.Remove(geometry);
+            if (matches.Count == 0)
+            {
+                _geometries.Remove(geometry.Key);
+            }
+        }
+        geometry.Dispose();
     }
 
     private static nuint GetAllocationSize(int dataLength) =>
@@ -976,21 +1040,19 @@ public sealed class SilkSceneGpuResources : IDisposable
 public sealed class SilkMeshGpuResource : IDisposable
 {
     private readonly byte[] _uniformBytes = new byte[SilkSceneUniformWriter.ByteSize];
+    private readonly SilkMeshGpuGeometryResource _geometry;
     private SilkMeshData? _uniformMesh;
     private ulong _uniformFrameRevision = ulong.MaxValue;
     private bool _disposed;
 
     internal SilkMeshGpuResource(
         SilkMeshData mesh,
-        uint indexCount,
-        ISilkGraphicsBuffer vertexBuffer,
-        ISilkGraphicsBuffer indexBuffer,
+        SilkMeshGpuGeometryResource geometry,
         ISilkGraphicsBuffer uniformBuffer)
     {
+        ArgumentNullException.ThrowIfNull(geometry);
         Mesh = mesh;
-        IndexCount = indexCount;
-        VertexBuffer = vertexBuffer;
-        IndexBuffer = indexBuffer;
+        _geometry = geometry;
         UniformBuffer = uniformBuffer;
         SilkManagedDiagnostics.GpuMeshCreated();
     }
@@ -999,20 +1061,23 @@ public sealed class SilkMeshGpuResource : IDisposable
     public SilkMeshData Mesh { get; private set; }
 
     /// <summary>Gets interleaved float3 position and float3 normal data.</summary>
-    public ISilkGraphicsBuffer VertexBuffer { get; }
+    public ISilkGraphicsBuffer VertexBuffer => _geometry.VertexBuffer;
 
     /// <summary>Gets packed 16-bit triangle index data.</summary>
-    public ISilkGraphicsBuffer IndexBuffer { get; }
+    public ISilkGraphicsBuffer IndexBuffer => _geometry.IndexBuffer;
 
     /// <summary>Gets the reusable 80-byte SceneParameters buffer.</summary>
     public ISilkGraphicsBuffer UniformBuffer { get; }
 
     /// <summary>Gets the indexed triangle-list element count.</summary>
-    public uint IndexCount { get; }
+    public uint IndexCount => _geometry.IndexCount;
+
+    internal SilkMeshGpuGeometryResource Geometry => _geometry;
 
     internal bool HasSameGeometry(SilkMeshData mesh) =>
         Mesh.Points.Span.SequenceEqual(mesh.Points.Span) &&
-        Mesh.Indices.Span.SequenceEqual(mesh.Indices.Span);
+        Mesh.Indices.Span.SequenceEqual(mesh.Indices.Span) &&
+        Mesh.AuthoredNormals.Span.SequenceEqual(mesh.AuthoredNormals.Span);
 
     internal void UpdateMesh(SilkMeshData mesh)
     {
@@ -1052,10 +1117,105 @@ public sealed class SilkMeshGpuResource : IDisposable
             return;
         }
         UniformBuffer.Dispose();
+        _disposed = true;
+        SilkManagedDiagnostics.GpuMeshDestroyed();
+    }
+}
+
+internal sealed class SilkMeshGpuGeometryResource : IDisposable
+{
+    private readonly float[] _points;
+    private readonly uint[] _indices;
+    private readonly float[] _authoredNormals;
+    private int _referenceCount = 1;
+    private bool _disposed;
+
+    internal SilkMeshGpuGeometryResource(
+        SilkMeshGpuGeometryKey key,
+        SilkMeshData mesh,
+        uint indexCount,
+        ISilkGraphicsBuffer vertexBuffer,
+        ISilkGraphicsBuffer indexBuffer)
+    {
+        Key = key;
+        IndexCount = indexCount;
+        VertexBuffer = vertexBuffer;
+        IndexBuffer = indexBuffer;
+        _points = mesh.Points.ToArray();
+        _indices = mesh.Indices.ToArray();
+        _authoredNormals = mesh.AuthoredNormals.ToArray();
+    }
+
+    internal SilkMeshGpuGeometryKey Key { get; }
+
+    internal ISilkGraphicsBuffer VertexBuffer { get; }
+
+    internal ISilkGraphicsBuffer IndexBuffer { get; }
+
+    internal uint IndexCount { get; }
+
+    internal bool HasSameGeometry(SilkMeshData mesh) =>
+        _points.AsSpan().SequenceEqual(mesh.Points.Span) &&
+        _indices.AsSpan().SequenceEqual(mesh.Indices.Span) &&
+        _authoredNormals.AsSpan().SequenceEqual(mesh.AuthoredNormals.Span);
+
+    internal void AddReference()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _referenceCount++;
+    }
+
+    internal bool ReleaseReference()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _referenceCount--;
+        if (_referenceCount < 0)
+        {
+            throw new InvalidOperationException(
+                "The Silk mesh geometry reference count became negative.");
+        }
+        return _referenceCount != 0;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
         IndexBuffer.Dispose();
         VertexBuffer.Dispose();
         _disposed = true;
-        SilkManagedDiagnostics.GpuMeshDestroyed();
+    }
+}
+
+internal readonly record struct SilkMeshGpuGeometryKey(
+    string Path,
+    ulong TopologyFingerprint,
+    ulong PointFingerprint,
+    ulong NormalFingerprint)
+{
+    internal static SilkMeshGpuGeometryKey Create(SilkMeshData mesh) =>
+        new(
+            mesh.Path,
+            mesh.TopologyFingerprint,
+            HashFloats(mesh.Points.Span),
+            HashFloats(mesh.AuthoredNormals.Span));
+
+    private static ulong HashFloats(ReadOnlySpan<float> values)
+    {
+        const ulong offsetBasis = 14695981039346656037;
+        const ulong prime = 1099511628211;
+        ulong hash = offsetBasis;
+        foreach (float value in values)
+        {
+            unchecked
+            {
+                hash ^= (uint)BitConverter.SingleToInt32Bits(value);
+                hash *= prime;
+            }
+        }
+        return hash;
     }
 }
 

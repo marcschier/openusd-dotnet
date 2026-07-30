@@ -264,10 +264,14 @@ instead of silently wrong data. `SilkMeshData.Attributes` retains them, and
 
 hdSilk creates mesh Rprims, an `extComputation` Sprim so skinned points can be pulled from computed
 primvars, a material Sprim that resolves a bound UsdPreviewSurface network, and a point instancer
-that resolves one record per instance. A network hdSilk does not understand is still published,
-marked unsupported with empty tables, so the consumer can diagnose it rather than silently
-approximate it. A prim that cannot be serialized is skipped and counted rather than aborting the
-page, so a single malformed prim cannot blank an entire frame.
+that resolves one record per instance. Page ABI 5 still duplicates prototype points and indices in
+each instance record. The managed Silk resource cache detects same-path, same-geometry instance
+records and shares one uploaded vertex/index buffer across their per-instance uniform buffers, but
+the wire still needs a later ABI redesign before native pages carry one prototype plus a transform
+array. A network hdSilk does not understand is still published, marked unsupported with empty tables,
+so the consumer can diagnose it rather than silently approximate it. A prim that cannot be serialized
+is skipped and counted rather than aborting the page, so a single malformed prim cannot blank an
+entire frame.
 
 `SilkSceneState` retains materials by USD material path, which is exactly what a mesh's
 `MaterialPath` references, alongside the retained meshes. An unsupported material is retained rather
@@ -276,8 +280,9 @@ default. Because the retained state rejects any command it does not know, a new 
 handled there in the same change that starts emitting it.
 
 `SilkSceneState` applies dirty pages into retained managed scene state. Geometry resources are
-rebuilt only when topology changes. Frame and property updates reuse retained resources where their
-contracts allow. `SilkMeshRenderer` then records backend-neutral RHI work using 32-bit indices.
+rebuilt only when topology changes or when a point-instanced prototype has no retained geometry match.
+Frame and property updates reuse retained resources where their contracts allow. `SilkMeshRenderer`
+then records backend-neutral RHI work using 32-bit indices.
 
 Concrete device creation, resource handles, command submission, synchronization, external handles,
 and presentation stay in the D3D12, Vulkan, and Metal projects. This prevents platform code from

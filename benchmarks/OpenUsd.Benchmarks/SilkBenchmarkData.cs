@@ -32,7 +32,8 @@ internal static class SilkBenchmarkData
         string pathValue,
         int primId,
         int triangleCount,
-        float color = 0.7f)
+        float color = 0.7f,
+        int instanceIndex = 0)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(primId);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(triangleCount);
@@ -52,6 +53,8 @@ internal static class SilkBenchmarkData
             bytes.AsSpan(8),
             ComputeStableHash(path));
         BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), primId);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(20), instanceIndex == 0 ? 0 : 1);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(24), instanceIndex);
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(28),
             (uint)SilkTopologyKind.TriangleList);
