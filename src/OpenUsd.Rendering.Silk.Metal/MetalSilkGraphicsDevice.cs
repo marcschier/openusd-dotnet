@@ -16,6 +16,8 @@ public sealed partial class MetalSilkGraphicsDevice
       ISilkPickingGraphicsDevice,
       ISilkSelectionOutlineGraphicsDevice
 {
+    private readonly MTLArgumentBuffersTier _argumentBuffersSupport;
+    private readonly MetalDescriptorIndexedTextureTables? _materialDescriptorTables;
     private MTLDevice _device;
     private MTLCommandQueue _queue;
     private bool _disposed;
@@ -24,6 +26,12 @@ public sealed partial class MetalSilkGraphicsDevice
     {
         _device = device;
         _queue = queue;
+        _argumentBuffersSupport = device.ArgumentBuffersSupport;
+        if (_argumentBuffersSupport == MTLArgumentBuffersTier.Tier2)
+        {
+            _materialDescriptorTables =
+                new MetalDescriptorIndexedTextureTables(device);
+        }
         Capabilities = new SilkGraphicsCapabilities(
             device.Name.ToString() ?? "Metal Device",
             "Metal",
@@ -31,7 +39,7 @@ public sealed partial class MetalSilkGraphicsDevice
             IsSoftware: false)
         {
             SupportsDescriptorIndexedTextureTables =
-                device.ArgumentBuffersSupport == MTLArgumentBuffersTier.Tier2
+                _materialDescriptorTables is not null
         };
     }
 
@@ -40,6 +48,12 @@ public sealed partial class MetalSilkGraphicsDevice
 
     /// <inheritdoc/>
     public SilkGraphicsCapabilities Capabilities { get; }
+
+    internal MTLArgumentBuffersTier ArgumentBuffersSupportForTesting =>
+        _argumentBuffersSupport;
+
+    internal MetalDescriptorIndexedTextureTables? MaterialDescriptorTables =>
+        _materialDescriptorTables;
 
     /// <summary>Creates the system-default Metal device and command queue.</summary>
     public static MetalSilkGraphicsDevice Create()
@@ -132,6 +146,7 @@ public sealed partial class MetalSilkGraphicsDevice
         {
             WaitIdle();
             idle = true;
+            _materialDescriptorTables?.Dispose();
             _queue.Dispose();
             _device.Dispose();
             _disposed = true;

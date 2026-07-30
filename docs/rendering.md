@@ -104,8 +104,13 @@ Tier 2 or Tier 3 devices and falls back to per-draw shader-visible heaps otherwi
 `runtimeDescriptorArray`, `descriptorBindingPartiallyBound`, `shaderSampledImageArrayNonUniformIndexing`, and
 `descriptorBindingVariableDescriptorCount` only when the device reports them, then allocates draw descriptor sets from
 a shared descriptor pool with partially-bound material-slot layout flags. It still falls back to the per-draw pool when
-the feature gate or shared pool allocation is unavailable. Metal currently keeps the fallback path observable through
-the same capability until its argument-buffer shader contract is wired.
+the feature gate or shared pool allocation is unavailable. Metal reports the capability only for Tier 2 argument-buffer
+devices. Those devices encode material textures and samplers into a persistent fragment argument buffer at Metal buffer
+index 1, using the material slot binding as the argument-buffer index so the same logical slot is reached by both the
+argument-buffer and per-draw fallback paths. Tier 1 devices keep using separate `setFragmentTexture` and
+`setFragmentSamplerState` calls. Metal argument buffers do not make referenced textures resident automatically, so each
+draw also calls `useResources` for encoded textures; texture and sampler wrappers remain leased until the submitted
+command buffer completes because the argument buffer stores live Metal object references for the draw.
 
 ### hdSilk shader pipeline cache
 
