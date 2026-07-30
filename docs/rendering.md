@@ -69,7 +69,7 @@ requests, prioritized synchronous picking and packed selection updates, resize/D
 recreation, diagnostics, and explicit framebuffer evidence capture. Every render request carries the shared
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
-(`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v5 and
+(`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v6 and
 hdSilk session ABI v4; the hdSilk page ABI is v4. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
@@ -389,7 +389,16 @@ loss, and still releases every slot's mappings, buffers, command pool, fence, an
 registration. The NativeAOT RHI probe gates on SwiftShader and verifies an ID hit, one-pixel
 readback, authoritative token resolution, and nullable geometry.
 
-Storm ABI v5 implements nearest-hit primitive picking with the pinned OpenUSD v26.05
+Storm ABI v6 renders with one repository-owned camera-space directional headlight before any parity
+capture or pick. The convention is defined in `native/include/openusd_render_lighting.h` and
+`native/openusd_hydra/src/openusd_hydra.cpp`, and managed consumers read it through
+`OpenUsdStormRuntime.Headlight`: direction `(0, 0, 1)` from the shaded point toward the camera in
+camera space, linear RGB colour `(1, 1, 1)`, intensity `1`, and ambient `0`. Storm sets
+`enableLighting=true`, `enableSceneLights=false`, and `enableSceneMaterials=true`; authored
+materials affect shading, but authored `UsdLux` lights are ignored so scene content cannot add a
+second, parity-breaking light to the reference image.
+
+Storm ABI v6 implements nearest-hit primitive picking with the pinned OpenUSD v26.05
 `UsdImagingGLEngine::TestIntersection` convention. The versioned native request binds one physical
 top-left pixel to the exact viewport, time, camera bytes, state/optional scene revision, and (for a
 child) context generation. The one-pixel projection uses the OpenUSD test bounds

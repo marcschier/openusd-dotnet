@@ -83,7 +83,7 @@ Typical messages name the managed and native ABI values or report missing requir
 The current contracts are:
 
 - data ABI 8 with required capabilities `0x1FF`;
-- direct Storm ABI 5;
+- direct Storm ABI 6;
 - Storm child ABI 7;
 - hdSilk session ABI 4; and
 - hdSilk command-page ABI 5.

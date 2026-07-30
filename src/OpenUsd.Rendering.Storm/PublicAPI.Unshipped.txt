@@ -175,6 +175,7 @@ static OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.operator ==(OpenUsd.R
 static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.AbiVersion.get -> uint
 static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.Create(string! pluginPath, OpenUsd.UsdStageRenderSource! source) -> OpenUsd.Rendering.Storm.OpenUsdStormRenderer!
 static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.Create(string! pluginPath, string! stagePath) -> OpenUsd.Rendering.Storm.OpenUsdStormRenderer!
+static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.Headlight.get -> OpenUsd.Rendering.RenderHeadlight
 ~override OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.ToString() -> string
 ~override OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Equals(object obj) -> bool

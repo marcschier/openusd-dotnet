@@ -19,6 +19,11 @@ public sealed class StormPickingSourceContractTests
             "openusd_hydra",
             "include",
             "openusd_hydra.h"));
+        string lightingHeader = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "native",
+            "include",
+            "openusd_render_lighting.h"));
         string hydraSource = await File.ReadAllTextAsync(Path.Combine(
             root,
             "native",
@@ -38,8 +43,9 @@ public sealed class StormPickingSourceContractTests
             "tests",
             "storm_wgl_shared_stage_probe.cpp"));
 
-        await Assert.That(hydraHeader).Contains("OPENUSD_STORM_ABI_VERSION 5u");
+        await Assert.That(hydraHeader).Contains("OPENUSD_STORM_ABI_VERSION 6u");
         await Assert.That(hydraHeader).Contains("openusd_storm_get_abi_version");
+        await Assert.That(hydraHeader).Contains("openusd_storm_get_headlight");
         await Assert.That(hydraHeader).Contains("openusd_storm_render_v2");
         await Assert.That(hydraHeader).Contains("openusd_storm_pick");
         await Assert.That(hydraHeader).Contains("openusd_storm_set_selection");
@@ -57,11 +63,19 @@ public sealed class StormPickingSourceContractTests
             "OPENUSD_RENDER_PICK_RESULT_STALE_TIME");
         await Assert.That(pickHeader).Contains(
             "OPENUSD_RENDER_PICK_RESULT_STALE_CONTEXT_GENERATION");
+        await Assert.That(lightingHeader).Contains("OPENUSD_RENDER_HEADLIGHT_VERSION 1u");
+        await Assert.That(lightingHeader).Contains(
+            "static_assert(sizeof(openusd_render_headlight) == 40)");
         string resultStruct = Slice(
             pickHeader,
             "typedef struct openusd_render_pick_result",
             "} openusd_render_pick_result;");
         await Assert.That(resultStruct).DoesNotContain("*");
+        string headlightStruct = Slice(
+            lightingHeader,
+            "typedef struct openusd_render_headlight",
+            "} openusd_render_headlight;");
+        await Assert.That(headlightStruct).DoesNotContain("*");
 
         await Assert.That(hydraSource).Contains("UsdImagingGLEngine::PickParams");
         await Assert.That(hydraSource).Contains("HdxPickTokens->resolveNearestToCenter");
@@ -75,8 +89,11 @@ public sealed class StormPickingSourceContractTests
         await Assert.That(hydraSource).Contains("engine->SetSelectionColor");
         await Assert.That(hydraSource).Contains(
             "instances.emplace_back(path, item.instance_index)");
+        await Assert.That(hydraSource).Contains("kStormHeadlight");
+        await Assert.That(hydraSource).Contains("parameters.enableSceneLights = false");
+        await Assert.That(hydraSource).Contains("parameters.enableSceneMaterials = true");
         await Assert.That(hydraSource).Contains("parameters.highlight = true");
-        await Assert.That(hydraSource).Contains("parameters.enableLighting = false");
+        await Assert.That(hydraSource).Contains("parameters.enableLighting = true");
         await Assert.That(hydraSource).Contains("RenderedStateMismatchFlags");
         await Assert.That(probeCmake).Contains(
             "openusd_storm_wgl_shared_stage_probe_legacy");

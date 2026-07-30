@@ -1,5 +1,6 @@
 set(OPENUSD_HYDRA_SOURCES
     ../include/openusd_render_camera.h
+    ../include/openusd_render_lighting.h
     ../include/openusd_render_pick.h
     include/openusd_hydra.h
     ../private/openusd_render_camera_internal.h
