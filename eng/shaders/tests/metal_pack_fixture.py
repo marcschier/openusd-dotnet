@@ -14,11 +14,8 @@ sys.path.insert(0, str(SCRIPT_ROOT))
 import shader_model  # noqa: E402
 
 
-LIBRARY_BYTES = b"validated synthetic ten-entry metallib fixture"
-SYMBOL_DUMP = (
-    b"vertexMain\nfragmentMain\npickVertexMain\npickFragmentMain\n"
-    b"fillMain\nscaleMain\n"
-)
+LIBRARY_BYTES = b"validated synthetic expanded-entry metallib fixture"
+SYMBOL_DUMP = b""
 
 
 def sha256(content: bytes) -> str:
@@ -58,7 +55,11 @@ def create_sidecar(
     entries = []
     compile_commands = []
     symbol_commands = []
-    for program_name, entry_point, stage in shader_model.METAL_LIBRARY_ENTRIES:
+    contract = shader_model.metal_library_contract(manifest)
+    for entry in contract:
+        program_name = entry["programName"]
+        entry_point = entry["entryPoint"]
+        stage = entry["stage"]
         source = file_record(
             repository_root,
             program_name,
@@ -114,6 +115,10 @@ def create_sidecar(
             }
         )
 
+    symbol_dump = "\n".join(
+        entry["entryPoint"]
+        for entry in contract
+    ).encode("utf-8") + b"\n"
     provenance = []
     for relative_path in shader_model.required_checked_inputs(manifest):
         content = (repository_root / relative_path).read_bytes()
@@ -144,8 +149,8 @@ def create_sidecar(
             "air": air,
             "entryPoints": entries,
             "symbolDump": "mesh.symbols.txt",
-            "symbolDumpSha256": sha256(SYMBOL_DUMP),
-            "symbolDumpSize": len(SYMBOL_DUMP),
+            "symbolDumpSha256": sha256(symbol_dump),
+            "symbolDumpSize": len(symbol_dump),
             "commands": {
                 "compile": compile_commands,
                 "link": {

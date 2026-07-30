@@ -204,7 +204,7 @@ def validate_sidecar(
         "symbol dump size",
     )
 
-    contract = metal_library_contract()
+    contract = metal_library_contract(shader_manifest)
     by_program = {entry["programName"]: entry for entry in contract}
     expected_programs = set(by_program)
     sources = library["sources"]

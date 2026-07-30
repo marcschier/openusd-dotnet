@@ -38,11 +38,24 @@ the exact executed argument plan, and an artifact hash manifest. Profiles,
 capabilities, validator environments, Metal language selection, and Xcode
 selection are all derived from `toolchain.lock.json`; manifest profiles that do
 not match the locked Shader Model are rejected. Linux validation uses
-`-ArtifactScope Spirv`, which emits and records only the ten SPIR-V targets and
-does not require DXC. macOS validation uses `-ArtifactScope Metal`, which emits
-only the MSL text and the compiled `metallib`, because DXIL emission loads the
-`dxcompiler` and `dxil` libraries that exist only on Windows. Both restrictions
-are enforced by the script and asserted by `validate-workflow-paths.ps1`.
+`-ArtifactScope Spirv`, which emits and records only the declared SPIR-V targets
+and does not require DXC. macOS validation uses `-ArtifactScope Metal`, which
+emits only the MSL text and the compiled `metallib`, because DXIL emission loads
+the `dxcompiler` and `dxil` libraries that exist only on Windows. Both
+restrictions are enforced by the script and asserted by
+`validate-workflow-paths.ps1`.
+
+Mesh shader permutations are generated from the manifest-declared `featureBits`.
+Names are deterministic: the empty feature set keeps the base program name for
+compatibility, while feature variants append manifest-ordered tokens joined with
+`+`, for example `mesh.fragment.uv+basecolor+normal`. `MAP_*` bits require
+`HAS_UV`, so the mesh fragment family expands to 17 fetch-topology variants. The
+vertex family only varies on `HAS_UV` and `MAP_NORMAL`, so it expands to three
+variants because normal mapping requires UVs and is the only texture feature that
+changes vertex outputs. The manifest also declares hard budgets of 32 fragment
+and 8 vertex permutations for the mesh family; plan generation fails when an
+expanded family exceeds its budget. Arithmetic-only material choices remain
+uniforms and are intentionally not feature bits.
 
 Reflection schema 2 preserves separate D3D register/space and Vulkan
 set/binding contracts, resource access and shape, arrays and strides, recursive
@@ -69,12 +82,11 @@ must use LF-only line endings before publication.
 
 The shader workflow runs only when this tree, its documentation, or the
 workflow changes. Windows x64 is the byte-authoritative checked-artifact gate.
-Linux x64 independently generates, validates, and reproduces only the ten
+Linux x64 independently generates, validates, and reproduces only the declared
 SPIR-V targets, then structurally checks the full committed payload and validates
-committed `checked/*.spv`. macOS arm64 selects the locked Xcode, compiles all ten
+committed `checked/*.spv`. macOS arm64 selects the locked Xcode, compiles all
 checked MSL files to AIR, links exactly one packaging-ready
-`mesh.metallib` containing the visible mesh, pick, selection mask, selection
-outline, fill, and scale entries, and writes
+`mesh.metallib` containing every declared shader entry, and writes
 `eng/shaders/out/checked-payload/osx-arm64/metallib-manifest.json`. Corruption
 tests prove that checked-only SPIR-V or MSL changes are rejected. Same-host
 reproducibility never implies cross-host byte identity. CI caches verified
@@ -88,15 +100,16 @@ hashes, and hashes of the Xcode selection, payload validation, and checked
 packaging scripts. Roots outside the repository are rejected.
 
 The sidecar uses exact schema version 4. It permits only the locked top-level
-and library fields, exactly ten duplicate-free source/AIR/entry records, ten
-compile commands, one combined link and inspection command, ten symbol checks,
-the final library and symbol-dump hashes/sizes, and the complete centralized
-provenance set. `scripts/metal_sidecar.py` is the shared generation, staging,
-and package validator. It rejects missing or extra records and fields,
-duplicate or mismatched mappings, absolute or traversing paths and command
-arguments, and hash or size drift. Metal `Pack` invokes this validator before
-NuGet package emission with checked-file verification enabled, so corrupt or
-stale staged pairs cannot produce a package.
+and library fields, duplicate-free source/AIR/entry records for each expanded
+manifest program, one compile command and one exact symbol check per entry, one
+combined link and inspection command, the final library and symbol-dump
+hashes/sizes, and the complete centralized provenance set.
+`scripts/metal_sidecar.py` is the shared generation, staging, and package
+validator. It rejects missing or extra records and fields, duplicate or
+mismatched mappings, absolute or traversing paths and command arguments, and
+hash or size drift. Metal `Pack` invokes this validator before NuGet package
+emission with checked-file verification enabled, so corrupt or stale staged
+pairs cannot produce a package.
 
 The macOS validator stages the validated combined library at
 `eng/shaders/checked/mesh.metallib`, the exact path consumed and packaged by

@@ -1,6 +1,7 @@
 # Copyright (c) marcschier. Licensed under the MIT License.
 
 import copy
+import itertools
 import re
 from typing import Any
 
@@ -12,7 +13,9 @@ STAGE_PREFIXES = {
 }
 REGISTER_CLASSES = {"b", "s", "t", "u"}
 RESOURCE_ACCESS = {"constant", "read", "readWrite", "write"}
-METAL_LIBRARY_ENTRIES = (
+PERMUTATION_TOKEN_PATTERN = re.compile(r"[a-z][a-z0-9]*")
+PERMUTATION_ENTRY_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+BASE_METAL_LIBRARY_ENTRIES = (
     ("mesh.vertex", "vertexMain", "vertex"),
     ("mesh.fragment", "fragmentMain", "fragment"),
     ("pick.vertex", "pickVertexMain", "vertex"),
@@ -28,6 +31,7 @@ METAL_LIBRARY_ENTRIES = (
     ("compute.fill", "fillMain", "compute"),
     ("compute.scale", "scaleMain", "compute"),
 )
+METAL_LIBRARY_ENTRIES = BASE_METAL_LIBRARY_ENTRIES
 ARTIFACT_SCOPES = ("full", "spirv", "metal")
 COMMAND_NAMES_BY_ARTIFACT_SCOPE = {
     "full": ("dxil", "spirv", "metal", "reflection", "spirvValidation"),
@@ -192,11 +196,245 @@ def validate_resource_contract(resource: dict[str, Any], program_name: str) -> N
             raise ValueError(f"{program_name}:{name} has an invalid Vulkan {key}")
 
 
+def validate_feature_bits(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    features = manifest.get("featureBits", [])
+    if not isinstance(features, list):
+        raise ValueError("featureBits must be a list")
+    by_name = {}
+    tokens = set()
+    for feature in features:
+        if not isinstance(feature, dict):
+            raise ValueError("Feature bit declarations must be objects")
+        if set(feature) != {"name", "token", "requires"}:
+            raise ValueError("Feature bits must declare name, token, and requires")
+        name = feature["name"]
+        token = feature["token"]
+        requires = feature["requires"]
+        if not isinstance(name, str) or not name or name in by_name:
+            raise ValueError(f"Invalid or duplicate feature bit: {name!r}")
+        if (
+            not isinstance(token, str)
+            or PERMUTATION_TOKEN_PATTERN.fullmatch(token) is None
+            or token in tokens
+        ):
+            raise ValueError(f"{name} has an invalid or duplicate token")
+        if not isinstance(requires, list) or not all(
+            isinstance(value, str)
+            for value in requires
+        ):
+            raise ValueError(f"{name} has invalid feature requirements")
+        by_name[name] = {
+            "name": name,
+            "token": token,
+            "requires": tuple(requires),
+        }
+        tokens.add(token)
+    for feature in by_name.values():
+        missing = [
+            requirement
+            for requirement in feature["requires"]
+            if requirement not in by_name
+        ]
+        if missing:
+            raise ValueError(
+                f"{feature['name']} requires undeclared feature bits: {missing}"
+            )
+    return by_name
+
+
+def feature_suffix(bits: set[str], feature_order: list[str], features: dict[str, Any]) -> str:
+    return "+".join(
+        features[name]["token"]
+        for name in feature_order
+        if name in bits
+    )
+
+
+def entry_point_suffix(suffix: str) -> str:
+    return suffix.replace("+", "_")
+
+
+def valid_feature_sets(
+    selected_features: list[str],
+    features: dict[str, dict[str, Any]],
+) -> list[set[str]]:
+    selected = set(selected_features)
+    for name in selected_features:
+        if name not in features:
+            raise ValueError(f"Unknown permutation feature bit: {name}")
+        missing = [
+            requirement
+            for requirement in features[name]["requires"]
+            if requirement not in selected
+        ]
+        if missing:
+            raise ValueError(
+                f"{name} requires feature bits not selected by the stage: {missing}"
+            )
+    result = []
+    for count in range(len(selected_features) + 1):
+        for values in itertools.combinations(selected_features, count):
+            bits = set(values)
+            if all(
+                set(features[name]["requires"]).issubset(bits)
+                for name in bits
+            ):
+                result.append(bits)
+    return result
+
+
+def resource_applies(resource: dict[str, Any], bits: set[str]) -> bool:
+    feature = resource.get("feature")
+    features_any = resource.get("featuresAny")
+    if feature is not None and features_any is not None:
+        raise ValueError("Permutation resources cannot mix feature and featuresAny")
+    if feature is not None:
+        if not isinstance(feature, str):
+            raise ValueError("Permutation resource feature must be a string")
+        return feature in bits
+    if features_any is not None:
+        if not isinstance(features_any, list) or not all(
+            isinstance(value, str)
+            for value in features_any
+        ):
+            raise ValueError("Permutation resource featuresAny must be a string list")
+        return any(value in bits for value in features_any)
+    raise ValueError("Permutation resources must declare feature or featuresAny")
+
+
+def expand_program(
+    program: dict[str, Any],
+    feature_order: list[str],
+    features: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    selected_features = program.get("permutationFeatures")
+    if selected_features is None:
+        if "permutationFamily" in program:
+            raise ValueError(f"{program['name']} is missing permutationFeatures")
+        return [copy.deepcopy(program)]
+    if not isinstance(selected_features, list) or not all(
+        isinstance(value, str)
+        for value in selected_features
+    ):
+        raise ValueError(f"{program['name']} has invalid permutationFeatures")
+    family = program.get("permutationFamily")
+    if not isinstance(family, str) or not family:
+        raise ValueError(f"{program['name']} is missing a permutationFamily")
+    resources = program.get("resources", [])
+    permutation_resources = program.get("permutationResources", [])
+    if not isinstance(permutation_resources, list):
+        raise ValueError(f"{program['name']} has invalid permutationResources")
+    expanded = []
+    for bits in valid_feature_sets(selected_features, features):
+        suffix = feature_suffix(bits, feature_order, features)
+        public_suffix = suffix if suffix else "none"
+        variant = copy.deepcopy(program)
+        if suffix:
+            variant["name"] = f"{program['name']}.{suffix}"
+            variant["entryPoint"] = (
+                f"{program['entryPoint']}_{entry_point_suffix(suffix)}"
+            )
+        else:
+            variant["name"] = program["name"]
+            variant["entryPoint"] = program["entryPoint"]
+        variant["permutationFamily"] = family
+        variant["permutationBits"] = [
+            name
+            for name in feature_order
+            if name in bits
+        ]
+        variant["permutationBaseName"] = program["name"]
+        variant["permutationSuffix"] = public_suffix
+        variant["resources"] = copy.deepcopy(resources)
+        for resource in permutation_resources:
+            if resource_applies(resource, bits):
+                resource_contract = {
+                    key: copy.deepcopy(value)
+                    for key, value in resource.items()
+                    if key not in {"feature", "featuresAny"}
+                }
+                variant["resources"].append(resource_contract)
+        variant.pop("permutationFeatures", None)
+        variant.pop("permutationResources", None)
+        expanded.append(variant)
+    return expanded
+
+
+def validate_permutation_budgets(
+    manifest: dict[str, Any],
+    programs: list[dict[str, Any]],
+) -> None:
+    budgets = manifest.get("permutationBudgets", [])
+    if not isinstance(budgets, list):
+        raise ValueError("permutationBudgets must be a list")
+    by_family_stage = {}
+    for budget in budgets:
+        if not isinstance(budget, dict) or set(budget) != {
+            "family",
+            "stage",
+            "maxPermutations",
+        }:
+            raise ValueError("Permutation budgets must declare family, stage, and max")
+        family = budget["family"]
+        stage = budget["stage"]
+        maximum = budget["maxPermutations"]
+        key = (family, stage)
+        if (
+            not isinstance(family, str)
+            or not isinstance(stage, str)
+            or stage not in STAGE_PREFIXES
+            or not isinstance(maximum, int)
+            or isinstance(maximum, bool)
+            or maximum <= 0
+            or key in by_family_stage
+        ):
+            raise ValueError(f"Invalid permutation budget: {budget!r}")
+        by_family_stage[key] = maximum
+
+    counts: dict[tuple[str, str], int] = {}
+    for program in programs:
+        family = program.get("permutationFamily")
+        if family is None:
+            continue
+        key = (family, program["stage"])
+        counts[key] = counts.get(key, 0) + 1
+    if set(counts) != set(by_family_stage):
+        missing = sorted(set(counts) - set(by_family_stage))
+        unused = sorted(set(by_family_stage) - set(counts))
+        raise ValueError(
+            "Permutation budgets do not cover the expanded families: "
+            f"missing={missing}, unused={unused}"
+        )
+    for key, count in counts.items():
+        maximum = by_family_stage[key]
+        if count > maximum:
+            family, stage = key
+            raise ValueError(
+                f"Permutation budget exceeded for {family} {stage}: "
+                f"{count} > {maximum}"
+            )
+
+
+def expanded_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    validated = copy.deepcopy(manifest)
+    features = validate_feature_bits(validated)
+    feature_order = [
+        feature["name"]
+        for feature in validated.get("featureBits", [])
+    ]
+    programs = []
+    for program in validated.get("programs", []):
+        programs.extend(expand_program(program, feature_order, features))
+    validated["programs"] = programs
+    validate_permutation_budgets(validated, programs)
+    return validated
+
+
 def validate_manifest(
     manifest: dict[str, Any],
     model: dict[str, Any],
 ) -> dict[str, Any]:
-    validated = copy.deepcopy(manifest)
+    validated = expanded_manifest(manifest)
     matrix_layout = validated.get("matrixLayout")
     if matrix_layout not in {"row-major", "column-major"}:
         raise ValueError(f"Unsupported matrix layout: {matrix_layout!r}")
@@ -244,9 +482,23 @@ def required_checked_inputs(manifest: dict[str, Any]) -> tuple[str, ...]:
 
 
 def metal_library_programs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
-    programs = manifest.get("programs")
-    if not isinstance(programs, list):
+    has_permutations = bool(
+        manifest.get("featureBits")
+        or any(
+            isinstance(program, dict) and "permutationFamily" in program
+            for program in manifest.get("programs", [])
+        )
+    )
+    programs = (
+        expanded_manifest(manifest).get("programs")
+        if has_permutations
+        else manifest.get("programs")
+    )
+    if not isinstance(programs, list) or not programs:
         raise ValueError("The shader manifest programs value is invalid")
+    if has_permutations:
+        return copy.deepcopy(programs)
+
     selected = []
     for program_name, entry_point, stage in METAL_LIBRARY_ENTRIES:
         matches = [
@@ -270,14 +522,23 @@ def metal_library_programs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     return selected
 
 
-def metal_library_contract() -> list[dict[str, str]]:
+def metal_library_contract(
+    manifest: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    if manifest is None:
+        entries = BASE_METAL_LIBRARY_ENTRIES
+    else:
+        entries = [
+            (program["name"], program["entryPoint"], program["stage"])
+            for program in metal_library_programs(manifest)
+        ]
     return [
         {
             "programName": program_name,
             "entryPoint": entry_point,
             "stage": stage,
         }
-        for program_name, entry_point, stage in METAL_LIBRARY_ENTRIES
+        for program_name, entry_point, stage in entries
     ]
 
 
@@ -308,10 +569,28 @@ def generate_plan(
         base = f"{output_root}/{program['name']}"
         raw_dxil = f"{raw_root}/{program['name']}.dxil.json"
         raw_spirv = f"{raw_root}/{program['name']}.spirv.json"
+        defines = []
+        permutation_bits = program.get("permutationBits")
+        if permutation_bits is not None:
+            if program["stage"] == "vertex":
+                defines.append(f"-DVERTEX_ENTRY_POINT={program['entryPoint']}")
+                defines.append("-DVERTEX_STAGE=1")
+            elif program["stage"] == "fragment":
+                defines.append(f"-DFRAGMENT_ENTRY_POINT={program['entryPoint']}")
+                defines.append("-DFRAGMENT_STAGE=1")
+            else:
+                raise ValueError(
+                    f"{program['name']} has unsupported permutation stage"
+                )
+            defines.extend(
+                f"-D{feature}=1"
+                for feature in permutation_bits
+            )
         common = [
             program["source"],
             "-entry",
             program["entryPoint"],
+            *defines,
             *common_options,
         ]
         spirv_reflection_options = (

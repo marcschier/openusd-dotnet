@@ -73,7 +73,8 @@ def publish(
     shader_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
     model = build_lock_model(lock)
-    validate_manifest(shader_manifest, model)
+    source_manifest = shader_manifest
+    shader_manifest = validate_manifest(shader_manifest, model)
     repository_root = lock_path.resolve().parents[2]
     command_path = input_root / "executed-commands.json"
     executed = json.loads(command_path.read_text(encoding="utf-8"))
@@ -85,7 +86,7 @@ def publish(
     }
     checked_inputs = read_checked_inputs(
         repository_root,
-        required_checked_inputs(shader_manifest),
+        required_checked_inputs(source_manifest),
         command_path,
     )
 

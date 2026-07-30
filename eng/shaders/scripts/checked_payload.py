@@ -189,7 +189,8 @@ def validate_checked(
         shader_manifest_path.read_text(encoding="utf-8")
     )
     model = build_lock_model(lock)
-    validate_manifest(shader_manifest, model)
+    source_manifest = shader_manifest
+    shader_manifest = validate_manifest(shader_manifest, model)
     if checked_manifest.get("schemaVersion") != 2:
         raise ValueError("Checked manifest schema is not version 2")
     if checked_manifest.get("toolchain") != model:
@@ -208,7 +209,7 @@ def validate_checked(
         raise ValueError("Checked manifest inputs must be a list")
     validate_provenance_records(
         input_values,
-        required_checked_inputs(shader_manifest),
+        required_checked_inputs(source_manifest),
     )
     for input_value in input_values:
         relative_path = input_value.get("path")
@@ -224,6 +225,12 @@ def validate_checked(
         program["name"]: program
         for program in checked_manifest.get("programs", [])
     }
+    expected_program_names = {
+        program["name"]
+        for program in shader_manifest["programs"]
+    }
+    if set(checked_programs) != expected_program_names:
+        raise ValueError("Checked manifest program set does not match the manifest")
     expected_files = {"manifest.json", "executed-commands.json"}
     for program in shader_manifest["programs"]:
         checked_program = checked_programs.get(program["name"])
@@ -309,7 +316,7 @@ def main() -> int:
             args.manifest.read_text(encoding="utf-8")
         )
         metal_library_programs(shader_manifest)
-        print(json.dumps(metal_library_contract()))
+        print(json.dumps(metal_library_contract(shader_manifest)))
         return 0
     if args.symbols_input is not None:
         if args.entry_point is None:
