@@ -625,6 +625,7 @@ internal static partial class Program
                     _ = mesh.InstanceIndex;
                     _ = mesh.TopologyKind;
                     _ = mesh.TopologyRevision;
+                    _ = mesh.MaterialPath;
                     _ = mesh.GetPointComponent(0, 0);
                     _ = mesh.GetIndex(0);
                     if (mesh.TriangleCount != 0)
@@ -636,6 +637,26 @@ internal static partial class Program
                 case SilkCommandType.MeshRemove:
                     _ = commands.Current.AsMeshRemove().Path;
                     removals++;
+                    break;
+                case SilkCommandType.MaterialUpsert:
+                    // Touch every accessor so the probe fails on a malformed table
+                    // rather than only when a later stage happens to read it.
+                    SilkMaterialUpsertCommand material =
+                        commands.Current.AsMaterialUpsert();
+                    _ = material.Path;
+                    _ = material.StableHash;
+                    _ = material.SurfaceKind;
+                    for (int index = 0; index < material.ScalarCount; index++)
+                    {
+                        _ = material.GetScalar(index).Parameter;
+                    }
+                    for (int index = 0; index < material.TextureCount; index++)
+                    {
+                        _ = material.GetTexture(index).Asset;
+                    }
+                    break;
+                case SilkCommandType.MaterialRemove:
+                    _ = commands.Current.AsMaterialRemove().Path;
                     break;
                 default:
                     throw new InvalidDataException($"Unknown command type {commands.Current.Type}.");
