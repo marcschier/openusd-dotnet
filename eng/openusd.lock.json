@@ -26,6 +26,7 @@
   "abi": {
     "data": 8,
     "dataCapabilities": 511,
+    "storm": 6,
     "renderCommands": 5
   },
   "vulkanSdk": {

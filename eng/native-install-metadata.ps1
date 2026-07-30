@@ -128,6 +128,7 @@ $dataHeader = Join-Path $repoRoot 'native/openusd_dotnet/include/openusd_dotnet.
 $hydraHeader = Join-Path $repoRoot 'native/openusd_hydra/include/openusd_hydra.h'
 $pageAbiSource = Join-Path $repoRoot 'native/hdSilk/include/openusd_hdsilk.h'
 $renderCameraHeader = Join-Path $repoRoot 'native/include/openusd_render_camera.h'
+$renderLightingHeader = Join-Path $repoRoot 'native/include/openusd_render_lighting.h'
 $renderPickHeader = Join-Path $repoRoot 'native/include/openusd_render_pick.h'
 $stormChildHeader = Join-Path $repoRoot 'native/openusd_storm_child/include/openusd_storm_child.h'
 $stormChildSource = Join-Path $repoRoot 'native/openusd_storm_child/src/openusd_storm_child.cpp'
@@ -177,9 +178,9 @@ if ($pageAbi -ne [int]$lock.abi.renderCommands)
 {
     throw "hdSilk page ABI $pageAbi does not match lock ABI $($lock.abi.renderCommands)."
 }
-if ($stormAbi -ne 5)
+if ($stormAbi -ne [int]$lock.abi.storm)
 {
-    throw "Storm ABI $stormAbi does not match the package ABI 5 contract."
+    throw "Storm ABI $stormAbi does not match lock ABI $($lock.abi.storm)."
 }
 if ($sessionAbi -ne 4)
 {
@@ -321,6 +322,7 @@ $installedHydraHeader = Join-Path $shimRoot 'include/openusd_hydra.h'
 $installedHdSilkHeader = Join-Path $shimRoot 'include/openusd_hdsilk.h'
 $installedStormChildHeader = Join-Path $shimRoot 'include/openusd_storm_child.h'
 $installedRenderCameraHeader = Join-Path $shimRoot 'include/openusd_render_camera.h'
+$installedRenderLightingHeader = Join-Path $shimRoot 'include/openusd_render_lighting.h'
 $installedRenderPickHeader = Join-Path $shimRoot 'include/openusd_render_pick.h'
 $expected.dataHeaderSha256 = Get-VerifiedHeaderHash `
     -SourcePath $dataHeader `
@@ -338,6 +340,10 @@ $expected.renderCameraHeaderSha256 = Get-VerifiedHeaderHash `
     -SourcePath $renderCameraHeader `
     -InstalledPath $installedRenderCameraHeader `
     -Description 'render camera header'
+$expected.renderLightingHeaderSha256 = Get-VerifiedHeaderHash `
+    -SourcePath $renderLightingHeader `
+    -InstalledPath $installedRenderLightingHeader `
+    -Description 'render lighting header'
 $expected.renderPickHeaderSha256 = Get-VerifiedHeaderHash `
     -SourcePath $renderPickHeader `
     -InstalledPath $installedRenderPickHeader `

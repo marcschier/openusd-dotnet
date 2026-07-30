@@ -54,7 +54,8 @@ The layers have distinct responsibilities:
   change notifications, and retained render sources.
 - `OpenUsd.Rendering` owns immutable `StageRenderState`, backend contracts, selection, picking,
   diagnostics, deterministic backend selection, switching, and failover.
-- `OpenUsd.Rendering.Storm` adapts the renderer-neutral contracts to the project Storm ABIs.
+- `OpenUsd.Rendering.Storm` adapts the renderer-neutral contracts to the project Storm ABIs and
+  publishes the deterministic Storm headlight convention used by parity renders.
 - `OpenUsd.Rendering.Silk` consumes hdSilk command pages, retains managed scene state, and defines
   the backend-neutral Silk RHI.
 - The D3D12, Vulkan, and Metal projects implement that RHI and platform presentation details.

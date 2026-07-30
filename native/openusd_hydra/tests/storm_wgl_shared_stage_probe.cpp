@@ -37,7 +37,7 @@ constexpr GLenum FramebufferComplete = 0x8CD5;
 constexpr GLenum DepthComponent24 = 0x81A6;
 constexpr GLint Rgba8 = 0x8058;
 constexpr int CapabilityUnavailableExitCode = 125;
-static_assert(OPENUSD_STORM_ABI_VERSION == 5);
+static_assert(OPENUSD_STORM_ABI_VERSION == 6);
 
 enum class FramebufferCreationResult
 {
@@ -52,6 +52,28 @@ openusd_render_camera AutomaticCamera()
     camera.struct_size = sizeof(camera);
     camera.mode = OPENUSD_RENDER_CAMERA_MODE_AUTO;
     return camera;
+}
+
+bool VerifyHeadlightAbi(openusd_error_buffer* error)
+{
+    openusd_render_headlight headlight{};
+    headlight.struct_size = sizeof(headlight);
+    headlight.version = OPENUSD_RENDER_HEADLIGHT_VERSION;
+    if (openusd_storm_get_headlight(&headlight, error) != OPENUSD_STATUS_OK)
+    {
+        return false;
+    }
+
+    return headlight.struct_size == sizeof(headlight) &&
+        headlight.version == OPENUSD_RENDER_HEADLIGHT_VERSION &&
+        headlight.direction[0] == 0.0f &&
+        headlight.direction[1] == 0.0f &&
+        headlight.direction[2] == 1.0f &&
+        headlight.intensity == 1.0f &&
+        headlight.color[0] == 1.0f &&
+        headlight.color[1] == 1.0f &&
+        headlight.color[2] == 1.0f &&
+        headlight.ambient == 0.0f;
 }
 
 openusd_render_camera LegacyMatricesCamera()
@@ -727,9 +749,10 @@ int main(int argc, char** argv)
     const std::vector<uint8_t> selection_baseline =
         Render(renderer, framebuffer.Id(), &error, &status, &automatic);
     if (status != OPENUSD_STATUS_OK ||
-        openusd_storm_get_abi_version() != OPENUSD_STORM_ABI_VERSION)
+        openusd_storm_get_abi_version() != OPENUSD_STORM_ABI_VERSION ||
+        !VerifyHeadlightAbi(&error))
     {
-        std::cerr << "Storm ABI or pick pre-render validation failed.\n";
+        std::cerr << "Storm ABI, headlight ABI, or pick pre-render validation failed.\n";
         return 7;
     }
     const openusd_render_pick_request center_request =

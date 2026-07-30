@@ -15,10 +15,28 @@ public static unsafe partial class OpenUsdStormRuntime
 {
     private const string LibraryName = "openusd_hydra";
     private const int ErrorBufferSize = 4096;
-    private const uint ExpectedAbiVersion = 5;
+    private const uint ExpectedAbiVersion = 6;
 
     /// <summary>Gets the native Storm renderer ABI version.</summary>
     public static uint AbiVersion => NativeMethods.GetAbiVersion();
+
+    /// <summary>Gets the deterministic camera-space headlight used by Storm parity renders.</summary>
+    public static RenderHeadlight Headlight
+    {
+        get
+        {
+            ValidateAbiVersion(AbiVersion);
+            var headlight = new NativeRenderHeadlight();
+            Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+            fixed (byte* errorPointer = errorBytes)
+            {
+                var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+                OpenUsdNativeStatus status = NativeMethods.GetHeadlight(ref headlight, ref error);
+                ThrowIfFailed(status, errorBytes, error);
+            }
+            return headlight.ToRenderHeadlight();
+        }
+    }
 
     /// <summary>Creates a Storm renderer for a stage.</summary>
     public static OpenUsdStormRenderer Create(string pluginPath, string stagePath)
@@ -454,6 +472,12 @@ public static unsafe partial class OpenUsdStormRuntime
         [LibraryImport(LibraryName, EntryPoint = "openusd_storm_get_abi_version")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial uint GetAbiVersion();
+
+        [LibraryImport(LibraryName, EntryPoint = "openusd_storm_get_headlight")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus GetHeadlight(
+            ref NativeRenderHeadlight headlight,
+            ref NativeErrorBuffer error);
 
         [LibraryImport(
             LibraryName,

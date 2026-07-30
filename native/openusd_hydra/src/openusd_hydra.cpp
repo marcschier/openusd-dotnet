@@ -11,6 +11,7 @@
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/gf/vec2i.h"
 #include "pxr/base/gf/vec3d.h"
+#include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/vec4f.h"
 #include "pxr/base/plug/plugin.h"
 #include "pxr/base/plug/registry.h"
@@ -19,6 +20,8 @@
 #include "pxr/imaging/garch/glApi.h"
 #include "pxr/imaging/glf/contextCaps.h"
 #include "pxr/imaging/glf/glContext.h"
+#include "pxr/imaging/glf/simpleLight.h"
+#include "pxr/imaging/glf/simpleMaterial.h"
 #include "pxr/imaging/hgi/tokens.h"
 #include "pxr/imaging/hdx/pickTask.h"
 #include "pxr/pxr.h"
@@ -78,6 +81,48 @@ namespace
 std::atomic_size_t g_abandoned_storm_engine_count{0};
 std::atomic_size_t g_live_storm_renderer_count{0};
 std::atomic_size_t g_peak_storm_renderer_count{0};
+
+constexpr openusd_render_headlight kStormHeadlight{
+    sizeof(openusd_render_headlight),
+    OPENUSD_RENDER_HEADLIGHT_VERSION,
+    {0.0f, 0.0f, 1.0f},
+    1.0f,
+    {1.0f, 1.0f, 1.0f},
+    0.0f};
+
+GlfSimpleLightVector MakeStormHeadlightLights()
+{
+    GlfSimpleLight light;
+    light.SetPosition(GfVec4f(
+        kStormHeadlight.direction[0],
+        kStormHeadlight.direction[1],
+        kStormHeadlight.direction[2],
+        0.0f));
+    const GfVec4f radiance(
+        kStormHeadlight.color[0] * kStormHeadlight.intensity,
+        kStormHeadlight.color[1] * kStormHeadlight.intensity,
+        kStormHeadlight.color[2] * kStormHeadlight.intensity,
+        1.0f);
+    light.SetDiffuse(radiance);
+    light.SetSpecular(radiance);
+    light.SetAmbient(GfVec4f(0.0f, 0.0f, 0.0f, 1.0f));
+    light.SetIsCameraSpaceLight(true);
+    light.SetHasIntensity(true);
+    light.SetHasShadow(false);
+    light.SetAttenuation(GfVec3f(1.0f, 0.0f, 0.0f));
+    return GlfSimpleLightVector{light};
+}
+
+GlfSimpleMaterial MakeStormFallbackMaterial()
+{
+    GlfSimpleMaterial material;
+    material.SetAmbient(GfVec4f(0.2f, 0.2f, 0.2f, 1.0f));
+    material.SetDiffuse(GfVec4f(0.8f, 0.8f, 0.8f, 1.0f));
+    material.SetSpecular(GfVec4f(0.5f, 0.5f, 0.5f, 1.0f));
+    material.SetEmission(GfVec4f(0.0f, 0.0f, 0.0f, 1.0f));
+    material.SetShininess(32.0);
+    return material;
+}
 
 void UpdatePeak(std::atomic_size_t& peak, size_t value) noexcept
 {
@@ -590,6 +635,26 @@ extern "C" OPENUSD_HYDRA_API uint32_t openusd_storm_get_abi_version(void) noexce
     return OPENUSD_STORM_ABI_VERSION;
 }
 
+openusd_status openusd_storm_get_headlight(
+    openusd_render_headlight* headlight,
+    openusd_error_buffer* error)
+{
+    if (headlight == nullptr)
+    {
+        WriteError(error, "A headlight structure is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (headlight->struct_size != sizeof(openusd_render_headlight) ||
+        headlight->version != OPENUSD_RENDER_HEADLIGHT_VERSION)
+    {
+        WriteError(error, "The headlight structure has an invalid ABI.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+
+    *headlight = kStormHeadlight;
+    return OPENUSD_STATUS_OK;
+}
+
 openusd_status openusd_storm_create(
     const char* plugin_path,
     const char* stage_path,
@@ -851,10 +916,20 @@ openusd_status openusd_storm_render_v2(
                 GfVec4d(0.0, 0.0, width, height));
             renderer->engine->SetPresentationOutput(
                 HgiTokens->OpenGL, VtValue(framebuffer));
+            renderer->engine->SetLightingState(
+                MakeStormHeadlightLights(),
+                MakeStormFallbackMaterial(),
+                GfVec4f(
+                    kStormHeadlight.ambient,
+                    kStormHeadlight.ambient,
+                    kStormHeadlight.ambient,
+                    1.0f));
             UsdImagingGLRenderParams parameters;
             parameters.frame = UsdTimeCode(time_code);
             parameters.showRender = true;
-            parameters.enableLighting = false;
+            parameters.enableLighting = true;
+            parameters.enableSceneLights = false;
+            parameters.enableSceneMaterials = true;
             parameters.highlight = true;
             parameters.clearColor = GfVec4f(0.055f, 0.055f, 0.055f, 1.0f);
             renderer->engine->Render(renderer->stage->GetPseudoRoot(), parameters);

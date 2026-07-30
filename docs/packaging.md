@@ -444,11 +444,11 @@ native source and header files. Generated `native/build`, `native/install`,
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
 the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, data ABI 8 and
-capabilities `0x1FF`, Storm ABI 5, hdSilk session/page ABI 4/5, and Storm child
+capabilities `0x1FF`, Storm ABI 6, hdSilk session/page ABI 4/5, and Storm child
 ABI 7. Metadata schema 3 records camera-state version 1, Storm-child navigation
 input version 1, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their
-exact source-matching headers, and the shared render-camera and render-pick headers. A post-build
+exact source-matching headers, and the shared render-camera, render-lighting, and render-pick headers. A post-build
 source change therefore invalidates metadata even if an installed binary is
 still present. The Windows gate also requires the locked Vulkan loader.
 Missing or mismatched metadata fails clearly and requires rebuilding the native

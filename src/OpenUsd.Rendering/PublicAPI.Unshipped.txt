@@ -282,6 +282,24 @@ OpenUsd.Rendering.RenderDrawMode.FlatShaded = 1 -> OpenUsd.Rendering.RenderDrawM
 OpenUsd.Rendering.RenderDrawMode.Points = 3 -> OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderDrawMode.SmoothShaded = 0 -> OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderDrawMode.Wireframe = 2 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderHeadlight
+OpenUsd.Rendering.RenderHeadlight.Ambient.get -> float
+OpenUsd.Rendering.RenderHeadlight.Ambient.init -> void
+OpenUsd.Rendering.RenderHeadlight.Color.get -> System.Numerics.Vector3
+OpenUsd.Rendering.RenderHeadlight.Color.init -> void
+OpenUsd.Rendering.RenderHeadlight.Deconstruct(out System.Numerics.Vector3 Direction, out float Intensity, out System.Numerics.Vector3 Color, out float Ambient) -> void
+OpenUsd.Rendering.RenderHeadlight.Direction.get -> System.Numerics.Vector3
+OpenUsd.Rendering.RenderHeadlight.Direction.init -> void
+OpenUsd.Rendering.RenderHeadlight.Equals(OpenUsd.Rendering.RenderHeadlight other) -> bool
+OpenUsd.Rendering.RenderHeadlight.Intensity.get -> float
+OpenUsd.Rendering.RenderHeadlight.Intensity.init -> void
+OpenUsd.Rendering.RenderHeadlight.RenderHeadlight() -> void
+OpenUsd.Rendering.RenderHeadlight.RenderHeadlight(System.Numerics.Vector3 Direction, float Intensity, System.Numerics.Vector3 Color, float Ambient) -> void
+override OpenUsd.Rendering.RenderHeadlight.GetHashCode() -> int
+static OpenUsd.Rendering.RenderHeadlight.operator !=(OpenUsd.Rendering.RenderHeadlight left, OpenUsd.Rendering.RenderHeadlight right) -> bool
+static OpenUsd.Rendering.RenderHeadlight.operator ==(OpenUsd.Rendering.RenderHeadlight left, OpenUsd.Rendering.RenderHeadlight right) -> bool
+~override OpenUsd.Rendering.RenderHeadlight.Equals(object obj) -> bool
+~override OpenUsd.Rendering.RenderHeadlight.ToString() -> string
 OpenUsd.Rendering.RenderFrameResult
 OpenUsd.Rendering.RenderFrameResult.<Clone>$() -> OpenUsd.Rendering.RenderFrameResult!
 OpenUsd.Rendering.RenderFrameResult.DeviceLoss.get -> OpenUsd.Rendering.RenderDeviceLossKind

@@ -5,6 +5,7 @@
 
 #include "openusd_dotnet.h"
 #include "openusd_render_camera.h"
+#include "openusd_render_lighting.h"
 #include "openusd_render_pick.h"
 
 #if defined(_WIN32)
@@ -29,10 +30,14 @@ extern "C" {
 
 typedef struct openusd_storm_renderer openusd_storm_renderer;
 
-#define OPENUSD_STORM_ABI_VERSION 5u
+#define OPENUSD_STORM_ABI_VERSION 6u
 
 OPENUSD_HYDRA_API uint32_t openusd_storm_get_abi_version(void)
     OPENUSD_HYDRA_NOEXCEPT;
+
+OPENUSD_HYDRA_API openusd_status openusd_storm_get_headlight(
+    openusd_render_headlight* headlight,
+    openusd_error_buffer* error);
 
 /// Compatibility path API. Opens a temporary data-stage handle and delegates
 /// to openusd_storm_create_from_stage.

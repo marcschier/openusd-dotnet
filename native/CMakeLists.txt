@@ -6,6 +6,7 @@ include(GNUInstallDirs)
 install(
     FILES
         include/openusd_render_camera.h
+        include/openusd_render_lighting.h
         include/openusd_render_pick.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 

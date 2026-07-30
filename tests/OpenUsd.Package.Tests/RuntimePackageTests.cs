@@ -19,7 +19,7 @@ public sealed class RuntimePackageTests
     private const ulong RequiredDataCapabilities = 0x1FF;
     private const uint PreviousDataAbiVersion = 6;
     private const ulong PreviousDataCapabilities = 0x7F;
-    private const int RequiredStormAbiVersion = 5;
+    private const int RequiredStormAbiVersion = 6;
     private const int RequiredSilkSessionAbiVersion = 4;
     private const int RequiredSilkPageAbiVersion = 5;
     private const int RequiredStormChildAbiVersion = 7;
@@ -1553,6 +1553,10 @@ public sealed class RuntimePackageTests
                 inputs.ShimRoot,
                 "include",
                 "openusd_render_camera.h"),
+            ["renderLightingHeaderSha256"] = Path.Combine(
+                inputs.ShimRoot,
+                "include",
+                "openusd_render_lighting.h"),
             ["renderPickHeaderSha256"] = Path.Combine(
                 inputs.ShimRoot,
                 "include",
