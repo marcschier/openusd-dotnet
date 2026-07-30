@@ -500,7 +500,16 @@ public enum SilkGraphicsCommandKind
     SetSelectionOutlineBinding,
 
     /// <summary>Draws the generated three-vertex fullscreen triangle.</summary>
-    DrawSelectionOutlineFullscreenTriangle
+    DrawSelectionOutlineFullscreenTriangle,
+
+    // Appended so no existing member's value shifts, which the public API baseline
+    // records explicitly.
+
+    /// <summary>Binds a sampled texture to a material slot.</summary>
+    SetTexture,
+
+    /// <summary>Binds a sampler to a material slot.</summary>
+    SetSampler
 }
 
 /// <summary>
@@ -537,6 +546,27 @@ public interface ISilkGraphicsCommandList : IDisposable
 
     /// <summary>Binds SceneParameters at set zero, binding zero.</summary>
     void SetUniformBuffer(uint setIndex, uint binding, ISilkGraphicsBuffer buffer);
+
+    /// <summary>
+    /// Binds a sampled texture to the material slot at the given set and binding.
+    /// </summary>
+    /// <remarks>
+    /// The slot must be declared by the bound pipeline's
+    /// <see cref="SilkBindingLayoutDescriptor.MaterialSlots"/> as a
+    /// <see cref="SilkBindingKind.SampledTexture"/>, and the texture must carry
+    /// <see cref="SilkTextureUsage.Sampled"/>.
+    /// </remarks>
+    void SetTexture(uint setIndex, uint binding, ISilkGraphicsTexture texture);
+
+    /// <summary>
+    /// Binds a sampler to the material slot at the given set and binding.
+    /// </summary>
+    /// <remarks>
+    /// The slot must be declared by the bound pipeline's
+    /// <see cref="SilkBindingLayoutDescriptor.MaterialSlots"/> as a
+    /// <see cref="SilkBindingKind.Sampler"/>.
+    /// </remarks>
+    void SetSampler(uint setIndex, uint binding, ISilkGraphicsSampler sampler);
 
     /// <summary>Draws indexed triangle-list geometry.</summary>
     void DrawIndexed(uint indexCount);

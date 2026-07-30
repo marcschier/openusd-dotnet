@@ -1125,6 +1125,20 @@ public sealed class SilkPickingTests
         {
         }
 
+        public void SetTexture(
+            uint setIndex,
+            uint binding,
+            ISilkGraphicsTexture texture)
+        {
+        }
+
+        public void SetSampler(
+            uint setIndex,
+            uint binding,
+            ISilkGraphicsSampler sampler)
+        {
+        }
+
         public void SetPickBaseToken(uint baseToken)
         {
             device.LastPickBaseTokens.Add(baseToken);

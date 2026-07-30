@@ -234,6 +234,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             var leasedSelectionBindings =
                 new HashSet<VulkanSilkSelectionOutlineBinding>();
             var leasedBuffers = new HashSet<VulkanSilkGraphicsBuffer>();
+            var leasedSamplers = new HashSet<VulkanSilkGraphicsSampler>();
             foreach (VulkanGraphicsCommand command in commands.Commands)
             {
                 if (command.Texture is { } texture && leasedTextures.Add(texture))
@@ -274,6 +275,14 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 {
                     leases.Add(buffer.AcquireLease());
                 }
+                // Vulkan writes the live sampler handle into the descriptor set, so
+                // unlike D3D12 (which copies the descriptor) the sampler must outlive
+                // the submission.
+                if (command.Sampler is { } materialSampler &&
+                    leasedSamplers.Add(materialSampler))
+                {
+                    leases.Add(materialSampler.AcquireLease());
+                }
             }
             RegisterDependentObject();
             dependentRegistered = true;
@@ -294,6 +303,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 VulkanSelectionRenderingScope.None;
             VulkanSilkGraphicsBuffer? storageBuffer = null;
             VulkanSilkGraphicsBuffer? computeUniformBuffer = null;
+            List<VulkanMaterialBinding> materialBindings = [];
+            VulkanSilkGraphicsTexture? materialTexture;
             SilkViewport? currentViewport = null;
             SilkScissor? currentScissor = null;
             bool rendering = false;
@@ -501,6 +512,38 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                         uniformBuffer = command.Buffer!;
                         uniformBuffer.ThrowIfDisposed();
                         break;
+                    case SilkGraphicsCommandKind.SetTexture:
+                        materialTexture = command.Texture!;
+                        materialTexture.ThrowIfDisposed();
+                        // The render pass only begins inside DrawIndexed, so this
+                        // transition is legitimately outside any render pass.
+                        Transition(
+                            nativeCommands,
+                            materialTexture.Image,
+                            ImageAspectFlags.ColorBit,
+                            GetCurrentLayout(finalLayouts, materialTexture),
+                            ImageLayout.ShaderReadOnlyOptimal);
+                        finalLayouts[materialTexture] = ImageLayout.ShaderReadOnlyOptimal;
+                        RecordMaterialBinding(
+                            materialBindings,
+                            new VulkanMaterialBinding(
+                                command.Binding,
+                                SilkBindingKind.SampledTexture,
+                                materialTexture,
+                                null,
+                                null));
+                        break;
+                    case SilkGraphicsCommandKind.SetSampler:
+                        command.Sampler!.ThrowIfDisposed();
+                        RecordMaterialBinding(
+                            materialBindings,
+                            new VulkanMaterialBinding(
+                                command.Binding,
+                                SilkBindingKind.Sampler,
+                                null,
+                                command.Sampler,
+                                null));
+                        break;
                     case SilkGraphicsCommandKind.DrawIndexed:
                         if (selectionScope == VulkanSelectionRenderingScope.Mask)
                         {
@@ -548,7 +591,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             uniformBuffer,
                             currentViewport.Value,
                             currentScissor.Value,
-                            command.IndexCount);
+                            command.IndexCount,
+                            materialBindings.ToArray());
                         VulkanDrawSubmissionResource drawResource =
                             CreateDrawSubmissionResource(drawState);
                         drawResources.Add(drawResource);
@@ -976,6 +1020,103 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     }
 
     /// <summary>
+    /// Replaces any prior binding at the same slot so the last write before a draw
+    /// wins, matching how the pipeline and buffer bindings already behave.
+    /// </summary>
+    private static void RecordMaterialBinding(
+        List<VulkanMaterialBinding> bindings,
+        VulkanMaterialBinding binding)
+    {
+        for (int index = 0; index < bindings.Count; index++)
+        {
+            if (bindings[index].Binding == binding.Binding)
+            {
+                bindings[index] = binding;
+                return;
+            }
+        }
+        bindings.Add(binding);
+    }
+
+    private void WriteMaterialDescriptors(
+        DescriptorSet descriptorSet,
+        IReadOnlyList<VulkanMaterialBinding> bindings)
+    {
+        if (bindings.Count == 0)
+        {
+            return;
+        }
+        Span<DescriptorImageInfo> imageInfos =
+            new DescriptorImageInfo[bindings.Count];
+        Span<DescriptorBufferInfo> bufferInfos =
+            new DescriptorBufferInfo[bindings.Count];
+        Span<WriteDescriptorSet> writes = new WriteDescriptorSet[bindings.Count];
+        fixed (DescriptorImageInfo* imagePointer = imageInfos)
+        fixed (DescriptorBufferInfo* bufferPointer = bufferInfos)
+        fixed (WriteDescriptorSet* writePointer = writes)
+        {
+            for (int index = 0; index < bindings.Count; index++)
+            {
+                VulkanMaterialBinding binding = bindings[index];
+                switch (binding.Kind)
+                {
+                    case SilkBindingKind.SampledTexture:
+                        imagePointer[index] = new DescriptorImageInfo(
+                            default,
+                            binding.Texture!.ImageView,
+                            ImageLayout.ShaderReadOnlyOptimal);
+                        writePointer[index] = new WriteDescriptorSet
+                        {
+                            SType = StructureType.WriteDescriptorSet,
+                            DstSet = descriptorSet,
+                            DstBinding = binding.Binding,
+                            DescriptorCount = 1,
+                            DescriptorType = DescriptorType.SampledImage,
+                            PImageInfo = &imagePointer[index]
+                        };
+                        break;
+                    case SilkBindingKind.Sampler:
+                        imagePointer[index] = new DescriptorImageInfo(
+                            binding.Sampler!.Sampler,
+                            default,
+                            ImageLayout.Undefined);
+                        writePointer[index] = new WriteDescriptorSet
+                        {
+                            SType = StructureType.WriteDescriptorSet,
+                            DstSet = descriptorSet,
+                            DstBinding = binding.Binding,
+                            DescriptorCount = 1,
+                            DescriptorType = DescriptorType.Sampler,
+                            PImageInfo = &imagePointer[index]
+                        };
+                        break;
+                    default:
+                        bufferPointer[index] = new DescriptorBufferInfo(
+                            binding.Buffer!.Buffer,
+                            0,
+                            binding.Buffer.Size);
+                        writePointer[index] = new WriteDescriptorSet
+                        {
+                            SType = StructureType.WriteDescriptorSet,
+                            DstSet = descriptorSet,
+                            DstBinding = binding.Binding,
+                            DescriptorCount = 1,
+                            DescriptorType = DescriptorType.UniformBuffer,
+                            PBufferInfo = &bufferPointer[index]
+                        };
+                        break;
+                }
+            }
+            _api.UpdateDescriptorSets(
+                _device,
+                (uint)bindings.Count,
+                writePointer,
+                0,
+                null);
+        }
+    }
+
+    /// <summary>
     /// Fills <paramref name="sizes"/> with one entry per descriptor type the layout
     /// uses, including the SceneParameters uniform buffer, and returns the count.
     /// Returns zero when the layout declares no material slots, so the existing
@@ -1088,6 +1229,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 PBufferInfo = &bufferInfo
             };
             _api.UpdateDescriptorSets(_device, 1, &write, 0, null);
+            WriteMaterialDescriptors(descriptorSet, command.MaterialBindings);
 
             ImageView* attachments = stackalloc ImageView[2]
             {
@@ -1878,6 +2020,57 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
             vulkanBuffer));
     }
 
+    public void SetTexture(uint setIndex, uint binding, ISilkGraphicsTexture texture)
+    {
+        ThrowIfRendering();
+        VulkanSilkGraphicsTexture vulkanTexture = ValidateTexture(texture);
+        RequireMaterialSlot(setIndex, binding, SilkBindingKind.SampledTexture);
+        if (!vulkanTexture.Usage.HasFlag(SilkTextureUsage.Sampled))
+        {
+            throw new ArgumentException(
+                "A sampled-texture slot requires a texture with Sampled usage.",
+                nameof(texture));
+        }
+        _commands.Add(VulkanGraphicsCommand.SetTexture(
+            setIndex,
+            binding,
+            vulkanTexture));
+    }
+
+    public void SetSampler(uint setIndex, uint binding, ISilkGraphicsSampler sampler)
+    {
+        ThrowIfRendering();
+        ArgumentNullException.ThrowIfNull(sampler);
+        if (sampler is not VulkanSilkGraphicsSampler vulkanSampler ||
+            !ReferenceEquals(vulkanSampler.Owner, Device))
+        {
+            throw new ArgumentException(
+                "The sampler must belong to this Vulkan device.",
+                nameof(sampler));
+        }
+        vulkanSampler.ThrowIfDisposed();
+        RequireMaterialSlot(setIndex, binding, SilkBindingKind.Sampler);
+        _commands.Add(VulkanGraphicsCommand.SetSampler(
+            setIndex,
+            binding,
+            vulkanSampler));
+    }
+
+    /// <summary>
+    /// Requires that the bound pipeline declares a matching material slot, so a
+    /// binding that no pipeline can consume is rejected while recording rather than
+    /// silently dropped at submission.
+    /// </summary>
+    private void RequireMaterialSlot(uint setIndex, uint binding, SilkBindingKind kind)
+    {
+        if (_pipeline is null)
+        {
+            throw new InvalidOperationException(
+                "A material resource can only be bound after a graphics pipeline.");
+        }
+        _ = _pipeline.BindingLayout.RequireMaterialSlot(setIndex, binding, kind);
+    }
+
     public void DrawIndexed(uint indexCount)
     {
         ThrowIfRendering();
@@ -2115,6 +2308,7 @@ internal readonly record struct VulkanGraphicsCommand(
     VulkanSilkSelectionOutlineGraphicsPipeline? SelectionOutlinePipeline,
     VulkanSilkSelectionOutlineBinding? SelectionOutlineBinding,
     VulkanSilkGraphicsBuffer? Buffer,
+    VulkanSilkGraphicsSampler? Sampler,
     SilkColor Color,
     float Depth,
     byte[]? Data,
@@ -2219,6 +2413,26 @@ internal readonly record struct VulkanGraphicsCommand(
             setIndex: setIndex,
             binding: binding);
 
+    internal static VulkanGraphicsCommand SetTexture(
+        uint setIndex,
+        uint binding,
+        VulkanSilkGraphicsTexture texture) =>
+        Create(
+            SilkGraphicsCommandKind.SetTexture,
+            texture: texture,
+            setIndex: setIndex,
+            binding: binding);
+
+    internal static VulkanGraphicsCommand SetSampler(
+        uint setIndex,
+        uint binding,
+        VulkanSilkGraphicsSampler sampler) =>
+        Create(
+            SilkGraphicsCommandKind.SetSampler,
+            sampler: sampler,
+            setIndex: setIndex,
+            binding: binding);
+
     internal static VulkanGraphicsCommand DrawIndexed(uint indexCount) =>
         Create(SilkGraphicsCommandKind.DrawIndexed, indexCount: indexCount);
 
@@ -2271,6 +2485,7 @@ internal readonly record struct VulkanGraphicsCommand(
         VulkanSilkSelectionOutlineGraphicsPipeline? selectionOutlinePipeline = null,
         VulkanSilkSelectionOutlineBinding? selectionOutlineBinding = null,
         VulkanSilkGraphicsBuffer? buffer = null,
+        VulkanSilkGraphicsSampler? sampler = null,
         SilkColor color = default,
         float depth = 0,
         byte[]? data = null,
@@ -2290,6 +2505,7 @@ internal readonly record struct VulkanGraphicsCommand(
             selectionOutlinePipeline,
             selectionOutlineBinding,
             buffer,
+            sampler,
             color,
             depth,
             data,
@@ -2310,7 +2526,16 @@ internal readonly record struct VulkanDrawState(
     VulkanSilkGraphicsBuffer UniformBuffer,
     SilkViewport Viewport,
     SilkScissor Scissor,
-    uint IndexCount);
+    uint IndexCount,
+    IReadOnlyList<VulkanMaterialBinding> MaterialBindings);
+
+/// <summary>One resolved material slot binding recorded before a draw.</summary>
+internal readonly record struct VulkanMaterialBinding(
+    uint Binding,
+    SilkBindingKind Kind,
+    VulkanSilkGraphicsTexture? Texture,
+    VulkanSilkGraphicsSampler? Sampler,
+    VulkanSilkGraphicsBuffer? Buffer);
 
 internal readonly record struct VulkanUploadResource(
     global::Silk.NET.Vulkan.Buffer Buffer,

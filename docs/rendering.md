@@ -325,6 +325,35 @@ triangle rendered through a material layout is byte-identical to the same triang
 the plain `SceneParameters` layout, so a wider root signature or descriptor set cannot have shifted
 the scene-constant binding.
 
+### Binding material resources to a draw
+
+`ISilkGraphicsCommandList.SetTexture` and `SetSampler` bind an actual resource to a declared slot,
+alongside the existing `SetUniformBuffer`. Both validate against the bound pipeline's layout through
+the shared `SilkBindingLayoutDescriptor.RequireMaterialSlot`, so a slot that is the wrong kind, is
+not declared at all, or is bound before any pipeline fails identically on every backend rather than
+producing a different backend-specific error or a silently unbound resource. A sampled texture must
+also carry `SilkTextureUsage.Sampled`. The last write to a slot before a draw wins, matching how
+pipeline and buffer bindings already behave.
+
+Backends differ in what they must keep alive, and the difference is deliberate:
+
+- **Vulkan** transitions the texture to `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL` (legitimately
+  outside a render pass, because the render pass only begins inside the draw), then writes
+  `SampledImage` and `Sampler` descriptors into the per-draw set. Because the live sampler handle is
+  written into the set, the sampler is leased for the submission's lifetime.
+- **D3D12** transitions the texture to `D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE`, then *copies*
+  each view into a per-draw shader-visible heap and points the matching root descriptor table at it.
+  Since the descriptor is copied rather than referenced, the source sampler heap needs no lease. One
+  heap per kind is created per draw and released with the submission; a shared descriptor ring is
+  deliberately left to `perf-bindless-textures`.
+- **Metal** has separate texture, sampler, and buffer argument tables rather than one descriptor set,
+  so the slot binding is used directly as the index within its own table, still validated against the
+  layout.
+
+The checked mesh shader does not sample yet, so what conformance proves today is that binding a real
+texture and sampler is accepted end to end and leaves the draw byte-identical, and that the three
+rejection cases above throw. Sampling correctness arrives with the UsdPreviewSurface permutations.
+
 D3D12 binds the checked pick shaders through one generation-tagged RGBA8/D32 PSO. `SceneParameters`
 uses root CBV b0 and the mesh token base uses four 32-bit root constants at b1, so a draw does not
 allocate a token upload buffer. D3D12 keeps three persistently mapped 256-byte readback slots; each

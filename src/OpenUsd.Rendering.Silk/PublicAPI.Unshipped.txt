@@ -124,8 +124,10 @@ OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetComputePipeline(OpenUsd.Rende
 OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetComputeUniformBuffer(uint setIndex, uint binding, OpenUsd.Rendering.Silk.ISilkGraphicsBuffer! buffer) -> void
 OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetGraphicsPipeline(OpenUsd.Rendering.Silk.ISilkGraphicsPipeline! pipeline) -> void
 OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetIndexBuffer(OpenUsd.Rendering.Silk.ISilkGraphicsBuffer! buffer) -> void
+OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetSampler(uint setIndex, uint binding, OpenUsd.Rendering.Silk.ISilkGraphicsSampler! sampler) -> void
 OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetScissor(OpenUsd.Rendering.Silk.SilkScissor scissor) -> void
 OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetStorageBuffer(uint setIndex, uint binding, OpenUsd.Rendering.Silk.ISilkGraphicsBuffer! buffer) -> void
+OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetTexture(uint setIndex, uint binding, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! texture) -> void
 OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetUniformBuffer(uint setIndex, uint binding, OpenUsd.Rendering.Silk.ISilkGraphicsBuffer! buffer) -> void
 OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetVertexBuffer(OpenUsd.Rendering.Silk.ISilkGraphicsBuffer! buffer) -> void
 OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.SetViewport(OpenUsd.Rendering.Silk.SilkViewport viewport) -> void
@@ -240,6 +242,7 @@ OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Deconstruct(out uint Set, out
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Equals(OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor other) -> bool
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.MaterialSlots.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkBindingSlot>!
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.MaterialSlots.init -> void
+OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.RequireMaterialSlot(uint set, uint binding, OpenUsd.Rendering.Silk.SilkBindingKind kind) -> int
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Set.get -> uint
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.Set.init -> void
 OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SilkBindingLayoutDescriptor() -> void
@@ -430,11 +433,13 @@ OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetComputePipeline = 12 -> OpenUs
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetComputeUniformBuffer = 14 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetGraphicsPipeline = 4 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetIndexBuffer = 8 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
+OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetSampler = 24 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetScissor = 6 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetSelectionMaskPipeline = 18 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetSelectionOutlineBinding = 21 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetSelectionOutlinePipeline = 20 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetStorageBuffer = 13 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
+OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetTexture = 23 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetUniformBuffer = 9 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetVertexBuffer = 7 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetViewport = 5 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind

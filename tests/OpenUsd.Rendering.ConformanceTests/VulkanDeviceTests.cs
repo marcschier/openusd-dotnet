@@ -183,6 +183,36 @@ public sealed class VulkanDeviceTests
     }
 
     [Test]
+    public async Task SwiftShaderBindsMaterialTexturesAndSamplersToADraw()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.MaterialResourcesBindToADrawWithoutPerturbingIt(
+            device,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
+    public async Task SwiftShaderRejectsMaterialResourcesTheLayoutDoesNotDeclare()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.MaterialBindingRejectsResourcesTheLayoutDoesNotDeclare(
+            device,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
     public async Task SwiftShaderRendersRetainedSilkMeshes()
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())

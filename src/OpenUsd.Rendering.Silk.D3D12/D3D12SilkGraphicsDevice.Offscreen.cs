@@ -271,6 +271,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             commands.PickReadbackDestination;
         var leases = new List<IDisposable>();
         var uploadResources = new List<nint>();
+        var materialHeaps = new List<nint>();
         ID3D12CommandAllocator* allocator = null;
         ID3D12GraphicsCommandList* nativeCommands = null;
         ID3D12Fence* completionFence = null;
@@ -389,6 +390,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             D3D12SilkComputePipeline? computePipeline = null;
             D3D12SilkGraphicsBuffer? storageBuffer = null;
             D3D12SilkGraphicsBuffer? computeUniformBuffer = null;
+            List<D3D12MaterialBinding> materialBindings = [];
+            D3D12SilkGraphicsTexture? materialTexture;
             SilkViewport? currentViewport = null;
             SilkScissor? currentScissor = null;
             bool rendering = false;
@@ -832,6 +835,34 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                                 uniformBuffer.Resource->GetGPUVirtualAddress());
                         }
                         break;
+                    case SilkGraphicsCommandKind.SetTexture:
+                        materialTexture = command.Texture!;
+                        materialTexture.ThrowIfDisposed();
+                        Transition(
+                            nativeCommands,
+                            materialTexture.Resource,
+                            GetCurrentState(finalStates, materialTexture),
+                            ResourceStates.PixelShaderResource);
+                        finalStates[materialTexture] =
+                            ResourceStates.PixelShaderResource;
+                        RecordMaterialBinding(
+                            materialBindings,
+                            new D3D12MaterialBinding(
+                                command.Binding,
+                                SilkBindingKind.SampledTexture,
+                                materialTexture,
+                                null));
+                        break;
+                    case SilkGraphicsCommandKind.SetSampler:
+                        command.Sampler!.ThrowIfDisposed();
+                        RecordMaterialBinding(
+                            materialBindings,
+                            new D3D12MaterialBinding(
+                                command.Binding,
+                                SilkBindingKind.Sampler,
+                                null,
+                                command.Sampler));
+                        break;
                     case SilkGraphicsCommandKind.DrawIndexed:
                         if (!rendering || colorAttachment is null ||
                             depthAttachment is null ||
@@ -848,6 +879,15 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         nativeCommands->SetGraphicsRootConstantBufferView(
                             0,
                             uniformBuffer.Resource->GetGPUVirtualAddress());
+                        if (materialBindings.Count != 0 && pipeline is not null)
+                        {
+                            BindMaterialDescriptorTables(
+                                nativeCommands,
+                                descriptorHeaps,
+                                pipeline.BindingLayout,
+                                materialBindings,
+                                materialHeaps);
+                        }
                         if (pickPipeline is not null)
                         {
                             if (pickBaseToken == 0)
@@ -1039,7 +1079,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 nativeCommands,
                 completionFence,
                 [.. leases],
-                [.. uploadResources]);
+                [.. uploadResources],
+                [.. materialHeaps]);
         }
         finally
         {
@@ -1062,6 +1103,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 foreach (nint resource in uploadResources)
                 {
                     ID3D12Resource* pointer = (ID3D12Resource*)resource;
+                    Release(ref pointer);
+                }
+                foreach (nint heap in materialHeaps)
+                {
+                    ID3D12DescriptorHeap* pointer = (ID3D12DescriptorHeap*)heap;
                     Release(ref pointer);
                 }
                 foreach (IDisposable lease in leases)
@@ -1155,6 +1201,148 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             Release(ref nativeUpload);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Replaces any prior binding at the same slot so the last write before a draw
+    /// wins, matching how the pipeline and buffer bindings already behave.
+    /// </summary>
+    private static void RecordMaterialBinding(
+        List<D3D12MaterialBinding> bindings,
+        D3D12MaterialBinding binding)
+    {
+        for (int index = 0; index < bindings.Count; index++)
+        {
+            if (bindings[index].Binding == binding.Binding)
+            {
+                bindings[index] = binding;
+                return;
+            }
+        }
+        bindings.Add(binding);
+    }
+
+    /// <summary>
+    /// Copies each bound resource into a shader-visible heap and points the matching
+    /// root descriptor table at it.
+    /// </summary>
+    /// <remarks>
+    /// D3D12 requires descriptor tables to read from shader-visible heaps, while the
+    /// per-resource views live in non-shader-visible heaps, so the descriptors must be
+    /// copied. One heap per kind is created per draw and released with the submission,
+    /// which is correct but deliberately simple; a shared ring belongs to
+    /// <c>perf-bindless-textures</c> rather than to the binding model itself.
+    /// </remarks>
+    private void BindMaterialDescriptorTables(
+        ID3D12GraphicsCommandList* commands,
+        ID3D12DescriptorHeap** descriptorHeaps,
+        SilkBindingLayoutDescriptor layout,
+        IReadOnlyList<D3D12MaterialBinding> bindings,
+        List<nint> retainedHeaps)
+    {
+        uint viewCount = 0;
+        uint samplerCount = 0;
+        foreach (D3D12MaterialBinding binding in bindings)
+        {
+            if (binding.Kind == SilkBindingKind.SampledTexture)
+            {
+                viewCount++;
+            }
+            else if (binding.Kind == SilkBindingKind.Sampler)
+            {
+                samplerCount++;
+            }
+        }
+        ID3D12DescriptorHeap* viewHeap =
+            viewCount == 0 ? null : CreateShaderVisibleHeap(
+                DescriptorHeapType.CbvSrvUav,
+                viewCount,
+                retainedHeaps);
+        ID3D12DescriptorHeap* samplerHeap =
+            samplerCount == 0 ? null : CreateShaderVisibleHeap(
+                DescriptorHeapType.Sampler,
+                samplerCount,
+                retainedHeaps);
+        uint heapCount = 0;
+        if (viewHeap != null)
+        {
+            descriptorHeaps[heapCount++] = viewHeap;
+        }
+        if (samplerHeap != null)
+        {
+            descriptorHeaps[heapCount++] = samplerHeap;
+        }
+        if (heapCount == 0)
+        {
+            return;
+        }
+        commands->SetDescriptorHeaps(heapCount, descriptorHeaps);
+        uint viewIncrement = _device->GetDescriptorHandleIncrementSize(
+            DescriptorHeapType.CbvSrvUav);
+        uint samplerIncrement = _device->GetDescriptorHandleIncrementSize(
+            DescriptorHeapType.Sampler);
+        uint viewIndex = 0;
+        uint samplerIndex = 0;
+        foreach (D3D12MaterialBinding binding in bindings)
+        {
+            // Root parameter zero is SceneParameters, so slot i lives at i + 1.
+            uint rootParameter = (uint)layout.RequireMaterialSlot(
+                0,
+                binding.Binding,
+                binding.Kind) + 1;
+            if (binding.Kind == SilkBindingKind.SampledTexture)
+            {
+                CpuDescriptorHandle destination = new(
+                    viewHeap->GetCPUDescriptorHandleForHeapStart().Ptr +
+                    (viewIndex * viewIncrement));
+                _device->CopyDescriptorsSimple(
+                    1,
+                    destination,
+                    binding.Texture!.ShaderResourceView,
+                    DescriptorHeapType.CbvSrvUav);
+                commands->SetGraphicsRootDescriptorTable(
+                    rootParameter,
+                    new GpuDescriptorHandle(
+                        viewHeap->GetGPUDescriptorHandleForHeapStart().Ptr +
+                        (viewIndex * viewIncrement)));
+                viewIndex++;
+                continue;
+            }
+            CpuDescriptorHandle samplerDestination = new(
+                samplerHeap->GetCPUDescriptorHandleForHeapStart().Ptr +
+                (samplerIndex * samplerIncrement));
+            _device->CopyDescriptorsSimple(
+                1,
+                samplerDestination,
+                binding.Sampler!.Heap->GetCPUDescriptorHandleForHeapStart(),
+                DescriptorHeapType.Sampler);
+            commands->SetGraphicsRootDescriptorTable(
+                rootParameter,
+                new GpuDescriptorHandle(
+                    samplerHeap->GetGPUDescriptorHandleForHeapStart().Ptr +
+                    (samplerIndex * samplerIncrement)));
+            samplerIndex++;
+        }
+    }
+
+    private ID3D12DescriptorHeap* CreateShaderVisibleHeap(
+        DescriptorHeapType type,
+        uint count,
+        List<nint> retainedHeaps)
+    {
+        var description = new DescriptorHeapDesc(
+            type,
+            count,
+            DescriptorHeapFlags.ShaderVisible,
+            0);
+        Guid heapId = ID3D12DescriptorHeap.Guid;
+        ID3D12DescriptorHeap* heap = null;
+        SilkMarshal.ThrowHResult(_device->CreateDescriptorHeap(
+            &description,
+            &heapId,
+            (void**)&heap));
+        retainedHeaps.Add((nint)heap);
+        return heap;
     }
 
     private static ResourceStates GetCurrentState(
@@ -1688,6 +1876,57 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
             d3d12Buffer));
     }
 
+    public void SetTexture(uint setIndex, uint binding, ISilkGraphicsTexture texture)
+    {
+        ThrowIfRendering();
+        D3D12SilkGraphicsTexture d3d12Texture = ValidateTexture(texture);
+        RequireMaterialSlot(setIndex, binding, SilkBindingKind.SampledTexture);
+        if (!d3d12Texture.Usage.HasFlag(SilkTextureUsage.Sampled))
+        {
+            throw new ArgumentException(
+                "A sampled-texture slot requires a texture with Sampled usage.",
+                nameof(texture));
+        }
+        _commands.Add(D3D12GraphicsCommand.SetTexture(
+            setIndex,
+            binding,
+            d3d12Texture));
+    }
+
+    public void SetSampler(uint setIndex, uint binding, ISilkGraphicsSampler sampler)
+    {
+        ThrowIfRendering();
+        ArgumentNullException.ThrowIfNull(sampler);
+        if (sampler is not D3D12SilkGraphicsSampler d3d12Sampler ||
+            !ReferenceEquals(d3d12Sampler.Device, Device))
+        {
+            throw new ArgumentException(
+                "The sampler must belong to this D3D12 device.",
+                nameof(sampler));
+        }
+        d3d12Sampler.ThrowIfDisposed();
+        RequireMaterialSlot(setIndex, binding, SilkBindingKind.Sampler);
+        _commands.Add(D3D12GraphicsCommand.SetSampler(
+            setIndex,
+            binding,
+            d3d12Sampler));
+    }
+
+    /// <summary>
+    /// Requires that the bound pipeline declares a matching material slot, so a
+    /// binding that no pipeline can consume is rejected while recording rather than
+    /// silently dropped at submission.
+    /// </summary>
+    private void RequireMaterialSlot(uint setIndex, uint binding, SilkBindingKind kind)
+    {
+        if (_pipeline is null)
+        {
+            throw new InvalidOperationException(
+                "A material resource can only be bound after a graphics pipeline.");
+        }
+        _ = _pipeline.BindingLayout.RequireMaterialSlot(setIndex, binding, kind);
+    }
+
     public void DrawIndexed(uint indexCount)
     {
         ThrowIfRendering();
@@ -1916,8 +2155,16 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
     }
 }
 
+/// <summary>One resolved material slot binding recorded before a draw.</summary>
+internal readonly record struct D3D12MaterialBinding(
+    uint Binding,
+    SilkBindingKind Kind,
+    D3D12SilkGraphicsTexture? Texture,
+    D3D12SilkGraphicsSampler? Sampler);
+
 internal readonly record struct D3D12GraphicsCommand(
     SilkGraphicsCommandKind Kind,
+
     D3D12SilkGraphicsTexture? Texture,
     D3D12SilkGraphicsTexture? DepthTexture,
     D3D12SilkGraphicsPipeline? Pipeline,
@@ -1928,6 +2175,7 @@ internal readonly record struct D3D12GraphicsCommand(
     D3D12SilkSelectionOutlineBinding? SelectionOutlineBinding,
     D3D12SilkComputePipeline? ComputePipeline,
     D3D12SilkGraphicsBuffer? Buffer,
+    D3D12SilkGraphicsSampler? Sampler,
     D3D12PickCommandKind PickKind,
     D3D12SelectionOutlineCommandKind SelectionOutlineKind,
     SilkTexturePixelCoordinate PickCoordinate,
@@ -2074,6 +2322,26 @@ internal readonly record struct D3D12GraphicsCommand(
             setIndex: setIndex,
             binding: binding);
 
+    internal static D3D12GraphicsCommand SetTexture(
+        uint setIndex,
+        uint binding,
+        D3D12SilkGraphicsTexture texture) =>
+        Create(
+            SilkGraphicsCommandKind.SetTexture,
+            texture: texture,
+            setIndex: setIndex,
+            binding: binding);
+
+    internal static D3D12GraphicsCommand SetSampler(
+        uint setIndex,
+        uint binding,
+        D3D12SilkGraphicsSampler sampler) =>
+        Create(
+            SilkGraphicsCommandKind.SetSampler,
+            sampler: sampler,
+            setIndex: setIndex,
+            binding: binding);
+
     internal static D3D12GraphicsCommand DrawIndexed(uint indexCount) =>
         Create(SilkGraphicsCommandKind.DrawIndexed, indexCount: indexCount);
 
@@ -2125,6 +2393,7 @@ internal readonly record struct D3D12GraphicsCommand(
         D3D12SilkSelectionOutlineBinding? selectionOutlineBinding = null,
         D3D12SilkComputePipeline? computePipeline = null,
         D3D12SilkGraphicsBuffer? buffer = null,
+        D3D12SilkGraphicsSampler? sampler = null,
         D3D12PickCommandKind pickKind = D3D12PickCommandKind.None,
         D3D12SelectionOutlineCommandKind selectionOutlineKind =
             D3D12SelectionOutlineCommandKind.None,
@@ -2151,6 +2420,7 @@ internal readonly record struct D3D12GraphicsCommand(
             selectionOutlineBinding,
             computePipeline,
             buffer,
+            sampler,
             pickKind,
             selectionOutlineKind,
             pickCoordinate,
@@ -2173,7 +2443,8 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
     ID3D12GraphicsCommandList* commands,
     ID3D12Fence* fence,
     IDisposable[] leases,
-    nint[] uploadResources)
+    nint[] uploadResources,
+    nint[] descriptorHeaps)
     : ISilkGraphicsSubmission
 {
     private readonly D3D12SilkGraphicsDevice _device = device;
@@ -2182,6 +2453,7 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
     private ID3D12Fence* _fence = fence;
     private IDisposable[]? _leases = leases;
     private nint[]? _uploadResources = uploadResources;
+    private nint[]? _descriptorHeaps = descriptorHeaps;
 
     public bool IsCompleted
     {
@@ -2236,6 +2508,16 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
         foreach (nint resource in resources)
         {
             ID3D12Resource* pointer = (ID3D12Resource*)resource;
+            D3D12SilkGraphicsDevice.Release(ref pointer);
+        }
+        nint[]? heaps = Interlocked.Exchange(ref _descriptorHeaps, null);
+        if (heaps is null)
+        {
+            return;
+        }
+        foreach (nint heap in heaps)
+        {
+            ID3D12DescriptorHeap* pointer = (ID3D12DescriptorHeap*)heap;
             D3D12SilkGraphicsDevice.Release(ref pointer);
         }
     }

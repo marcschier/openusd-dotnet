@@ -332,6 +332,13 @@ internal sealed class MetalSilkGraphicsPipeline(
 
     internal MTLDepthStencilState DepthState => _depthState;
 
+    /// <summary>
+    /// Gets the binding layout this pipeline was created from, so a submission can
+    /// map a material slot to its Metal argument index.
+    /// </summary>
+    internal SilkBindingLayoutDescriptor BindingLayout { get; } =
+        descriptor.Program.BindingLayout.Descriptor;
+
     internal IDisposable AcquireLease() => AcquireResourceLease();
 
     internal void ThrowIfDisposed() => ThrowIfResourceDisposed();

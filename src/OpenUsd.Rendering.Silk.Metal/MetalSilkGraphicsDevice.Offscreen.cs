@@ -156,6 +156,7 @@ public sealed partial class MetalSilkGraphicsDevice
             commands.ContainsSelectionOutlineCommands ? [] : null;
         var leasedComputePipelines = new HashSet<MetalSilkComputePipeline>();
         var leasedBuffers = new HashSet<MetalSilkGraphicsBuffer>();
+        var leasedSamplers = new HashSet<MetalSilkGraphicsSampler>();
         HashSet<MetalSilkPickReadbackBuffer>? leasedPickReadbacks =
             commands.ContainsPickCommands ? [] : null;
         var uploadBuffers = new List<MTLBuffer>();
@@ -211,6 +212,11 @@ public sealed partial class MetalSilkGraphicsDevice
                 {
                     leases.Add(buffer.AcquireLease());
                 }
+                if (command.Sampler is { } materialSampler &&
+                    leasedSamplers.Add(materialSampler))
+                {
+                    leases.Add(materialSampler.AcquireLease());
+                }
                 if (command.PickReadback is { } pickReadback &&
                     leasedPickReadbacks!.Add(pickReadback))
                 {
@@ -241,6 +247,7 @@ public sealed partial class MetalSilkGraphicsDevice
             MetalSilkComputePipeline? computePipeline = null;
             MetalSilkGraphicsBuffer? storageBuffer = null;
             MetalSilkGraphicsBuffer? computeUniformBuffer = null;
+            List<MetalMaterialBinding> materialBindings = [];
             SilkViewport? currentViewport = null;
             SilkScissor? currentScissor = null;
             bool rendering = false;
@@ -527,6 +534,26 @@ public sealed partial class MetalSilkGraphicsDevice
                         uniformBuffer = command.Buffer!;
                         uniformBuffer.ThrowIfDisposed();
                         break;
+                    case SilkGraphicsCommandKind.SetTexture:
+                        command.Texture!.ThrowIfDisposed();
+                        RecordMaterialBinding(
+                            materialBindings,
+                            new MetalMaterialBinding(
+                                command.Binding,
+                                SilkBindingKind.SampledTexture,
+                                command.Texture,
+                                null));
+                        break;
+                    case SilkGraphicsCommandKind.SetSampler:
+                        command.Sampler!.ThrowIfDisposed();
+                        RecordMaterialBinding(
+                            materialBindings,
+                            new MetalMaterialBinding(
+                                command.Binding,
+                                SilkBindingKind.Sampler,
+                                null,
+                                command.Sampler));
+                        break;
                     case SilkGraphicsCommandKind.DrawIndexed:
                         if (!rendering || colorAttachment is null ||
                             depthAttachment is null ||
@@ -631,6 +658,14 @@ public sealed partial class MetalSilkGraphicsDevice
                                         uniformBuffer.Buffer,
                                         0,
                                         0);
+                                }
+                                if (materialBindings.Count != 0 &&
+                                    currentPipeline is not null)
+                                {
+                                    BindMaterialArguments(
+                                        encoder,
+                                        currentPipeline.BindingLayout,
+                                        materialBindings);
                                 }
                                 encoder.DrawIndexedPrimitives(
                                     MTLPrimitiveType.Triangle,
@@ -805,6 +840,54 @@ public sealed partial class MetalSilkGraphicsDevice
                     NotifySelectionOutlineCommandBufferFailure();
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Replaces any prior binding at the same slot so the last write before a draw
+    /// wins, matching how the pipeline and buffer bindings already behave.
+    /// </summary>
+    private static void RecordMaterialBinding(
+        List<MetalMaterialBinding> bindings,
+        MetalMaterialBinding binding)
+    {
+        for (int index = 0; index < bindings.Count; index++)
+        {
+            if (bindings[index].Binding == binding.Binding)
+            {
+                bindings[index] = binding;
+                return;
+            }
+        }
+        bindings.Add(binding);
+    }
+
+    /// <summary>
+    /// Binds material slots to Metal fragment argument indices.
+    /// </summary>
+    /// <remarks>
+    /// Metal has separate texture, sampler, and buffer argument tables rather than one
+    /// descriptor set, so the slot binding is used directly as the index within its own
+    /// table. That matches how the SPIR-V to MSL translation assigns indices for the
+    /// checked shaders, and it is validated against the layout so a slot can never be
+    /// bound to a table it does not belong to.
+    /// </remarks>
+    private static void BindMaterialArguments(
+        MTLRenderCommandEncoder encoder,
+        SilkBindingLayoutDescriptor layout,
+        IReadOnlyList<MetalMaterialBinding> bindings)
+    {
+        foreach (MetalMaterialBinding binding in bindings)
+        {
+            _ = layout.RequireMaterialSlot(0, binding.Binding, binding.Kind);
+            if (binding.Kind == SilkBindingKind.SampledTexture)
+            {
+                encoder.SetFragmentTexture(binding.Texture!.Texture, binding.Binding);
+                continue;
+            }
+            encoder.SetFragmentSamplerState(
+                binding.Sampler!.Sampler,
+                binding.Binding);
         }
     }
 
@@ -988,9 +1071,17 @@ internal sealed unsafe class MetalSilkGraphicsTexture : SilkGraphicsTextureBase
     internal void ThrowIfDisposed() => ThrowIfTextureDisposed();
 }
 
+/// <summary>One resolved material slot binding recorded before a Metal draw.</summary>
+internal readonly record struct MetalMaterialBinding(
+    uint Binding,
+    SilkBindingKind Kind,
+    MetalSilkGraphicsTexture? Texture,
+    MetalSilkGraphicsSampler? Sampler);
+
 [SupportedOSPlatform("macos")]
 internal sealed class MetalSilkGraphicsSampler(
     MetalSilkGraphicsDevice device,
+
     MTLSamplerState sampler,
     SilkSamplerDescriptor descriptor)
     : SilkGraphicsResourceBase, ISilkGraphicsSampler
@@ -1239,6 +1330,57 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
             setIndex,
             binding,
             metalBuffer));
+    }
+
+    public void SetTexture(uint setIndex, uint binding, ISilkGraphicsTexture texture)
+    {
+        ThrowIfRendering();
+        MetalSilkGraphicsTexture metalTexture = ValidateTexture(texture);
+        RequireMaterialSlot(setIndex, binding, SilkBindingKind.SampledTexture);
+        if (!metalTexture.Usage.HasFlag(SilkTextureUsage.Sampled))
+        {
+            throw new ArgumentException(
+                "A sampled-texture slot requires a texture with Sampled usage.",
+                nameof(texture));
+        }
+        _commands.Add(MetalGraphicsCommand.SetTexture(
+            setIndex,
+            binding,
+            metalTexture));
+    }
+
+    public void SetSampler(uint setIndex, uint binding, ISilkGraphicsSampler sampler)
+    {
+        ThrowIfRendering();
+        ArgumentNullException.ThrowIfNull(sampler);
+        if (sampler is not MetalSilkGraphicsSampler metalSampler ||
+            !ReferenceEquals(metalSampler.Device, Device))
+        {
+            throw new ArgumentException(
+                "The sampler must belong to this Metal device.",
+                nameof(sampler));
+        }
+        metalSampler.ThrowIfDisposed();
+        RequireMaterialSlot(setIndex, binding, SilkBindingKind.Sampler);
+        _commands.Add(MetalGraphicsCommand.SetSampler(
+            setIndex,
+            binding,
+            metalSampler));
+    }
+
+    /// <summary>
+    /// Requires that the bound pipeline declares a matching material slot, so a
+    /// binding that no pipeline can consume is rejected while recording rather than
+    /// silently dropped at submission.
+    /// </summary>
+    private void RequireMaterialSlot(uint setIndex, uint binding, SilkBindingKind kind)
+    {
+        if (_pipeline is null)
+        {
+            throw new InvalidOperationException(
+                "A material resource can only be bound after a graphics pipeline.");
+        }
+        _ = _pipeline.BindingLayout.RequireMaterialSlot(setIndex, binding, kind);
     }
 
     public void DrawIndexed(uint indexCount)
@@ -1629,6 +1771,7 @@ internal readonly record struct MetalGraphicsCommand(
     MetalSilkSelectionOutlineBinding? SelectionOutlineBinding,
     MetalSilkComputePipeline? ComputePipeline,
     MetalSilkGraphicsBuffer? Buffer,
+    MetalSilkGraphicsSampler? Sampler,
     MetalSilkPickReadbackBuffer? PickReadback,
     SilkColor Color,
     float Depth,
@@ -1714,6 +1857,26 @@ internal readonly record struct MetalGraphicsCommand(
         Create(
             SilkGraphicsCommandKind.SetUniformBuffer,
             buffer: buffer,
+            setIndex: setIndex,
+            binding: binding);
+
+    internal static MetalGraphicsCommand SetTexture(
+        uint setIndex,
+        uint binding,
+        MetalSilkGraphicsTexture texture) =>
+        Create(
+            SilkGraphicsCommandKind.SetTexture,
+            texture: texture,
+            setIndex: setIndex,
+            binding: binding);
+
+    internal static MetalGraphicsCommand SetSampler(
+        uint setIndex,
+        uint binding,
+        MetalSilkGraphicsSampler sampler) =>
+        Create(
+            SilkGraphicsCommandKind.SetSampler,
+            sampler: sampler,
             setIndex: setIndex,
             binding: binding);
 
@@ -1822,6 +1985,7 @@ internal readonly record struct MetalGraphicsCommand(
         MetalSilkSelectionOutlineBinding? selectionOutlineBinding = null,
         MetalSilkComputePipeline? computePipeline = null,
         MetalSilkGraphicsBuffer? buffer = null,
+        MetalSilkGraphicsSampler? sampler = null,
         MetalSilkPickReadbackBuffer? pickReadback = null,
         SilkColor color = default,
         float depth = 0,
@@ -1847,6 +2011,7 @@ internal readonly record struct MetalGraphicsCommand(
             selectionOutlineBinding,
             computePipeline,
             buffer,
+            sampler,
             pickReadback,
             color,
             depth,

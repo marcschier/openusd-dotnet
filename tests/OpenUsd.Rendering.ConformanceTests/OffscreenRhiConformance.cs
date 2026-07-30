@@ -339,10 +339,94 @@ internal static class OffscreenRhiConformance
         await Assert.That(baseline.Any(static value => value != 0)).IsTrue();
     }
 
+    internal static async Task MaterialResourcesBindToADrawWithoutPerturbingIt(
+        ISilkGraphicsDevice device,
+        SilkShaderBinaryFormat shaderFormat)
+    {
+        SilkBindingLayoutDescriptor material = SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(
+                0, 1, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+            new SilkBindingSlot(
+                0, 2, SilkBindingKind.Sampler, 0, SilkShaderStageVisibility.Fragment),
+        ]);
+
+        byte[] baseline = RenderCheckedTriangle(
+            device, shaderFormat, SilkBindingLayoutDescriptor.SceneParameters);
+        byte[] withResources = RenderCheckedTriangle(
+            device,
+            shaderFormat,
+            material,
+            bindMaterialResources: true);
+
+        // The checked mesh shader does not sample yet, so the proof available today is
+        // that binding a real texture and sampler is accepted end to end by the backend
+        // and leaves the draw untouched. Sampling correctness arrives with the
+        // UsdPreviewSurface shader permutations.
+        await Assert.That(withResources.SequenceEqual(baseline)).IsTrue();
+        await Assert.That(baseline.Any(static value => value != 0)).IsTrue();
+    }
+
+    internal static async Task MaterialBindingRejectsResourcesTheLayoutDoesNotDeclare(
+        ISilkGraphicsDevice device,
+        SilkShaderBinaryFormat shaderFormat)
+    {
+        SilkBindingLayoutDescriptor material = SilkBindingLayoutDescriptor.ForMaterial(
+        [
+            new SilkBindingSlot(
+                0, 1, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+        ]);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(64, 64));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(64, 64));
+        using ISilkGraphicsTexture sampled = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                4,
+                4,
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination));
+        using ISilkGraphicsSampler sampler = device.CreateSampler(
+            SilkSamplerDescriptor.LinearClamp);
+        using ISilkGraphicsShaderModule vertexShader = device.CreateShaderModule(
+            SilkCheckedShaderAssets.LoadMeshVertex(shaderFormat));
+        using ISilkGraphicsShaderModule fragmentShader = device.CreateShaderModule(
+            SilkCheckedShaderAssets.LoadMeshFragment(shaderFormat));
+        using ISilkGraphicsBindingLayout bindingLayout =
+            device.CreateBindingLayout(material);
+        using ISilkGraphicsShaderProgram program = device.CreateShaderProgram(
+            new SilkShaderProgramDescriptor(vertexShader, fragmentShader, bindingLayout));
+        using ISilkGraphicsPipeline pipeline = device.CreateGraphicsPipeline(
+            new SilkGraphicsPipelineDescriptor(
+                program,
+                SilkVertexLayoutDescriptor.PositionNormal,
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureFormat.D32Float));
+        using ISilkGraphicsCommandList commands = device.CreateCommandList();
+        commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
+        commands.SetGraphicsPipeline(pipeline);
+
+        // Slot 1 is a texture, so binding a sampler there must be rejected rather than
+        // written into a table the shader would read as the wrong kind.
+        await Assert.That(() => commands.SetSampler(0, 1, sampler))
+            .Throws<InvalidOperationException>();
+
+        // Slot 2 is not declared at all.
+        await Assert.That(() => commands.SetTexture(0, 2, sampled))
+            .Throws<InvalidOperationException>();
+
+        // A render target is not a sampled texture.
+        await Assert.That(() => commands.SetTexture(0, 1, color))
+            .Throws<ArgumentException>();
+
+        commands.EndRendering();
+    }
+
     private static byte[] RenderCheckedTriangle(
         ISilkGraphicsDevice device,
         SilkShaderBinaryFormat shaderFormat,
-        SilkBindingLayoutDescriptor layout)
+        SilkBindingLayoutDescriptor layout,
+        bool bindMaterialResources = false)
     {
         const uint size = 64;
         using ISilkGraphicsTexture color = device.CreateTexture2D(
@@ -389,25 +473,54 @@ internal static class OffscreenRhiConformance
             0, 0, 0, 1,
             1, 1, 1, 1
         ]));
+        ISilkGraphicsTexture? materialTexture = null;
+        ISilkGraphicsSampler? materialSampler = null;
+        try
+        {
+            if (bindMaterialResources)
+            {
+                materialTexture = device.CreateTexture2D(
+                    new SilkTextureDescriptor(
+                        4,
+                        4,
+                        SilkTextureFormat.Rgba8Unorm,
+                        SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination));
+                materialSampler = device.CreateSampler(SilkSamplerDescriptor.LinearClamp);
+            }
 
-        using ISilkGraphicsCommandList commands = device.CreateCommandList();
-        commands.ClearColor(color, new SilkColor(0, 0, 0, 1));
-        commands.ClearDepth(depth, 1);
-        commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
-        commands.SetGraphicsPipeline(pipeline);
-        commands.SetViewport(new SilkViewport(0, 0, size, size));
-        commands.SetScissor(new SilkScissor(0, 0, size, size));
-        commands.SetVertexBuffer(vertices);
-        commands.SetIndexBuffer(indices);
-        commands.SetUniformBuffer(0, 0, uniforms);
-        commands.DrawIndexed(3);
-        commands.EndRendering();
-        using ISilkGraphicsSubmission submission = device.Submit(commands);
-        submission.Wait();
+            using ISilkGraphicsCommandList commands = device.CreateCommandList();
+            commands.ClearColor(color, new SilkColor(0, 0, 0, 1));
+            commands.ClearDepth(depth, 1);
+            if (materialTexture is not null)
+            {
+                commands.UploadTexture(materialTexture, new byte[4 * 4 * 4]);
+            }
+            commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
+            commands.SetGraphicsPipeline(pipeline);
+            if (materialTexture is not null && materialSampler is not null)
+            {
+                commands.SetTexture(0, 1, materialTexture);
+                commands.SetSampler(0, 2, materialSampler);
+            }
+            commands.SetViewport(new SilkViewport(0, 0, size, size));
+            commands.SetScissor(new SilkScissor(0, 0, size, size));
+            commands.SetVertexBuffer(vertices);
+            commands.SetIndexBuffer(indices);
+            commands.SetUniformBuffer(0, 0, uniforms);
+            commands.DrawIndexed(3);
+            commands.EndRendering();
+            using ISilkGraphicsSubmission submission = device.Submit(commands);
+            submission.Wait();
 
-        byte[] pixels = new byte[size * size * 4];
-        color.ReadbackForTesting(pixels);
-        return pixels;
+            byte[] pixels = new byte[size * size * 4];
+            color.ReadbackForTesting(pixels);
+            return pixels;
+        }
+        finally
+        {
+            materialSampler?.Dispose();
+            materialTexture?.Dispose();
+        }
     }
 
     internal static async Task IndexedDrawSubmissionLeasesResources(

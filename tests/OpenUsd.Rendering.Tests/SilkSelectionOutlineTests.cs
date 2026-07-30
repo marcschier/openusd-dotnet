@@ -722,6 +722,20 @@ public sealed class SilkSelectionOutlineTests
         {
         }
 
+        public void SetTexture(
+            uint setIndex,
+            uint binding,
+            ISilkGraphicsTexture texture)
+        {
+        }
+
+        public void SetSampler(
+            uint setIndex,
+            uint binding,
+            ISilkGraphicsSampler sampler)
+        {
+        }
+
         public void DrawIndexed(uint indexCount)
         {
             if (_scope == RenderScope.Mask)

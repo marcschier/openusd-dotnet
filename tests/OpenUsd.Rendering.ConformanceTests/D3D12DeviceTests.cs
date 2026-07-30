@@ -620,6 +620,38 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
+    public async Task WarpBindsMaterialTexturesAndSamplersToADraw()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+
+        await OffscreenRhiConformance.MaterialResourcesBindToADrawWithoutPerturbingIt(
+            device,
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    public async Task WarpRejectsMaterialResourcesTheLayoutDoesNotDeclare()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+
+        await OffscreenRhiConformance.MaterialBindingRejectsResourcesTheLayoutDoesNotDeclare(
+            device,
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
     public async Task WarpRendersRetainedSilkMeshes()
     {
         if (!OperatingSystem.IsWindows())

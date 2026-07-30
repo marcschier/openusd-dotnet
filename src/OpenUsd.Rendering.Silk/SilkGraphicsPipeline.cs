@@ -310,6 +310,39 @@ public readonly record struct SilkBindingLayoutDescriptor(
             }
         }
     }
+
+    /// <summary>
+    /// Requires that a material slot of <paramref name="kind"/> exists at the given
+    /// set and binding, and returns its index within
+    /// <see cref="MaterialSlots"/>.
+    /// </summary>
+    /// <remarks>
+    /// Every backend binds resources through this one check, so a slot mismatch fails
+    /// identically everywhere instead of surfacing as a different backend-specific
+    /// validation error, or worse, as a silently unbound resource.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// No slot of that kind is declared at that set and binding.
+    /// </exception>
+    public int RequireMaterialSlot(uint set, uint binding, SilkBindingKind kind)
+    {
+        IReadOnlyList<SilkBindingSlot> slots = MaterialSlots ?? [];
+        for (int index = 0; index < slots.Count; index++)
+        {
+            SilkBindingSlot slot = slots[index];
+            if (slot.Set == set && slot.Binding == binding)
+            {
+                if (slot.Kind != kind)
+                {
+                    throw new InvalidOperationException(
+                        $"Set {set}, binding {binding} is a {slot.Kind} slot, not a {kind} slot.");
+                }
+                return index;
+            }
+        }
+        throw new InvalidOperationException(
+            $"The bound pipeline declares no material slot at set {set}, binding {binding}.");
+    }
 }
 
 /// <summary>Backend resource binding layout.</summary>
