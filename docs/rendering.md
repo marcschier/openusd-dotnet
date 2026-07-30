@@ -99,9 +99,12 @@ still the 80-byte `SceneParameters` uniform, and material slots continue to be v
 `SilkGraphicsCapabilities.SupportsDescriptorIndexedTextureTables`. When it is `true`, the backend may copy material
 texture and sampler descriptors into a persistent descriptor-indexed table before a draw; when it is `false`, the
 backend must use the existing per-draw descriptor path. D3D12 enables the shared table only for Resource Binding
-Tier 2 or Tier 3 devices and falls back to per-draw shader-visible heaps otherwise. Vulkan and Metal currently keep
-the fallback path observable through the same capability until their descriptor-indexing and argument-buffer shader
-contracts are wired.
+Tier 2 or Tier 3 devices and falls back to per-draw shader-visible heaps otherwise. Vulkan enables
+`runtimeDescriptorArray`, `descriptorBindingPartiallyBound`, `shaderSampledImageArrayNonUniformIndexing`, and
+`descriptorBindingVariableDescriptorCount` only when the device reports them, then allocates draw descriptor sets from
+a shared descriptor pool with partially-bound material-slot layout flags. It still falls back to the per-draw pool when
+the feature gate or shared pool allocation is unavailable. Metal currently keeps the fallback path observable through
+the same capability until its argument-buffer shader contract is wired.
 
 ## Renderer-neutral picking contract
 

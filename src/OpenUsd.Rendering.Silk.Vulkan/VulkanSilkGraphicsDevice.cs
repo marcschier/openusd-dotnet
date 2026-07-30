@@ -2,6 +2,7 @@
 
 using System.Runtime.InteropServices;
 using global::Silk.NET.Vulkan;
+using Silk.NET.Core.Native;
 
 namespace OpenUsd.Rendering.Silk.Vulkan;
 
@@ -21,6 +22,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     private readonly Queue _queue;
     private readonly uint _queueFamily;
     private readonly PhysicalDeviceMemoryProperties _memoryProperties;
+    private readonly VulkanDescriptorIndexingFeatures _descriptorIndexingFeatures;
+    private readonly VulkanDescriptorIndexedTextureTables? _materialDescriptorTables;
     private readonly bool _ownsNativeObjects;
     private bool _disposed;
 
@@ -32,6 +35,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         Queue queue,
         uint queueFamily,
         PhysicalDeviceMemoryProperties memoryProperties,
+        VulkanDescriptorIndexingFeatures descriptorIndexingFeatures,
+        VulkanDescriptorIndexedTextureTables? materialDescriptorTables,
         SilkGraphicsCapabilities capabilities,
         bool ownsNativeObjects)
     {
@@ -42,6 +47,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         _queue = queue;
         _queueFamily = queueFamily;
         _memoryProperties = memoryProperties;
+        _descriptorIndexingFeatures = descriptorIndexingFeatures;
+        _materialDescriptorTables = materialDescriptorTables;
         _ownsNativeObjects = ownsNativeObjects;
         Capabilities = capabilities;
         InitializePicking();
@@ -55,6 +62,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
 
     /// <inheritdoc/>
     public bool ClipSpaceYPointsDown => true;
+
+    internal VulkanDescriptorIndexingFeatures DescriptorIndexingFeaturesForTesting =>
+        _descriptorIndexingFeatures;
 
     /// <summary>Creates a headless Vulkan device and graphics queue.</summary>
     public static VulkanSilkGraphicsDevice Create()
@@ -95,6 +105,18 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
 
             PhysicalDevice physicalDevice = physicalDevices[0];
             uint queueFamily = FindGraphicsQueue(api, physicalDevice);
+            api.GetPhysicalDeviceProperties(
+                physicalDevice,
+                out PhysicalDeviceProperties properties);
+            bool descriptorIndexingExtension =
+                SupportsDeviceExtension(api, physicalDevice, "VK_EXT_descriptor_indexing");
+            bool descriptorIndexingIsCore = properties.ApiVersion >= Vk.Version12;
+            VulkanDescriptorIndexingFeatures descriptorIndexingFeatures =
+                descriptorIndexingIsCore || descriptorIndexingExtension
+                    ? QueryDescriptorIndexingFeatures(api, physicalDevice)
+                    : default;
+            bool enableDescriptorIndexing =
+                descriptorIndexingFeatures.SupportsDescriptorIndexedTextureTables;
             float queuePriority = 1;
             var queueInfo = new DeviceQueueCreateInfo
             {
@@ -103,11 +125,36 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 QueueCount = 1,
                 PQueuePriorities = &queuePriority
             };
+            string[] enabledExtensions =
+                enableDescriptorIndexing && !descriptorIndexingIsCore
+                    ? ["VK_EXT_descriptor_indexing"]
+                    : [];
+            using GlobalMemory extensionNames = SilkMarshal.StringArrayToMemory(
+                enabledExtensions,
+                NativeStringEncoding.UTF8);
+            var enabledDescriptorIndexingFeatures =
+                new PhysicalDeviceDescriptorIndexingFeatures
+                {
+                    SType = StructureType.PhysicalDeviceDescriptorIndexingFeatures,
+                    RuntimeDescriptorArray =
+                        descriptorIndexingFeatures.RuntimeDescriptorArray,
+                    DescriptorBindingPartiallyBound =
+                        descriptorIndexingFeatures.DescriptorBindingPartiallyBound,
+                    ShaderSampledImageArrayNonUniformIndexing =
+                        descriptorIndexingFeatures.ShaderSampledImageArrayNonUniformIndexing,
+                    DescriptorBindingVariableDescriptorCount =
+                        descriptorIndexingFeatures.DescriptorBindingVariableDescriptorCount
+                };
             var deviceInfo = new DeviceCreateInfo
             {
                 SType = StructureType.DeviceCreateInfo,
                 QueueCreateInfoCount = 1,
-                PQueueCreateInfos = &queueInfo
+                PQueueCreateInfos = &queueInfo,
+                EnabledExtensionCount = checked((uint)enabledExtensions.Length),
+                PpEnabledExtensionNames = (byte**)extensionNames.Handle,
+                PNext = enableDescriptorIndexing
+                    ? &enabledDescriptorIndexingFeatures
+                    : null
             };
             ThrowIfFailed(
                 api.CreateDevice(physicalDevice, &deviceInfo, null, &device),
@@ -117,19 +164,24 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             api.GetPhysicalDeviceMemoryProperties(
                 physicalDevice,
                 out PhysicalDeviceMemoryProperties memoryProperties);
-            api.GetPhysicalDeviceProperties(
-                physicalDevice,
-                out PhysicalDeviceProperties properties);
             byte* namePointer = properties.DeviceName;
             string deviceName = Marshal.PtrToStringUTF8((nint)namePointer) ?? "Vulkan Device";
             uint major = properties.ApiVersion >> 22;
             uint minor = (properties.ApiVersion >> 12) & 0x3ff;
             uint patch = properties.ApiVersion & 0xfff;
+            VulkanDescriptorIndexedTextureTables? materialDescriptorTables =
+                enableDescriptorIndexing
+                    ? VulkanDescriptorIndexedTextureTables.TryCreate(api, device)
+                    : null;
             var capabilities = new SilkGraphicsCapabilities(
                 deviceName,
                 $"{major}.{minor}.{patch}",
                 SupportsCompute: true,
-                IsSoftware: properties.DeviceType == PhysicalDeviceType.Cpu);
+                IsSoftware: properties.DeviceType == PhysicalDeviceType.Cpu)
+            {
+                SupportsDescriptorIndexedTextureTables =
+                    materialDescriptorTables is not null
+            };
             return new VulkanSilkGraphicsDevice(
                 api,
                 instance,
@@ -138,6 +190,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 queue,
                 queueFamily,
                 memoryProperties,
+                descriptorIndexingFeatures,
+                materialDescriptorTables,
                 capabilities,
                 ownsNativeObjects: true);
         }
@@ -174,6 +228,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             queue,
             queueFamily,
             memoryProperties,
+            default,
+            null,
             capabilities,
             ownsNativeObjects: false);
 
@@ -285,6 +341,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         {
             WaitIdle();
             idle = true;
+            _materialDescriptorTables?.Dispose();
             if (_ownsNativeObjects)
             {
                 _api.DestroyDevice(_device, null);
@@ -309,6 +366,70 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     internal void RegisterDependentObject() => RegisterDependentLifetime();
 
     internal void ReleaseDependentObject() => ReleaseDependentLifetime();
+
+    private static VulkanDescriptorIndexingFeatures QueryDescriptorIndexingFeatures(
+        Vk api,
+        PhysicalDevice physicalDevice)
+    {
+        var descriptorIndexing = new PhysicalDeviceDescriptorIndexingFeatures
+        {
+            SType = StructureType.PhysicalDeviceDescriptorIndexingFeatures
+        };
+        var features = new PhysicalDeviceFeatures2
+        {
+            SType = StructureType.PhysicalDeviceFeatures2,
+            PNext = &descriptorIndexing
+        };
+        api.GetPhysicalDeviceFeatures2(physicalDevice, &features);
+        return new VulkanDescriptorIndexingFeatures(
+            descriptorIndexing.RuntimeDescriptorArray,
+            descriptorIndexing.DescriptorBindingPartiallyBound,
+            descriptorIndexing.ShaderSampledImageArrayNonUniformIndexing,
+            descriptorIndexing.DescriptorBindingVariableDescriptorCount);
+    }
+
+    private static bool SupportsDeviceExtension(
+        Vk api,
+        PhysicalDevice physicalDevice,
+        string extensionName)
+    {
+        uint extensionCount = 0;
+        ThrowIfFailed(
+            api.EnumerateDeviceExtensionProperties(
+                physicalDevice,
+                (byte*)null,
+                &extensionCount,
+                null),
+            "vkEnumerateDeviceExtensionProperties");
+        if (extensionCount == 0)
+        {
+            return false;
+        }
+        ExtensionProperties[] extensions = new ExtensionProperties[extensionCount];
+        fixed (ExtensionProperties* extensionPointer = extensions)
+        {
+            ThrowIfFailed(
+                api.EnumerateDeviceExtensionProperties(
+                    physicalDevice,
+                    (byte*)null,
+                    &extensionCount,
+                    extensionPointer),
+                "vkEnumerateDeviceExtensionProperties");
+            for (uint index = 0; index < extensionCount; index++)
+            {
+                string? available = Marshal.PtrToStringUTF8(
+                    (nint)extensionPointer[index].ExtensionName);
+                if (string.Equals(
+                    available,
+                    extensionName,
+                    StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     private bool TryBeginDispose() => TryBeginLifetimeDispose(
         "Cannot dispose the Vulkan device while buffers, textures, or submissions are alive; " +
