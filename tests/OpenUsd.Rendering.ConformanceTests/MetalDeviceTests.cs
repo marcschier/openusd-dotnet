@@ -3,6 +3,7 @@
 using System.Runtime.Versioning;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.Metal;
+using SharpMetal.Metal;
 
 namespace OpenUsd.Rendering.ConformanceTests;
 
@@ -28,6 +29,9 @@ public sealed class MetalDeviceTests
 
         await Assert.That(device.Backend).IsEqualTo(SilkGraphicsBackend.Metal);
         await Assert.That(device.Capabilities.SupportsCompute).IsTrue();
+        await Assert.That(device.Capabilities.SupportsDescriptorIndexedTextureTables)
+            .IsEqualTo(
+                device.ArgumentBuffersSupportForTesting == MTLArgumentBuffersTier.Tier2);
         await Assert.That(buffer.Size).IsEqualTo((nuint)4096);
     }
 
@@ -175,6 +179,75 @@ public sealed class MetalDeviceTests
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
 
         await OffscreenRhiConformance.DrawsIndexedTriangle(
+            device,
+            SilkShaderBinaryFormat.MetalLibrary);
+    }
+
+    [Test]
+    [SupportedOSPlatform("macos")]
+    public async Task DrawsIdenticallyThroughAMaterialBindingLayoutOnMacOS()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.MaterialBindingLayoutDrawsIdenticallyToSceneParameters(
+            device,
+            SilkShaderBinaryFormat.MetalLibrary);
+    }
+
+    [Test]
+    [SupportedOSPlatform("macos")]
+    public async Task BindsMaterialTexturesAndSamplersToADrawOnMacOS()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.MaterialResourcesBindToADrawWithoutPerturbingIt(
+            device,
+            SilkShaderBinaryFormat.MetalLibrary);
+    }
+
+    [Test]
+    [SupportedOSPlatform("macos")]
+    public async Task UsesArgumentBufferMaterialTextureTablesWhenAvailableOnMacOS()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
+        if (!device.Capabilities.SupportsDescriptorIndexedTextureTables)
+        {
+            Skip.Test("Metal reported no Tier 2 argument-buffer support.");
+            return;
+        }
+
+        await OffscreenRhiConformance.MaterialResourcesBindToADrawWithoutPerturbingIt(
+            device,
+            SilkShaderBinaryFormat.MetalLibrary);
+    }
+
+    [Test]
+    [SupportedOSPlatform("macos")]
+    public async Task RejectsMaterialResourcesTheLayoutDoesNotDeclareOnMacOS()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.MaterialBindingRejectsResourcesTheLayoutDoesNotDeclare(
             device,
             SilkShaderBinaryFormat.MetalLibrary);
     }

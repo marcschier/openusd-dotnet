@@ -866,17 +866,22 @@ public sealed partial class MetalSilkGraphicsDevice
     /// Binds material slots to Metal fragment argument indices.
     /// </summary>
     /// <remarks>
-    /// Metal has separate texture, sampler, and buffer argument tables rather than one
-    /// descriptor set, so the slot binding is used directly as the index within its own
-    /// table. That matches how the SPIR-V to MSL translation assigns indices for the
-    /// checked shaders, and it is validated against the layout so a slot can never be
-    /// bound to a table it does not belong to.
+    /// Tier 2 devices try the persistent argument-buffer table first. The fallback keeps
+    /// Metal's separate texture, sampler, and buffer argument tables, so the slot binding
+    /// is used directly as the index within its own table. Both paths validate against
+    /// the layout so a slot can never be bound to a table it does not belong to.
     /// </remarks>
-    private static void BindMaterialArguments(
+    private void BindMaterialArguments(
         MTLRenderCommandEncoder encoder,
         SilkBindingLayoutDescriptor layout,
         IReadOnlyList<MetalMaterialBinding> bindings)
     {
+        if (MaterialDescriptorTables is { } descriptorTables &&
+            descriptorTables.TryBind(encoder, layout, bindings))
+        {
+            return;
+        }
+
         foreach (MetalMaterialBinding binding in bindings)
         {
             _ = layout.RequireMaterialSlot(0, binding.Binding, binding.Kind);
