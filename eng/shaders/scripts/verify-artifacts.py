@@ -12,6 +12,7 @@ from shader_model import (
     artifact_suffixes_for_scope,
     build_lock_model,
     command_names_for_artifact_scope,
+    validate_manifest,
 )
 
 
@@ -151,7 +152,16 @@ def reject_unexpected_shader_artifacts(
         "full",
         require_metallib=True,
     )
+    expected_by_name = {
+        path.name
+        for path in expected
+    }
     unexpected = []
+    for path in output_root.iterdir():
+        if not path.is_file() or path.name in expected_by_name:
+            continue
+        if any(path.name.endswith(f".{suffix}") for suffix in known_suffixes):
+            unexpected.append(path.name)
     for program in manifest["programs"]:
         base = output_root / program["name"]
         for suffix in known_suffixes:
@@ -177,9 +187,12 @@ def main() -> int:
     parser.add_argument("--require-metallib", action="store_true")
     args = parser.parse_args()
 
-    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     lock = json.loads(args.lock.read_text(encoding="utf-8"))
     model = build_lock_model(lock)
+    manifest = validate_manifest(
+        json.loads(args.manifest.read_text(encoding="utf-8")),
+        model,
+    )
     expected_spirv_version = spirv_version_word(model["spirvVersion"])
     command_path = args.output_root / "executed-commands.json"
     require_file(command_path)

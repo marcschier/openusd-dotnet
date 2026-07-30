@@ -76,7 +76,7 @@ if ($LASTEXITCODE -ne 0)
     throw 'Could not read the locked shader toolchain model.'
 }
 $model = $modelJson | ConvertFrom-Json
-$manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+$checkedManifest = Get-Content (Join-Path $CheckedRoot 'manifest.json') -Raw | ConvertFrom-Json
 $structuralArguments = @(
     (Join-Path $PSScriptRoot 'scripts/checked_payload.py'),
     '--checked-root', $CheckedRoot,
@@ -112,7 +112,7 @@ if ($Rid -eq 'linux-x64')
     {
         throw "spirv-val is not stamped with $($model.spirvToolsCommit)."
     }
-    foreach ($program in $manifest.programs)
+    foreach ($program in $checkedManifest.programs)
     {
         & $validator `
             --target-env $model.spirvTargetEnv `
@@ -122,7 +122,7 @@ if ($Rid -eq 'linux-x64')
             throw "spirv-val rejected checked payload $($program.name).spv."
         }
     }
-    Write-Host "Validated $($manifest.programs.Count) checked SPIR-V payloads."
+    Write-Host "Validated $($checkedManifest.programs.Count) checked SPIR-V payloads."
     return
 }
 
@@ -132,7 +132,7 @@ if ($Rid -eq 'win-x64')
     {
         throw 'win-x64 checked payload validation requires Windows.'
     }
-    Write-Host "Validated $($manifest.programs.Count) checked payload programs."
+    Write-Host "Validated $($checkedManifest.programs.Count) checked payload programs."
     return
 }
 

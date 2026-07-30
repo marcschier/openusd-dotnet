@@ -1,6 +1,53 @@
 {
   "schemaVersion": 1,
   "matrixLayout": "row-major",
+  "featureBits": [
+    {
+      "name": "HAS_UV",
+      "token": "uv",
+      "requires": []
+    },
+    {
+      "name": "MAP_BASE_COLOR",
+      "token": "basecolor",
+      "requires": [
+        "HAS_UV"
+      ]
+    },
+    {
+      "name": "MAP_NORMAL",
+      "token": "normal",
+      "requires": [
+        "HAS_UV"
+      ]
+    },
+    {
+      "name": "MAP_ROUGHNESS_METALLIC",
+      "token": "roughmetal",
+      "requires": [
+        "HAS_UV"
+      ]
+    },
+    {
+      "name": "MAP_EMISSIVE",
+      "token": "emissive",
+      "requires": [
+        "HAS_UV"
+      ]
+    }
+  ],
+  "permutationBudgets": [
+    {
+      "family": "mesh",
+      "stage": "fragment",
+      "maxPermutations": 32
+    },
+    {
+      "family": "mesh",
+      "stage": "vertex",
+      "maxPermutations": 8
+    }
+  ],
   "programs": [
     {
       "name": "mesh.vertex",
@@ -8,6 +55,11 @@
       "entryPoint": "vertexMain",
       "stage": "vertex",
       "profile": "vs_6_0",
+      "permutationFamily": "mesh",
+      "permutationFeatures": [
+        "HAS_UV",
+        "MAP_NORMAL"
+      ],
       "resources": [
         {
           "name": "SceneParameters",
@@ -30,6 +82,14 @@
       "entryPoint": "fragmentMain",
       "stage": "fragment",
       "profile": "ps_6_0",
+      "permutationFamily": "mesh",
+      "permutationFeatures": [
+        "HAS_UV",
+        "MAP_BASE_COLOR",
+        "MAP_NORMAL",
+        "MAP_ROUGHNESS_METALLIC",
+        "MAP_EMISSIVE"
+      ],
       "resources": [
         {
           "name": "SceneParameters",
@@ -41,6 +101,83 @@
           },
           "vulkan": {
             "binding": 0,
+            "set": 0
+          }
+        }
+      ],
+      "permutationResources": [
+        {
+          "featuresAny": [
+            "MAP_BASE_COLOR",
+            "MAP_NORMAL",
+            "MAP_ROUGHNESS_METALLIC",
+            "MAP_EMISSIVE"
+          ],
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_BASE_COLOR",
+          "name": "baseColorTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 2,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_NORMAL",
+          "name": "normalTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 1,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 3,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_ROUGHNESS_METALLIC",
+          "name": "roughnessMetallicTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 2,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 4,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_EMISSIVE",
+          "name": "emissiveTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 3,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 5,
             "set": 0
           }
         }

@@ -6,6 +6,8 @@ import pathlib
 import re
 from typing import Any
 
+from shader_model import expanded_manifest
+
 
 D3D_REGISTER_CLASSES = {
     "constantBuffer": "b",
@@ -252,9 +254,17 @@ def normalize_resources(
     spirv_parameters = parameter_map(spirv, "SPIR-V")
     contract_names = {resource["name"] for resource in contract}
     if set(dxil_parameters) != contract_names:
-        raise ValueError("DXIL resources do not match the manifest contract")
+        raise ValueError(
+            "DXIL resources do not match the manifest contract: "
+            f"missing={sorted(contract_names - set(dxil_parameters))}, "
+            f"unexpected={sorted(set(dxil_parameters) - contract_names)}"
+        )
     if set(spirv_parameters) != contract_names:
-        raise ValueError("SPIR-V resources do not match the manifest contract")
+        raise ValueError(
+            "SPIR-V resources do not match the manifest contract: "
+            f"missing={sorted(contract_names - set(spirv_parameters))}, "
+            f"unexpected={sorted(set(spirv_parameters) - contract_names)}"
+        )
 
     resources = []
     for expected in contract:
@@ -488,7 +498,9 @@ def main() -> int:
     parser.add_argument("--program", required=True)
     args = parser.parse_args()
 
-    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    manifest = expanded_manifest(
+        json.loads(args.manifest.read_text(encoding="utf-8"))
+    )
     programs = [
         program
         for program in manifest["programs"]
