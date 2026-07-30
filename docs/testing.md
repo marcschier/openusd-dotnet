@@ -430,7 +430,7 @@ shutdown completion and fresh post-teardown renderer fault and resource diagnost
 
 ## Render gate capability limits
 
-Three render proofs need graphics capabilities that a hosted GitHub runner does not have. All are
+Two render proofs still need graphics capabilities that a hosted GitHub runner does not have. Both are
 narrowed rather than deleted: everything the runner can prove still runs and still blocks, the
 unprovable part records a `status: skipped` evidence artifact naming its reason, and the work needed to
 restore full coverage is listed below. Narrowing is deliberately not automatic. Each one is opt-in at
@@ -438,8 +438,8 @@ the call site in `.github/workflows/render.yml`, so a capability regression on a
 hard failure, and the narrowing is visible in the workflow rather than buried in a script.
 
 **`windows-wgl` shared-stage soak.** Hosted Windows exposes only the generic GDI OpenGL 1.1
-implementation, so Avalonia cannot create a WGL context. The skip is recorded in
-`artifacts/platform-smoke/windows-wgl/platform-smoke-capability.json`.
+implementation, so the gate stages a hash-locked Mesa llvmpipe `opengl32.dll` before starting
+Avalonia/Storm. The soak is mandatory again on hosted Windows.
 
 **Windows Avalonia Vulkan composition.** Hosted Windows has no GPU driver and therefore no system
 Vulkan ICD. The skip is recorded in `artifacts/render-capability/windows-vulkan.json`.
@@ -451,24 +451,33 @@ cannot be exercised. The skip is recorded in
 fine and is still used: the limit is the compositor, not the driver.
 
 What still blocks on the hosted runner: the Windows WGL job keeps the NativeAOT shared-stage soak,
-the native probe, and the soak identity gate; the Windows Vulkan job keeps the viewer source-identity
-and evidence contracts; the Linux job keeps its CTest suite, both X11 and XWayland shared-stage soaks,
-and the Storm child switching gates. Renderer-neutral and hdSilk Vulkan behaviour that does not need
-composition stays covered by the managed conformance suite in `ci.yml`, which runs against the pinned
-SwiftShader driver.
+the native probe, the soak identity gate, and the WGL soak; the Windows Vulkan job keeps the viewer
+source-identity and evidence contracts; the Linux job keeps its CTest suite, both X11 and XWayland
+shared-stage soaks, and the Storm child switching gates. Renderer-neutral and hdSilk Vulkan behaviour
+that does not need composition stays covered by the managed conformance suite in `ci.yml`, which runs
+against the pinned SwiftShader driver.
 
 ### Unblocking the WGL soak
 
-The soak needs an OpenGL implementation that can create a WGL context, which means either of:
+The WGL soak is unblocked with the same supply-chain model as the SwiftShader Vulkan runtime:
+`eng/mesa-wgl-test-runtime.lock.json` pins the exact Mesa release, archive URL, archive SHA-256, and
+staged `opengl32.dll` SHA-256 for `win-x64`. `eng/prepare-mesa-wgl-test-runtime.ps1` downloads the
+archive only from that pinned URL, verifies the archive hash, extracts only the locked file, verifies
+the staged file hash, prepends its directory to `PATH`, and copies it next to the viewer's native
+runtime before the soak starts.
 
-1. Run the job on a self-hosted Windows runner with a GPU driver. Nothing else changes: drop
-   `-AllowUnavailableCapability` from the `Execute mandatory WGL shared-stage soak` step and the proof
-   becomes blocking again.
-2. Pin a software OpenGL implementation the way `eng/vulkan-test-runtime.lock.json` pins SwiftShader.
-   That means adding a hash-locked Mesa `opengl32.dll` for `win-x64`, a staging helper alongside
-   `eng/prepare-vulkan-test-runtime.ps1`, and a registry entry in the same shape as
-   `eng/vulkan-test-runtime-registry.ps1`. Mesa's llvmpipe does provide a WGL 4.x context, so this
-   restores the proof without a GPU, at the cost of a new pinned third-party binary.
+The helper also runs a WGL preflight and writes `mesa-wgl-runtime.json` plus
+`mesa-wgl-preflight.json` under `artifacts/platform-smoke/windows-wgl/mesa-wgl-runtime`. Those files
+record the loaded `opengl32.dll`, its SHA-256, and `GL_VENDOR`, `GL_RENDERER`, and `GL_VERSION`.
+The gate requires the preflight renderer to contain `llvmpipe`, so a hosted Windows pass records that
+it used Mesa software rasterisation instead of silently falling back to the generic GDI OpenGL 1.1
+driver or an installed GPU driver.
+
+This proves the Storm WGL render path, shared-stage scheduling, teardown, and diagnostics on a
+reproducible software OpenGL implementation. It is not a Windows GPU driver-conformance proof:
+driver-specific WGL pixel-format quirks, swap-chain behaviour, and vendor OpenGL bugs still need a
+self-hosted Windows runner with that driver stack. A separate self-hosted GPU driver proof should
+bypass the Mesa staging helper so the loaded `opengl32.dll` evidence names the vendor driver.
 
 ### Unblocking the Vulkan composition gates
 
