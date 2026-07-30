@@ -512,6 +512,23 @@ import smoke steps.
 
 ### Parity capture driver contract
 
+**The parity gate is opt-in strict, and this is load bearing.** When Storm's
+native library cannot be loaded the driver skips, and a skipped test still counts
+as a pass. That means the gate reported success while proving nothing: it was
+introduced in exactly that state, with every scene skipping because no native
+runtime was staged beside the test binaries. Set
+`OPENUSD_REQUIRE_PARITY_CAPTURE=1` to turn an unavailable capture into a hard
+failure. CI must set it; it stays opt-in locally so a developer without a staged
+native runtime is not blocked. Verified by running the suite both ways: with the
+variable set the parity tests fail naming the missing library, without it they
+skip and the suite stays green.
+
+The per-scene `RecommendedMinimumAdjustedIou` values are **provisional and
+unmeasured**. They were authored without a runnable Storm, so no scene margin was
+ever generated. `parity-harness-ci` owns measuring the correct value and each
+perturbation per scene and replacing them. Until then they are a placeholder, not
+evidence, and must not be used as a gate.
+
 `StormSilkParityCaptureDriverTests` is the first automated producer for the
 `ParityImageComparer` contract. The renderer-neutral driver opens one stage
 through `UsdStageScheduler`, acquires one `UsdStageRenderSource`, and renders the

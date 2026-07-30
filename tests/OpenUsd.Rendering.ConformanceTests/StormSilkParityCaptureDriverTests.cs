@@ -260,10 +260,31 @@ public sealed class StormSilkParityCaptureDriverTests
         }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
         {
-            WriteEvidence("parity-capture-skip.txt", [$"WGL: {exception}"]);
-            Console.WriteLine($"Skipping WGL parity capture: {exception.Message}");
+            SkipOrFail("WGL parity capture", exception.ToString());
             return false;
         }
+    }
+
+    /// <summary>
+    /// Turns an unavailable capture into a hard failure. A parity gate that
+    /// silently skips is worse than no gate: it reports success while proving
+    /// nothing, which is exactly how these tests behaved before this existed --
+    /// Storm could not load, every scene was skipped, and the suite stayed green.
+    /// CI sets this so the gate is real there; it stays opt-in locally because a
+    /// developer without a staged native runtime should not be blocked.
+    /// </summary>
+    private static bool RequireCapture =>
+        Environment.GetEnvironmentVariable("OPENUSD_REQUIRE_PARITY_CAPTURE") is "1" or "true";
+
+    private static void SkipOrFail(string reason, string detail)
+    {
+        WriteEvidence("parity-capture-skip.txt", [detail]);
+        if (RequireCapture)
+        {
+            throw new InvalidOperationException(
+                $"{reason} and OPENUSD_REQUIRE_PARITY_CAPTURE demands a real capture. {detail}");
+        }
+        Console.WriteLine($"Skipping {reason}: {detail}");
     }
 
     private static bool TryCreateInput(string stagePath, out ParityCaptureInput input)
@@ -273,10 +294,11 @@ public sealed class StormSilkParityCaptureDriverTests
             input = CreateInput(stagePath);
             return true;
         }
-        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        catch (Exception exception)
+            when (exception is DllNotFoundException or DirectoryNotFoundException
+                or OpenUsdStormException)
         {
-            WriteEvidence("parity-capture-skip.txt", [$"Input: {exception}"]);
-            Console.WriteLine($"Skipping Storm-to-hdSilk parity capture: {exception.Message}");
+            SkipOrFail("Storm-to-hdSilk parity capture", exception.ToString());
             input = null!;
             return false;
         }
@@ -404,6 +426,12 @@ public sealed class StormSilkParityCaptureDriverTests
 
     private static IReadOnlyList<ParityScene> CreateScenes()
     {
+        // The RecommendedMinimumAdjustedIou values below are PROVISIONAL and have
+        // not been measured against a real Storm capture. They were authored
+        // without a staged native runtime, so no scene margin was ever generated.
+        // parity-harness-ci must measure the correct value and each perturbation
+        // per scene and replace these before any of them is used as a gate; until
+        // then they are a placeholder, not evidence.
         string root = FindRepositoryRoot() ?? AppContext.BaseDirectory;
         string assetRoot = Path.Combine(root, "test-assets", "parity");
         return
