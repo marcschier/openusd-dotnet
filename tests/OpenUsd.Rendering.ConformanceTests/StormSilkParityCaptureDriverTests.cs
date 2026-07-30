@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
 using OpenUsd.Rendering.Silk.Vulkan;
@@ -19,6 +20,8 @@ public sealed class StormSilkParityCaptureDriverTests
     private const int Width = 160;
     private const int Height = 128;
     private const double TimeCode = 1;
+    private const double MinimumDiscriminationMargin = 0.20;
+    private static readonly JsonSerializerOptions EvidenceJsonOptions = new() { WriteIndented = true };
 
     [Test]
     public async Task CapturesStormAndHdSilkBackendsDeterministically()
@@ -28,53 +31,94 @@ public sealed class StormSilkParityCaptureDriverTests
             return;
         }
 
-        if (!TryCreateInput(CreateStagePath("parity-fixed.usda"), out ParityCaptureInput input))
-        {
-            return;
-        }
         SilkParityBackend[] backends = CreateWindowsBackends();
-        ParityCaptureSet first = await ParityCaptureDriver.CaptureAsync(
-            input,
-            new WindowsWglStormContextFactory(),
-            backends).ConfigureAwait(false);
-        ParityCaptureSet second = await ParityCaptureDriver.CaptureAsync(
-            input,
-            new WindowsWglStormContextFactory(),
-            backends).ConfigureAwait(false);
-
         var evidence = new List<string>();
-        await Assert.That(first.Storm.Rgba.Span.SequenceEqual(second.Storm.Rgba.Span))
-            .IsTrue()
-            .Because("Storm parity capture must be byte-stable for the same scene and camera.");
-
-        for (int i = 0; i < first.SilkCaptures.Count; i++)
+        var jsonEvidence = new List<object>();
+        foreach (ParityScene scene in CreateScenes())
         {
-            SilkParityCapture firstSilk = first.SilkCaptures[i];
-            SilkParityCapture secondSilk = second.SilkCaptures[i];
-            await Assert.That(firstSilk.Image.Rgba.Span.SequenceEqual(secondSilk.Image.Rgba.Span))
+            if (!TryCreateInput(scene.StagePath, out ParityCaptureInput input))
+            {
+                return;
+            }
+
+            ParityCaptureSet first = await ParityCaptureDriver.CaptureAsync(
+                input,
+                new WindowsWglStormContextFactory(),
+                backends).ConfigureAwait(false);
+            ParityCaptureSet second = await ParityCaptureDriver.CaptureAsync(
+                input,
+                new WindowsWglStormContextFactory(),
+                backends).ConfigureAwait(false);
+
+            await Assert.That(first.Storm.Rgba.Span.SequenceEqual(second.Storm.Rgba.Span))
                 .IsTrue()
-                .Because($"{firstSilk.BackendName} parity capture must be byte-stable.");
-            await Assert.That(firstSilk.DrawCount).IsGreaterThan(0);
-            ParityComparisonResult result = ParityImageComparer.Compare(
-                first.Storm,
-                firstSilk.Image,
-                input.BackgroundRgba,
-                ParityTolerance.Geometry);
-            string metrics = FormatMetrics(input, first.Storm, firstSilk, result);
-            evidence.Add(metrics);
-            Console.WriteLine(metrics);
-            await Assert.That(result.ReferenceCoveragePixels).IsGreaterThan(0);
-            await Assert.That(result.CandidateCoveragePixels).IsGreaterThan(0);
+                .Because($"Storm parity capture for {scene.Name} must be byte-stable.");
+
+            var backendEvidence = new List<object>();
+            for (int i = 0; i < first.SilkCaptures.Count; i++)
+            {
+                SilkParityCapture firstSilk = first.SilkCaptures[i];
+                SilkParityCapture secondSilk = second.SilkCaptures[i];
+                await Assert.That(firstSilk.Image.Rgba.Span.SequenceEqual(secondSilk.Image.Rgba.Span))
+                    .IsTrue()
+                    .Because($"{firstSilk.BackendName} parity capture for {scene.Name} must be byte-stable.");
+                await Assert.That(firstSilk.DrawCount).IsGreaterThan(0);
+                ParityComparisonResult result = ParityImageComparer.Compare(
+                    first.Storm,
+                    firstSilk.Image,
+                    input.BackgroundRgba,
+                    ParityTolerance.Geometry);
+                string metrics = FormatMetrics(scene, input, first.Storm, firstSilk, result);
+                evidence.Add(metrics);
+                Console.WriteLine(metrics);
+                await Assert.That(result.ReferenceCoveragePixels).IsGreaterThan(0);
+                await Assert.That(result.CandidateCoveragePixels).IsGreaterThan(0);
+                backendEvidence.Add(new
+                {
+                    backend = firstSilk.BackendName,
+                    firstHash = Hash(firstSilk.Image),
+                    secondHash = Hash(secondSilk.Image),
+                    firstSilk.DrawCount,
+                    firstSilk.Revision,
+                    comparison = ToEvidence(result),
+                    deterministic = firstSilk.Image.Rgba.Span.SequenceEqual(secondSilk.Image.Rgba.Span),
+                });
+            }
+
+            evidence.Add($"{scene.Name} Storm sha256={Hash(first.Storm)}");
+            Console.WriteLine($"{scene.Name} Storm sha256={Hash(first.Storm)}");
+            jsonEvidence.Add(new
+            {
+                scene = scene.Name,
+                scene.StagePath,
+                scene.Purpose,
+                scene.ColorComparisonReady,
+                scene.RecommendedMinimumAdjustedIou,
+                stormFirstHash = Hash(first.Storm),
+                stormSecondHash = Hash(second.Storm),
+                deterministic = first.Storm.Rgba.Span.SequenceEqual(second.Storm.Rgba.Span),
+                stageIdentity = CreateStageIdentity(scene),
+                cameraIdentity = CreateCameraIdentity(input),
+                backends = backendEvidence,
+            });
         }
 
-        evidence.Add($"Storm sha256={Hash(first.Storm)}");
-        Console.WriteLine($"Storm sha256={Hash(first.Storm)}");
-        foreach (SilkParityCapture capture in first.SilkCaptures)
-        {
-            evidence.Add($"{capture.BackendName} sha256={Hash(capture.Image)}");
-            Console.WriteLine($"{capture.BackendName} sha256={Hash(capture.Image)}");
-        }
         WriteEvidence("parity-capture-metrics.txt", evidence);
+        WriteJsonEvidence("parity-capture-evidence.json", new
+        {
+            schemaVersion = 1,
+            generatedUtc = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+            sourceIdentity = CreateSourceIdentity(),
+            packageIdentity = CreatePackageIdentity(ResolvePluginPath()),
+            normalization = new
+            {
+                rowOrder = "Storm GL readback is converted bottom-up to top-down; hdSilk is top-down.",
+                clear = "The captured corner background is mapped to the requested opaque clear colour.",
+                alpha = "Captures are normalized to opaque alpha before coverage comparison.",
+                color = "Coverage is gated today; colour remains opt-in until hdSilk implements BRDF shading.",
+            },
+            scenes = jsonEvidence,
+        });
     }
 
     [Test]
@@ -85,44 +129,99 @@ public sealed class StormSilkParityCaptureDriverTests
             return;
         }
 
-        if (!TryCreateInput(CreateStagePath("parity-perturb.usda"), out ParityCaptureInput input))
-        {
-            return;
-        }
         SilkParityBackend[] backends = [CreateD3D12WarpBackend()];
-        ParityCaptureSet baseline = await ParityCaptureDriver.CaptureAsync(
-            input,
-            new WindowsWglStormContextFactory(),
-            backends).ConfigureAwait(false);
-
-        ParityComparisonResult flipped = ParityImageComparer.Compare(
-            baseline.SilkCaptures[0].Image,
-            MirrorVertically(baseline.SilkCaptures[0].Image),
-            input.BackgroundRgba,
-            ParityTolerance.Geometry);
         var evidence = new List<string>();
-        evidence.Add($"Vertical flip detection: {flipped.Diagnostics}");
-        Console.WriteLine($"Vertical flip detection: {flipped.Diagnostics}");
-        await Assert.That(flipped.Passed)
-            .IsFalse()
-            .Because("A vertically flipped Storm capture must not compare equal to itself.");
+        var jsonEvidence = new List<object>();
+        foreach (ParityScene scene in CreateScenes())
+        {
+            if (!TryCreateInput(scene.StagePath, out ParityCaptureInput input))
+            {
+                return;
+            }
 
-        ParityCaptureInput shifted = input with { Camera = ShiftCamera(input.Camera, 0.14f) };
-        ParityCaptureSet shiftedCapture = await ParityCaptureDriver.CaptureAsync(
-            shifted,
-            new WindowsWglStormContextFactory(),
-            backends).ConfigureAwait(false);
-        ParityComparisonResult shiftedResult = ParityImageComparer.Compare(
-            baseline.SilkCaptures[0].Image,
-            shiftedCapture.SilkCaptures[0].Image,
-            input.BackgroundRgba,
-            ParityTolerance.Geometry);
-        evidence.Add($"Shifted camera detection: {shiftedResult.Diagnostics}");
-        Console.WriteLine($"Shifted camera detection: {shiftedResult.Diagnostics}");
-        await Assert.That(shiftedResult.Passed)
-            .IsFalse()
-            .Because("A deliberately shifted camera must change the captured coverage.");
+            ParityCaptureSet baseline = await ParityCaptureDriver.CaptureAsync(
+                input,
+                new WindowsWglStormContextFactory(),
+                backends).ConfigureAwait(false);
+            SilkParityCapture silk = baseline.SilkCaptures[0];
+            ParityComparisonResult correct = ParityImageComparer.Compare(
+                baseline.Storm,
+                silk.Image,
+                input.BackgroundRgba,
+                ParityTolerance.Geometry);
+            ParityComparisonResult vertical = ComparePerturbation(input, silk.Image, MirrorVertically(silk.Image));
+            ParityComparisonResult horizontal = ComparePerturbation(input, silk.Image, MirrorHorizontally(silk.Image));
+            ParityComparisonResult transposed = ComparePerturbation(
+                input,
+                silk.Image,
+                TransposeWithinCanvas(silk.Image));
+
+            ParityCaptureInput shifted = input with { Camera = ShiftCamera(input.Camera, 0.14f) };
+            ParityCaptureSet shiftedCapture = await ParityCaptureDriver.CaptureAsync(
+                shifted,
+                new WindowsWglStormContextFactory(),
+                backends).ConfigureAwait(false);
+            ParityComparisonResult shiftedResult = ComparePerturbation(
+                input,
+                silk.Image,
+                shiftedCapture.SilkCaptures[0].Image);
+            double weakestMargin = new[]
+            {
+                Margin(correct, vertical),
+                Margin(correct, horizontal),
+                Margin(correct, transposed),
+                Margin(correct, shiftedResult),
+            }.Min();
+
+            string summary = FormatPerturbation(scene, correct, vertical, horizontal, transposed, shiftedResult);
+            evidence.Add(summary);
+            Console.WriteLine(summary);
+            await Assert.That(vertical.Passed).IsFalse();
+            await Assert.That(horizontal.Passed).IsFalse();
+            await Assert.That(transposed.Passed).IsFalse();
+            await Assert.That(shiftedResult.Passed).IsFalse();
+            await Assert.That(weakestMargin).IsGreaterThanOrEqualTo(MinimumDiscriminationMargin);
+            jsonEvidence.Add(new
+            {
+                scene = scene.Name,
+                scene.Purpose,
+                correct = ToEvidence(correct),
+                verticalFlip = ToEvidence(vertical),
+                horizontalMirror = ToEvidence(horizontal),
+                transposedAxes = ToEvidence(transposed),
+                shiftedCamera = ToEvidence(shiftedResult),
+                margins = new
+                {
+                    verticalFlip = Margin(correct, vertical),
+                    horizontalMirror = Margin(correct, horizontal),
+                    transposedAxes = Margin(correct, transposed),
+                    shiftedCamera = Margin(correct, shiftedResult),
+                    weakest = weakestMargin,
+                },
+                recommendation = new
+                {
+                    scene.RecommendedMinimumAdjustedIou,
+                    reason = "Threshold sits below the correct value and above all perturbations.",
+                },
+            });
+        }
+
         WriteEvidence("parity-capture-perturbations.txt", evidence);
+        WriteJsonEvidence("parity-capture-perturbations.json", new
+        {
+            schemaVersion = 1,
+            generatedUtc = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+            minimumRequiredMargin = MinimumDiscriminationMargin,
+            rejectedScenes = new[]
+            {
+                new
+                {
+                    name = "single-asymmetric-panel",
+                    reason = "The original probe measured about 0.11 adjusted-IoU margin to a vertical flip.",
+                },
+            },
+            scenes = jsonEvidence,
+        });
     }
 
     private static void WriteEvidence(string fileName, IEnumerable<string> lines)
@@ -131,6 +230,23 @@ public sealed class StormSilkParityCaptureDriverTests
         Directory.CreateDirectory(directory);
         File.WriteAllLines(Path.Combine(directory, fileName), lines, new UTF8Encoding(false));
     }
+
+    private static void WriteJsonEvidence(string fileName, object evidence)
+    {
+        string directory = Path.Combine(AppContext.BaseDirectory, "TestResults", "parity-capture");
+        Directory.CreateDirectory(directory);
+        string json = JsonSerializer.Serialize(evidence, EvidenceJsonOptions);
+        File.WriteAllText(Path.Combine(directory, fileName), json + "\n", new UTF8Encoding(false));
+    }
+
+    private static ParityComparisonResult ComparePerturbation(
+        ParityCaptureInput input,
+        ParityImage reference,
+        ParityImage candidate) =>
+        ParityImageComparer.Compare(reference, candidate, input.BackgroundRgba, ParityTolerance.Geometry);
+
+    private static double Margin(ParityComparisonResult correct, ParityComparisonResult perturbation) =>
+        correct.AdjustedCoverageIntersectionOverUnion - perturbation.AdjustedCoverageIntersectionOverUnion;
 
     [SupportedOSPlatform("windows")]
     private static bool CanCreateWglContext()
@@ -148,15 +264,6 @@ public sealed class StormSilkParityCaptureDriverTests
             Console.WriteLine($"Skipping WGL parity capture: {exception.Message}");
             return false;
         }
-    }
-
-    private static string CreateStagePath(string fileName)
-    {
-        string directory = Path.Combine(AppContext.BaseDirectory, "parity-capture");
-        Directory.CreateDirectory(directory);
-        string path = Path.Combine(directory, fileName);
-        File.WriteAllText(path, ParityStageText, new UTF8Encoding(false));
-        return path;
     }
 
     private static bool TryCreateInput(string stagePath, out ParityCaptureInput input)
@@ -295,6 +402,39 @@ public sealed class StormSilkParityCaptureDriverTests
     private static SilkParityBackend CreateD3D12WarpBackend() =>
         new("D3D12 WARP", static () => D3D12SilkGraphicsDevice.Create(useWarp: true));
 
+    private static IReadOnlyList<ParityScene> CreateScenes()
+    {
+        string root = FindRepositoryRoot() ?? AppContext.BaseDirectory;
+        string assetRoot = Path.Combine(root, "test-assets", "parity");
+        return
+        [
+            new ParityScene(
+                "orientation-asymmetric",
+                Path.Combine(assetRoot, "parity-orientation-asymmetric.usda"),
+                "Large L-shaped silhouette catches vertical flips, horizontal mirrors, and transposes.",
+                ColorComparisonReady: false,
+                RecommendedMinimumAdjustedIou: 0.78),
+            new ParityScene(
+                "depth-overlap-multiprim",
+                Path.Combine(assetRoot, "parity-depth-overlap-multiprim.usda"),
+                "Overlapping prims exercise retained draw order, depth, and per-prim transforms.",
+                ColorComparisonReady: false,
+                RecommendedMinimumAdjustedIou: 0.76),
+            new ParityScene(
+                "material-normals-uv",
+                Path.Combine(assetRoot, "parity-material-normals-uv.usda"),
+                "Bound PreviewSurface, authored normals, and UVs travel over the ABI.",
+                ColorComparisonReady: true,
+                RecommendedMinimumAdjustedIou: 0.74),
+            new ParityScene(
+                "point-instancer-cluster",
+                Path.Combine(assetRoot, "parity-point-instancer-cluster.usda"),
+                "Asymmetric point-instanced placement proves expansion and transform handling.",
+                ColorComparisonReady: false,
+                RecommendedMinimumAdjustedIou: 0.72),
+        ];
+    }
+
     private static CameraState ShiftCamera(CameraState camera, float x)
     {
         Matrix4x4 view = camera.View;
@@ -316,16 +456,207 @@ public sealed class StormSilkParityCaptureDriverTests
         return new ParityImage(image.Width, image.Height, mirrored);
     }
 
+    private static ParityImage MirrorHorizontally(ParityImage image)
+    {
+        ReadOnlySpan<byte> source = image.Rgba.Span;
+        byte[] mirrored = new byte[source.Length];
+        for (int y = 0; y < image.Height; y++)
+        {
+            for (int x = 0; x < image.Width; x++)
+            {
+                int sourceOffset = (y * image.Width + x) * ParityImage.BytesPerPixel;
+                int destinationOffset = (y * image.Width + image.Width - 1 - x) * ParityImage.BytesPerPixel;
+                source.Slice(sourceOffset, ParityImage.BytesPerPixel)
+                    .CopyTo(mirrored.AsSpan(destinationOffset, ParityImage.BytesPerPixel));
+            }
+        }
+
+        return new ParityImage(image.Width, image.Height, mirrored);
+    }
+
+    private static ParityImage TransposeWithinCanvas(ParityImage image)
+    {
+        ReadOnlySpan<byte> source = image.Rgba.Span;
+        byte[] transposed = new byte[source.Length];
+        for (int y = 0; y < image.Height; y++)
+        {
+            for (int x = 0; x < image.Width; x++)
+            {
+                int targetX = (int)MathF.Round(y * (image.Width - 1f) / (image.Height - 1f));
+                int targetY = (int)MathF.Round(x * (image.Height - 1f) / (image.Width - 1f));
+                int sourceOffset = (y * image.Width + x) * ParityImage.BytesPerPixel;
+                int destinationOffset = (targetY * image.Width + targetX) * ParityImage.BytesPerPixel;
+                source.Slice(sourceOffset, ParityImage.BytesPerPixel)
+                    .CopyTo(transposed.AsSpan(destinationOffset, ParityImage.BytesPerPixel));
+            }
+        }
+
+        return new ParityImage(image.Width, image.Height, transposed);
+    }
+
+    private static object CreateSourceIdentity()
+    {
+        string root = FindRepositoryRoot() ?? AppContext.BaseDirectory;
+        string[] paths =
+        [
+            "Directory.Build.props",
+            "Directory.Packages.props",
+            "global.json",
+            "src\\OpenUsd.Rendering\\ParityImageComparison.cs",
+            "tests\\OpenUsd.Rendering.ConformanceTests\\OpenUsd.Rendering.ConformanceTests.csproj",
+            "tests\\OpenUsd.Rendering.ConformanceTests\\ParityCaptureDriver.cs",
+            "tests\\OpenUsd.Rendering.ConformanceTests\\StormSilkParityCaptureDriverTests.cs",
+            "test-assets\\parity\\parity-orientation-asymmetric.usda",
+            "test-assets\\parity\\parity-depth-overlap-multiprim.usda",
+            "test-assets\\parity\\parity-material-normals-uv.usda",
+            "test-assets\\parity\\parity-point-instancer-cluster.usda",
+            "docs\\testing.md",
+        ];
+        var files = new List<object>();
+        foreach (string relative in paths)
+        {
+            string path = Path.Combine(root, relative);
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            var file = new FileInfo(path);
+            files.Add(new
+            {
+                path = Path.GetRelativePath(root, path).Replace('\\', '/'),
+                sha256 = FileHash(path),
+                length = file.Length,
+            });
+        }
+
+        string payload = JsonSerializer.Serialize(files);
+        string sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+        return new { sha256, fileCount = files.Count, files };
+    }
+
+    private static object CreateStageIdentity(ParityScene scene)
+    {
+        var file = new FileInfo(scene.StagePath);
+        return new
+        {
+            path = Path.GetFileName(scene.StagePath),
+            sha256 = FileHash(scene.StagePath),
+            length = file.Length,
+        };
+    }
+
+    private static object CreateCameraIdentity(ParityCaptureInput input) =>
+        new
+        {
+            input.Width,
+            input.Height,
+            input.TimeCode,
+            view = MatrixValues(input.Camera.View),
+            projection = MatrixValues(input.Camera.Projection),
+            clearColor = new[]
+            {
+                input.ClearColor.Red,
+                input.ClearColor.Green,
+                input.ClearColor.Blue,
+                input.ClearColor.Alpha,
+            },
+            input.Headlight,
+        };
+
+    private static object CreatePackageIdentity(string pluginPath)
+    {
+        var roots = new List<string> { pluginPath };
+        string runtimeRoot = Path.GetFullPath(Path.Combine(pluginPath, "..", ".."));
+        string runtimeBin = Path.Combine(runtimeRoot, "bin");
+        if (Directory.Exists(runtimeBin))
+        {
+            roots.Add(runtimeBin);
+        }
+
+        string? repoRoot = FindRepositoryRoot();
+        string? metadataPath = repoRoot is null
+            ? null
+            : Path.Combine(repoRoot, "native", "install", "win-x64", ".openusd-install-metadata.json");
+        var files = new List<object>();
+        foreach (string root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            foreach (string file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                .Order(StringComparer.OrdinalIgnoreCase))
+            {
+                var info = new FileInfo(file);
+                files.Add(new
+                {
+                    path = Path.GetRelativePath(root, file).Replace('\\', '/'),
+                    root = Path.GetFileName(root),
+                    sha256 = FileHash(file),
+                    length = info.Length,
+                });
+            }
+        }
+
+        string payload = JsonSerializer.Serialize(files);
+        return new
+        {
+            pluginPath,
+            sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
+            fileCount = files.Count,
+            installMetadataSha256 = metadataPath is not null && File.Exists(metadataPath)
+                ? FileHash(metadataPath)
+                : null,
+            files,
+        };
+    }
+
+    private static float[] MatrixValues(Matrix4x4 matrix) =>
+        [
+            matrix.M11,
+            matrix.M12,
+            matrix.M13,
+            matrix.M14,
+            matrix.M21,
+            matrix.M22,
+            matrix.M23,
+            matrix.M24,
+            matrix.M31,
+            matrix.M32,
+            matrix.M33,
+            matrix.M34,
+            matrix.M41,
+            matrix.M42,
+            matrix.M43,
+            matrix.M44,
+        ];
+
+    private static object ToEvidence(ParityComparisonResult result) =>
+        new
+        {
+            result.CoverageIntersectionOverUnion,
+            result.AdjustedCoverageIntersectionOverUnion,
+            result.CoverageDifferenceFraction,
+            result.ReferenceCoveragePixels,
+            result.CandidateCoveragePixels,
+            result.CoverageIntersectionPixels,
+            result.CoverageUnionPixels,
+            result.UnforgivenCoverageDifferencePixels,
+            result.MaximumChannelDifference,
+            result.MeanChannelDifference,
+            result.Passed,
+            result.Diagnostics,
+        };
+
     private static string FormatMetrics(
+        ParityScene scene,
         ParityCaptureInput input,
         ParityImage storm,
         SilkParityCapture silk,
         ParityComparisonResult result) =>
         string.Format(
             CultureInfo.InvariantCulture,
-            "Storm vs {0}: storm={1}x{2}, silkRevision={3}, draws={4}, headlight={5}, " +
-            "rawIoU={6:F6}, adjustedIoU={7:F6}, coverageDiff={8:F6}, referenceCoverage={9}, " +
-            "candidateCoverage={10}, maxChannelDiff={11}, meanChannelDiff={12:F3}, passed={13}; ",
+            "Scene {0}; Storm vs {1}: storm={2}x{3}, silkRevision={4}, draws={5}, headlight={6}, " +
+            "rawIoU={7:F6}, adjustedIoU={8:F6}, coverageDiff={9:F6}, referenceCoverage={10}, " +
+            "candidateCoverage={11}, maxChannelDiff={12}, meanChannelDiff={13:F3}, passed={14}; ",
+            scene.Name,
             silk.BackendName,
             storm.Width,
             storm.Height,
@@ -345,35 +676,38 @@ public sealed class StormSilkParityCaptureDriverTests
     private static string Hash(ParityImage image) =>
         Convert.ToHexString(SHA256.HashData(image.Rgba.Span));
 
-    private const string ParityStageText = """
-#usda 1.0
-(
-    defaultPrim = "World"
-    startTimeCode = 1
-    endTimeCode = 1
-    framesPerSecond = 24
-    timeCodesPerSecond = 24
-    upAxis = "Y"
-)
+    private static string FormatPerturbation(
+        ParityScene scene,
+        ParityComparisonResult correct,
+        ParityComparisonResult vertical,
+        ParityComparisonResult horizontal,
+        ParityComparisonResult transposed,
+        ParityComparisonResult shifted) =>
+        string.Format(
+            CultureInfo.InvariantCulture,
+            "Scene {0}; correct={1:F6}; vertical={2:F6}; horizontal={3:F6}; transpose={4:F6}; " +
+            "shift={5:F6}; weakestMargin={6:F6}",
+            scene.Name,
+            correct.AdjustedCoverageIntersectionOverUnion,
+            vertical.AdjustedCoverageIntersectionOverUnion,
+            horizontal.AdjustedCoverageIntersectionOverUnion,
+            transposed.AdjustedCoverageIntersectionOverUnion,
+            shifted.AdjustedCoverageIntersectionOverUnion,
+            new[]
+            {
+                Margin(correct, vertical),
+                Margin(correct, horizontal),
+                Margin(correct, transposed),
+                Margin(correct, shifted),
+            }.Min());
 
-def Xform "World"
-{
-    def Mesh "AsymmetricPanel"
-    {
-        uniform bool doubleSided = 1
-        uniform token subdivisionScheme = "none"
-        point3f[] points = [
-            (-0.62, -0.45, 0.10),
-            ( 0.25, -0.45, 0.10),
-            ( 0.25,  0.10, 0.10),
-            (-0.15,  0.55, 0.10),
-            (-0.62,  0.10, 0.10)
-        ]
-        int[] faceVertexCounts = [3, 3, 3]
-        int[] faceVertexIndices = [0, 1, 2, 0, 2, 4, 4, 2, 3]
-        color3f[] primvars:displayColor = [(0.85, 0.55, 0.20)]
-        uniform token primvars:displayColor:interpolation = "constant"
-    }
-}
-""";
+    private static string FileHash(string path) =>
+        Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+
+    private sealed record ParityScene(
+        string Name,
+        string StagePath,
+        string Purpose,
+        bool ColorComparisonReady,
+        double RecommendedMinimumAdjustedIou);
 }

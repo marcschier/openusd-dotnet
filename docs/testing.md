@@ -541,9 +541,21 @@ headlight path.
 
 The conformance test runs each capture twice and requires identical SHA-256 input
 bytes for Storm and for every hdSilk backend it exercises. It also writes a small
-text artifact under `TestResults/parity-capture/` with source-bound evidence:
-backend name, draw count, hdSilk revision, raw and adjusted coverage IoU,
-coverage disagreement fraction, colour metrics, hashes, and perturbation
-results. The perturbation test compares against a deliberate vertical mirror and
-a shifted camera; both must fail the geometry tolerance so the gate proves it can
-observe real differences.
+text artifact and JSON evidence under `TestResults/parity-capture/`. The JSON
+schema binds `sourceIdentity` (the comparer, driver, tests, docs, and USDA
+scene hashes), per-scene `stageIdentity`, `cameraIdentity` (resolution, time,
+clear colour, matrices, and headlight), and `packageIdentity` (runtime plugin
+and native package hashes). A stored parity result is stale if any of those
+identities changes.
+
+The curated parity set lives under `test-assets/parity/` and is intentionally
+small. `orientation-asymmetric` is the orientation gate: its hook silhouette is
+asymmetric in both axes. `depth-overlap-multiprim` exercises multiple retained
+draws, depth, and per-prim transforms. `material-normals-uv` carries a bound
+PreviewSurface plus authored normals and UVs so colour comparison can be enabled
+when hdSilk leaves debug normal shading. `point-instancer-cluster` proves
+prototype expansion and per-instance transforms. For every scene the
+perturbation evidence reports the correct Storm-vs-hdSilk adjusted IoU, vertical
+flip, horizontal mirror, transposed-axis, and shifted-camera values plus the
+weakest discrimination margin; scenes below the required margin are rejected
+rather than thresholded into the gate.
