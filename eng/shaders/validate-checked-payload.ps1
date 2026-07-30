@@ -11,6 +11,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Most of this script only runs on the macOS leg, because packing the metallib
+# needs Xcode. A rename that left one stale variable reference behind therefore
+# passed on Windows and Linux and only failed on macOS, after merge. Strict mode
+# turns that class of mistake into an immediate failure on every platform.
+Set-StrictMode -Version Latest
 $CheckedRoot = [System.IO.Path]::GetFullPath($CheckedRoot)
 $ToolRoot = [System.IO.Path]::GetFullPath($ToolRoot)
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -169,15 +174,17 @@ if ($LASTEXITCODE -ne 0)
 $libraryContracts = @($contractJson | ConvertFrom-Json)
 $libraryPrograms = foreach ($contract in $libraryContracts)
 {
-    $matches = @(
-        $manifest.programs |
+    # $matches shadows PowerShell's automatic $Matches, which -match populates.
+    # Under strict mode that shadowing is a live hazard rather than mere noise.
+    $programMatches = @(
+        $checkedManifest.programs |
             Where-Object name -EQ $contract.programName
     )
-    if ($matches.Count -ne 1)
+    if ($programMatches.Count -ne 1)
     {
         throw "Expected exactly one $($contract.programName) shader program."
     }
-    $program = $matches[0]
+    $program = $programMatches[0]
     if (
         $program.entryPoint -ne $contract.entryPoint -or
         $program.stage -ne $contract.stage

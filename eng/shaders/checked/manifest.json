@@ -179,7 +179,7 @@
     },
     {
       "path": "eng/shaders/validate-checked-payload.ps1",
-      "sha256": "d67004b5d9761e959c322bddd87f7a56d8f46ee025771618da620c6927ad2d1a"
+      "sha256": "da036e00f38fbed740307a6de0f2e4da92c8d2fe74fe9105f8addfcfe1f0475a"
     },
     {
       "path": "eng/shaders/validate-workflow-paths.ps1",
