@@ -73,6 +73,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             int count = 1 + slots.Count;
             DescriptorSetLayoutBinding* bindings =
                 stackalloc DescriptorSetLayoutBinding[count];
+            DescriptorBindingFlags* bindingFlags =
+                stackalloc DescriptorBindingFlags[count];
+            for (int index = 0; index < count; index++)
+            {
+                bindingFlags[index] = 0;
+            }
             bindings[0] = new DescriptorSetLayoutBinding
             {
                 Binding = descriptor.Binding,
@@ -101,12 +107,26 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     DescriptorCount = 1,
                     StageFlags = ToVulkanStages(slot.Visibility)
                 };
+                if (Capabilities.SupportsDescriptorIndexedTextureTables)
+                {
+                    bindingFlags[index + 1] =
+                        DescriptorBindingFlags.PartiallyBoundBit;
+                }
             }
+            var bindingFlagsInfo = new DescriptorSetLayoutBindingFlagsCreateInfo
+            {
+                SType = StructureType.DescriptorSetLayoutBindingFlagsCreateInfo,
+                BindingCount = (uint)count,
+                PBindingFlags = bindingFlags
+            };
             var createInfo = new DescriptorSetLayoutCreateInfo
             {
                 SType = StructureType.DescriptorSetLayoutCreateInfo,
                 BindingCount = (uint)count,
-                PBindings = bindings
+                PBindings = bindings,
+                PNext = Capabilities.SupportsDescriptorIndexedTextureTables
+                    ? &bindingFlagsInfo
+                    : null
             };
             ThrowIfFailed(
                 _api.CreateDescriptorSetLayout(_device, &createInfo, null, &layout),

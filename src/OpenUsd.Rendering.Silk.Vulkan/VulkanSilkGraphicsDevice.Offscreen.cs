@@ -1038,6 +1038,28 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         bindings.Add(binding);
     }
 
+    private void WriteDrawDescriptors(
+        DescriptorSet descriptorSet,
+        VulkanSilkGraphicsBuffer uniformBuffer,
+        IReadOnlyList<VulkanMaterialBinding> bindings)
+    {
+        var bufferInfo = new DescriptorBufferInfo(
+            uniformBuffer.Buffer,
+            0,
+            80);
+        var write = new WriteDescriptorSet
+        {
+            SType = StructureType.WriteDescriptorSet,
+            DstSet = descriptorSet,
+            DstBinding = 0,
+            DescriptorCount = 1,
+            DescriptorType = DescriptorType.UniformBuffer,
+            PBufferInfo = &bufferInfo
+        };
+        _api.UpdateDescriptorSets(_device, 1, &write, 0, null);
+        WriteMaterialDescriptors(descriptorSet, bindings);
+    }
+
     private void WriteMaterialDescriptors(
         DescriptorSet descriptorSet,
         IReadOnlyList<VulkanMaterialBinding> bindings)
@@ -1169,6 +1191,16 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     private VulkanDrawSubmissionResource CreateDrawSubmissionResource(
         VulkanDrawState command)
     {
+        if ((command.Pipeline.BindingLayout.MaterialSlots ?? []).Count != 0 &&
+            _materialDescriptorTables is { } descriptorTables &&
+            TryCreateDescriptorIndexedDrawSubmissionResource(
+                command,
+                descriptorTables,
+                out VulkanDrawSubmissionResource descriptorIndexedResource))
+        {
+            return descriptorIndexedResource;
+        }
+
         DescriptorPool descriptorPool = default;
         Framebuffer framebuffer = default;
         try
@@ -1215,48 +1247,16 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     &allocationInfo,
                     &descriptorSet),
                 "vkAllocateDescriptorSets");
-            var bufferInfo = new DescriptorBufferInfo(
-                command.UniformBuffer.Buffer,
-                0,
-                80);
-            var write = new WriteDescriptorSet
-            {
-                SType = StructureType.WriteDescriptorSet,
-                DstSet = descriptorSet,
-                DstBinding = 0,
-                DescriptorCount = 1,
-                DescriptorType = DescriptorType.UniformBuffer,
-                PBufferInfo = &bufferInfo
-            };
-            _api.UpdateDescriptorSets(_device, 1, &write, 0, null);
-            WriteMaterialDescriptors(descriptorSet, command.MaterialBindings);
-
-            ImageView* attachments = stackalloc ImageView[2]
-            {
-                command.ColorAttachment.ImageView,
-                command.DepthAttachment.ImageView
-            };
-            var framebufferInfo = new FramebufferCreateInfo
-            {
-                SType = StructureType.FramebufferCreateInfo,
-                RenderPass = command.Pipeline.RenderPass,
-                AttachmentCount = 2,
-                PAttachments = attachments,
-                Width = command.ColorAttachment.Width,
-                Height = command.ColorAttachment.Height,
-                Layers = 1
-            };
-            ThrowIfFailed(
-                _api.CreateFramebuffer(
-                    _device,
-                    &framebufferInfo,
-                    null,
-                    &framebuffer),
-                "vkCreateFramebuffer");
+            WriteDrawDescriptors(
+                descriptorSet,
+                command.UniformBuffer,
+                command.MaterialBindings);
+            framebuffer = CreateDrawFramebuffer(command);
             return new VulkanDrawSubmissionResource(
                 framebuffer,
                 descriptorPool,
-                descriptorSet);
+                descriptorSet,
+                null);
         }
 
         catch
@@ -1287,10 +1287,84 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         {
             _api.DestroyFramebuffer(_device, resource.Framebuffer, null);
         }
+        if (resource.DescriptorTables is not null)
+        {
+            resource.DescriptorTables.Free(resource.DescriptorSet);
+        }
         if (resource.DescriptorPool.Handle != 0)
         {
             _api.DestroyDescriptorPool(_device, resource.DescriptorPool, null);
         }
+    }
+
+    private bool TryCreateDescriptorIndexedDrawSubmissionResource(
+        VulkanDrawState command,
+        VulkanDescriptorIndexedTextureTables descriptorTables,
+        out VulkanDrawSubmissionResource resource)
+    {
+        resource = default;
+        DescriptorSetLayout setLayout = command.Pipeline.DescriptorSetLayout;
+        if (!descriptorTables.TryAllocate(setLayout, out DescriptorSet descriptorSet))
+        {
+            return false;
+        }
+
+        Framebuffer framebuffer = default;
+        bool success = false;
+        try
+        {
+            WriteDrawDescriptors(
+                descriptorSet,
+                command.UniformBuffer,
+                command.MaterialBindings);
+            framebuffer = CreateDrawFramebuffer(command);
+            resource = new VulkanDrawSubmissionResource(
+                framebuffer,
+                default,
+                descriptorSet,
+                descriptorTables);
+            success = true;
+            return true;
+        }
+        finally
+        {
+            if (!success)
+            {
+                if (framebuffer.Handle != 0)
+                {
+                    _api.DestroyFramebuffer(_device, framebuffer, null);
+                }
+                descriptorTables.Free(descriptorSet);
+            }
+        }
+    }
+
+    private Framebuffer CreateDrawFramebuffer(VulkanDrawState command)
+    {
+        ImageView* attachments = stackalloc ImageView[2]
+        {
+            command.ColorAttachment.ImageView,
+            command.DepthAttachment.ImageView
+        };
+        var framebufferInfo = new FramebufferCreateInfo
+        {
+            SType = StructureType.FramebufferCreateInfo,
+            RenderPass = command.Pipeline.RenderPass,
+            AttachmentCount = 2,
+            PAttachments = attachments,
+            Width = command.ColorAttachment.Width,
+            Height = command.ColorAttachment.Height,
+            Layers = 1
+        };
+        Framebuffer framebuffer = default;
+        ThrowIfFailed(
+            _api.CreateFramebuffer(
+                _device,
+                &framebufferInfo,
+                null,
+                &framebuffer),
+            "vkCreateFramebuffer");
+        return framebuffer;
     }
 
     internal void Readback(
@@ -2547,7 +2621,8 @@ internal readonly record struct VulkanUploadResource(
 internal readonly record struct VulkanDrawSubmissionResource(
     Framebuffer Framebuffer,
     DescriptorPool DescriptorPool,
-    DescriptorSet DescriptorSet);
+    DescriptorSet DescriptorSet,
+    VulkanDescriptorIndexedTextureTables? DescriptorTables);
 
 internal readonly record struct VulkanComputeSubmissionResource(
     DescriptorPool DescriptorPool,
@@ -2683,6 +2758,10 @@ internal sealed unsafe class VulkanSilkGraphicsSubmission(
                 if (draw.Framebuffer.Handle != 0)
                 {
                     _api.DestroyFramebuffer(_device, draw.Framebuffer, null);
+                }
+                if (draw.DescriptorTables is not null)
+                {
+                    draw.DescriptorTables.Free(draw.DescriptorSet);
                 }
                 if (draw.DescriptorPool.Handle != 0)
                 {
