@@ -629,9 +629,22 @@ public sealed class SilkMeshRenderer :
             }
             batch.Add(mesh);
         }
+        bool useInstancedDraws = _device.Backend != SilkGraphicsBackend.Vulkan;
         foreach (KeyValuePair<SilkMeshGpuGeometryResource, List<SilkMeshGpuResource>> batch in batches)
         {
             SilkMeshGpuResource first = batch.Value[0];
+            if (!useInstancedDraws)
+            {
+                commands.SetVertexBuffer(first.VertexBuffer);
+                commands.SetIndexBuffer(first.IndexBuffer);
+                foreach (SilkMeshGpuResource mesh in batch.Value)
+                {
+                    commands.SetUniformBuffer(0, 0, mesh.UniformBuffer);
+                    commands.DrawIndexed(mesh.IndexCount);
+                    drawCount++;
+                }
+                continue;
+            }
             batch.Key.UpdateInstanceBuffer(
                 _device,
                 Scene.Frame,

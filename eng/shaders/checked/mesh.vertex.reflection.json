@@ -269,23 +269,6 @@
       }
     },
     {
-      "name": "tint",
-      "semantic": {
-        "name": "COLOR",
-        "index": 0,
-        "systemValue": false
-      },
-      "location": 2,
-      "type": {
-        "kind": "vector",
-        "elementCount": 4,
-        "elementType": {
-          "kind": "scalar",
-          "scalarType": "float32"
-        }
-      }
-    },
-    {
       "name": "instanceId",
       "semantic": {
         "name": "SV_INSTANCEID",

@@ -32,7 +32,6 @@ struct VertexInput
 {
     float3 position : POSITION;
     float3 normal : NORMAL;
-    float4 tint : COLOR0;
 #if HAS_UV
     float2 texCoord : TEXCOORD0;
 #endif
@@ -61,6 +60,7 @@ cbuffer SceneParameters : register(b0)
     float4 tint;
 };
 
+#if VERTEX_STAGE
 struct InstanceParameters
 {
     float4x4 objectToClip;
@@ -69,6 +69,7 @@ struct InstanceParameters
 
 [[vk::binding(6, 0)]]
 StructuredBuffer<InstanceParameters> instanceParameters : register(t6);
+#endif
 
 #if FRAGMENT_STAGE && (MAP_BASE_COLOR || MAP_NORMAL || MAP_ROUGHNESS_METALLIC || MAP_EMISSIVE)
 [[vk::binding(1, 0)]]
@@ -91,6 +92,7 @@ Texture2D<float4> roughnessMetallicTexture : register(t2);
 Texture2D<float4> emissiveTexture : register(t3);
 #endif
 
+#if VERTEX_STAGE
 [shader("vertex")]
 VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_InstanceID)
 {
@@ -107,6 +109,7 @@ VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_Instance
 #endif
     return output;
 }
+#endif
 
 [shader("fragment")]
 float4 FRAGMENT_ENTRY_POINT(VertexOutput input) : SV_Target0

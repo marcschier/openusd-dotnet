@@ -403,7 +403,7 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 6,
                 SilkBindingKind.StorageBuffer,
                 0,
-                SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment)
+                SilkShaderStageVisibility.Vertex)
         ]
     };
 
@@ -419,8 +419,15 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 nameof(slots));
         }
         // Slot 0 stays the SceneParameters uniform so a material pipeline keeps the
-        // same scene constants at the same place as every existing pipeline.
-        return SceneParameters with { MaterialSlots = slots };
+        // same scene constants at the same place as every existing pipeline. The
+        // checked mesh vertex shader also always declares the instance buffer.
+        var materialSlots = new SilkBindingSlot[slots.Count + 1];
+        materialSlots[0] = SceneParameters.MaterialSlots[0];
+        for (int index = 0; index < slots.Count; index++)
+        {
+            materialSlots[index + 1] = slots[index];
+        }
+        return SceneParameters with { MaterialSlots = materialSlots };
     }
 
     /// <summary>Validates the layout.</summary>

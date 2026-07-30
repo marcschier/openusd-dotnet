@@ -583,6 +583,20 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             throw new InvalidOperationException(
                                 "The ordered Vulkan command stream has incomplete draw state.");
                         }
+                        VulkanMaterialBinding[] bindingsForDraw = materialBindings.ToArray();
+                        if (!HasStorageBinding(bindingsForDraw, 6))
+                        {
+                            bindingsForDraw =
+                            [
+                                .. bindingsForDraw,
+                                new VulkanMaterialBinding(
+                                    6,
+                                    SilkBindingKind.StorageBuffer,
+                                    null,
+                                    null,
+                                    uniformBuffer)
+                            ];
+                        }
                         var drawState = new VulkanDrawState(
                             colorAttachment,
                             depthAttachment,
@@ -593,7 +607,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             currentViewport.Value,
                             currentScissor.Value,
                             command.IndexCount,
-                            materialBindings.ToArray());
+                            bindingsForDraw);
                         VulkanDrawSubmissionResource drawResource =
                             CreateDrawSubmissionResource(drawState);
                         drawResources.Add(drawResource);
@@ -1052,6 +1066,21 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         bindings.Add(binding);
     }
 
+    private static bool HasStorageBinding(
+        IReadOnlyList<VulkanMaterialBinding> bindings,
+        uint binding)
+    {
+        foreach (VulkanMaterialBinding materialBinding in bindings)
+        {
+            if (materialBinding.Binding == binding &&
+                materialBinding.Kind == SilkBindingKind.StorageBuffer)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void WriteDrawDescriptors(
         DescriptorSet descriptorSet,
         VulkanSilkGraphicsBuffer uniformBuffer,
@@ -1227,10 +1256,23 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         return count;
     }
 
+    private static bool HasStorageSlot(SilkBindingLayoutDescriptor layout)
+    {
+        foreach (SilkBindingSlot slot in layout.MaterialSlots ?? [])
+        {
+            if (slot.Kind == SilkBindingKind.StorageBuffer)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private VulkanDrawSubmissionResource CreateDrawSubmissionResource(
         VulkanDrawState command)
     {
         if ((command.Pipeline.BindingLayout.MaterialSlots ?? []).Count != 0 &&
+            !HasStorageSlot(command.Pipeline.BindingLayout) &&
             _materialDescriptorTables is { } descriptorTables &&
             TryCreateDescriptorIndexedDrawSubmissionResource(
                 command,

@@ -162,7 +162,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     slot.Kind == SilkBindingKind.UniformBuffer
                         ? RootParameterType.TypeCbv
                         : RootParameterType.TypeSrv,
-                    shaderVisibility: ToD3D12Visibility(slot.Visibility),
+                    shaderVisibility: ShaderVisibility.All,
                     descriptor: new RootDescriptor(slot.Binding, slot.Set));
                 continue;
             }

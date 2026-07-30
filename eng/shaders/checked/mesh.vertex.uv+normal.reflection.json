@@ -269,30 +269,13 @@
       }
     },
     {
-      "name": "tint",
-      "semantic": {
-        "name": "COLOR",
-        "index": 0,
-        "systemValue": false
-      },
-      "location": 2,
-      "type": {
-        "kind": "vector",
-        "elementCount": 4,
-        "elementType": {
-          "kind": "scalar",
-          "scalarType": "float32"
-        }
-      }
-    },
-    {
       "name": "texCoord",
       "semantic": {
         "name": "TEXCOORD",
         "index": 0,
         "systemValue": false
       },
-      "location": 3,
+      "location": 2,
       "type": {
         "kind": "vector",
         "elementCount": 2,
@@ -309,7 +292,7 @@
         "index": 0,
         "systemValue": false
       },
-      "location": 4,
+      "location": 3,
       "type": {
         "kind": "vector",
         "elementCount": 4,

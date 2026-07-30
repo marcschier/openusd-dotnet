@@ -882,13 +882,33 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         nativeCommands->SetGraphicsRootConstantBufferView(
                             0,
                             uniformBuffer.Resource->GetGPUVirtualAddress());
-                        if (materialBindings.Count != 0 && pipeline is not null)
+                        if (pipeline is not null)
                         {
+                            IReadOnlyList<D3D12MaterialBinding> bindingsForDraw = materialBindings;
+                            if (!HasStorageBinding(materialBindings, 6))
+                            {
+                                PrepareBufferState(
+                                    nativeCommands,
+                                    finalBufferStates,
+                                    pendingUavWrites,
+                                    uniformBuffer,
+                                    ResourceStates.NonPixelShaderResource);
+                                bindingsForDraw =
+                                [
+                                    .. materialBindings,
+                                    new D3D12MaterialBinding(
+                                        6,
+                                        SilkBindingKind.StorageBuffer,
+                                        null,
+                                        null,
+                                        uniformBuffer)
+                                ];
+                            }
                             BindMaterialDescriptorTables(
                                 nativeCommands,
                                 descriptorHeaps,
                                 pipeline.BindingLayout,
-                                materialBindings,
+                                bindingsForDraw,
                                 materialHeaps);
                         }
                         if (pickPipeline is not null)
@@ -1281,10 +1301,6 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         uint samplerCount = 0;
         foreach (D3D12MaterialBinding binding in bindings)
         {
-            if (binding.Kind == SilkBindingKind.StorageBuffer)
-            {
-                continue;
-            }
             if (binding.Kind == SilkBindingKind.SampledTexture)
             {
                 viewCount++;
@@ -1370,6 +1386,21 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     (samplerIndex * samplerIncrement)));
             samplerIndex++;
         }
+    }
+
+    private static bool HasStorageBinding(
+        IReadOnlyList<D3D12MaterialBinding> bindings,
+        uint binding)
+    {
+        foreach (D3D12MaterialBinding materialBinding in bindings)
+        {
+            if (materialBinding.Binding == binding &&
+                materialBinding.Kind == SilkBindingKind.StorageBuffer)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private bool TryBindSharedMaterialDescriptorTables(

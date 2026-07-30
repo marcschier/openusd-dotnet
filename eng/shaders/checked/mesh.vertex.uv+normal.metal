@@ -15,9 +15,8 @@ struct vertexInput_0
 {
     float3 position_1 [[attribute(0)]];
     float3 normal_1 [[attribute(1)]];
-    float4 tint_1 [[attribute(2)]];
-    float2 texCoord_1 [[attribute(3)]];
-    float4 tangent_1 [[attribute(4)]];
+    float2 texCoord_1 [[attribute(2)]];
+    float4 tangent_1 [[attribute(3)]];
 };
 
 struct _MatrixStorage_float4x4natural_0
@@ -28,14 +27,14 @@ struct _MatrixStorage_float4x4natural_0
 struct InstanceParameters_natural_0
 {
     _MatrixStorage_float4x4natural_0 objectToClip_0;
-    packed_float4 tint_2;
+    packed_float4 tint_1;
 };
 
 struct VertexOutput_0
 {
     float4 position_2;
     float3 normal_2;
-    float4 tint_3;
+    float4 tint_2;
     float2 texCoord_2;
     float4 tangent_2;
 };
@@ -46,13 +45,13 @@ struct VertexOutput_0
     thread VertexOutput_0 output_0;
     (&output_0)->position_2 = (((float4(_S1.position_1, 1.0f)) * (matrix<float,int(4),int(4)> (instance_0.objectToClip_0.data_0[int(0)][int(0)], instance_0.objectToClip_0.data_0[int(0)][int(1)], instance_0.objectToClip_0.data_0[int(0)][int(2)], instance_0.objectToClip_0.data_0[int(0)][int(3)], instance_0.objectToClip_0.data_0[int(1)][int(0)], instance_0.objectToClip_0.data_0[int(1)][int(1)], instance_0.objectToClip_0.data_0[int(1)][int(2)], instance_0.objectToClip_0.data_0[int(1)][int(3)], instance_0.objectToClip_0.data_0[int(2)][int(0)], instance_0.objectToClip_0.data_0[int(2)][int(1)], instance_0.objectToClip_0.data_0[int(2)][int(2)], instance_0.objectToClip_0.data_0[int(2)][int(3)], instance_0.objectToClip_0.data_0[int(3)][int(0)], instance_0.objectToClip_0.data_0[int(3)][int(1)], instance_0.objectToClip_0.data_0[int(3)][int(2)], instance_0.objectToClip_0.data_0[int(3)][int(3)]))));
     (&output_0)->normal_2 = _S1.normal_1;
-    (&output_0)->tint_3 = float4(instance_0.tint_2) ;
+    (&output_0)->tint_2 = float4(instance_0.tint_1) ;
     (&output_0)->texCoord_2 = _S1.texCoord_1;
     (&output_0)->tangent_2 = _S1.tangent_1;
     thread vertexMain_uv_normal_Result_0 _S2;
     (&_S2)->position_0 = output_0.position_2;
     (&_S2)->normal_0 = output_0.normal_2;
-    (&_S2)->tint_0 = output_0.tint_3;
+    (&_S2)->tint_0 = output_0.tint_2;
     (&_S2)->texCoord_0 = output_0.texCoord_2;
     (&_S2)->tangent_0 = output_0.tangent_2;
     return _S2;
