@@ -1,6 +1,5 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using System.ComponentModel;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.Versioning;
@@ -19,11 +18,23 @@ public sealed class StormSilkParityCaptureDriverTests
     private const int Width = 160;
     private const int Height = 128;
     private const double TimeCode = 1;
+    private const string RequiredEnvironmentVariable = "OPENUSD_PARITY_CAPTURE_REQUIRED";
 
     [Test]
     public async Task CapturesStormAndHdSilkBackendsDeterministically()
     {
-        if (!OperatingSystem.IsWindows() || !CanCreateWglContext())
+        if (!StormGlContextFactory.IsCurrentPlatformSupported)
+        {
+            if (IsParityCaptureRequired())
+            {
+                throw new PlatformNotSupportedException(
+                    "Required Storm parity capture has no OpenGL context shim for this platform.");
+            }
+
+            return;
+        }
+
+        if (!CanCreatePlatformGlContext())
         {
             return;
         }
@@ -32,14 +43,14 @@ public sealed class StormSilkParityCaptureDriverTests
         {
             return;
         }
-        SilkParityBackend[] backends = CreateWindowsBackends();
+        SilkParityBackend[] backends = CreatePlatformBackends();
         ParityCaptureSet first = await ParityCaptureDriver.CaptureAsync(
             input,
-            new WindowsWglStormContextFactory(),
+            StormGlContextFactory.CreateForCurrentPlatform(),
             backends).ConfigureAwait(false);
         ParityCaptureSet second = await ParityCaptureDriver.CaptureAsync(
             input,
-            new WindowsWglStormContextFactory(),
+            StormGlContextFactory.CreateForCurrentPlatform(),
             backends).ConfigureAwait(false);
 
         var evidence = new List<string>();
@@ -80,7 +91,18 @@ public sealed class StormSilkParityCaptureDriverTests
     [Test]
     public async Task ComparisonDetectsPerturbedCaptures()
     {
-        if (!OperatingSystem.IsWindows() || !CanCreateWglContext())
+        if (!StormGlContextFactory.IsCurrentPlatformSupported)
+        {
+            if (IsParityCaptureRequired())
+            {
+                throw new PlatformNotSupportedException(
+                    "Required Storm parity capture has no OpenGL context shim for this platform.");
+            }
+
+            return;
+        }
+
+        if (!CanCreatePlatformGlContext())
         {
             return;
         }
@@ -89,10 +111,10 @@ public sealed class StormSilkParityCaptureDriverTests
         {
             return;
         }
-        SilkParityBackend[] backends = [CreateD3D12WarpBackend()];
+        SilkParityBackend[] backends = [CreatePrimaryPlatformBackend()];
         ParityCaptureSet baseline = await ParityCaptureDriver.CaptureAsync(
             input,
-            new WindowsWglStormContextFactory(),
+            StormGlContextFactory.CreateForCurrentPlatform(),
             backends).ConfigureAwait(false);
 
         ParityComparisonResult flipped = ParityImageComparer.Compare(
@@ -110,7 +132,7 @@ public sealed class StormSilkParityCaptureDriverTests
         ParityCaptureInput shifted = input with { Camera = ShiftCamera(input.Camera, 0.14f) };
         ParityCaptureSet shiftedCapture = await ParityCaptureDriver.CaptureAsync(
             shifted,
-            new WindowsWglStormContextFactory(),
+            StormGlContextFactory.CreateForCurrentPlatform(),
             backends).ConfigureAwait(false);
         ParityComparisonResult shiftedResult = ParityImageComparer.Compare(
             baseline.SilkCaptures[0].Image,
@@ -132,20 +154,27 @@ public sealed class StormSilkParityCaptureDriverTests
         File.WriteAllLines(Path.Combine(directory, fileName), lines, new UTF8Encoding(false));
     }
 
-    [SupportedOSPlatform("windows")]
-    private static bool CanCreateWglContext()
+    private static bool CanCreatePlatformGlContext()
     {
         try
         {
-            using IStormGlContext context = new WindowsWglStormContextFactory()
+            using IStormGlContext context = StormGlContextFactory.CreateForCurrentPlatform()
                 .Create(1, 1, new SilkColor(0, 0, 0, 1));
             context.Finish();
             return true;
         }
-        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException
+            or InvalidOperationException or PlatformNotSupportedException)
         {
-            WriteEvidence("parity-capture-skip.txt", [$"WGL: {exception}"]);
-            Console.WriteLine($"Skipping WGL parity capture: {exception.Message}");
+            WriteEvidence("parity-capture-skip.txt", [$"OpenGL context: {exception}"]);
+            if (IsParityCaptureRequired())
+            {
+                throw new InvalidOperationException(
+                    "Required Storm parity capture could not create its platform OpenGL context.",
+                    exception);
+            }
+
+            Console.WriteLine($"Skipping Storm-to-hdSilk parity capture: {exception.Message}");
             return false;
         }
     }
@@ -169,6 +198,13 @@ public sealed class StormSilkParityCaptureDriverTests
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             WriteEvidence("parity-capture-skip.txt", [$"Input: {exception}"]);
+            if (IsParityCaptureRequired())
+            {
+                throw new InvalidOperationException(
+                    "Required Storm parity capture could not create its native runtime input.",
+                    exception);
+            }
+
             Console.WriteLine($"Skipping Storm-to-hdSilk parity capture: {exception.Message}");
             input = null!;
             return false;
@@ -220,7 +256,8 @@ public sealed class StormSilkParityCaptureDriverTests
             return false;
         }
 
-        string build = Path.Combine(root, "native", "build", "shim", "win-x64");
+        string rid = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
+        string build = Path.Combine(root, "native", "build", "shim", rid);
         string stormPlugins = Path.Combine(
             build,
             "openusd_hydra",
@@ -228,8 +265,36 @@ public sealed class StormSilkParityCaptureDriverTests
             "storm-wgl-runtime",
             "plugin",
             "usd");
+        if (OperatingSystem.IsLinux())
+        {
+            stormPlugins = Path.Combine(root, "native", "install", rid, "plugin", "usd");
+        }
+
         string hdsilkPlugin = Path.Combine(build, "hdSilk", "resources", "plugInfo.json");
-        string hdsilkLibrary = Path.Combine(build, "hdSilk", "openusd_hdsilk.dll");
+        string hdsilkLibrary = Path.Combine(build, "hdSilk", GetHdSilkLibraryName());
+        if (OperatingSystem.IsLinux())
+        {
+            hdsilkPlugin = Path.Combine(
+                root,
+                "native",
+                "install",
+                "shim",
+                rid,
+                "plugin",
+                "usd",
+                "hdSilk",
+                "resources",
+                "plugInfo.json");
+            hdsilkLibrary = Path.Combine(
+                root,
+                "native",
+                "install",
+                "shim",
+                rid,
+                "lib",
+                GetHdSilkLibraryName());
+        }
+
         if (!File.Exists(Path.Combine(stormPlugins, "plugInfo.json")) ||
             !File.Exists(hdsilkPlugin) ||
             !File.Exists(hdsilkLibrary))
@@ -243,8 +308,9 @@ public sealed class StormSilkParityCaptureDriverTests
         string runtimeHdSilkResources = Path.Combine(runtimePlugins, "hdSilk", "resources");
         Directory.CreateDirectory(runtimeHdSilkResources);
         File.Copy(hdsilkPlugin, Path.Combine(runtimeHdSilkResources, "plugInfo.json"), overwrite: true);
-        Directory.CreateDirectory(Path.Combine(runtime, "bin"));
-        string runtimeHdSilkLibrary = Path.Combine(runtime, "bin", "openusd_hdsilk.dll");
+        string runtimeLibraryDirectory = Path.Combine(runtime, OperatingSystem.IsWindows() ? "bin" : "lib");
+        Directory.CreateDirectory(runtimeLibraryDirectory);
+        string runtimeHdSilkLibrary = Path.Combine(runtimeLibraryDirectory, GetHdSilkLibraryName());
         if (!File.Exists(runtimeHdSilkLibrary))
         {
             File.Copy(hdsilkLibrary, runtimeHdSilkLibrary);
@@ -253,6 +319,15 @@ public sealed class StormSilkParityCaptureDriverTests
         pluginPath = runtimePlugins;
         return true;
     }
+
+    private static string GetHdSilkLibraryName() =>
+        OperatingSystem.IsWindows() ? "openusd_hdsilk.dll" : "libopenusd_hdsilk.so";
+
+    private static bool IsParityCaptureRequired() =>
+        string.Equals(
+            Environment.GetEnvironmentVariable(RequiredEnvironmentVariable),
+            "1",
+            StringComparison.Ordinal);
 
     private static string? FindRepositoryRoot()
     {
@@ -284,16 +359,58 @@ public sealed class StormSilkParityCaptureDriverTests
         }
     }
 
-    [SupportedOSPlatform("windows")]
-    private static SilkParityBackend[] CreateWindowsBackends() =>
+    private static SilkParityBackend[] CreateWindowsBackends()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("D3D12 WARP parity capture requires Windows.");
+        }
+
+        return
         [
             CreateD3D12WarpBackend(),
             new SilkParityBackend("Vulkan SwiftShader", static () => VulkanSilkGraphicsDevice.Create()),
         ];
+    }
+
+    private static SilkParityBackend[] CreatePlatformBackends()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return CreateWindowsBackends();
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            return [CreateLinuxVulkanBackend()];
+        }
+
+        throw new PlatformNotSupportedException(
+            "Storm parity capture currently supports Windows WGL and Linux GLX.");
+    }
+
+    private static SilkParityBackend CreatePrimaryPlatformBackend()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return CreateD3D12WarpBackend();
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            return CreateLinuxVulkanBackend();
+        }
+
+        throw new PlatformNotSupportedException(
+            "Storm parity capture currently supports Windows WGL and Linux GLX.");
+    }
 
     [SupportedOSPlatform("windows")]
     private static SilkParityBackend CreateD3D12WarpBackend() =>
         new("D3D12 WARP", static () => D3D12SilkGraphicsDevice.Create(useWarp: true));
+
+    private static SilkParityBackend CreateLinuxVulkanBackend() =>
+        new("Vulkan software", static () => VulkanSilkGraphicsDevice.Create());
 
     private static CameraState ShiftCamera(CameraState camera, float x)
     {

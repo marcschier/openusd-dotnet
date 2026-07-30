@@ -516,11 +516,19 @@ import smoke steps.
 `ParityImageComparer` contract. The renderer-neutral driver opens one stage
 through `UsdStageScheduler`, acquires one `UsdStageRenderSource`, and renders the
 same retained stage twice: Storm through an `IStormGlContext` supplied by the
-platform shim, then hdSilk through each requested `SilkParityBackend`. The Windows
-shim is `WindowsWglStormContextFactory`; it owns only the hidden WGL window,
-current OpenGL context, framebuffer, depth renderbuffer, `glReadPixels`, and the
-bottom-up to top-down row conversion. A Linux GLX/Xvfb follow-up should add a new
-`IStormGlContextFactory` implementation without changing the driver.
+platform shim, then hdSilk through each requested `SilkParityBackend`. The
+platform shims are selected explicitly: Windows uses `WindowsWglStormContextFactory`,
+and Linux uses `LinuxGlxStormContextFactory`.
+Each shim owns only its offscreen context, framebuffer, depth renderbuffer,
+`glReadPixels`, and the bottom-up to top-down row conversion. The Linux shim
+creates a GLX 1.3 pbuffer against the active `DISPLAY`, so it runs under the
+Xvfb gate without depending on a window manager. Missing `libGL.so.1`,
+`libX11.so.6`, GLX 1.3, pbuffer FBConfigs, required FBO entry points, or an
+incomplete framebuffer are reported as explicit skip diagnostics in
+`TestResults/parity-capture/parity-capture-skip.txt`; the harness does not
+silently fall back to a blank Storm image. CI sets
+`OPENUSD_PARITY_CAPTURE_REQUIRED=1` for the Linux GLX job so those diagnostics
+fail the gate instead of turning the parity capture into a capability skip.
 
 Every input that can otherwise create false parity failures is pinned by
 `ParityCaptureInput`: stage path, time code, resolution, explicit matrix camera,
