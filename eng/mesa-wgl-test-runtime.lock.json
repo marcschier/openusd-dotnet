@@ -1,0 +1,22 @@
+{
+  "$schemaVersion": 1,
+  "package": {
+    "id": "mmozeiko/build-mesa",
+    "version": "26.1.5",
+    "license": "MIT",
+    "upstreamProject": "Mesa",
+    "archive": "mesa-llvmpipe-x64-26.1.5.7z",
+    "url": "https://github.com/mmozeiko/build-mesa/releases/download/26.1.5/mesa-llvmpipe-x64-26.1.5.7z",
+    "archiveSha256": "1F691C0C8BF386C05C294B8B799FB110E84890400AA3441B013790CB5F503033"
+  },
+  "runtimes": {
+    "win-x64": {
+      "files": [
+        {
+          "path": "opengl32.dll",
+          "sha256": "D9ED92A40F982C5D92C5581D501A7D4CADBF311F20EB3AC2C8C4EB0F55065D21"
+        }
+      ]
+    }
+  }
+}

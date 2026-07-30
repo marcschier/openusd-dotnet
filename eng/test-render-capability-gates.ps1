@@ -1,11 +1,10 @@
 #!/usr/bin/env pwsh
 # Copyright (c) marcschier. Licensed under the MIT License.
 #
-# Two Windows render proofs are narrowed because a hosted runner cannot supply the
-# graphics capability they need. Narrowing is the kind of change that rots into a
-# silently green gate, so this contract pins its exact shape: the skip stays opt-in at
-# the call site, stays confined to the two known proofs, still records evidence, and
-# still points at the documented route back to full coverage.
+# The render workflow has a mix of restored and narrowed graphics proofs. Narrowing is
+# the kind of change that rots into a silently green gate, so this contract pins its
+# exact shape: skips stay opt-in at call sites, stay confined to the known proofs, still
+# record evidence, and still point at documented routes back to full coverage.
 [CmdletBinding()]
 param()
 
@@ -19,6 +18,8 @@ $linuxSmoke = Get-Content (
     Join-Path $repoRoot 'eng/run-avalonia-vulkan-smoke-linux.sh') -Raw
 $testingDoc = Get-Content (Join-Path $repoRoot 'docs/testing.md') -Raw
 $supportMatrixDoc = Get-Content (Join-Path $repoRoot 'docs/support-matrix.md') -Raw
+$mesaWglLock = Get-Content (
+    Join-Path $repoRoot 'eng/mesa-wgl-test-runtime.lock.json') -Raw
 
 function Assert-Contains
 {
@@ -101,13 +102,15 @@ Assert-DoesNotContain $identityStep 'steps.vulkan-icd.outputs.available' 'Viewer
 Assert-Contains $identityStep './eng/test-viewer-source-identity.ps1' 'Viewer identity step'
 Assert-Contains $identityStep './eng/test-viewer-evidence-contract.ps1' 'Viewer identity step'
 
-# The WGL narrowing is opt-in at exactly one call site.
-Assert-OccurrenceCount `
-    $renderWorkflow `
-    '-AllowUnavailableCapability' `
-    1 `
-    'Render workflow'
+# The WGL soak is mandatory on hosted Windows because the platform runner stages pinned
+# Mesa llvmpipe before it starts Avalonia/Storm.
+Assert-DoesNotContain $renderWorkflow '-AllowUnavailableCapability' 'Render workflow'
 Assert-Contains $renderWorkflow '-Platform windows-wgl' 'Render workflow'
+Assert-Contains $platformSmoke 'prepare-mesa-wgl-test-runtime.ps1' 'Platform smoke runner'
+Assert-Contains $platformSmoke '-Preflight' 'Platform smoke runner'
+Assert-Contains $mesaWglLock 'mesa-llvmpipe-x64-26.1.5.7z' 'Mesa WGL runtime lock'
+Assert-Contains $mesaWglLock 'D9ED92A40F982C5D92C5581D501A7D4CADBF311F20EB3AC2C8C4EB0F55065D21' `
+    'Mesa WGL runtime lock'
 
 # The Linux import narrowing is opt-in at exactly its two call sites, X11 and Wayland.
 Assert-OccurrenceCount `
@@ -132,10 +135,13 @@ Assert-Contains `
     'Avalonia Vulkan smoke exited with code' `
     'Linux Vulkan smoke runner'
 
-# The route back to full coverage is documented rather than left as tribal knowledge.
+# The restored WGL route and remaining routes back to full coverage are documented
+# rather than left as tribal knowledge.
 Assert-Contains $testingDoc '## Render gate capability limits' 'Testing documentation'
 Assert-Contains $testingDoc '### Unblocking the WGL soak' 'Testing documentation'
 Assert-Contains $testingDoc '### Unblocking the Vulkan composition gates' 'Testing documentation'
+Assert-Contains $testingDoc 'mesa-wgl-test-runtime.lock.json' 'Testing documentation'
+Assert-Contains $testingDoc 'GL_RENDERER' 'Testing documentation'
 Assert-Contains $testingDoc 'VK_KHR_external_memory_win32' 'Testing documentation'
 Assert-Contains $testingDoc 'VK_KHR_external_semaphore_win32' 'Testing documentation'
 Assert-Contains $testingDoc 'supported image handles: (none)' 'Testing documentation'
@@ -155,7 +161,7 @@ Assert-Contains $platformSmoke "status = 'skipped'" 'Platform smoke runner'
 
 Assert-Contains `
     $testingDoc `
-    'artifacts/platform-smoke/windows-wgl/platform-smoke-capability.json' `
+    'artifacts/platform-smoke/windows-wgl/mesa-wgl-runtime' `
     'Testing documentation'
 Assert-Contains `
     $supportMatrixDoc `

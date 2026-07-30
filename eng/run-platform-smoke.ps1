@@ -10,12 +10,10 @@ param(
     [switch]$SharedStageSoak,
     [ValidateRange(90, 86400)]
     [int]$SoakSeconds = 90,
-    # A hosted Windows runner exposes only the generic GDI OpenGL 1.1 implementation, so
-    # Avalonia cannot create the WGL context this smoke drives. The switch is opt-in, and
-    # narrow by construction: it only ever applies to windows-wgl, and only when the viewer
-    # log carries Avalonia's own two markers for that exact condition. Every other failure,
-    # including a WGL failure on a host that did provide a context, stays fatal. See
-    # docs/testing.md, "Render gate capability limits", for how to unblock this.
+    # This remains for manual diagnosis without the pinned Mesa runtime. The switch is opt-in
+    # and narrow by construction: it only ever applies to windows-wgl, and only when the viewer
+    # log carries Avalonia's own two markers for a host with no WGL-capable OpenGL. Every other
+    # failure, including a WGL failure on a host that did provide a context, stays fatal.
     [switch]$AllowUnavailableCapability
 )
 
@@ -29,15 +27,22 @@ $ownedProcesses = [System.Collections.Generic.List[System.Diagnostics.Process]]:
 $ownedRuntimeRoot = $null
 $runDefaultViewer = $true
 $capabilitySkipped = $false
+$nativeRuntimeOverridePath = $null
 $oldEnvironment = @{}
 foreach ($name in @(
     'DISPLAY',
     'WAYLAND_DISPLAY',
     'XDG_RUNTIME_DIR',
     'XDG_SESSION_TYPE',
+    'GALLIUM_DRIVER',
     'LIBGL_ALWAYS_SOFTWARE',
     'MESA_GL_VERSION_OVERRIDE',
     'MESA_GLSL_VERSION_OVERRIDE',
+    'PATH',
+    'OPENUSD_MESA_WGL_ARCHIVE_SHA256',
+    'OPENUSD_MESA_WGL_ARCHIVE_URL',
+    'OPENUSD_MESA_WGL_OPENGL32_PATH',
+    'OPENUSD_MESA_WGL_OPENGL32_SHA256',
     'OPENUSD_RENDERER',
     'OPENUSD_STORM_NATIVE_WAYLAND',
     'OPENUSD_VIEWER_PLATFORM'))
@@ -145,7 +150,8 @@ function Invoke-ViewerSmoke
     param(
         [string]$OutputPath,
         [string]$ExpectedStatusPattern,
-        [bool]$EnableSoak = $SharedStageSoak
+        [bool]$EnableSoak = $SharedStageSoak,
+        [string]$NativeRuntimeOverridePath
     )
 
     $viewerTimeout = if ($EnableSoak)
@@ -166,7 +172,8 @@ function Invoke-ViewerSmoke
             -OutputPath $OutputPath `
             -ExpectedStatusPattern $ExpectedStatusPattern `
             -SharedStageSoak:$EnableSoak `
-            -SoakSeconds $SoakSeconds
+            -SoakSeconds $SoakSeconds `
+            -NativeRuntimeOverridePath $NativeRuntimeOverridePath
         if ($LASTEXITCODE -ne 0)
         {
             $failure = "Viewer smoke failed with exit code $LASTEXITCODE."
@@ -211,6 +218,12 @@ try
             Set-EnvironmentVariable 'XDG_RUNTIME_DIR' $null
             Set-EnvironmentVariable 'XDG_SESSION_TYPE' $null
             Set-EnvironmentVariable 'OPENUSD_VIEWER_PLATFORM' $Platform
+            $mesaRoot = Join-Path $diagnosticRoot 'mesa-wgl-runtime'
+            $nativeRuntimeOverridePath = & (Join-Path $PSScriptRoot 'prepare-mesa-wgl-test-runtime.ps1') `
+                -Root $mesaRoot `
+                -Rid $rid `
+                -Activate `
+                -Preflight
         }
         'linux-x11'
         {
@@ -380,7 +393,8 @@ try
     {
         Invoke-ViewerSmoke `
             $viewerRoot `
-            '^Renderer frame rendered: Storm / OpenGL;'
+            '^Renderer frame rendered: Storm / OpenGL;' `
+            -NativeRuntimeOverridePath $nativeRuntimeOverridePath
     }
 }
 catch

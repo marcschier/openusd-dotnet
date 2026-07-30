@@ -197,6 +197,8 @@ if (-not [string]::IsNullOrWhiteSpace($NativeRuntimeOverridePath))
     }
     Get-ChildItem $nativeOverride -File -Filter '*.dll' |
         Copy-Item -Destination $binTarget -Force
+    Get-ChildItem $nativeOverride -File -Filter '*.dll' |
+        Copy-Item -Destination $publishRoot -Force
 }
 if ($null -eq $stageAssetSourceRoot)
 {
