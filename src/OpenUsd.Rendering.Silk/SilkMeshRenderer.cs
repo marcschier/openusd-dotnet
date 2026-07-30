@@ -615,16 +615,33 @@ public sealed class SilkMeshRenderer :
         commands.SetScissor(new SilkScissor(0, 0, colorTarget.Width, colorTarget.Height));
 
         int drawCount = 0;
+        Dictionary<SilkMeshGpuGeometryResource, List<SilkMeshGpuResource>> batches = [];
         foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
         {
             if (mesh.IndexCount == 0)
             {
                 continue;
             }
-            commands.SetVertexBuffer(mesh.VertexBuffer);
-            commands.SetIndexBuffer(mesh.IndexBuffer);
-            commands.SetUniformBuffer(0, 0, mesh.UniformBuffer);
-            commands.DrawIndexed(mesh.IndexCount);
+            if (!batches.TryGetValue(mesh.Geometry, out List<SilkMeshGpuResource>? batch))
+            {
+                batch = [];
+                batches.Add(mesh.Geometry, batch);
+            }
+            batch.Add(mesh);
+        }
+        foreach (KeyValuePair<SilkMeshGpuGeometryResource, List<SilkMeshGpuResource>> batch in batches)
+        {
+            SilkMeshGpuResource first = batch.Value[0];
+            batch.Key.UpdateInstanceBuffer(
+                _device,
+                Scene.Frame,
+                batch.Value,
+                _device.ClipSpaceYPointsDown);
+            commands.SetVertexBuffer(first.VertexBuffer);
+            commands.SetIndexBuffer(first.IndexBuffer);
+            commands.SetUniformBuffer(0, 0, first.UniformBuffer);
+            commands.SetStorageBuffer(0, 6, batch.Key.InstanceBuffer);
+            commands.DrawIndexedInstanced(first.IndexCount, checked((uint)batch.Value.Count));
             drawCount++;
         }
         commands.EndRendering();

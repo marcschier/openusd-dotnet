@@ -319,7 +319,10 @@ public enum SilkBindingKind
     SampledTexture = 1,
 
     /// <summary>A sampler.</summary>
-    Sampler = 2
+    Sampler = 2,
+
+    /// <summary>A read-only structured/storage buffer.</summary>
+    StorageBuffer = 3
 }
 
 /// <summary>
@@ -336,11 +339,12 @@ public readonly record struct SilkBindingSlot(
     public void Validate()
     {
         if (Kind is not (SilkBindingKind.UniformBuffer or
-            SilkBindingKind.SampledTexture or SilkBindingKind.Sampler))
+            SilkBindingKind.SampledTexture or SilkBindingKind.Sampler or
+            SilkBindingKind.StorageBuffer))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(Kind),
-                "A binding slot kind must be uniform buffer, sampled texture, or sampler.");
+                "A binding slot kind must be uniform buffer, storage buffer, sampled texture, or sampler.");
         }
         if (Kind == SilkBindingKind.UniformBuffer)
         {
@@ -390,7 +394,18 @@ public readonly record struct SilkBindingLayoutDescriptor(
         0,
         0,
         SilkCheckedShaderAssets.SceneParameters.ByteSize,
-        SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment);
+        SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment)
+    {
+        MaterialSlots =
+        [
+            new(
+                0,
+                6,
+                SilkBindingKind.StorageBuffer,
+                0,
+                SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment)
+        ]
+    };
 
     /// <summary>Creates a material layout from its slots.</summary>
     public static SilkBindingLayoutDescriptor ForMaterial(

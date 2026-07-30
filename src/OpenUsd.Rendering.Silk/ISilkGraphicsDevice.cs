@@ -509,7 +509,10 @@ public enum SilkGraphicsCommandKind
     SetTexture,
 
     /// <summary>Binds a sampler to a material slot.</summary>
-    SetSampler
+    SetSampler,
+
+    /// <summary>Issues an indexed instanced draw.</summary>
+    DrawIndexedInstanced
 }
 
 /// <summary>
@@ -570,6 +573,9 @@ public interface ISilkGraphicsCommandList : IDisposable
 
     /// <summary>Draws indexed triangle-list geometry.</summary>
     void DrawIndexed(uint indexCount);
+
+    /// <summary>Draws indexed triangle-list geometry once per bound instance.</summary>
+    void DrawIndexedInstanced(uint indexCount, uint instanceCount);
 
     /// <summary>Ends the current rendering scope.</summary>
     void EndRendering();

@@ -189,7 +189,11 @@ def normalize_resource_shape(
         base_shape = require(base_type, "baseShape", "resource")
         result_type = require(base_type, "resultType", "resource")
         access = base_type.get("access")
-        if access is None and expected_access == "read" and base_shape.startswith("texture"):
+        if (
+            access is None
+            and expected_access == "read"
+            and (base_shape.startswith("texture") or base_shape == "structuredBuffer")
+        ):
             access = "read"
         if access is None:
             raise ValueError(f"Missing access in {base_shape} resource")

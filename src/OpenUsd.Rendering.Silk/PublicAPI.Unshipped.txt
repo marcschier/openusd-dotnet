@@ -93,7 +93,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsResourceBase.ReleaseNative() -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(System.Span<byte> destination) -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(System.Span<float> destination) -> void
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 5 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 6 -> uint
 const OpenUsd.Rendering.Silk.SilkPickTokenEncoding.ByteSize = 4 -> int
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MaximumWidth = 16 -> float
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MinimumWidth = 1 -> float
@@ -1553,3 +1553,6 @@ static OpenUsd.Rendering.Silk.SilkShaderPermutationId.operator !=(OpenUsd.Render
 static OpenUsd.Rendering.Silk.SilkShaderPermutationId.operator ==(OpenUsd.Rendering.Silk.SilkShaderPermutationId left, OpenUsd.Rendering.Silk.SilkShaderPermutationId right) -> bool
 OpenUsd.Rendering.Silk.ISilkGraphicsPipelineLease
 OpenUsd.Rendering.Silk.ISilkGraphicsPipelineLease.Pipeline.get -> OpenUsd.Rendering.Silk.ISilkGraphicsPipeline!
+OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.DrawIndexedInstanced(uint indexCount, uint instanceCount) -> void
+OpenUsd.Rendering.Silk.SilkBindingKind.StorageBuffer = 3 -> OpenUsd.Rendering.Silk.SilkBindingKind
+OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.DrawIndexedInstanced = 25 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind

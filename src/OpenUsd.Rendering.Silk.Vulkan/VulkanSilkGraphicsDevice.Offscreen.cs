@@ -545,6 +545,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                                 null));
                         break;
                     case SilkGraphicsCommandKind.DrawIndexed:
+                    case SilkGraphicsCommandKind.DrawIndexedInstanced:
                         if (selectionScope == VulkanSelectionRenderingScope.Mask)
                         {
                             if (!rendering ||
@@ -658,7 +659,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                         _api.CmdDrawIndexed(
                             nativeCommands,
                             command.IndexCount,
-                            1,
+                            command.Kind == SilkGraphicsCommandKind.DrawIndexedInstanced
+                                ? command.ElementCount
+                                : 1,
                             0,
                             0,
                             0);
@@ -776,6 +779,17 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     case SilkGraphicsCommandKind.SetStorageBuffer:
                         storageBuffer = command.Buffer!;
                         storageBuffer.ThrowIfDisposed();
+                        if (rendering && currentPipeline is not null)
+                        {
+                            RecordMaterialBinding(
+                                materialBindings,
+                                new VulkanMaterialBinding(
+                                    command.Binding,
+                                    SilkBindingKind.StorageBuffer,
+                                    null,
+                                    null,
+                                    storageBuffer));
+                        }
                         break;
                     case SilkGraphicsCommandKind.SetComputeUniformBuffer:
                         computeUniformBuffer = command.Buffer!;
@@ -1082,6 +1096,21 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 VulkanMaterialBinding binding = bindings[index];
                 switch (binding.Kind)
                 {
+                    case SilkBindingKind.StorageBuffer:
+                        bufferPointer[index] = new DescriptorBufferInfo(
+                            binding.Buffer!.Buffer,
+                            0,
+                            binding.Buffer.Size);
+                        writePointer[index] = new WriteDescriptorSet
+                        {
+                            SType = StructureType.WriteDescriptorSet,
+                            DstSet = descriptorSet,
+                            DstBinding = binding.Binding,
+                            DescriptorCount = 1,
+                            DescriptorType = DescriptorType.StorageBuffer,
+                            PBufferInfo = &bufferPointer[index]
+                        };
+                        break;
                     case SilkBindingKind.SampledTexture:
                         imagePointer[index] = new DescriptorImageInfo(
                             default,
@@ -1155,6 +1184,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
         uint uniformBuffers = 1;
         uint sampledImages = 0;
+        uint storageBuffers = 0;
         uint samplers = 0;
         for (int index = 0; index < slots.Count; index++)
         {
@@ -1165,6 +1195,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     break;
                 case SilkBindingKind.SampledTexture:
                     sampledImages++;
+                    break;
+                case SilkBindingKind.StorageBuffer:
+                    storageBuffers++;
                     break;
                 default:
                     samplers++;
@@ -1180,6 +1213,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             sizes[count++] = new DescriptorPoolSize(
                 DescriptorType.SampledImage,
                 sampledImages);
+        }
+        if (storageBuffers != 0)
+        {
+            sizes[count++] = new DescriptorPoolSize(
+                DescriptorType.StorageBuffer,
+                storageBuffers);
         }
         if (samplers != 0)
         {
@@ -1213,7 +1252,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 PoolSizeCount = 1,
                 PPoolSizes = &poolSize
             };
-            DescriptorPoolSize* materialSizes = stackalloc DescriptorPoolSize[3];
+            DescriptorPoolSize* materialSizes = stackalloc DescriptorPoolSize[4];
             uint materialSizeCount = DescribeMaterialPoolSizes(
                 command.Pipeline.BindingLayout,
                 materialSizes);
@@ -2178,6 +2217,13 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
         _commands.Add(VulkanGraphicsCommand.DrawIndexed(indexCount));
     }
 
+    public void DrawIndexedInstanced(uint indexCount, uint instanceCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(instanceCount);
+        DrawIndexed(indexCount);
+        _commands[^1] = VulkanGraphicsCommand.DrawIndexedInstanced(indexCount, instanceCount);
+    }
+
     public void EndRendering()
     {
         ThrowIfRendering();
@@ -2209,10 +2255,24 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
         uint binding,
         ISilkGraphicsBuffer buffer)
     {
-        ThrowIfOutsideRendering();
+        ThrowIfUnavailable();
         VulkanSilkGraphicsBuffer vulkanBuffer = ValidateBuffer(buffer);
-        if (setIndex != 0 || binding != 0 ||
-            !vulkanBuffer.Usage.HasFlag(SilkBufferUsage.Storage))
+        if (!vulkanBuffer.Usage.HasFlag(SilkBufferUsage.Storage))
+        {
+            throw new ArgumentException(
+                "A storage binding requires a storage buffer.",
+                nameof(buffer));
+        }
+        if (_rendering)
+        {
+            RequireMaterialSlot(setIndex, binding, SilkBindingKind.StorageBuffer);
+            _commands.Add(VulkanGraphicsCommand.SetStorageBuffer(
+                setIndex,
+                binding,
+                vulkanBuffer));
+            return;
+        }
+        if (setIndex != 0 || binding != 0)
         {
             throw new ArgumentException(
                 "outputValues requires a storage buffer at set 0, binding 0.",
@@ -2512,6 +2572,12 @@ internal readonly record struct VulkanGraphicsCommand(
 
     internal static VulkanGraphicsCommand DrawIndexed(uint indexCount) =>
         Create(SilkGraphicsCommandKind.DrawIndexed, indexCount: indexCount);
+
+    internal static VulkanGraphicsCommand DrawIndexedInstanced(uint indexCount, uint instanceCount) =>
+        Create(
+            SilkGraphicsCommandKind.DrawIndexedInstanced,
+            indexCount: indexCount,
+            elementCount: instanceCount);
 
     internal static VulkanGraphicsCommand DrawSelectionOutline() =>
         Create(SilkGraphicsCommandKind.DrawSelectionOutlineFullscreenTriangle);

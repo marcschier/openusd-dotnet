@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 5u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 6u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 4u
 
 /// Command types written into openusd_silk_page_view::data. Every command

@@ -102,6 +102,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     {
                         SilkBindingKind.UniformBuffer => DescriptorType.UniformBuffer,
                         SilkBindingKind.SampledTexture => DescriptorType.SampledImage,
+                        SilkBindingKind.StorageBuffer => DescriptorType.StorageBuffer,
                         _ => DescriptorType.Sampler
                     },
                     DescriptorCount = 1,

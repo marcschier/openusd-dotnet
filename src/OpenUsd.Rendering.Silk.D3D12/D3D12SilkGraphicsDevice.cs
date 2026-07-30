@@ -183,15 +183,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ArgumentOutOfRangeException.ThrowIfZero(size);
         bool storage = usage.HasFlag(SilkBufferUsage.Storage);
         bool upload = usage.HasFlag(SilkBufferUsage.Upload);
-        if (storage && upload)
-        {
-            throw new ArgumentException(
-                "D3D12 storage buffers are device-local and cannot also be upload buffers.",
-                nameof(usage));
-        }
         RegisterDependentObject();
 
-        var heapProperties = new HeapProperties(storage ? HeapType.Default : HeapType.Upload);
+        var heapProperties = new HeapProperties(storage && !upload ? HeapType.Default : HeapType.Upload);
         var description = new ResourceDesc(
             ResourceDimension.Buffer,
             0,
@@ -202,8 +196,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             Format.FormatUnknown,
             new SampleDesc(1, 0),
             TextureLayout.LayoutRowMajor,
-            storage ? ResourceFlags.AllowUnorderedAccess : ResourceFlags.None);
-        ResourceStates initialState = storage
+            storage && !upload ? ResourceFlags.AllowUnorderedAccess : ResourceFlags.None);
+        ResourceStates initialState = storage && !upload
             ? ResourceStates.UnorderedAccess
             : ResourceStates.GenericRead;
         ID3D12Resource* resource = null;

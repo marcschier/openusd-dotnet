@@ -156,10 +156,12 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         for (int index = 0; index < slots.Count; index++)
         {
             SilkBindingSlot slot = slots[index];
-            if (slot.Kind == SilkBindingKind.UniformBuffer)
+            if (slot.Kind is SilkBindingKind.UniformBuffer or SilkBindingKind.StorageBuffer)
             {
                 parameters[index + 1] = new RootParameter(
-                    RootParameterType.TypeCbv,
+                    slot.Kind == SilkBindingKind.UniformBuffer
+                        ? RootParameterType.TypeCbv
+                        : RootParameterType.TypeSrv,
                     shaderVisibility: ToD3D12Visibility(slot.Visibility),
                     descriptor: new RootDescriptor(slot.Binding, slot.Set));
                 continue;
