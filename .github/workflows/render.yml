@@ -402,6 +402,46 @@ jobs:
             sleep 0.05
           done
           ctest --test-dir native/build/shim/linux-x64 --output-on-failure
+      - name: Execute Linux GLX Storm-to-hdSilk parity capture
+        if: env.NATIVE_SOURCE == 'build'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $env:DISPLAY = ':94'
+          $env:OPENUSD_PARITY_CAPTURE_REQUIRED = '1'
+          $nativeLibraryPaths = @(
+            (Resolve-Path native/install/shim/linux-x64/lib).Path,
+            (Resolve-Path native/install/linux-x64/lib).Path)
+          if (-not [string]::IsNullOrWhiteSpace($env:LD_LIBRARY_PATH)) {
+            $nativeLibraryPaths += $env:LD_LIBRARY_PATH
+          }
+          $env:LD_LIBRARY_PATH = $nativeLibraryPaths -join ':'
+          $xvfb = Start-Process Xvfb `
+            -ArgumentList @($env:DISPLAY, '-screen', '0', '1280x720x24', '-ac', '-nolisten', 'tcp') `
+            -RedirectStandardOutput artifacts/linux-parity-xvfb.out `
+            -RedirectStandardError artifacts/linux-parity-xvfb.err `
+            -PassThru
+          try {
+            for ($i = 0; $i -lt 100; $i++) {
+              & xdpyinfo -display $env:DISPLAY > $null 2>&1
+              if ($LASTEXITCODE -eq 0) {
+                break
+              }
+              Start-Sleep -Milliseconds 50
+            }
+            dotnet build tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+              -c Release `
+              -f net10.0
+            ./eng/run-managed-tests.ps1 `
+              -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+              -Framework net10.0 `
+              -Configuration Release `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/StormSilkParityCaptureDriverTests/*')
+          } finally {
+            Stop-Process -Id $xvfb.Id -ErrorAction SilentlyContinue
+          }
       - name: Execute mandatory isolated X11 shared-stage soak
         shell: pwsh
         run: >
@@ -528,7 +568,10 @@ jobs:
             artifacts/avalonia-vulkan-smoke/linux-x64
             artifacts/storm-native-child-linux
             artifacts/linux-storm-ctest-xvfb.log
+            artifacts/linux-parity-xvfb.out
+            artifacts/linux-parity-xvfb.err
             tests/OpenUsd.Package.Tests/bin/Release/net10.0/TestResults
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults
           if-no-files-found: error
 
   macos-arm64:

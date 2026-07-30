@@ -43,11 +43,11 @@ public sealed class StormSilkParityCaptureDriverTests
 
             ParityCaptureSet first = await ParityCaptureDriver.CaptureAsync(
                 input,
-                new WindowsWglStormContextFactory(),
+                StormGlContextFactory.CreateForCurrentPlatform(),
                 backends).ConfigureAwait(false);
             ParityCaptureSet second = await ParityCaptureDriver.CaptureAsync(
                 input,
-                new WindowsWglStormContextFactory(),
+                StormGlContextFactory.CreateForCurrentPlatform(),
                 backends).ConfigureAwait(false);
 
             await Assert.That(first.Storm.Rgba.Span.SequenceEqual(second.Storm.Rgba.Span))
@@ -141,7 +141,7 @@ public sealed class StormSilkParityCaptureDriverTests
 
             ParityCaptureSet baseline = await ParityCaptureDriver.CaptureAsync(
                 input,
-                new WindowsWglStormContextFactory(),
+                StormGlContextFactory.CreateForCurrentPlatform(),
                 backends).ConfigureAwait(false);
             SilkParityCapture silk = baseline.SilkCaptures[0];
             ParityComparisonResult correct = ParityImageComparer.Compare(
@@ -159,7 +159,7 @@ public sealed class StormSilkParityCaptureDriverTests
             ParityCaptureInput shifted = input with { Camera = ShiftCamera(input.Camera, 0.14f) };
             ParityCaptureSet shiftedCapture = await ParityCaptureDriver.CaptureAsync(
                 shifted,
-                new WindowsWglStormContextFactory(),
+                StormGlContextFactory.CreateForCurrentPlatform(),
                 backends).ConfigureAwait(false);
             ParityComparisonResult shiftedResult = ComparePerturbation(
                 input,
@@ -253,14 +253,16 @@ public sealed class StormSilkParityCaptureDriverTests
     {
         try
         {
-            using IStormGlContext context = new WindowsWglStormContextFactory()
+            using IStormGlContext context = StormGlContextFactory.CreateForCurrentPlatform()
                 .Create(1, 1, new SilkColor(0, 0, 0, 1));
             context.Finish();
             return true;
         }
-        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException
+            or DllNotFoundException or EntryPointNotFoundException
+            or PlatformNotSupportedException)
         {
-            SkipOrFail("WGL parity capture", exception.ToString());
+            SkipOrFail("platform OpenGL parity capture", exception.ToString());
             return false;
         }
     }
@@ -274,7 +276,7 @@ public sealed class StormSilkParityCaptureDriverTests
     /// developer without a staged native runtime should not be blocked.
     /// </summary>
     private static bool RequireCapture =>
-        Environment.GetEnvironmentVariable("OPENUSD_REQUIRE_PARITY_CAPTURE") is "1" or "true";
+        Environment.GetEnvironmentVariable("OPENUSD_PARITY_CAPTURE_REQUIRED") is "1" or "true";
 
     private static void SkipOrFail(string reason, string detail)
     {
@@ -282,7 +284,7 @@ public sealed class StormSilkParityCaptureDriverTests
         if (RequireCapture)
         {
             throw new InvalidOperationException(
-                $"{reason} and OPENUSD_REQUIRE_PARITY_CAPTURE demands a real capture. {detail}");
+                $"{reason} and OPENUSD_PARITY_CAPTURE_REQUIRED demands a real capture. {detail}");
         }
         Console.WriteLine($"Skipping {reason}: {detail}");
     }
