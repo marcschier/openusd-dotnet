@@ -1945,6 +1945,9 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     {
         ThrowIfRendering();
         ArgumentNullException.ThrowIfNull(pipeline);
+        pipeline = pipeline is ISilkGraphicsPipelineLease lease
+            ? lease.Pipeline
+            : pipeline;
         if (pipeline is not VulkanSilkGraphicsPipeline vulkanPipeline ||
             !ReferenceEquals(vulkanPipeline.Owner, Device))
         {

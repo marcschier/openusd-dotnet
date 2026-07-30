@@ -112,6 +112,135 @@ public sealed class SilkGraphicsPipelineTests
     }
 
     [Test]
+    public async Task MeshPermutationIdsMatchCheckedArtifactNames()
+    {
+        Assembly assembly = typeof(SilkCheckedShaderAssets).Assembly;
+        HashSet<string> resources = assembly.GetManifestResourceNames().ToHashSet(
+            StringComparer.Ordinal);
+        SilkShaderFeatures[] fragmentFeatures = GetManifestFragmentFeatures();
+        SilkShaderFeatures[] vertexFeatures =
+        [
+            SilkShaderFeatures.None,
+            SilkShaderFeatures.Uv,
+            SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap
+        ];
+
+        await Assert.That(fragmentFeatures.Length).IsEqualTo(17);
+        foreach (SilkShaderFeatures features in fragmentFeatures)
+        {
+            var permutation = new SilkShaderPermutationId(features);
+            AssertEmbeddedResourceExists(
+                resources,
+                $"{permutation.MeshFragmentArtifactName}.dxil");
+            AssertEmbeddedResourceExists(
+                resources,
+                $"{permutation.MeshFragmentArtifactName}.spv");
+            AssertEmbeddedResourceExists(
+                resources,
+                $"{permutation.MeshFragmentArtifactName}.reflection.json");
+
+            SilkShaderModuleDescriptor dxil =
+                SilkCheckedShaderAssets.LoadMeshFragment(
+                    SilkShaderBinaryFormat.Dxil,
+                    permutation);
+            SilkShaderModuleDescriptor spirv =
+                SilkCheckedShaderAssets.LoadMeshFragment(
+                    SilkShaderBinaryFormat.SpirV,
+                    permutation);
+
+            await Assert.That(dxil.Code.IsEmpty).IsFalse();
+            await Assert.That(spirv.Code.IsEmpty).IsFalse();
+            await Assert.That(dxil.EntryPoint)
+                .IsEqualTo(GetExpectedEntryPoint("fragmentMain", features));
+            await Assert.That(spirv.EntryPoint).IsEqualTo("main");
+        }
+
+        await Assert.That(vertexFeatures.Length).IsEqualTo(3);
+        foreach (SilkShaderFeatures features in vertexFeatures)
+        {
+            var permutation = new SilkShaderPermutationId(features);
+            AssertEmbeddedResourceExists(
+                resources,
+                $"{permutation.MeshVertexArtifactName}.dxil");
+            AssertEmbeddedResourceExists(
+                resources,
+                $"{permutation.MeshVertexArtifactName}.spv");
+            AssertEmbeddedResourceExists(
+                resources,
+                $"{permutation.MeshVertexArtifactName}.reflection.json");
+            SilkShaderModuleDescriptor dxil =
+                SilkCheckedShaderAssets.LoadMeshVertex(
+                    SilkShaderBinaryFormat.Dxil,
+                    permutation);
+
+            await Assert.That(dxil.EntryPoint)
+                .IsEqualTo(GetExpectedEntryPoint(
+                    "vertexMain",
+                    features & (SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap)));
+        }
+    }
+
+    [Test]
+    public async Task MeshPermutationIdsRejectManifestInvalidMapFeatures()
+    {
+        await Assert.That(() => new SilkShaderPermutationId(
+            SilkShaderFeatures.BaseColorMap)).Throws<ArgumentException>();
+        await Assert.That(() => new SilkShaderPermutationId(
+            (SilkShaderFeatures)32)).Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    public async Task MissingMeshPermutationAssetThrowsInsteadOfFallingBack()
+    {
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(
+            () => SilkCheckedShaderAssets.LoadMeshFragmentForTesting(
+                SilkShaderBinaryFormat.Dxil,
+                "mesh.fragment.uv+basecolor+missing"))!;
+
+        await Assert.That(exception.Message)
+            .Contains("mesh.fragment.uv+basecolor+missing.dxil");
+    }
+
+    [Test]
+    public async Task PipelineCacheSharesLeasedPipelinesAndInvalidatesGenerations()
+    {
+        using var device = new CountingPipelineDevice();
+        using var cache = new SilkGraphicsPipelineCache(
+            device,
+            SilkShaderBinaryFormat.Dxil);
+        var permutation = new SilkShaderPermutationId(
+            SilkShaderFeatures.Uv | SilkShaderFeatures.BaseColorMap);
+
+        ISilkGraphicsPipeline first = cache.GetOrCreateMeshPipeline(
+            permutation,
+            SilkVertexLayoutDescriptor.PositionNormal,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.D32Float);
+        ISilkGraphicsPipeline second = cache.GetOrCreateMeshPipeline(
+            permutation,
+            SilkVertexLayoutDescriptor.PositionNormal,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.D32Float);
+
+        first.Dispose();
+        await Assert.That(device.CreatedPipelineCount).IsEqualTo(1);
+        await Assert.That(device.DisposedPipelineCount).IsEqualTo(0);
+
+        second.Dispose();
+        device.PickDeviceGenerationValue++;
+        using ISilkGraphicsPipeline third = cache.GetOrCreateMeshPipeline(
+            permutation,
+            SilkVertexLayoutDescriptor.PositionNormal,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.D32Float);
+
+        await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
+        await Assert.That(device.DisposedPipelineCount).IsEqualTo(1);
+        await Assert.That(device.CreatedFragmentShaders).IsEqualTo(2);
+        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(2);
+    }
+
+    [Test]
     public async Task CheckedPickAssetsExposeValidatedReflectionAndHashes()
     {
         SilkPickParametersReflection reflection =
@@ -352,4 +481,196 @@ public sealed class SilkGraphicsPipelineTests
     private static float ReadSingle(ReadOnlySpan<byte> value, int floatIndex) =>
         BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(
             value.Slice(floatIndex * sizeof(float), sizeof(float))));
+
+    private static SilkShaderFeatures[] GetManifestFragmentFeatures()
+    {
+        SilkShaderFeatures[] maps =
+        [
+            SilkShaderFeatures.BaseColorMap,
+            SilkShaderFeatures.NormalMap,
+            SilkShaderFeatures.RoughnessMetallicMap,
+            SilkShaderFeatures.EmissiveMap
+        ];
+        var features = new List<SilkShaderFeatures>
+        {
+            SilkShaderFeatures.None,
+            SilkShaderFeatures.Uv
+        };
+        for (int mask = 1; mask < 16; mask++)
+        {
+            SilkShaderFeatures value = SilkShaderFeatures.Uv;
+            for (int bit = 0; bit < maps.Length; bit++)
+            {
+                if ((mask & (1 << bit)) != 0)
+                {
+                    value |= maps[bit];
+                }
+            }
+            features.Add(value);
+        }
+        return [.. features];
+    }
+
+    private static void AssertEmbeddedResourceExists(
+        HashSet<string> resources,
+        string artifactName)
+    {
+        string resourceName = "OpenUsd.Rendering.Silk.Shaders." + artifactName;
+        if (!resources.Contains(resourceName))
+        {
+            Assert.Fail($"Missing embedded checked shader resource '{resourceName}'.");
+        }
+    }
+
+    private static string GetExpectedEntryPoint(
+        string baseEntryPoint,
+        SilkShaderFeatures features)
+    {
+        if (features == SilkShaderFeatures.None)
+        {
+            return baseEntryPoint;
+        }
+
+        string suffix = new SilkShaderPermutationId(features)
+            .MeshFragmentArtifactName["mesh.fragment.".Length..]
+            .Replace('+', '_');
+        return $"{baseEntryPoint}_{suffix}";
+    }
+
+    private sealed class CountingPipelineDevice : ISilkGraphicsDevice, ISilkPickingGraphicsDevice
+    {
+        public int CreatedPipelineCount { get; private set; }
+
+        public int DisposedPipelineCount { get; private set; }
+
+        public int CreatedFragmentShaders { get; private set; }
+
+        public ulong PickDeviceGenerationValue { get; set; } = 1;
+
+        public SilkBindingLayoutDescriptor LastBindingLayout { get; private set; }
+
+        public SilkGraphicsBackend Backend => SilkGraphicsBackend.Vulkan;
+
+        public SilkGraphicsCapabilities Capabilities { get; } =
+            new("Counting", "1", SupportsCompute: false, IsSoftware: true);
+
+        public ulong PickDeviceGeneration => PickDeviceGenerationValue;
+
+        public void Dispose()
+        {
+        }
+
+        public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage) =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsTexture CreateTexture2D(
+            uint width,
+            uint height,
+            SilkTextureFormat format = SilkTextureFormat.Rgba8Unorm) =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsShaderModule CreateShaderModule(
+            SilkShaderModuleDescriptor descriptor)
+        {
+            if (descriptor.Stage == SilkShaderStage.Fragment)
+            {
+                CreatedFragmentShaders++;
+            }
+            return new CountingShaderModule(descriptor);
+        }
+
+        public ISilkGraphicsBindingLayout CreateBindingLayout(
+            SilkBindingLayoutDescriptor descriptor)
+        {
+            LastBindingLayout = descriptor;
+            return new CountingBindingLayout(descriptor);
+        }
+
+        public ISilkGraphicsShaderProgram CreateShaderProgram(
+            SilkShaderProgramDescriptor descriptor) =>
+            new CountingShaderProgram(descriptor.BindingLayout);
+
+        public ISilkGraphicsPipeline CreateGraphicsPipeline(
+            SilkGraphicsPipelineDescriptor descriptor)
+        {
+            CreatedPipelineCount++;
+            return new CountingPipeline(descriptor, () => DisposedPipelineCount++);
+        }
+
+        public ISilkComputeBindingLayout CreateComputeBindingLayout(
+            SilkComputeBindingLayoutDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkComputeShaderProgram CreateComputeShaderProgram(
+            SilkComputeShaderProgramDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkComputePipeline CreateComputePipeline(
+            SilkComputePipelineDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsCommandList CreateCommandList() =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList) =>
+            throw new NotSupportedException();
+
+        public void WaitIdle()
+        {
+        }
+
+        public ISilkPickGraphicsPipeline CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkPickReadbackBuffer CreatePickReadbackBuffer() =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class CountingShaderModule(
+        SilkShaderModuleDescriptor descriptor) : ISilkGraphicsShaderModule
+    {
+        public SilkShaderModuleDescriptor Descriptor { get; } = descriptor;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class CountingBindingLayout(
+        SilkBindingLayoutDescriptor descriptor) : ISilkGraphicsBindingLayout
+    {
+        public SilkBindingLayoutDescriptor Descriptor { get; } = descriptor;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class CountingShaderProgram(
+        ISilkGraphicsBindingLayout layout) : ISilkGraphicsShaderProgram
+    {
+        public ISilkGraphicsBindingLayout BindingLayout { get; } = layout;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class CountingPipeline(
+        SilkGraphicsPipelineDescriptor descriptor,
+        Action disposed) : ISilkGraphicsPipeline
+    {
+        private readonly Action _disposed = disposed;
+
+        public SilkGraphicsPipelineDescriptor Descriptor { get; } = descriptor;
+
+        public void Dispose() => _disposed();
+    }
 }

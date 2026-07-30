@@ -1220,6 +1220,9 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
     {
         ThrowIfRendering();
         ArgumentNullException.ThrowIfNull(pipeline);
+        pipeline = pipeline is ISilkGraphicsPipelineLease lease
+            ? lease.Pipeline
+            : pipeline;
         if (pipeline is not MetalSilkGraphicsPipeline metalPipeline ||
             !ReferenceEquals(metalPipeline.Device, Device))
         {

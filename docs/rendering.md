@@ -4,6 +4,7 @@ Use this guide to trace renderer-neutral state through Storm or the hdSilk comma
 find the backend selection, fallback, picking, presentation, and platform evidence details.
 
 **On this page:** [Backend flow](#backend-flow) ·
+[hdSilk shader pipeline cache](#hdsilk-shader-pipeline-cache) ·
 [Picking](#renderer-neutral-picking-contract) ·
 [Vulkan composition](#avalonia-vulkan-composition-smoke) ·
 [Related documentation](#related-documentation)
@@ -102,6 +103,29 @@ backend must use the existing per-draw descriptor path. D3D12 enables the shared
 Tier 2 or Tier 3 devices and falls back to per-draw shader-visible heaps otherwise. Vulkan and Metal currently keep
 the fallback path observable through the same capability until their descriptor-indexing and argument-buffer shader
 contracts are wired.
+
+### hdSilk shader pipeline cache
+
+Mesh shader variants are addressed by `SilkShaderPermutationId`, whose flags mirror
+`eng/shaders/shader-manifest.json`: `uv`, `basecolor`, `normal`, `roughmetal`, and `emissive`. Map flags without `uv`
+are rejected because the manifest never emits those artifacts. The empty permutation keeps the historical
+`mesh.vertex` and `mesh.fragment` artifact names; non-empty names append manifest-ordered tokens joined with `+`.
+Fragment permutations use all feature bits. Vertex permutations use the subset that changes vertex output shape
+(`uv` and `normal`), so a base-color-only material resolves to `mesh.vertex.uv` plus the matching specialized
+fragment shader.
+
+`SilkGraphicsPipelineCache` is per device and shader binary format. Its key contains the permutation id, vertex layout,
+color and depth formats, shader binary format, and the optional pick/selection device generation exposed by the RHI.
+If the generation changes, the cache discards old entries before creating a new pipeline, so a device-reset recovery
+cannot receive a stale pipeline. Entries are protected by one cache lock; concurrent callers either observe the existing
+entry or create exactly one new entry for a key. Cached pipelines are unbounded by design: the mesh family is limited by
+the checked manifest to 17 fragment permutations and 3 vertex permutations, multiplied by the small set of supported
+formats and layouts, so size-based eviction would add churn without bounding a real risk.
+
+The cache never compiles shaders. It creates shader modules only from embedded checked resources loaded through
+`SilkCheckedShaderAssets`. If an expected permutation resource is absent, loading throws an `InvalidDataException` that
+names the missing artifact; hdSilk does not silently drop map bits or substitute a less specialized shader because that
+would produce a plausible but wrong render.
 
 ## Renderer-neutral picking contract
 

@@ -9,18 +9,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.vertex.dxil"
-                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.vertex.dxil" />
-    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.fragment.dxil"
-                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.fragment.dxil" />
-    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.vertex.spv"
-                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.vertex.spv" />
-    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.fragment.spv"
-                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.fragment.spv" />
-    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.vertex.reflection.json"
-                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.vertex.reflection.json" />
-    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.fragment.reflection.json"
-                      LogicalName="OpenUsd.Rendering.Silk.Shaders.mesh.fragment.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.*.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.*.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\mesh.*.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\eng\shaders\checked\pick.vertex.dxil"
                       LogicalName="OpenUsd.Rendering.Silk.Shaders.pick.vertex.dxil" />
     <EmbeddedResource Include="..\..\eng\shaders\checked\pick.fragment.dxil"
