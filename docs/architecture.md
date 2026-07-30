@@ -252,6 +252,15 @@ travel without a further ABI bump. Page ABI 5 adds the material commands, whose 
 parameter tables are keyed the same way, so supporting a further UsdPreviewSurface input needs a new
 parameter id rather than another bump.
 
+Every attribute entry carries its authored primvar name, whatever its semantic, because a mesh may
+carry several texture coordinate sets and a `UsdUVTexture` reader selects one of them by name. A
+nameless entry could not be bound. Entries are sorted by name so an unchanged scene produces
+byte-identical pages, which the reproducibility and parity evidence depend on. hdSilk publishes only
+the interpolations it can resolve directly onto emitted triangle-list vertices; faceVarying and
+uniform primvars are omitted entirely rather than guessed at, so a consumer sees an absent attribute
+instead of silently wrong data. `SilkMeshData.Attributes` retains them, and
+`SilkMeshData.FindTexCoord` selects a UV set by the name a material references.
+
 hdSilk creates mesh Rprims, an `extComputation` Sprim so skinned points can be pulled from computed
 primvars, a material Sprim that resolves a bound UsdPreviewSurface network, and a point instancer
 that resolves one record per instance. A network hdSilk does not understand is still published,

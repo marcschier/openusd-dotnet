@@ -1,0 +1,40 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+)
+
+# Stage for the hdSilk probe. It keeps minimal.usda's Cube so the existing
+# implicit-surface coverage is unchanged, and adds one mesh that authors a
+# texture coordinate set and an arbitrary primvar. hdSilk must publish both over
+# the ABI 4 vertex attribute table; without authored UVs there is nothing to
+# prove that texture coordinates reach a consumer at all.
+def Xform "World"
+{
+    def Cube "Cube"
+    {
+        double size = 2
+    }
+
+    def Mesh "PrimvarMesh"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+
+        # Vertex interpolation resolves directly onto the emitted triangle-list
+        # vertices, which is the only interpolation hdSilk publishes today.
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (0, 1)] (
+            interpolation = "vertex"
+        )
+
+        # An arbitrary primvar with no bound semantic, carried by name alone.
+        float[] primvars:probeWeight = [0.25, 0.5, 0.75] (
+            interpolation = "vertex"
+        )
+
+        # Constant interpolation collapses to a single element on the wire.
+        float3[] primvars:probeTint = [(0.2, 0.4, 0.6)] (
+            interpolation = "constant"
+        )
+    }
+}

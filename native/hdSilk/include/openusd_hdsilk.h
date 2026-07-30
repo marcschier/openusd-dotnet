@@ -88,9 +88,17 @@ extern "C" {
 /// mechanism and a new attribute needs no further ABI bump. Data is always
 /// float and always already resolved to the emitted triangle-list vertices, so
 /// element_count equals point_count for vertex and varying interpolation and 1
-/// for constant interpolation. A semantic of
-/// OPENUSD_SILK_ATTRIBUTE_CUSTOM carries its authored primvar name; the named
-/// semantics are the ones the renderer binds by contract.
+/// for constant interpolation. Interpolations that would need re-indexing,
+/// namely faceVarying and uniform, are omitted entirely rather than guessed at,
+/// so a consumer sees an absent attribute instead of silently wrong data.
+///
+/// Every entry carries its authored primvar name, whatever its semantic. The
+/// name is required rather than decorative: a mesh may carry several texture
+/// coordinate sets and a UsdUVTexture reader selects one of them by name, so a
+/// nameless TEXCOORD entry could not be bound. Entries are sorted by name, so an
+/// unchanged scene produces byte-identical pages, which the reproducibility and
+/// parity evidence depend on. The semantic tells a renderer what an entry means
+/// by contract; OPENUSD_SILK_ATTRIBUTE_CUSTOM means only the name identifies it.
 ///
 /// material_binding_hash is 64-bit FNV-1a over the exact bound material path
 /// bytes, and is zero with an empty path when the mesh has no material binding.

@@ -36,6 +36,18 @@ constexpr char MaterialPath[] = "/World/ProbeMaterial";
 constexpr char SurfaceShaderPath[] = "/World/ProbeMaterial/Surface";
 constexpr char TextureShaderPath[] = "/World/ProbeMaterial/Texture";
 constexpr char MaterialTextureAsset[] = "textures/probe-albedo.png";
+constexpr char PrimvarMeshPath[] = "/World/PrimvarMesh";
+
+/// One parsed entry of the ABI 4 vertex attribute table.
+struct ParsedAttribute
+{
+    std::string name;
+    uint32_t semantic = 0;
+    uint32_t componentCount = 0;
+    uint32_t interpolation = 0;
+    uint32_t elementCount = 0;
+    float firstValue = 0.0F;
+};
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 4);
 static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 5);
 
@@ -126,6 +138,8 @@ struct ParsedPage
     std::string material_texture_uv;
     uint32_t material_texture_parameter = 0;
     std::vector<std::string> material_remove_paths;
+    std::vector<ParsedAttribute> primvar_mesh_attributes;
+    bool found_primvar_mesh = false;
     int32_t frame_width = 0;
     int32_t frame_height = 0;
     std::array<double, 16> frame_view{};
@@ -307,6 +321,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     AddSize(&expectedSize, materialPathSize);
                 // Walk the ABI v4 attribute table so the exact-size check stays
                 // exact rather than being relaxed to accommodate it.
+                std::vector<ParsedAttribute> attributes;
                 for (uint32_t attribute = 0;
                      sizesValid && attribute < attributeCount;
                      ++attribute)
@@ -316,8 +331,12 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     uint32_t elementCount = 0;
                     size_t dataBytes = 0;
                     const size_t entry = offset + expectedSize;
+                    uint32_t semantic = 0;
+                    uint32_t interpolation = 0;
                     sizesValid =
+                        ReadValue(data, size, entry, &semantic) &&
                         ReadValue(data, size, entry + 4, &componentCount) &&
+                        ReadValue(data, size, entry + 8, &interpolation) &&
                         ReadValue(data, size, entry + 12, &nameSize) &&
                         ReadValue(data, size, entry + 16, &elementCount) &&
                         MultiplySize(elementCount, componentCount, &dataBytes) &&
@@ -325,6 +344,27 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                         AddSize(&expectedSize, 20) &&
                         AddSize(&expectedSize, nameSize) &&
                         AddSize(&expectedSize, dataBytes);
+                    if (!sizesValid)
+                    {
+                        break;
+                    }
+                    ParsedAttribute parsed;
+                    parsed.name.assign(
+                        reinterpret_cast<const char*>(data + entry + 20),
+                        nameSize);
+                    parsed.semantic = semantic;
+                    parsed.componentCount = componentCount;
+                    parsed.interpolation = interpolation;
+                    parsed.elementCount = elementCount;
+                    if (elementCount != 0 && componentCount != 0)
+                    {
+                        ReadValue(
+                            data,
+                            size,
+                            entry + 20 + nameSize,
+                            &parsed.firstValue);
+                    }
+                    attributes.push_back(std::move(parsed));
                 }
                 sizesValid = sizesValid &&
                     expectedSize == byteSize &&
@@ -398,6 +438,11 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     {
                         result.found_topology_upsert = true;
                         result.topology_subprims = std::move(subprims);
+                    }
+                    else if (path == PrimvarMeshPath)
+                    {
+                        result.found_primvar_mesh = true;
+                        result.primvar_mesh_attributes = std::move(attributes);
                     }
                 }
             }
@@ -886,8 +931,64 @@ bool VerifyCameraValidation(
         RejectsCamera(session, nullptr, error);
 }
 
+/// Requires the exact attribute table the probe stage authors. Element counts
+/// and values are asserted, not just presence, so a table that arrives with the
+/// right shape but the wrong data still fails.
+bool VerifyPrimvarAttributes(const std::vector<ParsedAttribute>& attributes)
+{
+    const ParsedAttribute* st = nullptr;
+    const ParsedAttribute* weight = nullptr;
+    const ParsedAttribute* tint = nullptr;
+    for (const ParsedAttribute& attribute : attributes)
+    {
+        if (attribute.name == "st")
+        {
+            st = &attribute;
+        }
+        else if (attribute.name == "probeWeight")
+        {
+            weight = &attribute;
+        }
+        else if (attribute.name == "probeTint")
+        {
+            tint = &attribute;
+        }
+    }
+    if (st == nullptr || weight == nullptr || tint == nullptr)
+    {
+        return false;
+    }
+
+    // Entries are sorted by name, so an unchanged scene produces byte-identical
+    // pages. Checking the order here keeps that contract honest.
+    for (size_t index = 1; index < attributes.size(); ++index)
+    {
+        if (attributes[index - 1].name > attributes[index].name)
+        {
+            return false;
+        }
+    }
+
+    return st->semantic == OPENUSD_SILK_ATTRIBUTE_TEXCOORD &&
+        st->componentCount == 2 &&
+        st->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
+        st->elementCount == 3 &&
+        st->firstValue == 0.0F &&
+        weight->semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
+        weight->componentCount == 1 &&
+        weight->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
+        weight->elementCount == 3 &&
+        weight->firstValue == 0.25F &&
+        tint->semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
+        tint->componentCount == 3 &&
+        tint->interpolation == OPENUSD_SILK_INTERPOLATION_CONSTANT &&
+        tint->elementCount == 1 &&
+        tint->firstValue == 0.2F;
+}
+
 bool AuthorSharedMesh(
     openusd_stage* stage,
+
     float firstX,
     openusd_error_buffer* error)
 {
@@ -1458,6 +1559,30 @@ int main(int argc, char** argv)
             << " textures=" << initial.material_texture_count
             << " asset='" << initial.material_texture_asset
             << "' binding='" << initial.shared_material_binding << "'\n";
+        return 5;
+    }
+
+    // ABI v4 attribute table: the stage authors a texture coordinate set, an
+    // arbitrary named primvar and a constant primvar, and all three must arrive
+    // resolved onto the emitted vertices. Without this, nothing proves texture
+    // coordinates reach a consumer at all, which the shading work depends on.
+    if (!initial.found_primvar_mesh ||
+        !VerifyPrimvarAttributes(initial.primvar_mesh_attributes))
+    {
+        openusd_silk_session_release(session);
+        openusd_stage_release(stage);
+        std::cerr << "hdSilk primvar attributes were not published as expected; got "
+                  << initial.primvar_mesh_attributes.size() << " attribute(s):";
+        for (const ParsedAttribute& attribute : initial.primvar_mesh_attributes)
+        {
+            std::cerr << " {" << attribute.name
+                      << " semantic=" << attribute.semantic
+                      << " components=" << attribute.componentCount
+                      << " interpolation=" << attribute.interpolation
+                      << " elements=" << attribute.elementCount
+                      << " first=" << attribute.firstValue << "}";
+        }
+        std::cerr << "\n";
         return 5;
     }
 

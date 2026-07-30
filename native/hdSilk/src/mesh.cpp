@@ -8,8 +8,10 @@
 #include "renderDelegate.h"
 #include "sceneState.h"
 
+#include "pxr/base/gf/vec2f.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/vec3i.h"
+#include "pxr/base/gf/vec4f.h"
 #include "pxr/base/vt/value.h"
 #include "pxr/imaging/hd/changeTracker.h"
 #include "pxr/imaging/hd/extComputationUtils.h"
@@ -17,10 +19,12 @@
 #include "pxr/imaging/hd/renderIndex.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hd/tokens.h"
+#include "pxr/usd/usdGeom/tokens.h"
 
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -49,6 +53,112 @@ bool ExtractPoints(const VtValue& value, VtVec3fArray* out)
         return true;
     }
     return false;
+}
+
+/// Flattens a primvar value into tightly packed floats, returning the component
+/// count per element, or zero when the value holds a type this delegate cannot
+/// represent on the wire. Only float-convertible scalar and vector types are
+/// accepted; anything else is omitted rather than reinterpreted, because a
+/// guessed reinterpretation would reach the shader as silently wrong data.
+uint32_t FlattenPrimvar(const VtValue& value, std::vector<float>* out)
+{
+    out->clear();
+    if (value.IsHolding<VtFloatArray>())
+    {
+        const VtFloatArray& source = value.UncheckedGet<VtFloatArray>();
+        out->assign(source.begin(), source.end());
+        return 1;
+    }
+    if (value.IsHolding<VtVec2fArray>())
+    {
+        const VtVec2fArray& source = value.UncheckedGet<VtVec2fArray>();
+        out->reserve(source.size() * 2);
+        for (const GfVec2f& element : source)
+        {
+            out->push_back(element[0]);
+            out->push_back(element[1]);
+        }
+        return 2;
+    }
+    if (value.IsHolding<VtVec3fArray>())
+    {
+        const VtVec3fArray& source = value.UncheckedGet<VtVec3fArray>();
+        out->reserve(source.size() * 3);
+        for (const GfVec3f& element : source)
+        {
+            out->push_back(element[0]);
+            out->push_back(element[1]);
+            out->push_back(element[2]);
+        }
+        return 3;
+    }
+    if (value.IsHolding<VtVec4fArray>())
+    {
+        const VtVec4fArray& source = value.UncheckedGet<VtVec4fArray>();
+        out->reserve(source.size() * 4);
+        for (const GfVec4f& element : source)
+        {
+            for (int component = 0; component < 4; ++component)
+            {
+                out->push_back(element[component]);
+            }
+        }
+        return 4;
+    }
+    if (value.IsHolding<float>())
+    {
+        out->push_back(value.UncheckedGet<float>());
+        return 1;
+    }
+    if (value.IsHolding<GfVec2f>())
+    {
+        const GfVec2f element = value.UncheckedGet<GfVec2f>();
+        out->push_back(element[0]);
+        out->push_back(element[1]);
+        return 2;
+    }
+    if (value.IsHolding<GfVec3f>())
+    {
+        const GfVec3f element = value.UncheckedGet<GfVec3f>();
+        out->push_back(element[0]);
+        out->push_back(element[1]);
+        out->push_back(element[2]);
+        return 3;
+    }
+    if (value.IsHolding<GfVec4f>())
+    {
+        const GfVec4f element = value.UncheckedGet<GfVec4f>();
+        for (int component = 0; component < 4; ++component)
+        {
+            out->push_back(element[component]);
+        }
+        return 4;
+    }
+    return 0;
+}
+
+/// Maps an authored primvar onto a wire semantic. The name always travels
+/// regardless of semantic, because a mesh may carry several texture coordinate
+/// sets and a UsdUVTexture reader selects one of them by name.
+uint32_t ResolveSemantic(
+    const TfToken& name,
+    const TfToken& role,
+    uint32_t componentCount)
+{
+    if (name == HdTokens->normals)
+    {
+        return OPENUSD_SILK_ATTRIBUTE_NORMAL;
+    }
+    if (name == HdTokens->displayColor)
+    {
+        return OPENUSD_SILK_ATTRIBUTE_COLOR;
+    }
+    if (role == HdPrimvarRoleTokens->textureCoordinate ||
+        (componentCount == 2 && name.GetString().rfind("st", 0) == 0))
+    {
+        return OPENUSD_SILK_ATTRIBUTE_TEXCOORD;
+    }
+    return OPENUSD_SILK_ATTRIBUTE_CUSTOM;
 }
 }
 
@@ -109,6 +219,7 @@ HdSilkMesh::Sync(
         HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->displayColor);
     const bool normalsDirty =
         HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->normals);
+    const bool primvarsDirty = (*dirtyBits & HdChangeTracker::DirtyPrimvar) != 0;
     const bool transformDirty = HdChangeTracker::IsTransformDirty(*dirtyBits, id);
     const bool materialDirty =
         (*dirtyBits & HdChangeTracker::DirtyMaterialId) != 0;
@@ -251,33 +362,9 @@ HdSilkMesh::Sync(
         }
     }
 
-    if (normalsDirty || topologyRefreshed)
+    if (normalsDirty || primvarsDirty || topologyRefreshed)
     {
-        // Only the interpolations that map directly onto emitted triangle-list
-        // vertices are resolved here. Anything else leaves _normals empty so
-        // the consumer computes them, which is the pre-ABI-4 behaviour, rather
-        // than this delegate guessing at a re-indexing it cannot verify.
-        _normals.clear();
-        _normalsAreConstant = false;
-        const VtValue value = sceneDelegate->Get(id, HdTokens->normals);
-        if (value.IsHolding<VtVec3fArray>())
-        {
-            const VtVec3fArray& normals = value.UncheckedGet<VtVec3fArray>();
-            if (normals.size() == _points.size())
-            {
-                _normals = normals;
-            }
-            else if (normals.size() == 1)
-            {
-                _normals = normals;
-                _normalsAreConstant = true;
-            }
-        }
-        else if (value.IsHolding<GfVec3f>())
-        {
-            _normals = VtVec3fArray(1, value.UncheckedGet<GfVec3f>());
-            _normalsAreConstant = true;
-        }
+        _RefreshAttributes(sceneDelegate, id);
     }
 
     // Instancer state must be refreshed before instance transforms are read,
@@ -292,7 +379,8 @@ HdSilkMesh::Sync(
         HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
 
     if (topologyRefreshed || pointsDirty || transformDirty ||
-        displayColorDirty || normalsDirty || instancerDirty || materialDirty)
+        displayColorDirty || normalsDirty || primvarsDirty || instancerDirty ||
+        materialDirty)
     {
         HdSilkMeshRecord record;
         record.path = id.GetString();
@@ -319,24 +407,7 @@ HdSilkMesh::Sync(
 
         record.indices = _triangleIndices;
         record.triangleSubprims = _triangleSubprims;
-
-        if (!_normals.empty())
-        {
-            HdSilkMeshAttribute normals;
-            normals.semantic = OPENUSD_SILK_ATTRIBUTE_NORMAL;
-            normals.componentCount = 3;
-            normals.interpolation = _normalsAreConstant
-                ? OPENUSD_SILK_INTERPOLATION_CONSTANT
-                : OPENUSD_SILK_INTERPOLATION_VERTEX;
-            normals.data.reserve(_normals.size() * 3);
-            for (const GfVec3f& normal : _normals)
-            {
-                normals.data.push_back(normal[0]);
-                normals.data.push_back(normal[1]);
-                normals.data.push_back(normal[2]);
-            }
-            record.attributes.push_back(std::move(normals));
-        }
+        record.attributes = _attributes;
 
         // Capture the key before the record is moved; argument evaluation
         // order relative to the moved-from object is otherwise unspecified.
@@ -352,6 +423,82 @@ HdSilkMesh::Sync(
     }
 
     *dirtyBits = HdChangeTracker::Clean;
+}
+
+void
+HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id)
+{
+    // Only interpolations that map directly onto emitted triangle-list vertices
+    // are resolved. faceVarying and uniform need re-indexing through
+    // HdMeshUtil::ComputeTriangulatedFaceVaryingPrimvar, which this delegate does
+    // not do yet; those primvars are omitted rather than guessed at, so a
+    // consumer sees an absent attribute instead of silently wrong data. That is
+    // the same contract authored normals have had since ABI 4.
+    _attributes.clear();
+    static const HdInterpolation resolvable[] = {
+        HdInterpolationConstant,
+        HdInterpolationVertex,
+        HdInterpolationVarying};
+
+    for (HdInterpolation interpolation : resolvable)
+    {
+        const HdPrimvarDescriptorVector primvars =
+            sceneDelegate->GetPrimvarDescriptors(id, interpolation);
+        for (const HdPrimvarDescriptor& primvar : primvars)
+        {
+            // Points travel in their own fixed field, so republishing them as an
+            // attribute would duplicate the largest array in the page.
+            if (primvar.name == HdTokens->points)
+            {
+                continue;
+            }
+
+            std::vector<float> data;
+            const uint32_t componentCount =
+                FlattenPrimvar(sceneDelegate->Get(id, primvar.name), &data);
+            if (componentCount == 0 || data.empty())
+            {
+                continue;
+            }
+
+            const size_t elementCount = data.size() / componentCount;
+            uint32_t wireInterpolation = 0;
+            if (interpolation == HdInterpolationConstant || elementCount == 1)
+            {
+                wireInterpolation = OPENUSD_SILK_INTERPOLATION_CONSTANT;
+            }
+            else if (elementCount == _points.size())
+            {
+                wireInterpolation = OPENUSD_SILK_INTERPOLATION_VERTEX;
+            }
+            else
+            {
+                // An element count that matches neither one nor the point count
+                // cannot be indexed by the emitted vertices.
+                continue;
+            }
+
+            HdSilkMeshAttribute attribute;
+            attribute.name = primvar.name.GetString();
+            attribute.semantic =
+                ResolveSemantic(primvar.name, primvar.role, componentCount);
+            attribute.componentCount = componentCount;
+            attribute.interpolation = wireInterpolation;
+            attribute.data = std::move(data);
+            _attributes.push_back(std::move(attribute));
+        }
+    }
+
+    // A stable order keeps the page byte-identical for an unchanged scene, which
+    // the reproducibility and parity evidence both depend on; Hydra does not
+    // promise a descriptor order.
+    std::sort(
+        _attributes.begin(),
+        _attributes.end(),
+        [](const HdSilkMeshAttribute& left, const HdSilkMeshAttribute& right)
+        {
+            return left.name < right.name;
+        });
 }
 
 std::vector<HdSilkMeshRecord>

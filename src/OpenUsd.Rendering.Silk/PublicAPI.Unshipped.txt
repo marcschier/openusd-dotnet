@@ -568,8 +568,10 @@ OpenUsd.Rendering.Silk.SilkMeshAttributeEntry.Name.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshAttributeEntry.Semantic.get -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
 OpenUsd.Rendering.Silk.SilkMeshAttributeEntry.SilkMeshAttributeEntry() -> void
 OpenUsd.Rendering.Silk.SilkMeshData
+OpenUsd.Rendering.Silk.SilkMeshData.Attributes.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkVertexAttributeData!>!
 OpenUsd.Rendering.Silk.SilkMeshData.AuthoredNormals.get -> System.ReadOnlyMemory<float>
 OpenUsd.Rendering.Silk.SilkMeshData.DisplayColor.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkMeshData.FindTexCoord(string! name) -> OpenUsd.Rendering.Silk.SilkVertexAttributeData?
 OpenUsd.Rendering.Silk.SilkMeshData.Id.get -> ulong
 OpenUsd.Rendering.Silk.SilkMeshData.Indices.get -> System.ReadOnlyMemory<uint>
 OpenUsd.Rendering.Silk.SilkMeshData.InstanceId.get -> int
@@ -1274,6 +1276,14 @@ OpenUsd.Rendering.Silk.SilkTextureWrap.Mirror = 3 -> OpenUsd.Rendering.Silk.Silk
 OpenUsd.Rendering.Silk.SilkTextureWrap.Repeat = 2 -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkTopologyKind
 OpenUsd.Rendering.Silk.SilkTopologyKind.TriangleList = 1 -> OpenUsd.Rendering.Silk.SilkTopologyKind
+OpenUsd.Rendering.Silk.SilkVertexAttributeData
+OpenUsd.Rendering.Silk.SilkVertexAttributeData.ComponentCount.get -> int
+OpenUsd.Rendering.Silk.SilkVertexAttributeData.Data.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.Silk.SilkVertexAttributeData.ElementCount.get -> int
+OpenUsd.Rendering.Silk.SilkVertexAttributeData.GetComponent(int vertexIndex, int component) -> float
+OpenUsd.Rendering.Silk.SilkVertexAttributeData.Interpolation.get -> OpenUsd.Rendering.Silk.SilkAttributeInterpolation
+OpenUsd.Rendering.Silk.SilkVertexAttributeData.Name.get -> string!
+OpenUsd.Rendering.Silk.SilkVertexAttributeData.Semantic.get -> OpenUsd.Rendering.Silk.SilkAttributeSemantic
 OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor
 OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.SilkVertexSemantic Semantic, out uint Location, out uint Offset, out OpenUsd.Rendering.Silk.SilkVertexFormat Format) -> void
 OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.Equals(OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor other) -> bool

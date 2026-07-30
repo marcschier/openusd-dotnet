@@ -339,6 +339,7 @@ public sealed class SilkMeshData
     private readonly float[] _displayColor;
     private readonly double[] _transform;
     private readonly float[] _authoredNormals = [];
+    private readonly SilkVertexAttributeData[] _attributes = [];
 
     /// <summary>Initializes immutable retained mesh data.</summary>
     public SilkMeshData(
@@ -442,6 +443,75 @@ public sealed class SilkMeshData
     {
         _authoredNormals = authoredNormals;
         MaterialPath = materialPath;
+    }
+
+    internal SilkMeshData(
+        int primId,
+        string path,
+        ulong stableHash,
+        int instanceId,
+        int instanceIndex,
+        SilkTopologyKind topologyKind,
+        ulong topologyRevision,
+        float[] points,
+        uint[] indices,
+        int[] triangleSubprims,
+        float[] displayColor,
+        double[] transform,
+        ulong topologyFingerprint,
+        float[] authoredNormals,
+        string materialPath,
+        SilkVertexAttributeData[] attributes)
+        : this(
+            primId,
+            path,
+            stableHash,
+            instanceId,
+            instanceIndex,
+            topologyKind,
+            topologyRevision,
+            points,
+            indices,
+            triangleSubprims,
+            displayColor,
+            transform,
+            topologyFingerprint,
+            authoredNormals,
+            materialPath)
+    {
+        _attributes = attributes;
+    }
+
+    /// <summary>
+    /// Gets every authored vertex attribute the delegate could resolve onto the
+    /// emitted vertices, in a stable order.
+    /// </summary>
+    /// <remarks>
+    /// Includes normals, which are also exposed pre-expanded through
+    /// <see cref="AuthoredNormals"/> for the vertex builder's hot path. An
+    /// attribute absent here was either not authored or authored with an
+    /// interpolation the delegate could not resolve; in neither case may a
+    /// consumer invent one.
+    /// </remarks>
+    public IReadOnlyList<SilkVertexAttributeData> Attributes => _attributes;
+
+    /// <summary>
+    /// Finds a texture coordinate set by authored primvar name, which is how a
+    /// <c>UsdUVTexture</c> reader selects among several sets. Returns null when
+    /// the mesh carries no such set.
+    /// </summary>
+    public SilkVertexAttributeData? FindTexCoord(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        foreach (SilkVertexAttributeData attribute in _attributes)
+        {
+            if (attribute.Semantic == SilkAttributeSemantic.TexCoord &&
+                string.Equals(attribute.Name, name, StringComparison.Ordinal))
+            {
+                return attribute;
+            }
+        }
+        return null;
     }
 
     /// <summary>
@@ -591,11 +661,31 @@ public sealed class SilkMeshData
         }
 
         float[] authoredNormals = [];
+        SilkVertexAttributeData[] attributes = command.AttributeCount == 0
+            ? []
+            : new SilkVertexAttributeData[command.AttributeCount];
         for (int index = 0; index < command.AttributeCount; index++)
         {
             SilkMeshAttributeEntry attribute = command.GetAttribute(index);
+            float[] data = new float[attribute.ElementCount * attribute.ComponentCount];
+            for (int element = 0; element < attribute.ElementCount; element++)
+            {
+                for (int component = 0; component < attribute.ComponentCount; component++)
+                {
+                    data[(element * attribute.ComponentCount) + component] =
+                        attribute.GetComponent(element, component);
+                }
+            }
+            attributes[index] = new SilkVertexAttributeData(
+                attribute.Name,
+                attribute.Semantic,
+                attribute.Interpolation,
+                attribute.ComponentCount,
+                data);
+
             if (attribute.Semantic != SilkAttributeSemantic.Normal ||
-                attribute.ComponentCount != 3)
+                attribute.ComponentCount != 3 ||
+                authoredNormals.Length != 0)
             {
                 continue;
             }
@@ -612,7 +702,6 @@ public sealed class SilkMeshData
                         attribute.GetComponent(element, component);
                 }
             }
-            break;
         }
 
         return new SilkMeshData(
@@ -630,7 +719,8 @@ public sealed class SilkMeshData
             transform,
             fingerprint.Value,
             authoredNormals,
-            command.MaterialPath);
+            command.MaterialPath,
+            attributes);
     }
 }
 

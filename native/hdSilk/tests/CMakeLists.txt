@@ -63,7 +63,7 @@ add_custom_command(
 add_custom_target(hdsilk_probe_runtime DEPENDS ${HDSILK_PROBE_STAMP})
 add_dependencies(hdsilk_probe hdsilk_probe_runtime)
 
-get_filename_component(HDSILK_PROBE_STAGE "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/minimal.usda" ABSOLUTE)
+get_filename_component(HDSILK_PROBE_STAGE "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-probe-stage.usda" ABSOLUTE)
 
 if(WIN32)
     # Note: this PATH deliberately does NOT include the original build

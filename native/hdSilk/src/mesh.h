@@ -16,6 +16,8 @@
 #include "pxr/imaging/hd/mesh.h"
 #include "pxr/imaging/hd/meshTopology.h"
 
+#include "sceneState.h"
+
 #include <cstdint>
 #include <vector>
 
@@ -59,6 +61,9 @@ private:
         HdSceneDelegate* sceneDelegate,
         HdSilkMeshRecord record);
 
+    /// Rebuilds the vertex attribute table from authored primvars.
+    void _RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id);
+
     HdMeshTopology _topology;
     GfMatrix4d _transform;
     VtVec3fArray _points;
@@ -66,12 +71,12 @@ private:
     std::vector<uint32_t> _triangleSubprims;
     uint64_t _topologyRevision = 0;
     GfVec3f _displayColor{0.7f};
-    // Authored normals, published over the ABI v4 attribute table so the
-    // consumer stops recomputing them from topology. Empty when the mesh
-    // authors none, or authors them with an interpolation this delegate does
-    // not yet resolve, in which case the consumer computes as before.
-    VtVec3fArray _normals;
-    bool _normalsAreConstant = false;
+    // Authored primvars published over the ABI 4 attribute table: normals, so
+    // the consumer stops recomputing them from topology, plus texture
+    // coordinates and arbitrary primvars. Only interpolations resolvable onto
+    // emitted triangle-list vertices appear here; anything else is omitted so
+    // the consumer falls back rather than receiving data this delegate guessed.
+    std::vector<HdSilkMeshAttribute> _attributes;
 
     HdSilkMesh(const HdSilkMesh&) = delete;
     HdSilkMesh& operator=(const HdSilkMesh&) = delete;
