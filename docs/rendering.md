@@ -91,6 +91,16 @@ backend's generic command-list viewport but never use `objectToClip`. `SilkCross
 vertically asymmetric scene and separately proves that scene compares unequal to its own vertical mirror, so a
 regression in either convention cannot pass the gate vacuously.
 
+### hdSilk material texture table capability
+
+Material texture bindings remain renderer-neutral `SilkBindingLayoutDescriptor.MaterialSlots`: set 0/binding 0 is still
+the 80-byte `SceneParameters` uniform, and material slots continue to be validated through `RequireMaterialSlot`. Devices
+now also report `SilkGraphicsCapabilities.SupportsDescriptorIndexedTextureTables`. When it is `true`, the backend may copy
+material texture and sampler descriptors into a persistent descriptor-indexed table before a draw; when it is `false`, the
+backend must use the existing per-draw descriptor path. D3D12 enables the shared table only for Resource Binding Tier 2 or
+Tier 3 devices and falls back to per-draw shader-visible heaps otherwise. Vulkan and Metal currently keep the fallback
+path observable through the same capability until their descriptor-indexing/argument-buffer shader contracts are wired.
+
 ## Renderer-neutral picking contract
 
 `OpenUsd.Rendering` owns picking identity and revision semantics; Storm, hdSilk, RHIs, and the Viewer

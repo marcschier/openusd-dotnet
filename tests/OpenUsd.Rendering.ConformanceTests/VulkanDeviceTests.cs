@@ -26,6 +26,8 @@ public sealed class VulkanDeviceTests
 
         await Assert.That(device.Backend).IsEqualTo(SilkGraphicsBackend.Vulkan);
         await Assert.That(device.Capabilities.SupportsCompute).IsTrue();
+        await Assert.That(device.Capabilities.SupportsDescriptorIndexedTextureTables)
+            .IsFalse();
         await Assert.That(buffer.Size).IsEqualTo((nuint)4096);
     }
 

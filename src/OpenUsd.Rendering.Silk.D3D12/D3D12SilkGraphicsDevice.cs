@@ -34,6 +34,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     private int _factoryReleaseCount;
     private int _apiDisposeCount;
     private int _dxgiDisposeCount;
+    private D3D12DescriptorIndexedTextureTables? _materialDescriptorTables;
     private bool _apiDisposed;
     private bool _dxgiDisposed;
 
@@ -54,11 +55,20 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         _device = device;
         _queue = queue;
         _fence = fence;
+        if (SupportsD3D12DescriptorIndexedTextureTables(device))
+        {
+            _materialDescriptorTables =
+                D3D12DescriptorIndexedTextureTables.TryCreate(device);
+        }
         Capabilities = new SilkGraphicsCapabilities(
             software ? "D3D12 WARP" : "D3D12 Adapter",
             "Direct3D 12",
             SupportsCompute: true,
-            IsSoftware: software);
+            IsSoftware: software)
+        {
+            SupportsDescriptorIndexedTextureTables =
+                _materialDescriptorTables is not null
+        };
     }
 
     /// <inheritdoc/>
@@ -66,6 +76,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
 
     /// <inheritdoc/>
     public SilkGraphicsCapabilities Capabilities { get; }
+
+    internal D3D12DescriptorIndexedTextureTables? MaterialDescriptorTables =>
+        _materialDescriptorTables;
 
     /// <summary>Creates a D3D12 device. WARP is deterministic and suitable for CI.</summary>
     public static D3D12SilkGraphicsDevice Create(bool useWarp = true)
@@ -468,6 +481,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     {
         List<Exception>? failures = null;
         CaptureCleanupFailure(ReleaseRetainedResources, ref failures);
+        CaptureCleanupFailure(ReleaseDescriptorIndexedTextureTables, ref failures);
         CaptureCleanupFailure(ReleaseFence, ref failures);
         CaptureCleanupFailure(ReleaseQueue, ref failures);
         CaptureCleanupFailure(ReleaseDevice, ref failures);
@@ -540,6 +554,25 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             Release(ref _fence);
             _fenceReleaseCount++;
         }
+    }
+
+    private void ReleaseDescriptorIndexedTextureTables() =>
+        Interlocked.Exchange(ref _materialDescriptorTables, null)?.Dispose();
+
+    private static bool SupportsD3D12DescriptorIndexedTextureTables(
+        ID3D12Device* device)
+    {
+        var options = new FeatureDataD3D12Options();
+        int result = device->CheckFeatureSupport(
+            global::Silk.NET.Direct3D12.Feature.D3D12Options,
+            &options,
+            (uint)sizeof(FeatureDataD3D12Options));
+        if (result < 0)
+        {
+            return false;
+        }
+        return options.ResourceBindingTier is
+            ResourceBindingTier.Tier2 or ResourceBindingTier.Tier3;
     }
 
     private void ReleaseQueue()

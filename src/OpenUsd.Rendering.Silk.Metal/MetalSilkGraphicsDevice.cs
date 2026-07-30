@@ -28,7 +28,11 @@ public sealed partial class MetalSilkGraphicsDevice
             device.Name.ToString() ?? "Metal Device",
             "Metal",
             SupportsCompute: true,
-            IsSoftware: false);
+            IsSoftware: false)
+        {
+            SupportsDescriptorIndexedTextureTables =
+                device.ArgumentBuffersSupport == MTLArgumentBuffersTier.Tier2
+        };
     }
 
     /// <inheritdoc/>

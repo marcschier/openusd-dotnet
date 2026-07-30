@@ -636,6 +636,27 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
+    public async Task WarpUsesDescriptorIndexedMaterialTextureTablesWhenAvailable()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        if (!device.Capabilities.SupportsDescriptorIndexedTextureTables)
+        {
+            Skip.Test("D3D12 WARP reported no descriptor-indexed texture table support.");
+            return;
+        }
+
+        await OffscreenRhiConformance.MaterialResourcesBindToADrawWithoutPerturbingIt(
+            device,
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
     public async Task WarpRejectsMaterialResourcesTheLayoutDoesNotDeclare()
     {
         if (!OperatingSystem.IsWindows())
