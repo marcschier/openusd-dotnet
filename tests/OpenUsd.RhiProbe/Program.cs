@@ -1005,15 +1005,16 @@ internal static class Program
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
         using ISilkGraphicsBuffer uniforms = device.CreateBuffer(
             80,
-            SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+            SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        using ISilkGraphicsBuffer surfaceConstants = CreateSurfaceConstants(device);
         vertices.Write(MemoryMarshal.AsBytes<float>(
         [
             -3.0f, -3.0f, 0, 0, 1, 0,
              3.0f,  3.0f, 0, 0, 0, 1,
-             0.0f,  0.75f, 0, 1, 0, 0,
+             0.0f,  0.75f, 0, 0, 0, 1,
             -3.0f,  3.0f, 0, 0, 1, 1,
-            -0.75f, -0.75f, 0, 1, 0, 0,
-             0.75f, -0.75f, 0, 1, 0, 0
+            -0.75f, -0.75f, 0, 0, 0, 1,
+             0.75f, -0.75f, 0, 0, 0, 1
         ]));
         indices.Write(MemoryMarshal.AsBytes<uint>([4, 2, 5]));
         uniforms.Write(MemoryMarshal.AsBytes<float>(
@@ -1035,6 +1036,7 @@ internal static class Program
         commands.SetVertexBuffer(vertices);
         commands.SetIndexBuffer(indices);
         commands.SetUniformBuffer(0, 0, uniforms);
+        BindAlwaysOnSlots(commands, uniforms, surfaceConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
         using ISilkGraphicsSubmission submission = device.Submit(commands);
@@ -1053,8 +1055,8 @@ internal static class Program
             !pixels.AsSpan(viewportExcludedOffset, 4).SequenceEqual(
                 new byte[] { 0, 0, 0, 255 }) ||
             pixels[interiorOffset] < 240 ||
-            pixels[interiorOffset + 1] > 10 ||
-            pixels[interiorOffset + 2] > 10 ||
+            pixels[interiorOffset + 1] < 240 ||
+            pixels[interiorOffset + 2] < 240 ||
             pixels[interiorOffset + 3] < 240)
         {
             throw new InvalidOperationException(
@@ -1075,6 +1077,7 @@ internal static class Program
                 vertices,
                 indices,
                 uniforms,
+                surfaceConstants,
                 size);
             ordered.ClearColor(color, new SilkColor(0, 1, 0, 1));
             using ISilkGraphicsSubmission orderedSubmission = device.Submit(ordered);
@@ -1095,6 +1098,7 @@ internal static class Program
                 vertices,
                 indices,
                 uniforms,
+                surfaceConstants,
                 size);
             ordered.ClearColor(color, new SilkColor(1, 1, 0, 1));
             using ISilkGraphicsSubmission orderedSubmission = device.Submit(ordered);
@@ -1133,6 +1137,7 @@ internal static class Program
                 vertices,
                 computedIndices,
                 uniforms,
+                surfaceConstants,
                 size);
             using ISilkGraphicsSubmission barrierSubmission =
                 device.Submit(barrierCommands);
@@ -1152,6 +1157,7 @@ internal static class Program
         ISilkGraphicsBuffer vertices,
         ISilkGraphicsBuffer indices,
         ISilkGraphicsBuffer uniforms,
+        ISilkGraphicsBuffer surfaceConstants,
         uint size)
     {
         commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
@@ -1161,8 +1167,50 @@ internal static class Program
         commands.SetVertexBuffer(vertices);
         commands.SetIndexBuffer(indices);
         commands.SetUniformBuffer(0, 0, uniforms);
+        BindAlwaysOnSlots(commands, uniforms, surfaceConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
+    }
+
+    /// <summary>
+    /// Binds the slots the checked mesh shaders read on every draw: the instance
+    /// table the vertex stage indexes, and the surface constants the fragment stage
+    /// reads. Leaving either unbound renders correctly on D3D12, renders nothing on
+    /// Metal, and faults SwiftShader.
+    /// </summary>
+    private static void BindAlwaysOnSlots(
+        ISilkGraphicsCommandList commands,
+        ISilkGraphicsBuffer uniforms,
+        ISilkGraphicsBuffer surfaceConstants)
+    {
+        commands.SetStorageBuffer(0, 6, uniforms);
+        commands.SetStorageBuffer(
+            0,
+            SilkBindingLayoutDescriptor.SurfaceParametersBinding,
+            surfaceConstants);
+    }
+
+    /// <summary>
+    /// Creates the default surface constants: no material, so the shaded flag is
+    /// zero and the scene tint drives diffuse, lit by the deterministic headlight.
+    /// </summary>
+    private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
+    {
+        ISilkGraphicsBuffer buffer = device.CreateBuffer(
+            128,
+            SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        buffer.Write(MemoryMarshal.AsBytes<float>(
+        [
+            0.18f, 0.18f, 0.18f, 1,
+            0, 0, 0, 1,
+            0, 0, 0, 1.5f,
+            0, 0.5f, 0, 0,
+            0, 0.01f, 0, 0,
+            0, 0, 1, 1,
+            1, 1, 1, 0,
+            0, 0, 0, 0
+        ]));
+        return buffer;
     }
 
     private static void ValidateSolidColor(
