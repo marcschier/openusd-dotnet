@@ -77,6 +77,7 @@ private:
     // emitted triangle-list vertices appear here; anything else is omitted so
     // the consumer falls back rather than receiving data this delegate guessed.
     std::vector<HdSilkMeshAttribute> _attributes;
+    bool _attributesRequireExpandedTopology = false;
 
     HdSilkMesh(const HdSilkMesh&) = delete;
     HdSilkMesh& operator=(const HdSilkMesh&) = delete;

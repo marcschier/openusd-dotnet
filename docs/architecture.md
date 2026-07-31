@@ -257,9 +257,11 @@ Every attribute entry carries its authored primvar name, whatever its semantic, 
 carry several texture coordinate sets and a `UsdUVTexture` reader selects one of them by name. A
 nameless entry could not be bound. Entries are sorted by name so an unchanged scene produces
 byte-identical pages, which the reproducibility and parity evidence depend on. hdSilk publishes only
-the interpolations it can resolve directly onto emitted triangle-list vertices; faceVarying and
-uniform primvars are omitted entirely rather than guessed at, so a consumer sees an absent attribute
-instead of silently wrong data. `SilkMeshData.Attributes` retains them, and
+the interpolations it can resolve onto emitted triangle-list vertices: vertex/varying values are
+used directly, faceVarying values are triangulated with `HdMeshUtil`, and uniform values expand
+through the authored-face `triangle_subprims` mapping. Anything still unresolved is omitted rather
+than guessed, so a consumer sees an absent attribute instead of silently wrong data.
+`SilkMeshData.Attributes` retains them, and
 `SilkMeshData.FindTexCoord` selects a UV set by the name a material references.
 
 hdSilk creates mesh Rprims, an `extComputation` Sprim so skinned points can be pulled from computed
