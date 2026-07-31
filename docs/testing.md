@@ -573,47 +573,55 @@ sides for llvmpipe, WARP, and SwiftShader variation.
 
 | Scene | Correct | Vertical flip | Horizontal mirror | Transpose | Shifted camera | Margin | Gate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `orientation-asymmetric` | 0.709154 | 0.473200 | 0.341662 | 0.516599 | 0.255665 | 0.192555 | yes, threshold 0.61 |
-| `depth-overlap-multiprim` | 0.817816 | 0.649724 | 0.743399 | 0.701790 | 0.424651 | 0.074416 | no; redesign |
-| `material-normals-uv` | 0.865894 | 0.782579 | 0.611868 | 0.590372 | 0.230126 | 0.083315 | no; redesign |
-| `point-instancer-cluster` | 0.481946 | 0.071429 | 0.060222 | 0.054112 | 0.042526 | 0.410517 | yes, threshold 0.40 |
+| `orientation-asymmetric` | 1.000000 | 0.592750 | 0.360720 | 0.563545 | 0.193474 | 0.407250 | yes, threshold 0.92 |
+| `depth-overlap-multiprim` | 1.000000 | 0.718102 | 0.815667 | 0.737040 | 0.432669 | 0.184333 | yes, threshold 0.92 |
+| `material-normals-uv` | 1.000000 | 0.865109 | 0.632407 | 0.539372 | 0.281962 | 0.134891 | no; redesign |
+| `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | yes, threshold 0.92 |
 
-The rejected scenes still run and emit evidence, but they are not CI thresholds:
-their worst-perturbation margins are too narrow to distinguish a real regression
-from driver or rasterization variation. Treat them as redesign candidates rather
-than silently weakening the gate.
+Storm and hdSilk agree **exactly** on coverage for every curated scene: raw IoU
+1.000000 with identical coverage counts. The thresholds sit at 0.92 to leave
+room for rasterization differences on backends other than D3D12 WARP and Vulkan
+SwiftShader, both of which currently produce byte-identical captures.
 
-### The harness found its first hdSilk defect
+`material-normals-uv` remains ungated, and now for an honest reason: its
+silhouette is close to vertically symmetric, so a vertical flip still scores
+0.865109 and the 0.134891 margin is below the required 0.18. That is a
+scene-design weakness, not a renderer defect. Redesign the scene rather than
+lower the margin.
 
-`point-instancer-cluster` originally measured 0.175142 correct against a
-0.142396 worst perturbation -- a 0.032745 margin that made it the weakest scene
-in the set. That was not a scene-design problem. hdSilk's mesh Rprim omitted
-`HdChangeTracker::DirtyInstancer` from its initial dirty bits, so
-`HdRprim::_UpdateInstancer` never ran, `GetInstancerId()` stayed empty, and every
-point-instanced prototype was emitted once at its own transform instead of once
-per instance. Point instancing had never worked. hdSilk covered 7373 pixels
-against Storm's 1193 because it drew the unexpanded full-size prototype.
+### Three shipped defects the harness found
 
-Seeding the bit brought coverage to 1488 against Storm's 1197 and turned the
-worst scene into the most discriminating one, which is why it is now gated.
-Two smaller defects were found alongside it: the instance transform was composed
-as `instance * prototype` where Hydra composes `prototype * instance`, and the
-scene authored `quatf[] orientations` when the `UsdGeomPointInstancer` schema
-declares `quath[] orientations` (float quaternions belong in `orientationsf`), so
-the orientations were silently dropped by both renderers and the scene never
-tested the rotation it claimed to.
+The gate paid for itself before it was finished. All three were reported by
+measurement rather than by review, and each had been mis-attributed to scene
+design.
 
-### Known systematic residual
+**hdSilk never conformed the projection to the viewport.** Storm reaches Hydra
+through `UsdImagingGLEngine`, whose free camera conforms the projection to the
+render buffer aspect with `CameraUtilFit`. hdSilk published the caller's raw
+matrix instead, so on any non-square viewport the same stage rendered at a
+different scale. It showed up as hdSilk covering 1.243 to 1.270 times Storm on
+every scene -- suspiciously close to the 160x128 aspect of 1.25 -- and was
+confirmed by rendering at 128x128, where the two compared byte-identical. This
+was a user-visible bug: switching a non-square Viewer between Storm and hdSilk
+changed the framing. Conforming the published matrix took every scene to 1.0.
 
-hdSilk covers consistently more than Storm on every scene: ratios of 1.270,
-1.250, 1.254 and 1.243 across the four. That uniformity points at a single
-projection or viewport scale difference of roughly 12 percent in linear size
-rather than four independent per-scene issues, and it predicts the observed raw
-IoU of about 0.80 for compact single-shape scenes. It is also why
-`point-instancer-cluster` sits lower than the rest at 0.48 while still
-discriminating best: scaling four small separated triangles displaces them
-relative to each other instead of merely enlarging one silhouette. Resolving it
-is the next parity task and should lift every scene's correct score.
+**hdSilk point instancing had never worked.** `HdSilkMesh::GetInitialDirtyBitsMask`
+omitted `HdChangeTracker::DirtyInstancer`, so `HdRprim::_UpdateInstancer` never
+ran, `GetInstancerId()` stayed empty, and each prototype was emitted once at its
+own transform instead of once per instance -- while the unexpanded full-size
+prototype was drawn as well. hdSilk covered 7373 pixels against Storm's 1193.
+hdEmbree seeds the same bit.
+
+**Instance transforms were composed backwards**, as `instance * prototype` where
+Hydra composes row vectors and so uses `prototype * instance`. Latent until a
+prototype carries its own local transform.
+
+A fourth defect was in the test asset rather than the renderer:
+`parity-point-instancer-cluster.usda` authored `quatf[] orientations`, but
+`UsdGeomPointInstancer` declares `quath[] orientations` and puts float
+quaternions in `orientationsf`. The type mismatch meant the orientations were
+silently dropped by *both* renderers, so the scene never tested the rotation it
+claimed to.
 
 `StormSilkParityCaptureDriverTests` is the first automated producer for the
 `ParityImageComparer` contract. The renderer-neutral driver opens one stage

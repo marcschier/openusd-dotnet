@@ -536,19 +536,23 @@ public sealed class StormSilkParityCaptureDriverTests
                 ColorComparisonReady: false,
                 GateEnabled: true,
                 GateReason:
-                    "Measured 0.709154 correct adjusted IoU against a 0.516599 worst perturbation; " +
-                    "0.61 leaves about 0.09 headroom on both sides.",
-                RecommendedMinimumAdjustedIou: 0.61),
+                    "Storm and hdSilk now agree exactly: 1.000000 correct adjusted IoU " +
+                    "against a 0.592750 worst perturbation. 0.92 keeps 0.08 for " +
+                    "rasterization differences on other backends while staying 0.33 " +
+                    "clear of the nearest perturbation.",
+                RecommendedMinimumAdjustedIou: 0.92),
             new ParityScene(
                 "depth-overlap-multiprim",
                 Path.Combine(assetRoot, "parity-depth-overlap-multiprim.usda"),
                 "Overlapping prims exercise retained draw order, depth, and per-prim transforms.",
                 ColorComparisonReady: false,
-                GateEnabled: false,
+                GateEnabled: true,
                 GateReason:
-                    "Rejected for now: measured 0.817816 correct adjusted IoU but 0.743399 " +
-                    "for horizontal mirror, only a 0.074416 margin.",
-                RecommendedMinimumAdjustedIou: 0.78),
+                    "1.000000 correct adjusted IoU against a 0.815667 worst perturbation, " +
+                    "a 0.184333 margin. It was rejected at 0.074416 only because the " +
+                    "projection mismatch depressed the correct score; with exact agreement " +
+                    "it clears the required margin.",
+                RecommendedMinimumAdjustedIou: 0.92),
             new ParityScene(
                 "material-normals-uv",
                 Path.Combine(assetRoot, "parity-material-normals-uv.usda"),
@@ -556,9 +560,13 @@ public sealed class StormSilkParityCaptureDriverTests
                 ColorComparisonReady: true,
                 GateEnabled: false,
                 GateReason:
-                    "Rejected for now: measured 0.865894 correct adjusted IoU but 0.782579 " +
-                    "for vertical flip, only a 0.083315 margin.",
-                RecommendedMinimumAdjustedIou: 0.82),
+                    "Still rejected, and now for the right reason: 1.000000 correct " +
+                    "adjusted IoU but 0.865109 for a vertical flip, a 0.134891 margin " +
+                    "below the required 0.18. Exact agreement removed the projection " +
+                    "mismatch and left a genuine scene-design weakness -- the silhouette " +
+                    "is close to vertically symmetric, so mirroring it barely changes " +
+                    "coverage. Redesign the scene rather than lower the margin.",
+                RecommendedMinimumAdjustedIou: 0.92),
             new ParityScene(
                 "point-instancer-cluster",
                 Path.Combine(assetRoot, "parity-point-instancer-cluster.usda"),
@@ -566,12 +574,12 @@ public sealed class StormSilkParityCaptureDriverTests
                 ColorComparisonReady: false,
                 GateEnabled: true,
                 GateReason:
-                    "Measured 0.481946 correct adjusted IoU against a 0.071429 worst " +
-                    "perturbation, a 0.410517 margin -- the widest of any scene. Its " +
-                    "four small separated triangles make any transform error move " +
-                    "coverage rather than merely resize it, so a wrong instance " +
-                    "transform collapses the score instead of nudging it.",
-                RecommendedMinimumAdjustedIou: 0.40),
+                    "1.000000 correct adjusted IoU against a 0.126576 worst perturbation, " +
+                    "a 0.873424 margin -- the widest of any scene. Four small separated " +
+                    "triangles make a transform error move coverage rather than merely " +
+                    "resize it, so a wrong instance transform collapses the score instead " +
+                    "of nudging it.",
+                RecommendedMinimumAdjustedIou: 0.92),
         ];
     }
 

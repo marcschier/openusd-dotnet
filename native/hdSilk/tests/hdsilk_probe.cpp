@@ -8,6 +8,7 @@
 #include "pxr/base/gf/frustum.h"
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/gf/vec3d.h"
+#include "pxr/imaging/cameraUtil/conformWindow.h"
 
 #include <algorithm>
 #include <array>
@@ -871,6 +872,22 @@ bool IsExplicitFrame(
     const ParsedPage& parsed,
     const openusd_render_camera& camera)
 {
+    // The published projection is conformed to the viewport aspect, matching
+    // what UsdImagingGLEngine's free camera does for Storm. This camera declares
+    // aspect 1.5 while the probe syncs a square 64x64 viewport, so the conformed
+    // matrix must differ from the authored one -- asserting that difference is
+    // what stops this check passing if the conform were dropped again.
+    GfMatrix4d authored(1.0);
+    std::memcpy(
+        const_cast<double*>(authored.GetArray()),
+        camera.projection,
+        sizeof(camera.projection));
+    const GfMatrix4d conformed =
+        CameraUtilConformedWindow(authored, CameraUtilFit, 1.0);
+    if (conformed == authored)
+    {
+        return false;
+    }
     return parsed.frame_width == 64 &&
         parsed.frame_height == 64 &&
         std::memcmp(
@@ -879,7 +896,7 @@ bool IsExplicitFrame(
             sizeof(camera.view)) == 0 &&
         std::memcmp(
             parsed.frame_projection.data(),
-            camera.projection,
+            conformed.GetArray(),
             sizeof(camera.projection)) == 0;
 }
 

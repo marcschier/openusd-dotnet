@@ -14,6 +14,7 @@
 #include "pxr/base/plug/registry.h"
 #include "pxr/base/tf/errorMark.h"
 #include "pxr/base/tf/token.h"
+#include "pxr/imaging/cameraUtil/conformWindow.h"
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/prim.h"
 #include "pxr/usd/usd/stage.h"
@@ -796,6 +797,19 @@ openusd_status openusd_silk_session_sync(
                 viewMatrix, projectionMatrix);
             state->engine->SetRenderBufferSize(GfVec2i(width, height));
 
+            // Storm reaches Hydra through UsdImagingGLEngine, whose free camera
+            // conforms the projection to the render buffer aspect with
+            // CameraUtilFit. Publishing the caller's raw matrix here instead made
+            // hdSilk render the same stage at a different scale from Storm on any
+            // non-square viewport: the parity harness measured hdSilk covering
+            // 1.24-1.27x Storm on every scene, exactly the 160x128 aspect, and a
+            // square viewport compared byte-identical. Conform the published
+            // matrix the same way so both renderers agree.
+            const GfMatrix4d conformedProjection = CameraUtilConformedWindow(
+                projectionMatrix,
+                CameraUtilFit,
+                static_cast<double>(width) / static_cast<double>(height));
+
             UsdImagingGLRenderParams parameters;
             parameters.frame = UsdTimeCode(time_code);
             parameters.showRender = true;
@@ -809,23 +823,17 @@ openusd_status openusd_silk_session_sync(
             HdSilkFrameState frame;
             frame.width = width;
             frame.height = height;
+            HdSilkFlattenMatrix(conformedProjection, frame.projectionMatrix);
             if (camera->mode == OPENUSD_RENDER_CAMERA_MODE_MATRICES)
             {
                 std::memcpy(
                     frame.viewMatrix,
                     camera->view,
                     sizeof(frame.viewMatrix));
-                std::memcpy(
-                    frame.projectionMatrix,
-                    camera->projection,
-                    sizeof(frame.projectionMatrix));
             }
             else
             {
                 HdSilkFlattenMatrix(viewMatrix, frame.viewMatrix);
-                HdSilkFlattenMatrix(
-                    projectionMatrix,
-                    frame.projectionMatrix);
             }
             state->sceneState->SetFrame(frame);
 
