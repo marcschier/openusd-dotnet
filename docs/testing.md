@@ -576,12 +576,44 @@ sides for llvmpipe, WARP, and SwiftShader variation.
 | `orientation-asymmetric` | 0.709154 | 0.473200 | 0.341662 | 0.516599 | 0.255665 | 0.192555 | yes, threshold 0.61 |
 | `depth-overlap-multiprim` | 0.817816 | 0.649724 | 0.743399 | 0.701790 | 0.424651 | 0.074416 | no; redesign |
 | `material-normals-uv` | 0.865894 | 0.782579 | 0.611868 | 0.590372 | 0.230126 | 0.083315 | no; redesign |
-| `point-instancer-cluster` | 0.175142 | 0.142396 | 0.122878 | 0.140305 | 0.134094 | 0.032745 | no; redesign |
+| `point-instancer-cluster` | 0.481946 | 0.071429 | 0.060222 | 0.054112 | 0.042526 | 0.410517 | yes, threshold 0.40 |
 
 The rejected scenes still run and emit evidence, but they are not CI thresholds:
 their worst-perturbation margins are too narrow to distinguish a real regression
 from driver or rasterization variation. Treat them as redesign candidates rather
 than silently weakening the gate.
+
+### The harness found its first hdSilk defect
+
+`point-instancer-cluster` originally measured 0.175142 correct against a
+0.142396 worst perturbation -- a 0.032745 margin that made it the weakest scene
+in the set. That was not a scene-design problem. hdSilk's mesh Rprim omitted
+`HdChangeTracker::DirtyInstancer` from its initial dirty bits, so
+`HdRprim::_UpdateInstancer` never ran, `GetInstancerId()` stayed empty, and every
+point-instanced prototype was emitted once at its own transform instead of once
+per instance. Point instancing had never worked. hdSilk covered 7373 pixels
+against Storm's 1193 because it drew the unexpanded full-size prototype.
+
+Seeding the bit brought coverage to 1488 against Storm's 1197 and turned the
+worst scene into the most discriminating one, which is why it is now gated.
+Two smaller defects were found alongside it: the instance transform was composed
+as `instance * prototype` where Hydra composes `prototype * instance`, and the
+scene authored `quatf[] orientations` when the `UsdGeomPointInstancer` schema
+declares `quath[] orientations` (float quaternions belong in `orientationsf`), so
+the orientations were silently dropped by both renderers and the scene never
+tested the rotation it claimed to.
+
+### Known systematic residual
+
+hdSilk covers consistently more than Storm on every scene: ratios of 1.270,
+1.250, 1.254 and 1.243 across the four. That uniformity points at a single
+projection or viewport scale difference of roughly 12 percent in linear size
+rather than four independent per-scene issues, and it predicts the observed raw
+IoU of about 0.80 for compact single-shape scenes. It is also why
+`point-instancer-cluster` sits lower than the rest at 0.48 while still
+discriminating best: scaling four small separated triangles displaces them
+relative to each other instead of merely enlarging one silhouette. Resolving it
+is the next parity task and should lift every scene's correct score.
 
 `StormSilkParityCaptureDriverTests` is the first automated producer for the
 `ParityImageComparer` contract. The renderer-neutral driver opens one stage

@@ -336,7 +336,13 @@ HdSilkMesh::GetInitialDirtyBitsMask() const
         | HdChangeTracker::DirtyTransform
         | HdChangeTracker::DirtyVisibility
         | HdChangeTracker::DirtyMaterialId
-        | HdChangeTracker::DirtyPrimvar;
+        | HdChangeTracker::DirtyPrimvar
+        // Without DirtyInstancer the first Sync never calls through to
+        // HdRprim::_UpdateInstancer, so GetInstancerId() stays empty and a
+        // point-instanced prototype is emitted once at its own transform
+        // instead of once per instance. hdEmbree seeds the same bit.
+        | HdChangeTracker::DirtyInstancer
+        | HdChangeTracker::DirtyInstanceIndex;
 }
 
 HdDirtyBits
@@ -809,8 +815,11 @@ HdSilkMesh::_BuildInstanceRecords(
         HdSilkMeshRecord instanceRecord = record;
         instanceRecord.instanceId = instanceId;
         instanceRecord.instanceIndex = static_cast<int32_t>(index);
+        // The prototype's own transform applies first, then the instance
+        // transform carries it into world space. USD composes row vectors, so
+        // that is "_transform * instance", matching hdEmbree.
         HdSilkFlattenMatrix(
-            instanceTransforms[index] * _transform,
+            _transform * instanceTransforms[index],
             instanceRecord.transform);
         records.push_back(std::move(instanceRecord));
     }

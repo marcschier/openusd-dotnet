@@ -564,11 +564,14 @@ public sealed class StormSilkParityCaptureDriverTests
                 Path.Combine(assetRoot, "parity-point-instancer-cluster.usda"),
                 "Asymmetric point-instanced placement proves expansion and transform handling.",
                 ColorComparisonReady: false,
-                GateEnabled: false,
+                GateEnabled: true,
                 GateReason:
-                    "Rejected for now: measured 0.175142 correct adjusted IoU and 0.142396 " +
-                    "worst perturbation, only a 0.032745 margin.",
-                RecommendedMinimumAdjustedIou: 0.16),
+                    "Measured 0.481946 correct adjusted IoU against a 0.071429 worst " +
+                    "perturbation, a 0.410517 margin -- the widest of any scene. Its " +
+                    "four small separated triangles make any transform error move " +
+                    "coverage rather than merely resize it, so a wrong instance " +
+                    "transform collapses the score instead of nudging it.",
+                RecommendedMinimumAdjustedIou: 0.40),
         ];
     }
 
