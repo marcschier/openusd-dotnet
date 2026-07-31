@@ -17,16 +17,27 @@ def Xform "World"
         rel material:binding = </World/Looks/WarmMat>
         uniform bool doubleSided = 1
         uniform token subdivisionScheme = "none"
+        # A pennant: a thin vertical mast spanning the full height, with a
+        # triangle attached to its top half only. The previous fan silhouette
+        # was close to vertically symmetric, so a vertical flip still scored
+        # 0.865109 and the scene could not be gated. Mass concentrated in the
+        # upper right against an otherwise empty lower right makes a flip,
+        # a mirror and a transpose all move coverage substantially.
         point3f[] points = [
-            (-0.78, -0.46, 0.08), (0.24, -0.54, 0.08), (0.62, -0.04, 0.08),
-            (0.18, 0.58, 0.08), (-0.52, 0.34, 0.08), (-0.08, -0.02, 0.08)
+            (-0.72, -0.62, 0.08), (-0.52, -0.62, 0.08), (-0.52, 0.68, 0.08),
+            (-0.72, 0.68, 0.08), (0.66, 0.40, 0.08), (-0.52, 0.16, 0.08)
         ]
-        int[] faceVertexCounts = [3, 3, 3, 3]
-        int[] faceVertexIndices = [0, 1, 5, 1, 2, 5, 2, 3, 5, 3, 4, 5]
-        normal3f[] normals = [(0, 0, 1), (0.25, 0, 0.97), (0, 0.35, 0.94), (0, 0, 1), (-0.3, 0, 0.95), (0, 0, 1)] (
+        int[] faceVertexCounts = [3, 3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3, 2, 5, 4]
+        normal3f[] normals = [
+            (0, 0, 1), (0.25, 0, 0.97), (0, 0.30, 0.95),
+            (-0.28, 0, 0.96), (0.35, -0.15, 0.92), (0, -0.25, 0.97)
+        ] (
             interpolation = "vertex"
         )
-        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0.3, 1), (0, 0.5), (0.5, 0.45)] (
+        texCoord2f[] primvars:st = [
+            (0, 0), (0.15, 0), (0.15, 1), (0, 1), (1, 0.75), (0.15, 0.6)
+        ] (
             interpolation = "vertex"
         )
         color3f[] primvars:displayColor = [(0.90, 0.46, 0.18)]

@@ -575,19 +575,23 @@ sides for llvmpipe, WARP, and SwiftShader variation.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `orientation-asymmetric` | 1.000000 | 0.592750 | 0.360720 | 0.563545 | 0.193474 | 0.407250 | yes, threshold 0.92 |
 | `depth-overlap-multiprim` | 1.000000 | 0.718102 | 0.815667 | 0.737040 | 0.432669 | 0.184333 | yes, threshold 0.92 |
-| `material-normals-uv` | 1.000000 | 0.865109 | 0.632407 | 0.539372 | 0.281962 | 0.134891 | no; redesign |
+| `material-normals-uv` | 1.000000 | 0.310060 | 0.253340 | 0.557888 | 0.216277 | 0.442112 | yes, threshold 0.92 |
 | `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | yes, threshold 0.92 |
 
 Storm and hdSilk agree **exactly** on coverage for every curated scene: raw IoU
-1.000000 with identical coverage counts. The thresholds sit at 0.92 to leave
-room for rasterization differences on backends other than D3D12 WARP and Vulkan
-SwiftShader, both of which currently produce byte-identical captures.
+1.000000 with identical coverage counts. All four scenes are gated at 0.92,
+which leaves 0.08 for rasterization differences on backends other than D3D12
+WARP and Vulkan SwiftShader -- both of which currently produce byte-identical
+captures -- while staying at least 0.36 clear of the nearest perturbation.
 
-`material-normals-uv` remains ungated, and now for an honest reason: its
-silhouette is close to vertically symmetric, so a vertical flip still scores
-0.865109 and the 0.134891 margin is below the required 0.18. That is a
-scene-design weakness, not a renderer defect. Redesign the scene rather than
-lower the margin.
+`material-normals-uv` was the last scene admitted. Once exact agreement removed
+the projection error, its remaining weakness was its own silhouette: a vertical
+flip of the original fan shape still scored 0.865109, a 0.134891 margin below
+the required 0.18. It was redesigned as a pennant, a thin full-height mast with
+a triangle on its top half only, so mass sits in the upper right against an
+empty lower right. A vertical flip now costs 0.689940 and the margin is
+0.442112. The scene keeps its bound PreviewSurface, authored vertex normals and
+UVs, so it still proves what it exists to prove.
 
 ### Three shipped defects the harness found
 

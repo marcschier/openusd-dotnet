@@ -558,14 +558,13 @@ public sealed class StormSilkParityCaptureDriverTests
                 Path.Combine(assetRoot, "parity-material-normals-uv.usda"),
                 "Bound PreviewSurface, authored normals, and UVs travel over the ABI.",
                 ColorComparisonReady: true,
-                GateEnabled: false,
+                GateEnabled: true,
                 GateReason:
-                    "Still rejected, and now for the right reason: 1.000000 correct " +
-                    "adjusted IoU but 0.865109 for a vertical flip, a 0.134891 margin " +
-                    "below the required 0.18. Exact agreement removed the projection " +
-                    "mismatch and left a genuine scene-design weakness -- the silhouette " +
-                    "is close to vertically symmetric, so mirroring it barely changes " +
-                    "coverage. Redesign the scene rather than lower the margin.",
+                    "1.000000 correct adjusted IoU against a 0.557888 worst perturbation, " +
+                    "a 0.442112 margin. The original fan silhouette was close to " +
+                    "vertically symmetric and still scored 0.865109 mirrored, a 0.134891 " +
+                    "margin below the required 0.18; the pennant shape concentrates mass " +
+                    "in the upper right so a flip now costs 0.689940.",
                 RecommendedMinimumAdjustedIou: 0.92),
             new ParityScene(
                 "point-instancer-cluster",
