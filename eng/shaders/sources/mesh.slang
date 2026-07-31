@@ -135,6 +135,7 @@ static const float SurfaceEpsilon = 0.001;
 
 /// Mirrors Storm's Preview.Lighting NormalDistribution, including its epsilon, so
 /// the two renderers agree by construction rather than by approximation.
+[ForceInline]
 float NormalDistribution(float specularRoughness, float normalDotHalf)
 {
     float alpha = specularRoughness * specularRoughness;
@@ -146,6 +147,7 @@ float NormalDistribution(float specularRoughness, float normalDotHalf)
 }
 
 /// Schlick-GGX with k = alpha/2, matching Storm's Geometric.
+[ForceInline]
 float Geometric(float specularRoughness, float normalDotLight, float normalDotEye)
 {
     float alpha = specularRoughness * specularRoughness;
@@ -155,11 +157,13 @@ float Geometric(float specularRoughness, float normalDotLight, float normalDotEy
     return geometric;
 }
 
+[ForceInline]
 float SchlickFresnel(float eyeDotHalf)
 {
     return pow(max(0.0, 1.0 - eyeDotHalf), 5.0);
 }
 
+[ForceInline]
 float3 EvaluateDirectSpecular(
     float3 specularColorF0,
     float3 specularColorF90,
