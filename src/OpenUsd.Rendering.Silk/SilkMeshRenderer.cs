@@ -644,6 +644,11 @@ public sealed class SilkMeshRenderer :
                 foreach (SilkMeshGpuResource mesh in batch.Value)
                 {
                     commands.SetUniformBuffer(0, 0, mesh.UniformBuffer);
+                    // The vertex shader always reads its transform from the
+                    // instance table, so bind this mesh's 80-byte uniform buffer
+                    // there as a one-element table. Leaving it unbound worked on
+                    // D3D12 and Vulkan by accident and rendered nothing on Metal.
+                    commands.SetStorageBuffer(0, 6, mesh.UniformBuffer);
                     commands.DrawIndexed(mesh.IndexCount);
                     drawCount++;
                 }

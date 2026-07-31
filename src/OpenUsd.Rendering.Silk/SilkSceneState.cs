@@ -929,9 +929,18 @@ public sealed class SilkSceneGpuResources : IDisposable
         ISilkGraphicsBuffer? uniformBuffer = null;
         try
         {
+            // Storage usage as well as Uniform: the mesh vertex shader always
+            // reads its transform from the instance table at slot 6, so a
+            // non-instanced draw binds this same 80-byte buffer there as a
+            // one-element table. D3D12 and Vulkan happened to render correctly
+            // with slot 6 left unbound because their reflection-driven binding
+            // aliased it onto the uniform buffer; Metal's explicit [[buffer(6)]]
+            // read nothing and collapsed every vertex, which is why hosted macOS
+            // produced only clear-color pixels.
             uniformBuffer = _device.CreateBuffer(
                 SilkSceneUniformWriter.ByteSize,
-                SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+                SilkBufferUsage.Uniform | SilkBufferUsage.Storage |
+                    SilkBufferUsage.Upload);
             return new SilkMeshGpuResource(
                 mesh,
                 geometryResource,
