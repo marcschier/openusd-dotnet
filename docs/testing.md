@@ -143,6 +143,37 @@ Workflow and native-input contracts are also executable without a platform build
 ./eng/shaders/test-expand-verified-archive.ps1
 ```
 
+## Rebuilding only the project native layer
+
+`eng/build-native.ps1` builds OpenUSD from source, which takes roughly ninety
+minutes. Iterating on the project's own native layer does not need that: point
+`OPENUSD_ROOT` at an existing install and build the shim preset directly, which
+takes about thirty seconds after the first configure.
+
+```
+cmake --preset win-x64
+cmake --build --preset win-x64
+ctest --test-dir build/shim/win-x64 --output-on-failure
+```
+
+`native/CMakeLists.txt` has `find_package(Vulkan REQUIRED COMPONENTS
+shaderc_combined)`, and the Vulkan SDK that satisfies it is fetched into
+`native/install/vulkan-sdk-<version>/`, which is not in source control. **A
+checkout that has never run the full native build therefore fails to configure
+with `Could NOT find Vulkan (missing: Vulkan_LIBRARY Vulkan_INCLUDE_DIR
+shaderc_combined)`**, even though nothing about the project layer needs the SDK
+to be fetched again. Point `VULKAN_SDK` at an existing one:
+
+```
+$env:OPENUSD_ROOT = '<repo>/native/install/win-x64'
+$env:VULKAN_SDK   = '<repo>/native/install/vulkan-sdk-1.4.321.0'
+```
+
+This matters more than it looks: without it the native probes cannot run at all,
+so a change to `native/hdSilk` can only be compile-checked. Two separate pieces
+of work were landed compile-only for exactly this reason before the cause was
+identified.
+
 ## Native stage/layer fuzzing
 
 The project-owned stage/layer C ABI has an opt-in Linux Clang libFuzzer target.

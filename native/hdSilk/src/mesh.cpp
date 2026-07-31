@@ -18,6 +18,7 @@
 #include "pxr/imaging/hd/meshUtil.h"
 #include "pxr/imaging/hd/renderIndex.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
+#include "pxr/imaging/hd/types.h"
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/usd/usdGeom/tokens.h"
 
@@ -160,6 +161,163 @@ uint32_t ResolveSemantic(
     }
     return OPENUSD_SILK_ATTRIBUTE_CUSTOM;
 }
+
+bool GetFloatArraySource(
+    const VtValue& value,
+    const void** source,
+    int* numElements,
+    HdType* dataType)
+{
+    if (value.IsHolding<VtFloatArray>())
+    {
+        const VtFloatArray& array = value.UncheckedGet<VtFloatArray>();
+        if (array.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+        {
+            return false;
+        }
+        *source = array.cdata();
+        *numElements = static_cast<int>(array.size());
+        *dataType = HdTypeFloat;
+        return true;
+    }
+    if (value.IsHolding<VtVec2fArray>())
+    {
+        const VtVec2fArray& array = value.UncheckedGet<VtVec2fArray>();
+        if (array.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+        {
+            return false;
+        }
+        *source = array.cdata();
+        *numElements = static_cast<int>(array.size());
+        *dataType = HdTypeFloatVec2;
+        return true;
+    }
+    if (value.IsHolding<VtVec3fArray>())
+    {
+        const VtVec3fArray& array = value.UncheckedGet<VtVec3fArray>();
+        if (array.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+        {
+            return false;
+        }
+        *source = array.cdata();
+        *numElements = static_cast<int>(array.size());
+        *dataType = HdTypeFloatVec3;
+        return true;
+    }
+    if (value.IsHolding<VtVec4fArray>())
+    {
+        const VtVec4fArray& array = value.UncheckedGet<VtVec4fArray>();
+        if (array.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+        {
+            return false;
+        }
+        *source = array.cdata();
+        *numElements = static_cast<int>(array.size());
+        *dataType = HdTypeFloatVec4;
+        return true;
+    }
+    return false;
+}
+
+bool ResolveFaceVaryingPrimvar(
+    const VtValue& value,
+    const HdMeshUtil& meshUtil,
+    std::vector<float>* data,
+    uint32_t* componentCount)
+{
+    const void* source = nullptr;
+    int numElements = 0;
+    HdType dataType = HdTypeInvalid;
+    if (!GetFloatArraySource(value, &source, &numElements, &dataType))
+    {
+        return false;
+    }
+
+    VtValue triangulated;
+    const HdMeshComputationResult result =
+        meshUtil.ComputeTriangulatedFaceVaryingPrimvar(
+            source,
+            numElements,
+            dataType,
+            &triangulated);
+    if (result == HdMeshComputationResult::Error)
+    {
+        return false;
+    }
+    if (result == HdMeshComputationResult::Unchanged)
+    {
+        triangulated = value;
+    }
+
+    const uint32_t count = FlattenPrimvar(triangulated, data);
+    if (count == 0 || data->empty())
+    {
+        return false;
+    }
+    *componentCount = count;
+    return true;
+}
+
+bool ExpandIndexedElements(
+    const std::vector<float>& source,
+    uint32_t componentCount,
+    const std::vector<uint32_t>& indices,
+    std::vector<float>* expanded)
+{
+    if (componentCount == 0 || source.size() % componentCount != 0)
+    {
+        return false;
+    }
+    const size_t elementCount = source.size() / componentCount;
+    expanded->clear();
+    expanded->reserve(indices.size() * componentCount);
+    for (uint32_t index : indices)
+    {
+        if (index >= elementCount)
+        {
+            return false;
+        }
+        const size_t offset = static_cast<size_t>(index) * componentCount;
+        expanded->insert(
+            expanded->end(),
+            source.begin() + static_cast<std::ptrdiff_t>(offset),
+            source.begin() + static_cast<std::ptrdiff_t>(
+                offset + componentCount));
+    }
+    return true;
+}
+
+bool ExpandUniformElements(
+    const std::vector<float>& source,
+    uint32_t componentCount,
+    const std::vector<uint32_t>& triangleSubprims,
+    std::vector<float>* expanded)
+{
+    if (componentCount == 0 || source.size() % componentCount != 0)
+    {
+        return false;
+    }
+    const size_t elementCount = source.size() / componentCount;
+    expanded->clear();
+    expanded->reserve(triangleSubprims.size() * 3 * componentCount);
+    for (uint32_t face : triangleSubprims)
+    {
+        if (face >= elementCount)
+        {
+            return false;
+        }
+        const size_t offset = static_cast<size_t>(face) * componentCount;
+        for (int vertex = 0; vertex < 3; ++vertex)
+        {
+            expanded->insert(
+                expanded->end(),
+                source.begin() + static_cast<std::ptrdiff_t>(offset),
+                source.begin() + static_cast<std::ptrdiff_t>(
+                    offset + componentCount));
+        }
+    }
+    return true;
+}
 }
 
 HdSilkMesh::HdSilkMesh(SdfPath const& id)
@@ -207,7 +365,9 @@ HdSilkMesh::Sync(
 {
     SdfPath const& id = GetId();
 
-    if (HdChangeTracker::IsVisibilityDirty(*dirtyBits, id))
+    const bool visibilityDirty =
+        HdChangeTracker::IsVisibilityDirty(*dirtyBits, id);
+    if (visibilityDirty)
     {
         _UpdateVisibility(sceneDelegate, dirtyBits);
     }
@@ -378,7 +538,16 @@ HdSilkMesh::Sync(
         HdChangeTracker::IsInstancerDirty(*dirtyBits, id) ||
         HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
 
-    if (topologyRefreshed || pointsDirty || transformDirty ||
+    if (!IsVisible())
+    {
+        static_cast<HdSilkRenderParam*>(renderParam)
+            ->GetSceneState()
+            .RemoveMesh(id.GetString());
+        *dirtyBits = HdChangeTracker::Clean;
+        return;
+    }
+
+    if (topologyRefreshed || pointsDirty || transformDirty || visibilityDirty ||
         displayColorDirty || normalsDirty || primvarsDirty || instancerDirty ||
         materialDirty)
     {
@@ -397,15 +566,37 @@ HdSilkMesh::Sync(
             throw std::overflow_error(
                 "The hdSilk point component count overflows size_t.");
         }
-        record.points.reserve(_points.size() * 3);
-        for (const GfVec3f& point : _points)
+        if (_attributesRequireExpandedTopology)
         {
-            record.points.push_back(point[0]);
-            record.points.push_back(point[1]);
-            record.points.push_back(point[2]);
+            record.points.reserve(_triangleIndices.size() * 3);
+            record.indices.reserve(_triangleIndices.size());
+            for (size_t vertex = 0; vertex < _triangleIndices.size(); ++vertex)
+            {
+                const uint32_t pointIndex = _triangleIndices[vertex];
+                if (pointIndex >= _points.size())
+                {
+                    throw std::runtime_error(
+                        "An hdSilk expanded vertex references a missing point.");
+                }
+                const GfVec3f& point = _points[pointIndex];
+                record.points.push_back(point[0]);
+                record.points.push_back(point[1]);
+                record.points.push_back(point[2]);
+                record.indices.push_back(static_cast<uint32_t>(vertex));
+            }
+        }
+        else
+        {
+            record.points.reserve(_points.size() * 3);
+            for (const GfVec3f& point : _points)
+            {
+                record.points.push_back(point[0]);
+                record.points.push_back(point[1]);
+                record.points.push_back(point[2]);
+            }
+            record.indices = _triangleIndices;
         }
 
-        record.indices = _triangleIndices;
         record.triangleSubprims = _triangleSubprims;
         record.attributes = _attributes;
 
@@ -428,17 +619,24 @@ HdSilkMesh::Sync(
 void
 HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id)
 {
-    // Only interpolations that map directly onto emitted triangle-list vertices
-    // are resolved. faceVarying and uniform need re-indexing through
-    // HdMeshUtil::ComputeTriangulatedFaceVaryingPrimvar, which this delegate does
-    // not do yet; those primvars are omitted rather than guessed at, so a
-    // consumer sees an absent attribute instead of silently wrong data. That is
-    // the same contract authored normals have had since ABI 4.
     _attributes.clear();
+    _attributesRequireExpandedTopology = false;
+    HdMeshUtil meshUtil(&_topology, id);
+    struct PendingAttribute
+    {
+        HdPrimvarDescriptor primvar;
+        HdInterpolation interpolation;
+        uint32_t componentCount = 0;
+        std::vector<float> data;
+    };
+    std::vector<PendingAttribute> pending;
+
     static const HdInterpolation resolvable[] = {
         HdInterpolationConstant,
         HdInterpolationVertex,
-        HdInterpolationVarying};
+        HdInterpolationVarying,
+        HdInterpolationFaceVarying,
+        HdInterpolationUniform};
 
     for (HdInterpolation interpolation : resolvable)
     {
@@ -453,40 +651,106 @@ HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id
                 continue;
             }
 
-            std::vector<float> data;
-            const uint32_t componentCount =
-                FlattenPrimvar(sceneDelegate->Get(id, primvar.name), &data);
-            if (componentCount == 0 || data.empty())
+            VtValue value = sceneDelegate->Get(id, primvar.name);
+            PendingAttribute attribute;
+            attribute.primvar = primvar;
+            attribute.interpolation = interpolation;
+            if (interpolation == HdInterpolationFaceVarying)
             {
-                continue;
-            }
-
-            const size_t elementCount = data.size() / componentCount;
-            uint32_t wireInterpolation = 0;
-            if (interpolation == HdInterpolationConstant || elementCount == 1)
-            {
-                wireInterpolation = OPENUSD_SILK_INTERPOLATION_CONSTANT;
-            }
-            else if (elementCount == _points.size())
-            {
-                wireInterpolation = OPENUSD_SILK_INTERPOLATION_VERTEX;
+                if (!ResolveFaceVaryingPrimvar(
+                        value,
+                        meshUtil,
+                        &attribute.data,
+                        &attribute.componentCount) ||
+                    attribute.data.size() !=
+                        _triangleIndices.size() * attribute.componentCount)
+                {
+                    continue;
+                }
+                _attributesRequireExpandedTopology = true;
             }
             else
+            {
+                attribute.componentCount = FlattenPrimvar(value, &attribute.data);
+                if (attribute.componentCount == 0 || attribute.data.empty())
+                {
+                    continue;
+                }
+                if (interpolation == HdInterpolationUniform)
+                {
+                    std::vector<float> expanded;
+                    if (!ExpandUniformElements(
+                            attribute.data,
+                            attribute.componentCount,
+                            _triangleSubprims,
+                            &expanded))
+                    {
+                        continue;
+                    }
+                    attribute.data = std::move(expanded);
+                    _attributesRequireExpandedTopology = true;
+                }
+            }
+
+            pending.push_back(std::move(attribute));
+        }
+    }
+
+    for (PendingAttribute& pendingAttribute : pending)
+    {
+        uint32_t wireInterpolation = 0;
+        std::vector<float> data = std::move(pendingAttribute.data);
+        const uint32_t componentCount = pendingAttribute.componentCount;
+        if (data.size() % componentCount != 0)
+        {
+            continue;
+        }
+        const size_t elementCount = data.size() / componentCount;
+        if (pendingAttribute.interpolation == HdInterpolationConstant ||
+            elementCount == 1)
+        {
+            wireInterpolation = OPENUSD_SILK_INTERPOLATION_CONSTANT;
+        }
+        else
+        {
+            if (_attributesRequireExpandedTopology &&
+                (pendingAttribute.interpolation == HdInterpolationVertex ||
+                 pendingAttribute.interpolation == HdInterpolationVarying))
+            {
+                std::vector<float> expanded;
+                if (elementCount != _points.size() ||
+                    !ExpandIndexedElements(
+                        data,
+                        componentCount,
+                        _triangleIndices,
+                        &expanded))
+                {
+                    continue;
+                }
+                data = std::move(expanded);
+            }
+            if (data.size() / componentCount !=
+                (_attributesRequireExpandedTopology
+                    ? _triangleIndices.size()
+                    : _points.size()))
             {
                 // An element count that matches neither one nor the point count
                 // cannot be indexed by the emitted vertices.
                 continue;
             }
-
-            HdSilkMeshAttribute attribute;
-            attribute.name = primvar.name.GetString();
-            attribute.semantic =
-                ResolveSemantic(primvar.name, primvar.role, componentCount);
-            attribute.componentCount = componentCount;
-            attribute.interpolation = wireInterpolation;
-            attribute.data = std::move(data);
-            _attributes.push_back(std::move(attribute));
+            wireInterpolation = OPENUSD_SILK_INTERPOLATION_VERTEX;
         }
+
+        HdSilkMeshAttribute attribute;
+        attribute.name = pendingAttribute.primvar.name.GetString();
+        attribute.semantic = ResolveSemantic(
+            pendingAttribute.primvar.name,
+            pendingAttribute.primvar.role,
+            componentCount);
+        attribute.componentCount = componentCount;
+        attribute.interpolation = wireInterpolation;
+        attribute.data = std::move(data);
+        _attributes.push_back(std::move(attribute));
     }
 
     // A stable order keeps the page byte-identical for an unchanged scene, which

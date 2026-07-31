@@ -939,6 +939,9 @@ bool VerifyPrimvarAttributes(const std::vector<ParsedAttribute>& attributes)
     const ParsedAttribute* st = nullptr;
     const ParsedAttribute* weight = nullptr;
     const ParsedAttribute* tint = nullptr;
+    const ParsedAttribute* normals = nullptr;
+    const ParsedAttribute* faceWeight = nullptr;
+    const ParsedAttribute* uniformWeight = nullptr;
     for (const ParsedAttribute& attribute : attributes)
     {
         if (attribute.name == "st")
@@ -953,8 +956,21 @@ bool VerifyPrimvarAttributes(const std::vector<ParsedAttribute>& attributes)
         {
             tint = &attribute;
         }
+        else if (attribute.name == "normals")
+        {
+            normals = &attribute;
+        }
+        else if (attribute.name == "probeFaceWeight")
+        {
+            faceWeight = &attribute;
+        }
+        else if (attribute.name == "probeUniformWeight")
+        {
+            uniformWeight = &attribute;
+        }
     }
-    if (st == nullptr || weight == nullptr || tint == nullptr)
+    if (st == nullptr || weight == nullptr || tint == nullptr ||
+        normals == nullptr || faceWeight == nullptr || uniformWeight == nullptr)
     {
         return false;
     }
@@ -972,18 +988,33 @@ bool VerifyPrimvarAttributes(const std::vector<ParsedAttribute>& attributes)
     return st->semantic == OPENUSD_SILK_ATTRIBUTE_TEXCOORD &&
         st->componentCount == 2 &&
         st->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
-        st->elementCount == 3 &&
+        st->elementCount == 6 &&
         st->firstValue == 0.0F &&
         weight->semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
         weight->componentCount == 1 &&
         weight->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
-        weight->elementCount == 3 &&
+        weight->elementCount == 6 &&
         weight->firstValue == 0.25F &&
         tint->semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
         tint->componentCount == 3 &&
         tint->interpolation == OPENUSD_SILK_INTERPOLATION_CONSTANT &&
         tint->elementCount == 1 &&
-        tint->firstValue == 0.2F;
+        tint->firstValue == 0.2F &&
+        normals->semantic == OPENUSD_SILK_ATTRIBUTE_NORMAL &&
+        normals->componentCount == 3 &&
+        normals->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
+        normals->elementCount == 6 &&
+        normals->firstValue == 0.0F &&
+        faceWeight->semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
+        faceWeight->componentCount == 1 &&
+        faceWeight->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
+        faceWeight->elementCount == 6 &&
+        faceWeight->firstValue == 0.125F &&
+        uniformWeight->semantic == OPENUSD_SILK_ATTRIBUTE_CUSTOM &&
+        uniformWeight->componentCount == 1 &&
+        uniformWeight->interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX &&
+        uniformWeight->elementCount == 6 &&
+        uniformWeight->firstValue == 0.875F;
 }
 
 bool AuthorSharedMesh(
@@ -1562,10 +1593,10 @@ int main(int argc, char** argv)
         return 5;
     }
 
-    // ABI v4 attribute table: the stage authors a texture coordinate set, an
-    // arbitrary named primvar and a constant primvar, and all three must arrive
-    // resolved onto the emitted vertices. Without this, nothing proves texture
-    // coordinates reach a consumer at all, which the shading work depends on.
+    // ABI v4 attribute table: the stage authors texture coordinates, arbitrary
+    // named primvars, a constant primvar, and face-varying normals. All must
+    // arrive resolved onto the emitted vertices. Without this, nothing proves
+    // texture coordinates or authored normals reach a consumer at all.
     if (!initial.found_primvar_mesh ||
         !VerifyPrimvarAttributes(initial.primvar_mesh_attributes))
     {
@@ -1583,6 +1614,57 @@ int main(int argc, char** argv)
                       << " first=" << attribute.firstValue << "}";
         }
         std::cerr << "\n";
+        return 5;
+    }
+
+    if (openusd_geom_imageable_set_visibility(
+            stage,
+            PrimvarMeshPath,
+            OPENUSD_GEOM_VISIBILITY_INVISIBLE,
+            0,
+            0.0,
+            &error) != OPENUSD_STATUS_OK)
+    {
+        openusd_silk_session_release(session);
+        openusd_stage_release(stage);
+        std::cerr << "Primvar mesh visibility edit failed: "
+                  << errorText.data() << "\n";
+        return 5;
+    }
+    ParsedPage hidden;
+    if (Sync(session, &hidden, &error) != OPENUSD_STATUS_OK ||
+        std::find(
+            hidden.remove_paths.begin(),
+            hidden.remove_paths.end(),
+            PrimvarMeshPath) == hidden.remove_paths.end())
+    {
+        openusd_silk_session_release(session);
+        openusd_stage_release(stage);
+        std::cerr << "Invisible hdSilk mesh did not emit removal.\n";
+        return 5;
+    }
+    if (openusd_geom_imageable_set_visibility(
+            stage,
+            PrimvarMeshPath,
+            OPENUSD_GEOM_VISIBILITY_INHERITED,
+            0,
+            0.0,
+            &error) != OPENUSD_STATUS_OK)
+    {
+        openusd_silk_session_release(session);
+        openusd_stage_release(stage);
+        std::cerr << "Primvar mesh visibility restore failed: "
+                  << errorText.data() << "\n";
+        return 5;
+    }
+    ParsedPage visible;
+    if (Sync(session, &visible, &error) != OPENUSD_STATUS_OK ||
+        !visible.found_primvar_mesh ||
+        !VerifyPrimvarAttributes(visible.primvar_mesh_attributes))
+    {
+        openusd_silk_session_release(session);
+        openusd_stage_release(stage);
+        std::cerr << "Restored visible hdSilk mesh did not republish attributes.\n";
         return 5;
     }
 

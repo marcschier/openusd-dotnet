@@ -87,10 +87,12 @@ extern "C" {
 /// authored normals, texture coordinates and arbitrary primvars all use one
 /// mechanism and a new attribute needs no further ABI bump. Data is always
 /// float and always already resolved to the emitted triangle-list vertices, so
-/// element_count equals point_count for vertex and varying interpolation and 1
-/// for constant interpolation. Interpolations that would need re-indexing,
-/// namely faceVarying and uniform, are omitted entirely rather than guessed at,
-/// so a consumer sees an absent attribute instead of silently wrong data.
+/// element_count equals point_count for vertex interpolation and 1 for constant
+/// interpolation. faceVarying primvars are triangulated through HdMeshUtil, and
+/// uniform primvars are expanded from authored-face values through the
+/// triangle_subprims mapping. Interpolations that cannot be resolved are omitted
+/// entirely rather than guessed at, so a consumer sees an absent attribute
+/// instead of silently wrong data.
 ///
 /// Every entry carries its authored primvar name, whatever its semantic. The
 /// name is required rather than decorative: a mesh may carry several texture

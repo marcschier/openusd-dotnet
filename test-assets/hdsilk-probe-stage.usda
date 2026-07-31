@@ -5,9 +5,10 @@
 
 # Stage for the hdSilk probe. It keeps minimal.usda's Cube so the existing
 # implicit-surface coverage is unchanged, and adds one mesh that authors a
-# texture coordinate set and an arbitrary primvar. hdSilk must publish both over
-# the ABI 4 vertex attribute table; without authored UVs there is nothing to
-# prove that texture coordinates reach a consumer at all.
+# texture coordinate sets, arbitrary primvars and authored face-varying normals.
+# hdSilk must publish each resolved attribute over the ABI 4 vertex attribute
+# table; without authored UVs there is nothing to prove that texture
+# coordinates reach a consumer at all.
 def Xform "World"
 {
     def Cube "Cube"
@@ -17,19 +18,35 @@ def Xform "World"
 
     def Mesh "PrimvarMesh"
     {
-        int[] faceVertexCounts = [3]
-        int[] faceVertexIndices = [0, 1, 2]
-        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
 
         # Vertex interpolation resolves directly onto the emitted triangle-list
-        # vertices, which is the only interpolation hdSilk publishes today.
-        texCoord2f[] primvars:st = [(0, 0), (1, 0), (0, 1)] (
+        # vertices, and is expanded when any face-varying or uniform primvar
+        # forces hdSilk to emit a de-indexed triangle list.
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
             interpolation = "vertex"
         )
 
         # An arbitrary primvar with no bound semantic, carried by name alone.
-        float[] primvars:probeWeight = [0.25, 0.5, 0.75] (
+        float[] primvars:probeWeight = [0.25, 0.5, 0.75, 1.0] (
             interpolation = "vertex"
+        )
+
+        # Face-varying normals and custom data prove hdSilk re-indexes authored
+        # values through HdMeshUtil rather than recomputing normals or guessing.
+        normal3f[] normals = [(0, 0, 1), (0, 1, 0), (1, 0, 0), (0, -1, 0)] (
+            interpolation = "faceVarying"
+        )
+        float[] primvars:probeFaceWeight = [0.125, 0.25, 0.375, 0.5] (
+            interpolation = "faceVarying"
+        )
+
+        # Uniform interpolation expands one value per authored face to every
+        # emitted triangle-list vertex decoded through primitiveParams.
+        float[] primvars:probeUniformWeight = [0.875] (
+            interpolation = "uniform"
         )
 
         # Constant interpolation collapses to a single element on the wire.

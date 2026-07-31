@@ -71,7 +71,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v6 and
-hdSilk session ABI v4; the hdSilk page ABI is v4. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v4; the hdSilk page ABI is v5. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -661,12 +661,27 @@ always float and always already resolved onto the emitted triangle-list vertices
 re-indexes it against the topology: `element_count` equals `point_count` for vertex interpolation and 1 for
 constant interpolation, which the consumer expands.
 
+faceVarying attributes are resolved natively with `HdMeshUtil::ComputeTriangulatedFaceVaryingPrimvar`.
+Uniform attributes expand one authored-face value to each emitted triangle vertex using the
+`triangle_subprims` mapping decoded from Hydra `primitiveParams`. When either interpolation appears,
+hdSilk publishes a de-indexed triangle list for that mesh so every non-constant attribute still has
+one element per emitted vertex. If a primvar cannot be resolved exactly, the attribute is omitted and
+the managed consumer keeps its existing fallback.
+
 Authored normals are the first attribute to use it, and they close a real gap. Before v4 the renderer
 recomputed area-weighted vertex normals from topology because the page could not carry them, so authored
 normals were silently discarded. hdSilk now publishes them when it can resolve them directly onto emitted
 vertices; when it cannot, it publishes none and the renderer computes them exactly as before, rather than
 this delegate guessing at a re-indexing it cannot verify. Both paths still normalise and reject a degenerate
 normal, so an authored zero or non-finite value never reaches the GPU.
+
+Other mesh state is deliberately narrower. hdSilk now removes invisible Rprims
+from retained state and republishes them when visibility becomes inherited again.
+Purpose is filtered by the `UsdImagingGLRenderParams` render-purpose flags rather
+than carried on the page. The managed D3D12, Vulkan, and Metal mesh pipelines all
+use less-equal depth with depth writes and no back-face culling, so authored
+`doubleSided`/cull style and draw modes are not represented yet. Camera clipping
+travels through the view/projection matrices; arbitrary clip planes do not.
 
 hdSilk registers `extComputation` as a supported Sprim type. Without that Sprim, Hydra never creates the computation
 that UsdSkel depends on, and pulling computed primvars for a skinned mesh faults. Skinned points are therefore read
