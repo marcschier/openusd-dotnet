@@ -84,14 +84,12 @@ public sealed partial class MetalSilkGraphicsDevice
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentOutOfRangeException.ThrowIfZero(size);
-        if (usage.HasFlag(SilkBufferUsage.Storage) &&
-            usage.HasFlag(SilkBufferUsage.Upload))
-        {
-            throw new ArgumentException(
-                "Metal storage buffers are device-local and cannot also be upload buffers.",
-                nameof(usage));
-        }
         RegisterDependentObject();
+        // Storage and Upload together are legitimate on Metal, unlike the
+        // device-local/staging split D3D12 and Vulkan draw. A shared-mode buffer
+        // is both CPU-writable and usable as a shader storage buffer, which is
+        // exactly what the per-mesh instance table needs, so the mode selection
+        // below already covers the combination.
         MTLResourceOptions options = usage.HasFlag(SilkBufferUsage.Upload)
             ? MTLResourceOptions.ResourceStorageModeShared
             : MTLResourceOptions.ResourceStorageModePrivate;
