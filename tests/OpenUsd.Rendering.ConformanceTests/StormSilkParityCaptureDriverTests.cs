@@ -601,7 +601,13 @@ public sealed class StormSilkParityCaptureDriverTests
                     "resize it, so a wrong instance transform collapses the score instead " +
                     "of nudging it.",
                 RecommendedMinimumAdjustedIou: 0.92),
+
         ];
+        // parity-single-sided-winding.usda is authored and measured but not
+        // registered yet. Storm draws nothing for it and hdSilk draws it in full,
+        // so registering it would fail the driver's requirement that a reference
+        // capture contain coverage. It becomes the acceptance test the moment
+        // hdSilk honours authored double-sidedness; see mesh-parity-cull-style.
     }
 
     private static CameraState ShiftCamera(CameraState camera, float x)
@@ -681,6 +687,7 @@ public sealed class StormSilkParityCaptureDriverTests
             "test-assets\\parity\\parity-depth-overlap-multiprim.usda",
             "test-assets\\parity\\parity-material-normals-uv.usda",
             "test-assets\\parity\\parity-point-instancer-cluster.usda",
+            "test-assets\\parity\\parity-single-sided-winding.usda",
             "docs\\testing.md",
         ];
         var files = new List<object>();

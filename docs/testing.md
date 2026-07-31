@@ -621,6 +621,32 @@ Their colour deltas sit near 88 and are recorded as evidence, not gated. Making
 them colour-gateable means binding materials to them, which is a scene change
 rather than a renderer change.
 
+### A measured gap: authored double-sidedness
+
+`test-assets/parity/parity-single-sided-winding.usda` is authored and measured
+but deliberately **not registered** in the harness yet. It is a pennant wound so
+the camera sees its back face, with `doubleSided = 0`.
+
+| `doubleSided` | Storm coverage | hdSilk coverage |
+| ---: | ---: | ---: |
+| `0` | **0** | 2279 |
+| `1` | 2279 | 2279 |
+
+Same geometry, same winding, one attribute changed. Storm culls the back faces
+of a single-sided prim and hdSilk does not, because hdSilk's mesh pipeline is
+created with no cull mode and the page ABI carries no per-mesh sidedness.
+Setting `cullStyle` on `UsdImagingGLRenderParams` does not change this: the
+prim's own cull style wins, so the global render parameter is not the lever.
+
+Registering the scene today would fail the driver's requirement that a reference
+capture contain coverage, so it stays out of `CreateScenes` until hdSilk honours
+authored sidedness -- at which point it is the acceptance test, already written
+and already measured.
+
+Worth stating plainly: every currently gated scene declares `doubleSided = 1`,
+so the existing suite could never have found this. It took a scene written
+specifically to discriminate on the attribute.
+
 `material-normals-uv` was the last scene admitted. Once exact agreement removed
 the projection error, its remaining weakness was its own silhouette: a vertical
 flip of the original fan shape still scored 0.865109, a 0.134891 margin below
