@@ -891,32 +891,62 @@ public sealed partial class MetalSilkGraphicsDevice
     private void BindMaterialArguments(
         MTLRenderCommandEncoder encoder,
         SilkBindingLayoutDescriptor layout,
-        IReadOnlyList<MetalMaterialBinding> bindings)
+        List<MetalMaterialBinding> bindings)
     {
-        if (MaterialDescriptorTables is { } descriptorTables &&
-            descriptorTables.TryBind(encoder, layout, bindings))
+        // The argument-buffer table is a fragment-side table: it encodes into a
+        // fragment argument buffer and only calls SetFragmentBuffer. A binding the
+        // vertex stage must see -- the instance table at slot 6 -- would be encoded
+        // there and never reach the vertex function, so it is bound directly and
+        // only the fragment-only remainder is offered to the table.
+        List<MetalMaterialBinding> fragmentOnly = [];
+        foreach (MetalMaterialBinding binding in bindings)
+        {
+            int slotIndex = layout.RequireMaterialSlot(0, binding.Binding, binding.Kind);
+            if (layout.MaterialSlots[slotIndex].Visibility
+                .HasFlag(SilkShaderStageVisibility.Vertex))
+            {
+                BindDirectly(encoder, binding);
+                continue;
+            }
+
+            fragmentOnly.Add(binding);
+        }
+
+        if (fragmentOnly.Count == 0)
         {
             return;
         }
 
-        foreach (MetalMaterialBinding binding in bindings)
+        if (MaterialDescriptorTables is { } descriptorTables &&
+            descriptorTables.TryBind(encoder, layout, fragmentOnly))
         {
-            _ = layout.RequireMaterialSlot(0, binding.Binding, binding.Kind);
-            if (binding.Kind == SilkBindingKind.StorageBuffer)
-            {
-                encoder.SetVertexBuffer(binding.Buffer!.Buffer, 0, binding.Binding);
-                encoder.SetFragmentBuffer(binding.Buffer.Buffer, 0, binding.Binding);
-                continue;
-            }
-            if (binding.Kind == SilkBindingKind.SampledTexture)
-            {
-                encoder.SetFragmentTexture(binding.Texture!.Texture, binding.Binding);
-                continue;
-            }
-            encoder.SetFragmentSamplerState(
-                binding.Sampler!.Sampler,
-                binding.Binding);
+            return;
         }
+
+        foreach (MetalMaterialBinding binding in fragmentOnly)
+        {
+            BindDirectly(encoder, binding);
+        }
+    }
+
+    private static void BindDirectly(
+        MTLRenderCommandEncoder encoder,
+        MetalMaterialBinding binding)
+    {
+        if (binding.Kind == SilkBindingKind.StorageBuffer)
+        {
+            encoder.SetVertexBuffer(binding.Buffer!.Buffer, 0, binding.Binding);
+            encoder.SetFragmentBuffer(binding.Buffer.Buffer, 0, binding.Binding);
+            return;
+        }
+        if (binding.Kind == SilkBindingKind.SampledTexture)
+        {
+            encoder.SetFragmentTexture(binding.Texture!.Texture, binding.Binding);
+            return;
+        }
+        encoder.SetFragmentSamplerState(
+            binding.Sampler!.Sampler,
+            binding.Binding);
     }
 
     private static void EncodeSelectionOutlineDraw(
