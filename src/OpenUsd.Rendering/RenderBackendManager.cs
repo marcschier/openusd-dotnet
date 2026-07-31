@@ -444,8 +444,16 @@ public sealed class RenderBackendManager : IAsyncDisposable
 
     private async Task DisposeCoreAsync()
     {
-        await Task.Yield();
+        // Marked before the yield, so it happens synchronously inside the
+        // DisposeAsync lock and is visible the moment DisposeAsync returns.
+        // Yielding first left a window where work already queued on the gate
+        // could acquire it, see state 0 in EnterAsync, and run after disposal
+        // had been requested. That made ConcurrentDisposeWaitsForActiveWork-
+        // AndRejectsQueuedWork intermittently fail, and it was a real contract
+        // hole: a caller that invoked DisposeAsync without awaiting it could
+        // still have subsequent work accepted.
         Volatile.Write(ref _disposeState, 1);
+        await Task.Yield();
         await _gate.WaitAsync().ConfigureAwait(false);
         bool completed = false;
         try
