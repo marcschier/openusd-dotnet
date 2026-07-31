@@ -137,6 +137,9 @@ jobs:
           -Platform windows-wgl
           -SharedStageSoak
           -SoakSeconds 90
+      - name: Execute Windows WGL Storm-to-hdSilk parity capture
+        shell: pwsh
+        run: ./eng/run-parity-capture.ps1 -Rid win-x64 -Configuration Release
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -144,8 +147,10 @@ jobs:
           name: render-windows-wgl-${{ github.run_id }}
           path: |
             artifacts/platform-smoke/windows-wgl
+            artifacts/parity-capture/win-x64
             artifacts/silk-probe/win-x64/shared-stage-soak.json
             artifacts/native-input/win-x64/source.json
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults
           if-no-files-found: warn
 
   windows-vulkan-required:
@@ -402,19 +407,10 @@ jobs:
           done
           ctest --test-dir native/build/shim/linux-x64 --output-on-failure
       - name: Execute Linux GLX Storm-to-hdSilk parity capture
-        if: env.NATIVE_SOURCE == 'build'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           $env:DISPLAY = ':94'
-          $env:OPENUSD_PARITY_CAPTURE_REQUIRED = '1'
-          $nativeLibraryPaths = @(
-            (Resolve-Path native/install/shim/linux-x64/lib).Path,
-            (Resolve-Path native/install/linux-x64/lib).Path)
-          if (-not [string]::IsNullOrWhiteSpace($env:LD_LIBRARY_PATH)) {
-            $nativeLibraryPaths += $env:LD_LIBRARY_PATH
-          }
-          $env:LD_LIBRARY_PATH = $nativeLibraryPaths -join ':'
           $xvfb = Start-Process Xvfb `
             -ArgumentList @($env:DISPLAY, '-screen', '0', '1280x720x24', '-ac', '-nolisten', 'tcp') `
             -RedirectStandardOutput artifacts/linux-parity-xvfb.out `
@@ -428,16 +424,7 @@ jobs:
               }
               Start-Sleep -Milliseconds 50
             }
-            dotnet build tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
-              -c Release `
-              -f net10.0
-            ./eng/run-managed-tests.ps1 `
-              -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
-              -Framework net10.0 `
-              -Configuration Release `
-              -TestArguments @(
-                '--treenode-filter',
-                '/*/*/StormSilkParityCaptureDriverTests/*')
+            ./eng/run-parity-capture.ps1 -Rid linux-x64 -Configuration Release
           } finally {
             Stop-Process -Id $xvfb.Id -ErrorAction SilentlyContinue
           }
@@ -561,6 +548,7 @@ jobs:
           path: |
             artifacts/platform-smoke/linux-x11
             artifacts/platform-smoke/linux-wayland
+            artifacts/parity-capture/linux-x64
             artifacts/silk-probe/linux-x64/shared-stage-soak.json
             artifacts/native-input/linux-x64/source.json
             artifacts/package-linux-storm-child
