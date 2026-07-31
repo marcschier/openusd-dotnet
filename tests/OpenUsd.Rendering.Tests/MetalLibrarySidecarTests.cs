@@ -17,8 +17,17 @@ public sealed class MetalLibrarySidecarTests
         "HasValidMetalLibraryPairForTesting",
         BindingFlags.NonPublic | BindingFlags.Static)!;
 
+    private static readonly int MetalProgramCount =
+        MetalLibraryPair.LoadCheckedSources().Count;
+
+    private static readonly string ExpectedEntryPointMessage =
+        $"exactly {MetalProgramCount} entry points";
+
+    private static readonly string ExpectedSourceMessage =
+        $"exactly {MetalProgramCount} sources";
+
     [Test]
-    public async Task ValidSyntheticPairMatchesCheckedTenEntryContract()
+    public async Task ValidSyntheticPairMatchesCheckedMetalContract()
     {
         using var pair = MetalLibraryPair.Create();
 
@@ -28,6 +37,20 @@ public sealed class MetalLibrarySidecarTests
         await Assert.That(validated).IsEquivalentTo(pair.LibraryBytes);
         await Assert.That(validatedAgain).IsEquivalentTo(pair.LibraryBytes);
         await Assert.That(InvokeAvailability(pair)).IsTrue();
+    }
+
+    [Test]
+    public async Task CheckedMetalContractCoversEveryPermutation()
+    {
+        // The packed macOS library carries one entry per checked program with a
+        // Metal artifact, which the permutation build expanded well past the
+        // original ten. Pinning "more than the ten base programs" on Windows is
+        // what stops the validator silently drifting back to a fixed count.
+        await Assert.That(MetalProgramCount).IsGreaterThan(10);
+        await Assert.That(MetalLibraryPair.LoadCheckedSources()
+            .Select(source => (string)((JsonObject)source!)["programName"]!)
+            .Distinct(StringComparer.Ordinal)
+            .Count()).IsEqualTo(MetalProgramCount);
     }
 
     [Test]
@@ -91,7 +114,7 @@ public sealed class MetalLibrarySidecarTests
         {
             RemoveByProgramName(missing.EntryPoints, "compute.fill");
             missing.WriteManifest();
-            await AssertInvalidContract(missing, "exactly 10 entry points");
+            await AssertInvalidContract(missing, ExpectedEntryPointMessage);
         }
 
         using (var duplicate = MetalLibraryPair.Create())
@@ -122,7 +145,7 @@ public sealed class MetalLibrarySidecarTests
         {
             RemoveByProgramName(missing.Sources, "compute.fill");
             missing.WriteManifest();
-            await AssertInvalidContract(missing, "exactly 10 sources");
+            await AssertInvalidContract(missing, ExpectedSourceMessage);
         }
 
         using (var duplicate = MetalLibraryPair.Create())
@@ -145,14 +168,14 @@ public sealed class MetalLibrarySidecarTests
             missingEntry.WriteManifest();
             await AssertInvalidContract(
                 missingEntry,
-                "exactly 10 entry points");
+                ExpectedEntryPointMessage);
         }
 
         using (var missingSource = MetalLibraryPair.Create())
         {
             RemoveByProgramName(missingSource.Sources, "pick.vertex");
             missingSource.WriteManifest();
-            await AssertInvalidContract(missingSource, "exactly 10 sources");
+            await AssertInvalidContract(missingSource, ExpectedSourceMessage);
         }
     }
 
@@ -167,7 +190,7 @@ public sealed class MetalLibrarySidecarTests
             missingEntry.WriteManifest();
             await AssertInvalidContract(
                 missingEntry,
-                "exactly 10 entry points");
+                ExpectedEntryPointMessage);
         }
 
         using (var missingSource = MetalLibraryPair.Create())
@@ -176,7 +199,7 @@ public sealed class MetalLibrarySidecarTests
                 missingSource.Sources,
                 "selection.mask.vertex");
             missingSource.WriteManifest();
-            await AssertInvalidContract(missingSource, "exactly 10 sources");
+            await AssertInvalidContract(missingSource, ExpectedSourceMessage);
         }
     }
 
@@ -373,7 +396,12 @@ public sealed class MetalLibrarySidecarTests
 
         public void Dispose() => System.IO.Directory.Delete(Directory, recursive: true);
 
-        private static JsonArray LoadCheckedSources()
+        // Derived from the embedded checked manifest rather than a hardcoded program
+        // list. An earlier version duplicated the validator's ten-name allowlist, so
+        // the synthetic sidecar and the validator agreed with each other while both
+        // disagreed with the real macOS sidecar once permutations expanded the set.
+        // Deriving both sides from the manifest is what makes this a real guard.
+        internal static JsonArray LoadCheckedSources()
         {
             using Stream stream = typeof(SilkCheckedShaderAssets).Assembly
                 .GetManifestResourceStream(
@@ -384,15 +412,11 @@ public sealed class MetalLibrarySidecarTests
                 .GetProperty("programs").EnumerateArray())
             {
                 string programName = program.GetProperty("name").GetString()!;
-                if (programName is not ("mesh.vertex" or "mesh.fragment" or
-                    "pick.vertex" or "pick.fragment" or
-                    "selection.mask.vertex" or "selection.mask.fragment" or
-                    "selection.outline.vertex" or "selection.outline.fragment" or
-                    "compute.fill" or "compute.scale"))
+                if (!program.GetProperty("artifacts")
+                    .TryGetProperty("metal", out JsonElement metal))
                 {
                     continue;
                 }
-                JsonElement metal = program.GetProperty("artifacts").GetProperty("metal");
                 sources.Add(new JsonObject
                 {
                     ["programName"] = programName,

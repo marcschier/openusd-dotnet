@@ -329,24 +329,23 @@ public static partial class SilkCheckedShaderAssets
 
     private static MetalShaderIdentity[] LoadExpectedMetalIdentities()
     {
+        // Every program in the checked manifest that has a Metal artifact belongs
+        // in the packed library. This used to filter to a hardcoded list of ten
+        // base program names, which silently excluded the shader permutations and
+        // made the sidecar's 28 entries fail an "exactly 10" check on macOS only.
+        // The manifest is the single source of truth for what was built.
         using JsonDocument document = JsonDocument.Parse(LoadEmbedded("manifest.json"));
         JsonElement programs = RequireProperty(document.RootElement, "programs");
         RequireArray(programs, "checked shader programs");
-        var identities = new List<MetalShaderIdentity>(10);
+        var identities = new List<MetalShaderIdentity>(programs.GetArrayLength());
         foreach (JsonElement program in programs.EnumerateArray())
         {
             string programName = RequireString(program, "name");
-            if (programName is not ("mesh.vertex" or "mesh.fragment" or
-                "pick.vertex" or "pick.fragment" or
-                "selection.mask.vertex" or "selection.mask.fragment" or
-                "selection.outline.vertex" or "selection.outline.fragment" or
-                "compute.fill" or "compute.scale"))
+            if (!RequireProperty(program, "artifacts")
+                .TryGetProperty("metal", out JsonElement metal))
             {
                 continue;
             }
-            JsonElement metal = RequireProperty(
-                RequireProperty(program, "artifacts"),
-                "metal");
             identities.Add(new MetalShaderIdentity(
                 programName,
                 RequireString(metal, "path"),
@@ -355,11 +354,12 @@ public static partial class SilkCheckedShaderAssets
                 RequireString(program, "entryPoint"),
                 RequireString(program, "stage")));
         }
-        if (identities.Count != 10 || identities.Select(item => item.ProgramName)
-            .Distinct(StringComparer.Ordinal).Count() != 10)
+        if (identities.Count == 0 || identities.Select(item => item.ProgramName)
+            .Distinct(StringComparer.Ordinal).Count() != identities.Count)
         {
             throw new InvalidDataException(
-                "The embedded checked shader manifest does not contain the ten Metal programs.");
+                "The embedded checked shader manifest declares no Metal programs, " +
+                "or declares the same program name twice.");
         }
         return [.. identities];
     }
