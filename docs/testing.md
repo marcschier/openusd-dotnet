@@ -532,11 +532,25 @@ native runtime is not blocked. Verified by running the suite both ways: with the
 variable set the parity tests fail naming the missing library, without it they
 skip and the suite stays green.
 
-The per-scene `RecommendedMinimumAdjustedIou` values are **provisional and
-unmeasured**. They were authored without a runnable Storm, so no scene margin was
-ever generated. `parity-harness-ci` owns measuring the correct value and each
-perturbation per scene and replacing them. Until then they are a placeholder, not
-evidence, and must not be used as a gate.
+The parity scenes were measured on Windows with the staged Storm runtime from
+`native/install`, Mesa llvmpipe WGL 26.1.5, D3D12 WARP, and packaged
+SwiftShader. The gate is intentionally narrow until the scenes are redesigned:
+only `orientation-asymmetric` has enough separation to enforce a threshold with
+driver headroom. Its 0.61 adjusted-IoU floor sits between the 0.709154 correct
+capture and the 0.516599 worst perturbation, leaving about 0.09 headroom on both
+sides for llvmpipe, WARP, and SwiftShader variation.
+
+| Scene | Correct | Vertical flip | Horizontal mirror | Transpose | Shifted camera | Margin | Gate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `orientation-asymmetric` | 0.709154 | 0.473200 | 0.341662 | 0.516599 | 0.255665 | 0.192555 | yes, threshold 0.61 |
+| `depth-overlap-multiprim` | 0.817816 | 0.649724 | 0.743399 | 0.701790 | 0.424651 | 0.074416 | no; redesign |
+| `material-normals-uv` | 0.865894 | 0.782579 | 0.611868 | 0.590372 | 0.230126 | 0.083315 | no; redesign |
+| `point-instancer-cluster` | 0.175142 | 0.142396 | 0.122878 | 0.140305 | 0.134094 | 0.032745 | no; redesign |
+
+The rejected scenes still run and emit evidence, but they are not CI thresholds:
+their worst-perturbation margins are too narrow to distinguish a real regression
+from driver or rasterization variation. Treat them as redesign candidates rather
+than silently weakening the gate.
 
 `StormSilkParityCaptureDriverTests` is the first automated producer for the
 `ParityImageComparer` contract. The renderer-neutral driver opens one stage
@@ -552,9 +566,17 @@ Xvfb gate without depending on a window manager. Missing `libGL.so.1`,
 `libX11.so.6`, GLX 1.3, pbuffer FBConfigs, required FBO entry points, or an
 incomplete framebuffer are reported as explicit skip diagnostics in
 `TestResults/parity-capture/parity-capture-skip.txt`; the harness does not
-silently fall back to a blank Storm image. CI sets
-`OPENUSD_PARITY_CAPTURE_REQUIRED=1` for the Linux GLX job so those diagnostics
-fail the gate instead of turning the parity capture into a capability skip.
+silently fall back to a blank Storm image. CI runs `eng/run-parity-capture.ps1`
+on Windows WGL and Linux GLX. The script
+stages the native `bin`, `lib`, and merged `plugin/usd` trees from
+`native/install/<rid>` and `native/install/shim/<rid>` into
+`artifacts/parity-capture/<rid>/runtime`, sets `OPENUSD_PLUGIN_PATH`, prepends
+the staged native directories to the loader path, and sets
+`OPENUSD_PARITY_CAPTURE_REQUIRED=1`. Windows additionally activates the
+hash-locked Mesa llvmpipe WGL runtime before creating Storm's WGL context. Linux
+starts the same script under Xvfb. If any native dependency is unavailable, those
+diagnostics fail the gate instead of turning parity capture into a capability
+skip.
 
 Every input that can otherwise create false parity failures is pinned by
 `ParityCaptureInput`: stage path, time code, resolution, explicit matrix camera,
