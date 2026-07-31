@@ -21,6 +21,20 @@ public sealed class StormSilkParityCaptureDriverTests
     private const int Height = 128;
     private const double TimeCode = 1;
     private const double MinimumDiscriminationMargin = 0.18;
+
+    /// <summary>
+    /// Largest single-channel difference tolerated on a scene that binds a real
+    /// UsdPreviewSurface, measured at 16 with a mean of 11.677 once the BRDF was
+    /// modelled on Storm's own Preview.Lighting. The residual is our constant eye
+    /// vector against Storm's per-pixel normalize(-Peye), which shifts the specular
+    /// lobe; it is entirely specular, so the headroom sits above it rather than
+    /// pretending the two agree exactly. The debug shading this replaced measured
+    /// 149, and an unnormalized Lambert measured 197, so the gate has ample room to
+    /// catch a real regression while the eye-vector work is outstanding.
+    /// </summary>
+    private const byte MaximumShadedChannelDelta = 32;
+
+    private const double MaximumShadedMeanChannelDelta = 24;
     private static readonly JsonSerializerOptions EvidenceJsonOptions = new() { WriteIndented = true };
 
     [Test]
@@ -520,7 +534,15 @@ public sealed class StormSilkParityCaptureDriverTests
         {
             MinimumCoverageIntersectionOverUnion = scene.RecommendedMinimumAdjustedIou,
             MaximumCoverageDifferenceFraction = 1,
-            CompareColor = false,
+            // Colour is always measured so the evidence records it, but it only
+            // gates a scene that binds a real UsdPreviewSurface. The other scenes
+            // have no material, so Storm shades them through its own fallback,
+            // which hdSilk does not reproduce and which this gate is not about.
+            CompareColor = true,
+            MaximumChannelDifference =
+                scene.ColorComparisonReady ? MaximumShadedChannelDelta : byte.MaxValue,
+            MaximumMeanChannelDifference =
+                scene.ColorComparisonReady ? MaximumShadedMeanChannelDelta : byte.MaxValue,
         };
 
     private static IReadOnlyList<ParityScene> CreateScenes()

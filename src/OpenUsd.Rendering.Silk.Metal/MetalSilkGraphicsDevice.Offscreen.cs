@@ -893,37 +893,38 @@ public sealed partial class MetalSilkGraphicsDevice
         SilkBindingLayoutDescriptor layout,
         List<MetalMaterialBinding> bindings)
     {
-        // The argument-buffer table is a fragment-side table: it encodes into a
-        // fragment argument buffer and only calls SetFragmentBuffer. A binding the
-        // vertex stage must see -- the instance table at slot 6 -- would be encoded
-        // there and never reach the vertex function, so it is bound directly and
-        // only the fragment-only remainder is offered to the table.
-        List<MetalMaterialBinding> fragmentOnly = [];
+        // The argument-buffer table encodes textures and samplers only, and it is a
+        // fragment-side table: it writes a fragment argument buffer and calls only
+        // SetFragmentBuffer. Buffers are therefore bound directly, which is both what
+        // the encoder can actually represent and what the vertex stage needs -- the
+        // instance table at slot 6 is read by the vertex function as [[buffer(6)]] and
+        // would never reach it through a fragment argument buffer.
+        List<MetalMaterialBinding> tableBindings = [];
         foreach (MetalMaterialBinding binding in bindings)
         {
-            int slotIndex = layout.RequireMaterialSlot(0, binding.Binding, binding.Kind);
-            if (layout.MaterialSlots[slotIndex].Visibility
-                .HasFlag(SilkShaderStageVisibility.Vertex))
+            _ = layout.RequireMaterialSlot(0, binding.Binding, binding.Kind);
+            if (binding.Kind is SilkBindingKind.StorageBuffer or
+                SilkBindingKind.UniformBuffer)
             {
                 BindDirectly(encoder, binding);
                 continue;
             }
 
-            fragmentOnly.Add(binding);
+            tableBindings.Add(binding);
         }
 
-        if (fragmentOnly.Count == 0)
+        if (tableBindings.Count == 0)
         {
             return;
         }
 
         if (MaterialDescriptorTables is { } descriptorTables &&
-            descriptorTables.TryBind(encoder, layout, fragmentOnly))
+            descriptorTables.TryBind(encoder, layout, tableBindings))
         {
             return;
         }
 
-        foreach (MetalMaterialBinding binding in fragmentOnly)
+        foreach (MetalMaterialBinding binding in tableBindings)
         {
             BindDirectly(encoder, binding);
         }
@@ -933,7 +934,8 @@ public sealed partial class MetalSilkGraphicsDevice
         MTLRenderCommandEncoder encoder,
         MetalMaterialBinding binding)
     {
-        if (binding.Kind == SilkBindingKind.StorageBuffer)
+        if (binding.Kind is SilkBindingKind.StorageBuffer or
+            SilkBindingKind.UniformBuffer)
         {
             encoder.SetVertexBuffer(binding.Buffer!.Buffer, 0, binding.Binding);
             encoder.SetFragmentBuffer(binding.Buffer.Buffer, 0, binding.Binding);

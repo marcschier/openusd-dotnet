@@ -116,6 +116,19 @@
             "binding": 0,
             "set": 0
           }
+        },
+        {
+          "name": "surfaceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 7,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 7,
+            "set": 0
+          }
         }
       ],
       "permutationResources": [

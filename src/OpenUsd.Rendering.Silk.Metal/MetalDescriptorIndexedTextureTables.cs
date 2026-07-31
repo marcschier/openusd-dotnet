@@ -205,6 +205,16 @@ internal sealed class MetalDescriptorIndexedTextureTables : IDisposable
                     textureCount++;
                     continue;
                 }
+                // An argument buffer here holds textures and samplers only. Anything
+                // else used to fall through into the sampler branch and be encoded as
+                // a sampler, which would have silently corrupted a buffer binding
+                // rather than failing. Callers partition buffers out before this point.
+                if (binding.Kind != SilkBindingKind.Sampler)
+                {
+                    throw new InvalidOperationException(
+                        $"A Metal argument buffer cannot encode a {binding.Kind} at " +
+                        $"binding {binding.Binding}; only textures and samplers.");
+                }
                 maxSamplerBinding = Math.Max(maxSamplerBinding, binding.Binding);
                 samplerCount++;
             }

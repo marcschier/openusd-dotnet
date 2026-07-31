@@ -15,7 +15,24 @@ public readonly record struct RenderHeadlight(
     Vector3 Direction,
     float Intensity,
     Vector3 Color,
-    float Ambient);
+    float Ambient)
+{
+    /// <summary>
+    /// Gets the canonical deterministic headlight both renderers must agree on.
+    /// </summary>
+    /// <remarks>
+    /// Storm reports its own value across the native ABI and hdSilk cannot
+    /// reference the Storm package, so without one shared constant the two would
+    /// be free to drift silently and every parity colour comparison would be
+    /// meaningless. A conformance test asserts the native Storm headlight equals
+    /// this.
+    /// </remarks>
+    public static RenderHeadlight Deterministic { get; } = new(
+        new Vector3(0, 0, 1),
+        1,
+        Vector3.One,
+        0);
+}
 
 [StructLayout(LayoutKind.Sequential)]
 internal readonly struct NativeRenderHeadlight

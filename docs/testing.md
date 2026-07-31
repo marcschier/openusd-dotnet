@@ -584,6 +584,43 @@ which leaves 0.08 for rasterization differences on backends other than D3D12
 WARP and Vulkan SwiftShader -- both of which currently produce byte-identical
 captures -- while staying at least 0.36 clear of the nearest perturbation.
 
+### Colour parity
+
+Colour is now measured on every scene and reported as `maxChannelDelta` and
+`meanChannelDelta` over the agreed coverage, but it only **gates** a scene that
+binds a real `UsdPreviewSurface`. Today that is `material-normals-uv`, at a
+measured 16 maximum and 11.677 mean, gated at 32 and 24.
+
+| Shading | max delta | mean delta |
+| --- | ---: | ---: |
+| Debug `abs(normal) * tint` | 149 | 140.726 |
+| BRDF with unnormalized Lambert | 15 | 13.072 |
+| BRDF modelled on Storm's Preview.Lighting | **16** | **11.677** |
+
+The BRDF is written against Storm's own `Preview.Lighting` rather than against
+the UsdPreviewSurface prose: the same Trowbridge-Reitz distribution including
+its epsilon, the same Schlick-GGX geometric term with `k = alpha/2`, the same
+`4·NdotL·NdotE + EPSILON` denominator, the same `F0`/`F90` construction from
+`(1-ior)/(1+ior)`, and the same `(1-F)` diffuse attenuation. Storm's
+`evaluateDirectDiffuse` returns `1/pi`, so an intensity of one is an irradiance
+of pi, which is what makes a fully lit Lambertian surface return its albedo.
+Normals are faced toward the eye before shading, as Storm's mesh shader does
+with `gl_FrontFacing`; without that a prim whose computed face normal points
+away renders black.
+
+The remaining residual is entirely the specular lobe, and its cause is known:
+hdSilk uses a constant eye vector of (0,0,1) where Storm uses a per-pixel
+`normalize(-Peye)` from the interpolated eye-space position. Supplying that
+needs a new interpolant across every permutation, so it is deliberately left as
+follow-up rather than smuggled into the threshold. The gate is set above the
+measured value rather than at it, and is proven to fail if tightened to 8.
+
+The other three scenes bind no material, so Storm shades them through its own
+fallback -- which is markedly brighter and which hdSilk does not reproduce.
+Their colour deltas sit near 88 and are recorded as evidence, not gated. Making
+them colour-gateable means binding materials to them, which is a scene change
+rather than a renderer change.
+
 `material-normals-uv` was the last scene admitted. Once exact agreement removed
 the projection error, its remaining weakness was its own silhouette: a vertical
 flip of the original fan shape still scored 0.865109, a 0.134891 margin below

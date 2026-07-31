@@ -813,7 +813,14 @@ public sealed class SilkSceneGpuResources : IDisposable
     private readonly Dictionary<ulong, SilkMeshGpuResource> _meshes = [];
     private readonly Dictionary<SilkMeshGpuGeometryKey, List<SilkMeshGpuGeometryResource>> _geometries =
         [];
+    private readonly Dictionary<string, SurfaceBuffer> _surfaceBuffers =
+        new(StringComparer.Ordinal);
+    private ISilkGraphicsBuffer? _defaultSurfaceBuffer;
     private bool _disposed;
+
+    private readonly record struct SurfaceBuffer(
+        ISilkGraphicsBuffer? Buffer,
+        ulong MaterialHash);
 
     /// <summary>Initializes GPU resource retention for one backend device.</summary>
     public SilkSceneGpuResources(ISilkGraphicsDevice device)
@@ -906,6 +913,86 @@ public sealed class SilkSceneGpuResources : IDisposable
         return uploads;
     }
 
+    /// <summary>
+    /// Returns the surface constants for one material path, creating and uploading
+    /// the block on first use and reusing it afterwards.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by material rather than by mesh because the constants are a property
+    /// of the material, and because a per-mesh block would allocate for every prim
+    /// in a scene that shares one material. Meshes with no supported material share
+    /// a single default block whose shaded flag is zero, so slot 7 is always bound:
+    /// leaving it unbound renders correctly on D3D12 and Vulkan and produces
+    /// nothing at all on Metal.
+    /// </remarks>
+    internal ISilkGraphicsBuffer RequireSurfaceBuffer(
+        SilkSceneState scene,
+        SilkMeshData mesh,
+        RenderHeadlight light)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        SilkMaterialData? material = null;
+        string path = mesh.MaterialPath;
+        if (!string.IsNullOrEmpty(path))
+        {
+            _ = scene.Materials.TryGetValue(path, out material);
+        }
+
+        if (material is not { IsSupported: true })
+        {
+            return _defaultSurfaceBuffer ??= CreateSurfaceBuffer(null, light);
+        }
+
+        if (_surfaceBuffers.TryGetValue(material.Path, out SurfaceBuffer existing) &&
+            existing.Buffer is { } retained)
+        {
+            if (existing.MaterialHash != material.StableHash)
+            {
+                // The material changed in place, so refresh the block rather than
+                // allocating a second buffer for the same path.
+                WriteSurface(retained, material, light);
+                _surfaceBuffers[material.Path] =
+                    new SurfaceBuffer(retained, material.StableHash);
+            }
+
+            return retained;
+        }
+
+        ISilkGraphicsBuffer created = CreateSurfaceBuffer(material, light);
+        _surfaceBuffers[material.Path] = new SurfaceBuffer(created, material.StableHash);
+        return created;
+    }
+
+    private ISilkGraphicsBuffer CreateSurfaceBuffer(
+        SilkMaterialData? material,
+        RenderHeadlight light)
+    {
+        ISilkGraphicsBuffer? buffer = null;
+        try
+        {
+            buffer = _device.CreateBuffer(
+                SilkSurfaceUniformWriter.ByteSize,
+                SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+            WriteSurface(buffer, material, light);
+            return buffer;
+        }
+        catch
+        {
+            buffer?.Dispose();
+            throw;
+        }
+    }
+
+    private static void WriteSurface(
+        ISilkGraphicsBuffer buffer,
+        SilkMaterialData? material,
+        RenderHeadlight light)
+    {
+        Span<byte> constants = stackalloc byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, light, constants);
+        buffer.Write(constants);
+    }
+
     /// <inheritdoc/>
     public void Dispose()
     {
@@ -919,6 +1006,13 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
         _meshes.Clear();
         _geometries.Clear();
+        foreach (SurfaceBuffer surface in _surfaceBuffers.Values)
+        {
+            surface.Buffer?.Dispose();
+        }
+        _surfaceBuffers.Clear();
+        _defaultSurfaceBuffer?.Dispose();
+        _defaultSurfaceBuffer = null;
         _disposed = true;
         SilkManagedDiagnostics.GpuSceneDestroyed();
     }

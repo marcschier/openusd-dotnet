@@ -389,6 +389,9 @@ public readonly record struct SilkBindingLayoutDescriptor(
     /// </remarks>
     public IReadOnlyList<SilkBindingSlot> MaterialSlots { get; init; } = [];
 
+    /// <summary>The binding slot carrying the surface constants and the light.</summary>
+    public const uint SurfaceParametersBinding = 7;
+
     /// <summary>Creates the checked mesh SceneParameters layout.</summary>
     public static SilkBindingLayoutDescriptor SceneParameters => new(
         0,
@@ -403,7 +406,17 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 6,
                 SilkBindingKind.StorageBuffer,
                 0,
-                SilkShaderStageVisibility.Vertex)
+                SilkShaderStageVisibility.Vertex),
+            // The surface constants and the single deterministic light. A storage
+            // buffer rather than a uniform because that binding path is the one
+            // already proven end to end on all three backends, and because a
+            // uniform slot would need a second backend code path for no gain.
+            new(
+                0,
+                SurfaceParametersBinding,
+                SilkBindingKind.StorageBuffer,
+                0,
+                SilkShaderStageVisibility.Fragment)
         ]
     };
 
@@ -420,12 +433,17 @@ public readonly record struct SilkBindingLayoutDescriptor(
         }
         // Slot 0 stays the SceneParameters uniform so a material pipeline keeps the
         // same scene constants at the same place as every existing pipeline. The
-        // checked mesh vertex shader also always declares the instance buffer.
-        var materialSlots = new SilkBindingSlot[slots.Count + 1];
-        materialSlots[0] = SceneParameters.MaterialSlots[0];
+        // checked mesh shaders also always declare the instance buffer and the
+        // surface constants, so both are carried into every material layout.
+        IReadOnlyList<SilkBindingSlot> shared = SceneParameters.MaterialSlots;
+        var materialSlots = new SilkBindingSlot[slots.Count + shared.Count];
+        for (int index = 0; index < shared.Count; index++)
+        {
+            materialSlots[index] = shared[index];
+        }
         for (int index = 0; index < slots.Count; index++)
         {
-            materialSlots[index + 1] = slots[index];
+            materialSlots[index + shared.Count] = slots[index];
         }
         return SceneParameters with { MaterialSlots = materialSlots };
     }

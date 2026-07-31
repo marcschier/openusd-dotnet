@@ -637,3 +637,4 @@ static OpenUsd.Rendering.ViewportDimensions.operator ==(OpenUsd.Rendering.Viewpo
 ~override OpenUsd.Rendering.StageTime.ToString() -> string
 ~override OpenUsd.Rendering.ViewportDimensions.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.ViewportDimensions.ToString() -> string
+static OpenUsd.Rendering.RenderHeadlight.Deterministic.get -> OpenUsd.Rendering.RenderHeadlight

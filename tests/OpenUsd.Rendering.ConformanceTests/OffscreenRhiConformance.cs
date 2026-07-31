@@ -306,9 +306,12 @@ internal static class OffscreenRhiConformance
         byte[] background = Pixel(pixels, size, 2, 2).ToArray();
         byte[] interior = Pixel(pixels, size, 32, 32).ToArray();
         await Assert.That(background.SequenceEqual(new byte[] { 0, 0, 0, 255 })).IsTrue();
+        // The triangle faces the deterministic headlight and carries a white tint,
+        // so a lit interior is white. It was red only because the placeholder shader
+        // returned abs(normal) and these vertices carried a normal of (1, 0, 0).
         await Assert.That(interior[0]).IsGreaterThanOrEqualTo((byte)240);
-        await Assert.That(interior[1]).IsLessThanOrEqualTo((byte)10);
-        await Assert.That(interior[2]).IsLessThanOrEqualTo((byte)10);
+        await Assert.That(interior[1]).IsGreaterThanOrEqualTo((byte)240);
+        await Assert.That(interior[2]).IsGreaterThanOrEqualTo((byte)240);
         await Assert.That(interior[3]).IsGreaterThanOrEqualTo((byte)240);
     }
 
@@ -457,12 +460,13 @@ internal static class OffscreenRhiConformance
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
         using ISilkGraphicsBuffer uniforms = device.CreateBuffer(
             80,
-            SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+            SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        using ISilkGraphicsBuffer surfaceConstants = CreateSurfaceConstants(device);
         vertices.Write(MemoryMarshal.AsBytes<float>(
         [
-            -0.75f, -0.75f, 0, 1, 0, 0,
-             0.00f,  0.75f, 0, 1, 0, 0,
-             0.75f, -0.75f, 0, 1, 0, 0
+            -0.75f, -0.75f, 0, 0, 0, 1,
+             0.00f,  0.75f, 0, 0, 0, 1,
+             0.75f, -0.75f, 0, 0, 0, 1
         ]));
         indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
         uniforms.Write(MemoryMarshal.AsBytes<float>(
@@ -507,6 +511,7 @@ internal static class OffscreenRhiConformance
             commands.SetVertexBuffer(vertices);
             commands.SetIndexBuffer(indices);
             commands.SetUniformBuffer(0, 0, uniforms);
+            BindAlwaysOnSlots(commands, uniforms, surfaceConstants);
             commands.DrawIndexed(3);
             commands.EndRendering();
             using ISilkGraphicsSubmission submission = device.Submit(commands);
@@ -556,12 +561,13 @@ internal static class OffscreenRhiConformance
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
         ISilkGraphicsBuffer uniforms = device.CreateBuffer(
             80,
-            SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+            SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        ISilkGraphicsBuffer surfaceConstants = CreateSurfaceConstants(device);
         vertices.Write(MemoryMarshal.AsBytes<float>(
         [
-            -0.75f, -0.75f, 0, 1, 0, 0,
-             0.00f,  0.75f, 0, 1, 0, 0,
-             0.75f, -0.75f, 0, 1, 0, 0
+            -0.75f, -0.75f, 0, 0, 0, 1,
+             0.00f,  0.75f, 0, 0, 0, 1,
+             0.75f, -0.75f, 0, 0, 0, 1
         ]));
         indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
         uniforms.Write(MemoryMarshal.AsBytes<float>(
@@ -582,6 +588,7 @@ internal static class OffscreenRhiConformance
         commands.SetVertexBuffer(vertices);
         commands.SetIndexBuffer(indices);
         commands.SetUniformBuffer(0, 0, uniforms);
+        BindAlwaysOnSlots(commands, uniforms, surfaceConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
         ISilkGraphicsSubmission submission = device.Submit(commands);
@@ -596,6 +603,7 @@ internal static class OffscreenRhiConformance
         bindingLayout.Dispose();
         vertices.Dispose();
         indices.Dispose();
+        surfaceConstants.Dispose();
         uniforms.Dispose();
 
         await Assert.That(
@@ -691,22 +699,22 @@ internal static class OffscreenRhiConformance
 
         byte[] pixels = new byte[size * size * 4];
         resources.Color.ReadbackForTesting(pixels);
-        (int MinX, int MinY, int MaxX, int MaxY, int Count) redBounds =
-            FindRedBounds(pixels, size);
+        (int MinX, int MinY, int MaxX, int MaxY, int Count) litBounds =
+            FindLitBounds(pixels, size);
         Console.WriteLine(
-            $"{device.Backend} transformed red bounds: " +
-            $"{redBounds.MinX},{redBounds.MinY}-{redBounds.MaxX},{redBounds.MaxY}; " +
-            $"pixels={redBounds.Count}");
-        (int X, int Y) transformedInterior = FindRedPixel(
+            $"{device.Backend} transformed lit bounds: " +
+            $"{litBounds.MinX},{litBounds.MinY}-{litBounds.MaxX},{litBounds.MaxY}; " +
+            $"pixels={litBounds.Count}");
+        (int X, int Y) transformedInterior = FindLitPixel(
             pixels,
             size,
             static (x, y) => x >= 34 && x < 44 && y >= 16 && y < 40);
-        (int X, int Y) scissorExcluded = FindRedPixel(
+        (int X, int Y) scissorExcluded = FindLitPixel(
             pixels,
             size,
             static (x, y) => x < 34 && y >= 16 && y < 40);
         byte[] viewportExcluded = Pixel(pixels, size, 50, 30).ToArray();
-        await Assert.That(redBounds.Count).IsGreaterThan(0);
+        await Assert.That(litBounds.Count).IsGreaterThan(0);
         await Assert.That(viewportExcluded.SequenceEqual(
             new byte[] { 0, 0, 0, 255 })).IsTrue();
 
@@ -734,8 +742,8 @@ internal static class OffscreenRhiConformance
             checked((uint)scissorExcluded.X),
             checked((uint)scissorExcluded.Y)).ToArray();
         await Assert.That(retainedPixel[0]).IsGreaterThanOrEqualTo((byte)240);
-        await Assert.That(retainedPixel[1]).IsLessThanOrEqualTo((byte)10);
-        await Assert.That(retainedPixel[2]).IsLessThanOrEqualTo((byte)10);
+        await Assert.That(retainedPixel[1]).IsGreaterThanOrEqualTo((byte)240);
+        await Assert.That(retainedPixel[2]).IsGreaterThanOrEqualTo((byte)240);
         await Assert.That(clippedPixel.SequenceEqual(
             new byte[] { 0, 0, 0, 255 })).IsTrue();
 
@@ -996,8 +1004,51 @@ internal static class OffscreenRhiConformance
         commands.SetVertexBuffer(vertices);
         commands.SetIndexBuffer(indices);
         commands.SetUniformBuffer(0, 0, resources.Uniforms);
+        BindAlwaysOnSlots(commands, resources.Uniforms, resources.SurfaceConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
+    }
+
+    /// <summary>
+    /// Binds the slots the checked mesh shaders read on every draw: the instance
+    /// table the vertex stage indexes, and the surface constants the fragment stage
+    /// reads. Leaving either unbound renders correctly on D3D12 and Vulkan, whose
+    /// reflection-driven binding aliases the slot onto the uniform buffer, and
+    /// renders nothing at all on Metal.
+    /// </summary>
+    private static void BindAlwaysOnSlots(
+        ISilkGraphicsCommandList commands,
+        ISilkGraphicsBuffer uniforms,
+        ISilkGraphicsBuffer surfaceConstants)
+    {
+        commands.SetStorageBuffer(0, 6, uniforms);
+        commands.SetStorageBuffer(
+            0,
+            SilkBindingLayoutDescriptor.SurfaceParametersBinding,
+            surfaceConstants);
+    }
+
+    /// <summary>
+    /// Creates the default surface constants: no material, so the shaded flag is
+    /// zero and the scene tint drives diffuse, lit by the deterministic headlight.
+    /// </summary>
+    private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
+    {
+        ISilkGraphicsBuffer buffer = device.CreateBuffer(
+            128,
+            SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        buffer.Write(MemoryMarshal.AsBytes<float>(
+        [
+            0.18f, 0.18f, 0.18f, 1,
+            0, 0, 0, 1,
+            0, 0, 0, 1.5f,
+            0, 0.5f, 0, 0,
+            0, 0.01f, 0, 0,
+            0, 0, 1, 1,
+            1, 1, 1, 0,
+            0, 0, 0, 0
+        ]));
+        return buffer;
     }
 
     private static int CountNonBlackPixels(ReadOnlySpan<byte> pixels)
@@ -1050,6 +1101,7 @@ internal static class OffscreenRhiConformance
         commands.SetVertexBuffer(resources.Vertices);
         commands.SetIndexBuffer(resources.Indices);
         commands.SetUniformBuffer(0, 0, resources.Uniforms);
+        BindAlwaysOnSlots(commands, resources.Uniforms, resources.SurfaceConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
     }
@@ -1074,7 +1126,7 @@ internal static class OffscreenRhiConformance
         return true;
     }
 
-    private static (int MinX, int MinY, int MaxX, int MaxY, int Count) FindRedBounds(
+    private static (int MinX, int MinY, int MaxX, int MaxY, int Count) FindLitBounds(
         ReadOnlySpan<byte> pixels,
         uint width)
     {
@@ -1086,8 +1138,8 @@ internal static class OffscreenRhiConformance
         for (int offset = 0; offset < pixels.Length; offset += 4)
         {
             if (pixels[offset] < 240 ||
-                pixels[offset + 1] > 10 ||
-                pixels[offset + 2] > 10)
+                pixels[offset + 1] < 240 ||
+                pixels[offset + 2] < 240)
             {
                 continue;
             }
@@ -1103,7 +1155,7 @@ internal static class OffscreenRhiConformance
         return (minX, minY, maxX, maxY, count);
     }
 
-    private static (int X, int Y) FindRedPixel(
+    private static (int X, int Y) FindLitPixel(
         ReadOnlySpan<byte> pixels,
         uint width,
         Func<int, int, bool> predicate)
@@ -1111,8 +1163,8 @@ internal static class OffscreenRhiConformance
         for (int offset = 0; offset < pixels.Length; offset += 4)
         {
             if (pixels[offset] < 240 ||
-                pixels[offset + 1] > 10 ||
-                pixels[offset + 2] > 10)
+                pixels[offset + 1] < 240 ||
+                pixels[offset + 2] < 240)
             {
                 continue;
             }
@@ -1170,16 +1222,17 @@ internal static class OffscreenRhiConformance
                 SilkBufferUsage.Index | SilkBufferUsage.Upload);
             Uniforms = device.CreateBuffer(
                 80,
-                SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+                SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
             Vertices.Write(MemoryMarshal.AsBytes<float>(
             [
                 -3.0f, -3.0f, 0, 0, 1, 0,
                  3.0f,  3.0f, 0, 0, 0, 1,
-                 0.0f,  0.75f, 0, 1, 0, 0,
+                 0.0f,  0.75f, 0, 0, 0, 1,
                 -3.0f,  3.0f, 0, 0, 1, 1,
-                -0.75f, -0.75f, 0, 1, 0, 0,
-                 0.75f, -0.75f, 0, 1, 0, 0
+                -0.75f, -0.75f, 0, 0, 0, 1,
+                 0.75f, -0.75f, 0, 0, 0, 1
             ]));
+            SurfaceConstants = CreateSurfaceConstants(device);
             Indices.Write(MemoryMarshal.AsBytes<uint>([4, 2, 5]));
             Uniforms.Write(MemoryMarshal.AsBytes<float>(
             [
@@ -1211,8 +1264,13 @@ internal static class OffscreenRhiConformance
 
         internal ISilkGraphicsBuffer Uniforms { get; }
 
+
+
+        internal ISilkGraphicsBuffer SurfaceConstants { get; }
+
         public void Dispose()
         {
+            SurfaceConstants.Dispose();
             Uniforms.Dispose();
             Indices.Dispose();
             Vertices.Dispose();
@@ -1324,7 +1382,7 @@ internal static class OffscreenRhiConformance
                 .ToBytes(_device.Backend);
             ISilkGraphicsBuffer buffer = _device.CreateBuffer(
                 checked((nuint)bytes.Length),
-                SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+                SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
             buffer.Write(bytes);
             return buffer;
         }

@@ -121,6 +121,318 @@
       }
     },
     {
+      "name": "surfaceParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 7,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 7,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": "SurfaceParameters",
+          "fields": [
+            {
+              "name": "diffuseOpacity",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "emissiveOcclusion",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 16,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "specularIor",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 32,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "metallicRoughnessThresholdWorkflow",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 48,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "clearcoatShaded",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 64,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightDirectionIntensity",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 80,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightColorAmbient",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 96,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "reserved",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 112,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 128,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": "SurfaceParameters",
+          "fields": [
+            {
+              "name": "diffuseOpacity",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "emissiveOcclusion",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 16,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "specularIor",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 32,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "metallicRoughnessThresholdWorkflow",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 48,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "clearcoatShaded",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 64,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightDirectionIntensity",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 80,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightColorAmbient",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 96,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "reserved",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 112,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 128,
+        "size": null
+      }
+    },
+    {
       "name": "materialSampler",
       "bindings": {
         "d3d": {

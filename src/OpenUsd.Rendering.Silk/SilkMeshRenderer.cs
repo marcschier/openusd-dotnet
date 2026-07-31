@@ -649,6 +649,10 @@ public sealed class SilkMeshRenderer :
                     // there as a one-element table. Leaving it unbound worked on
                     // D3D12 and Vulkan by accident and rendered nothing on Metal.
                     commands.SetStorageBuffer(0, 6, mesh.UniformBuffer);
+                    commands.SetStorageBuffer(
+                        0,
+                        SilkBindingLayoutDescriptor.SurfaceParametersBinding,
+                        GpuResources.RequireSurfaceBuffer(Scene, mesh.Mesh, RenderHeadlight.Deterministic));
                     commands.DrawIndexed(mesh.IndexCount);
                     drawCount++;
                 }
@@ -663,6 +667,10 @@ public sealed class SilkMeshRenderer :
             commands.SetIndexBuffer(first.IndexBuffer);
             commands.SetUniformBuffer(0, 0, first.UniformBuffer);
             commands.SetStorageBuffer(0, 6, batch.Key.RequireInstanceBuffer());
+            commands.SetStorageBuffer(
+                0,
+                SilkBindingLayoutDescriptor.SurfaceParametersBinding,
+                GpuResources.RequireSurfaceBuffer(Scene, first.Mesh, RenderHeadlight.Deterministic));
             commands.DrawIndexedInstanced(first.IndexCount, checked((uint)batch.Value.Count));
             drawCount++;
         }

@@ -1556,3 +1556,4 @@ OpenUsd.Rendering.Silk.ISilkGraphicsPipelineLease.Pipeline.get -> OpenUsd.Render
 OpenUsd.Rendering.Silk.ISilkGraphicsCommandList.DrawIndexedInstanced(uint indexCount, uint instanceCount) -> void
 OpenUsd.Rendering.Silk.SilkBindingKind.StorageBuffer = 3 -> OpenUsd.Rendering.Silk.SilkBindingKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.DrawIndexedInstanced = 25 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
+const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
