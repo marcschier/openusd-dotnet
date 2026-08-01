@@ -375,6 +375,7 @@ public sealed class SilkMeshData
         _displayColor = (float[])displayColor.Clone();
         _transform = (double[])transform.Clone();
         TopologyFingerprint = SilkTopologyFingerprint.Compute(
+            TopologyKind,
             _points.Length / 3,
             _indices,
             _triangleSubprims);
@@ -630,6 +631,7 @@ public sealed class SilkMeshData
 
         var indices = new uint[command.IndexCount];
         var fingerprint = new SilkTopologyFingerprintBuilder(
+            command.TopologyKind,
             command.PointCount,
             command.IndexCount,
             command.TriangleCount);
@@ -727,11 +729,13 @@ public sealed class SilkMeshData
 internal static class SilkTopologyFingerprint
 {
     internal static ulong Compute(
+        SilkTopologyKind topologyKind,
         int pointCount,
         ReadOnlySpan<uint> indices,
         ReadOnlySpan<int> triangleSubprims)
     {
         var builder = new SilkTopologyFingerprintBuilder(
+            topologyKind,
             pointCount,
             indices.Length,
             triangleSubprims.Length);
@@ -754,15 +758,21 @@ internal struct SilkTopologyFingerprintBuilder
     private ulong _value;
 
     internal SilkTopologyFingerprintBuilder(
+        SilkTopologyKind topologyKind,
         int pointCount,
         int indexCount,
         int triangleCount)
     {
+        if (!Enum.IsDefined(topologyKind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(topologyKind));
+        }
         ArgumentOutOfRangeException.ThrowIfNegative(pointCount);
         ArgumentOutOfRangeException.ThrowIfNegative(indexCount);
         ArgumentOutOfRangeException.ThrowIfNegative(triangleCount);
         _value = OffsetBasis;
         AddUInt32(0x53494C4B);
+        AddUInt32((uint)topologyKind);
         AddUInt32(checked((uint)pointCount));
         AddUInt32(checked((uint)indexCount));
         AddUInt32(checked((uint)triangleCount));
@@ -1181,6 +1191,7 @@ public sealed class SilkMeshGpuResource : IDisposable
     internal SilkMeshGpuGeometryResource Geometry => _geometry;
 
     internal bool HasSameGeometry(SilkMeshData mesh) =>
+        Mesh.TopologyKind == mesh.TopologyKind &&
         Mesh.Points.Span.SequenceEqual(mesh.Points.Span) &&
         Mesh.Indices.Span.SequenceEqual(mesh.Indices.Span) &&
         Mesh.AuthoredNormals.Span.SequenceEqual(mesh.AuthoredNormals.Span);
@@ -1274,6 +1285,7 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
     internal uint IndexCount { get; }
 
     internal bool HasSameGeometry(SilkMeshData mesh) =>
+        Key.TopologyKind == mesh.TopologyKind &&
         _points.AsSpan().SequenceEqual(mesh.Points.Span) &&
         _indices.AsSpan().SequenceEqual(mesh.Indices.Span) &&
         _authoredNormals.AsSpan().SequenceEqual(mesh.AuthoredNormals.Span);
@@ -1371,6 +1383,7 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
 
 internal readonly record struct SilkMeshGpuGeometryKey(
     string Path,
+    SilkTopologyKind TopologyKind,
     ulong TopologyFingerprint,
     ulong PointFingerprint,
     ulong NormalFingerprint)
@@ -1378,6 +1391,7 @@ internal readonly record struct SilkMeshGpuGeometryKey(
     internal static SilkMeshGpuGeometryKey Create(SilkMeshData mesh) =>
         new(
             mesh.Path,
+            mesh.TopologyKind,
             mesh.TopologyFingerprint,
             HashFloats(mesh.Points.Span),
             HashFloats(mesh.AuthoredNormals.Span));

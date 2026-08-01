@@ -105,6 +105,7 @@ public sealed class SilkMeshRenderer :
     private readonly ISilkGraphicsBindingLayout _bindingLayout;
     private readonly ISilkGraphicsShaderProgram _program;
     private readonly ISilkGraphicsPipeline _pipeline;
+    private readonly ISilkGraphicsPipeline _linePipeline;
     private readonly SilkShaderBinaryFormat _shaderFormat;
     private readonly ISilkPickingGraphicsDevice? _pickingDevice;
     private readonly ISilkSelectionOutlineGraphicsDevice? _selectionOutlineDevice;
@@ -186,6 +187,7 @@ public sealed class SilkMeshRenderer :
         ISilkGraphicsBindingLayout? bindingLayout = null;
         ISilkGraphicsShaderProgram? program = null;
         ISilkGraphicsPipeline? pipeline = null;
+        ISilkGraphicsPipeline? linePipeline = null;
         ISilkPickGraphicsPipeline? pickPipeline = null;
         SilkPickReadbackRing? pickReadbacks = null;
         try
@@ -204,6 +206,13 @@ public sealed class SilkMeshRenderer :
                 SilkVertexLayoutDescriptor.PositionNormal,
                 SilkTextureFormat.Rgba8Unorm,
                 SilkTextureFormat.D32Float));
+            linePipeline = device.CreateGraphicsPipeline(
+                new SilkGraphicsPipelineDescriptor(
+                    program,
+                    SilkVertexLayoutDescriptor.PositionNormal,
+                    SilkTextureFormat.Rgba8Unorm,
+                    SilkTextureFormat.D32Float,
+                    SilkTopologyKind.LineList));
             if (_pickingDevice is not null)
             {
                 SilkPickPipelineDescriptor pickDescriptor =
@@ -218,6 +227,7 @@ public sealed class SilkMeshRenderer :
         {
             pickReadbacks?.Dispose();
             pickPipeline?.Dispose();
+            linePipeline?.Dispose();
             pipeline?.Dispose();
             program?.Dispose();
             bindingLayout?.Dispose();
@@ -232,6 +242,7 @@ public sealed class SilkMeshRenderer :
         _bindingLayout = bindingLayout;
         _program = program;
         _pipeline = pipeline;
+        _linePipeline = linePipeline;
         _pickPipeline = pickPipeline;
         _pickReadbacks = pickReadbacks;
         if (pickReadbacks is not null)
@@ -575,6 +586,7 @@ public sealed class SilkMeshRenderer :
             DisposeSelectionOutlineInfrastructure();
             GpuResources.Dispose();
             _pipeline.Dispose();
+            _linePipeline.Dispose();
             _program.Dispose();
             _bindingLayout.Dispose();
             _fragmentShader.Dispose();
@@ -604,7 +616,6 @@ public sealed class SilkMeshRenderer :
         commands.ClearColor(colorTarget, options.ClearColor);
         commands.ClearDepth(depthTarget, options.ClearDepth);
         commands.BeginRendering(new SilkRenderingDescriptor(colorTarget, depthTarget));
-        commands.SetGraphicsPipeline(_pipeline);
         commands.SetViewport(new SilkViewport(
             0,
             0,
@@ -639,6 +650,7 @@ public sealed class SilkMeshRenderer :
             // per-mesh uniform path already carries the single transform.
             if (!instancingSupported || batch.Value.Count < 2)
             {
+                commands.SetGraphicsPipeline(GetPipeline(first.Mesh.TopologyKind));
                 commands.SetVertexBuffer(first.VertexBuffer);
                 commands.SetIndexBuffer(first.IndexBuffer);
                 foreach (SilkMeshGpuResource mesh in batch.Value)
@@ -663,6 +675,7 @@ public sealed class SilkMeshRenderer :
                 Scene.Frame,
                 batch.Value,
                 _device.ClipSpaceYPointsDown);
+            commands.SetGraphicsPipeline(GetPipeline(first.Mesh.TopologyKind));
             commands.SetVertexBuffer(first.VertexBuffer);
             commands.SetIndexBuffer(first.IndexBuffer);
             commands.SetUniformBuffer(0, 0, first.UniformBuffer);
@@ -692,6 +705,15 @@ public sealed class SilkMeshRenderer :
         }
         return new SilkMeshRenderResult(drawCount, uniformUploads, GpuResources.Statistics);
     }
+
+    private ISilkGraphicsPipeline GetPipeline(SilkTopologyKind topologyKind) =>
+        topologyKind switch
+        {
+            SilkTopologyKind.TriangleList => _pipeline,
+            SilkTopologyKind.LineList => _linePipeline,
+            _ => throw new InvalidDataException(
+                $"Unsupported Silk topology kind '{topologyKind}'.")
+        };
 
     private void ApplySceneDelta(SilkSceneDelta delta)
     {
@@ -818,7 +840,8 @@ public sealed class SilkMeshRenderer :
                     continue;
                 }
                 resolvedAnyInstance = true;
-                if (resource.IndexCount == 0)
+                if (resource.IndexCount == 0 ||
+                    instances[instance].TopologyKind == SilkTopologyKind.LineList)
                 {
                     continue;
                 }
@@ -1188,7 +1211,8 @@ public sealed class SilkMeshRenderer :
 
             foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
             {
-                if (mesh.IndexCount == 0)
+                if (mesh.IndexCount == 0 ||
+                    mesh.Mesh.TopologyKind == SilkTopologyKind.LineList)
                 {
                     continue;
                 }

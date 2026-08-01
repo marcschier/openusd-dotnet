@@ -615,6 +615,17 @@ public sealed class StormSilkParityCaptureDriverTests
                     "an axis-aligned rectangle, and a centred near-square one measured a " +
                     "0.012661 margin because mirroring barely changed it.",
                 RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
+                "bounds-draw-mode",
+                Path.Combine(assetRoot, "parity-bounds-draw-mode.usda"),
+                "UsdImaging draw-mode bounds proxy reaches hdSilk as linear segmented basis curves.",
+                ColorComparisonReady: false,
+                GateEnabled: true,
+                GateReason:
+                    "1.000000 correct adjusted IoU against a 0.243309 worst perturbation, " +
+                    "a 0.756691 margin. hdSilk emits the draw-mode basisCurves as line " +
+                    "topology, matching Storm's 251 one-pixel line coverage exactly.",
+                RecommendedMinimumAdjustedIou: 0.92),
         ];
         // parity-single-sided-winding.usda is authored and measured but not
         // registered yet. Storm draws nothing for it and hdSilk draws it in full,
@@ -622,14 +633,11 @@ public sealed class StormSilkParityCaptureDriverTests
         // capture contain coverage. It becomes the acceptance test the moment
         // hdSilk honours authored double-sidedness; see mesh-parity-cull-style.
         //
-        // parity-bounds-draw-mode.usda is likewise authored and measured but not
-        // registered. hdSilk skips basisCurves entirely today, so it would score
-        // zero against Storm's 251 pixels. It becomes the acceptance test for
-        // hdsilk-basis-curves. parity-curve-width-probe.usda is a diagnostic and
-        // is never gated: it proved that Storm rasterizes linear basis curves as
-        // 1-pixel screen-space lines, ignoring authored world-space widths --
-        // Storm draws 128 pixels for two segments authored 0.24 units wide. That
-        // is why ribbon tessellation was measured and rejected in favour of line
+        // parity-curve-width-probe.usda is a diagnostic and is never gated: it
+        // proved that Storm rasterizes linear basis curves as 1-pixel
+        // screen-space lines, ignoring authored world-space widths -- Storm
+        // draws 128 pixels for two segments authored 0.24 units wide. That is
+        // why ribbon tessellation was measured and rejected in favour of line
         // topology; see "Ribbon tessellation was tried and measured" in
         // docs/testing.md.
     }
@@ -713,6 +721,7 @@ public sealed class StormSilkParityCaptureDriverTests
             "test-assets\\parity\\parity-point-instancer-cluster.usda",
             "test-assets\\parity\\parity-single-sided-winding.usda",
             "test-assets\\parity\\parity-cards-draw-mode.usda",
+            "test-assets\\parity\\parity-bounds-draw-mode.usda",
             "docs\\testing.md",
         ];
         var files = new List<object>();

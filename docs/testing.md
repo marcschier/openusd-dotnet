@@ -565,11 +565,9 @@ skip and the suite stays green.
 
 The parity scenes were measured on Windows with the staged Storm runtime from
 `native/install`, Mesa llvmpipe WGL 26.1.5, D3D12 WARP, and packaged
-SwiftShader. The gate is intentionally narrow until the scenes are redesigned:
-only `orientation-asymmetric` has enough separation to enforce a threshold with
-driver headroom. Its 0.61 adjusted-IoU floor sits between the 0.709154 correct
-capture and the 0.516599 worst perturbation, leaving about 0.09 headroom on both
-sides for llvmpipe, WARP, and SwiftShader variation.
+SwiftShader. Each gated scene must keep at least 0.18 adjusted-IoU separation
+between the correct capture and the closest vertical, horizontal, transpose, or
+camera-shift perturbation before it can use the 0.92 threshold.
 
 | Scene | Correct | Vertical flip | Horizontal mirror | Transpose | Shifted camera | Margin | Gate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -578,12 +576,13 @@ sides for llvmpipe, WARP, and SwiftShader variation.
 | `material-normals-uv` | 1.000000 | 0.310060 | 0.253340 | 0.557888 | 0.216277 | 0.442112 | yes, threshold 0.92 |
 | `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | yes, threshold 0.92 |
 | `cards-draw-mode` | 1.000000 | 0.250000 | 0.418182 | 0.730337 | 0.431193 | 0.269663 | yes, threshold 0.92 |
+| `bounds-draw-mode` | 1.000000 | 0.094421 | 0.231884 | 0.047847 | 0.243309 | 0.756691 | yes, threshold 0.92 |
 
 Storm and hdSilk agree **exactly** on coverage for every curated scene: raw IoU
-1.000000 with identical coverage counts. All four scenes are gated at 0.92,
+1.000000 with identical coverage counts. All gated scenes use a 0.92 threshold,
 which leaves 0.08 for rasterization differences on backends other than D3D12
 WARP and Vulkan SwiftShader -- both of which currently produce byte-identical
-captures -- while staying at least 0.36 clear of the nearest perturbation.
+captures -- while staying at least 0.18 clear of the nearest perturbation.
 
 ### Colour parity
 

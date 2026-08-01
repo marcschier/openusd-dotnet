@@ -80,8 +80,9 @@ struct HdSilkMeshRecord
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0};
     std::vector<float> points;      // x, y, z per point.
-    std::vector<uint32_t> indices;  // 3 indices per triangle.
-    std::vector<uint32_t> triangleSubprims; // Authored USD face per triangle.
+    std::vector<uint32_t> indices;  // 3 indices per triangle or 2 per line.
+    // Authored USD face per triangle, or curve segment per line.
+    std::vector<uint32_t> triangleSubprims;
     float displayColor[4] = {0.7f, 0.7f, 0.7f, 1.0f};
     std::string materialPath;       // Empty when the mesh has no binding.
     std::vector<HdSilkMeshAttribute> attributes;

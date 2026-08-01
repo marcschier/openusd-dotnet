@@ -159,6 +159,10 @@ public sealed partial class MetalSilkGraphicsDevice
                 pipelineDescriptor.VertexFunction = vertexFunction;
                 pipelineDescriptor.FragmentFunction = fragmentFunction;
                 pipelineDescriptor.VertexDescriptor = vertexDescriptor;
+                pipelineDescriptor.InputPrimitiveTopology =
+                    descriptor.TopologyKind == SilkTopologyKind.LineList
+                        ? MTLPrimitiveTopologyClass.Line
+                        : MTLPrimitiveTopologyClass.Triangle;
                 MTLRenderPipelineColorAttachmentDescriptor colorAttachment =
                     pipelineDescriptor.ColorAttachments.Object(0);
                 colorAttachment.PixelFormat = MTLPixelFormat.RGBA8Unorm;

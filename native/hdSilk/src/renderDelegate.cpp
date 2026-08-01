@@ -3,6 +3,7 @@
 #include "renderDelegate.h"
 
 #include "openusd_hdsilk.h"
+#include "basisCurves.h"
 #include "instancer.h"
 #include "material.h"
 #include "mesh.h"
@@ -30,6 +31,7 @@ std::unordered_map<uint64_t, std::shared_ptr<HdSilkSceneState>> _creationRegistr
 const TfTokenVector HdSilkRenderDelegate::SUPPORTED_RPRIM_TYPES =
 {
     HdPrimTypeTokens->mesh,
+    HdPrimTypeTokens->basisCurves,
 };
 
 const TfTokenVector HdSilkRenderDelegate::SUPPORTED_SPRIM_TYPES =
@@ -165,6 +167,10 @@ HdSilkRenderDelegate::CreateRprim(TfToken const& typeId, SdfPath const& rprimId)
     if (typeId == HdPrimTypeTokens->mesh)
     {
         return new HdSilkMesh(rprimId);
+    }
+    if (typeId == HdPrimTypeTokens->basisCurves)
+    {
+        return new HdSilkBasisCurves(rprimId);
     }
     TF_CODING_ERROR("Unknown Rprim type=%s id=%s", typeId.GetText(), rprimId.GetText());
     return nullptr;

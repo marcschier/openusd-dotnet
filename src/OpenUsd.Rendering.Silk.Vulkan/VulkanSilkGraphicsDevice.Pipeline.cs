@@ -250,7 +250,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     &pipelineLayout),
                 "vkCreatePipelineLayout");
             renderPass = CreateTriangleRenderPass();
-            pipeline = CreateTrianglePipeline(program, pipelineLayout, renderPass);
+            pipeline = CreateTrianglePipeline(
+                program,
+                pipelineLayout,
+                renderPass,
+                descriptor.TopologyKind);
             programLease = program.AcquireLease();
             success = true;
             return new VulkanSilkGraphicsPipeline(
@@ -356,7 +360,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     private Pipeline CreateTrianglePipeline(
         VulkanSilkGraphicsShaderProgram program,
         PipelineLayout layout,
-        RenderPass renderPass)
+        RenderPass renderPass,
+        SilkTopologyKind topologyKind)
     {
         byte[] vertexEntry = System.Text.Encoding.UTF8.GetBytes(
             program.Vertex.Descriptor.EntryPoint + "\0");
@@ -408,7 +413,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             var inputAssembly = new PipelineInputAssemblyStateCreateInfo
             {
                 SType = StructureType.PipelineInputAssemblyStateCreateInfo,
-                Topology = PrimitiveTopology.TriangleList
+                Topology = topologyKind == SilkTopologyKind.LineList
+                    ? PrimitiveTopology.LineList
+                    : PrimitiveTopology.TriangleList
             };
             var viewportState = new PipelineViewportStateCreateInfo
             {

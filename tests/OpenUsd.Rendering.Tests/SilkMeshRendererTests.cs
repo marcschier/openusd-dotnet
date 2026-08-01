@@ -39,7 +39,7 @@ public sealed class SilkMeshRendererTests
     }
 
     [Test]
-    [Arguments(new uint[] { 0, 1 }, "divisible by three")]
+    [Arguments(new uint[] { 0, 1 }, "topology kind")]
     [Arguments(new uint[] { 0, 1, 3 }, "references vertex 3")]
     public async Task RejectsInvalidTopology(uint[] indices, string message)
     {
