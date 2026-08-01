@@ -8,7 +8,7 @@ adapter over a scheduler-owned stage.
 | Sample | Purpose |
 | --- | --- |
 | [OpenUsd.HelloStage](OpenUsd.HelloStage/README.md) | Create, save, reopen, and verify one small stage. |
-| [OpenUsd.LiveAuthoring](OpenUsd.LiveAuthoring/README.md) | Reusable adapter library for ordered external updates. |
+| [OpenUsd.LiveAuthoring](OpenUsd.LiveAuthoring/README.md) | Source-only adapter library for ordered external updates. |
 | [OpenUsd.LiveAuthoring.Sample](OpenUsd.LiveAuthoring.Sample/README.md) | Executable demonstration of the adapter. |
 
 These projects are not renderer tutorials, performance benchmarks, or stable application templates.
@@ -65,7 +65,7 @@ Use the equivalent native install and loader variable for `linux-x64` (`LD_LIBRA
 ## Source versus package consumption
 
 The repository projects use `ProjectReference` so changes to `src/OpenUsd` are tested immediately.
-To validate package consumption, first build the pre-alpha packages into a repository-local feed:
+To validate package consumption, first build the packages into a repository-local feed:
 
 ```xml
 <PropertyGroup>
@@ -78,12 +78,16 @@ To validate package consumption, first build the pre-alpha packages into a repos
 </ItemGroup>
 ```
 
-These packages are repository build artifacts; they are not published to NuGet.org. Follow
-[Pack](../docs/packaging.md#pack) and the
-[package-only execution gate](../docs/packaging.md#package-only-execution-gate) for the local feed and
-source-mapping setup. Replace the runtime suffix with the application's RID and keep one version across
-all packages. `OpenUsd.LiveAuthoring` is sample source, not a package; reference its project or copy the
-adapter source. The final executable still owns the matching native runtime package.
+Follow [Pack](../docs/packaging.md#pack) and the
+[package-only execution gate](../docs/packaging.md#package-only-execution-gate) for local-feed and
+source-mapping setup when validating repository-built packages. Replace the runtime suffix with the
+application's RID and keep one version across all shipped packages.
+
+`OpenUsd.LiveAuthoring` is not shipped to NuGet.org and is not part of the package set. External
+consumers that want this boundary should vendor `samples/OpenUsd.LiveAuthoring` as source, keep it as a
+source `ProjectReference` with its `OpenUsd` reference changed to `PackageReference`, or copy the
+specific adapter pattern into their own integration assembly. The final executable still owns the
+matching native runtime package.
 
 ## Expected output and files
 
