@@ -479,8 +479,8 @@ the call site in `.github/workflows/render.yml`, so a capability regression on a
 hard failure, and the narrowing is visible in the workflow rather than buried in a script.
 
 **`windows-wgl` shared-stage soak.** Hosted Windows exposes only the generic GDI OpenGL 1.1
-implementation, so the gate stages a hash-locked Mesa llvmpipe `opengl32.dll` before starting
-Avalonia/Storm. The soak is mandatory again on hosted Windows.
+implementation, so the hosted gate explicitly selects the hash-locked Mesa llvmpipe `opengl32.dll`
+before starting Avalonia/Storm. The soak is mandatory again on hosted Windows.
 
 **Windows Avalonia Vulkan composition.** Hosted Windows has no GPU driver and therefore no system
 Vulkan ICD. The skip is recorded in `artifacts/render-capability/windows-vulkan.json`.
@@ -504,15 +504,58 @@ The WGL soak is unblocked with the same supply-chain model as the SwiftShader Vu
 `eng/mesa-wgl-test-runtime.lock.json` pins the exact Mesa release, archive URL, archive SHA-256, and
 staged `opengl32.dll` SHA-256 for `win-x64`. `eng/prepare-mesa-wgl-test-runtime.ps1` downloads the
 archive only from that pinned URL, verifies the archive hash, extracts only the locked file, verifies
-the staged file hash, prepends its directory to `PATH`, and copies it next to the viewer's native
-runtime before the soak starts.
+the staged file hash, prepends its directory to `PATH`, and sets llvmpipe/software environment knobs
+before the soak starts.
+
+The Windows loader does not resolve `opengl32.dll` from `PATH` while the System32 GDI OpenGL library
+is available. The WGL parity gate therefore copies the pinned Mesa `opengl32.dll` into both the test
+host application directory and the staged native runtime `bin` directory, then tells the conformance
+test host to load the application-directory copy before any Storm native module imports OpenGL. This
+keeps the managed WGL context and OpenUSD Glf/Garch on the same Mesa module. Without that explicit
+early load, the managed side can create a Mesa context while `usd_ms.dll`/`openusd_hydra.dll` imports
+System32 `opengl32.dll`; Glf then sees no valid current context even though managed WGL calls report
+one.
 
 The helper also runs a WGL preflight and writes `mesa-wgl-runtime.json` plus
 `mesa-wgl-preflight.json` under `artifacts/platform-smoke/windows-wgl/mesa-wgl-runtime`. Those files
 record the loaded `opengl32.dll`, its SHA-256, and `GL_VENDOR`, `GL_RENDERER`, and `GL_VERSION`.
 The gate requires the preflight renderer to contain `llvmpipe`, so a hosted Windows pass records that
 it used Mesa software rasterisation instead of silently falling back to the generic GDI OpenGL 1.1
-driver or an installed GPU driver.
+driver or an installed GPU driver. The parity capture evidence also records the test host's loaded
+OpenGL path, SHA-256, renderer, version, and current WGL handles beside the scene metrics.
+
+`eng/run-parity-capture.ps1` defaults to `-StormGl Auto`. In that mode the script removes any stale
+test-host `opengl32.dll` override, preflights the system WGL implementation, and gates all nine scenes
+when the driver can create a Storm-usable context. If the system driver is unavailable, Auto falls back
+to Mesa with a warning that the gate has changed to six scenes. Hosted CI passes `-StormGl Mesa`
+explicitly so the result is deterministic and runner-safe. Both modes publish the gated scene count and
+excluded scene names, and the test host asserts the expected count so the parity subset cannot shrink
+silently.
+
+The Mesa WGL parity run gates the six scenes whose Storm reference is stable across Mesa llvmpipe,
+D3D12 WARP, and Vulkan SwiftShader: `orientation-asymmetric`, `clip-plane-asymmetric`,
+`depth-overlap-multiprim`, `material-normals-uv`, `point-instancer-cluster`, and `cards-draw-mode`.
+The three excluded scenes remain valuable GPU-driver conformance probes, but Mesa llvmpipe exposed
+Storm implementation differences rather than hdSilk regressions:
+
+- `single-sided-winding`: Mesa Storm covered 2,201 pixels in the single-sided pennant region while
+  hdSilk covered the expected 875-pixel double-sided banner, with no overlap (`adjustedIoU=0.000000`).
+  The first failing assertion is the adjusted-IoU gate; positive coverage holds for both images.
+- `bounds-draw-mode`: Mesa Storm covered 0 pixels for the draw-mode basis-curves bounds proxy, while
+  hdSilk covered the expected 251 one-pixel line pixels (`adjustedIoU=0.000000`). If gated, this
+  would fail the reference positive-coverage assertion.
+- `origin-draw-mode`: Mesa Storm covered 0 pixels for the draw-mode basis-curves origin proxy, while
+  hdSilk covered the expected 116 one-pixel line pixels (`adjustedIoU=0.000000`). If gated, this
+  would fail the reference positive-coverage assertion.
+
+The WGL gate writes `parity-capture-mesa-wgl-exclusions.json`/`.txt` so the subset is explicit in CI
+artifacts. If a future Mesa/OpenUSD update makes those scenes agree with the real-GPU measurements,
+remove the exclusion and restore all nine scenes to the WGL parity subset.
+
+Those three scenes gate only when `-StormGl Auto` finds a conformant system driver. Hosted CI has no
+such driver today, so authored double-sidedness and the two basis-curves line-topology draw-mode probes
+are not covered by hosted WGL CI; they need the same class of self-hosted GPU-equipped Windows runner as
+the Vulkan composition gates below.
 
 This proves the Storm WGL render path, shared-stage scheduling, teardown, and diagnostics on a
 reproducible software OpenGL implementation. It is not a Windows GPU driver-conformance proof:

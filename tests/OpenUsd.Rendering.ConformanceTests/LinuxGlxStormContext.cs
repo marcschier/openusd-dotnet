@@ -94,6 +94,8 @@ internal sealed partial class LinuxGlxStormContext : IStormGlContext
 
     public uint Framebuffer { get; private set; }
 
+    public StormOpenGlEvidence? OpenGlEvidence => null;
+
     public static LinuxGlxStormContext Create(int width, int height, SilkColor clearColor)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);

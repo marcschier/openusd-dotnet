@@ -39,8 +39,22 @@ internal sealed record SilkParityCapture(
     int DrawCount,
     ulong Revision);
 
+internal sealed record StormOpenGlEvidence(
+    string LoadedOpenGl32,
+    string LoadedOpenGl32Sha256,
+    string Vendor,
+    string Renderer,
+    string Version,
+    string CurrentDeviceContext,
+    string CurrentContext);
+
+internal sealed record StormParityCapture(
+    ParityImage Image,
+    StormOpenGlEvidence? OpenGlEvidence);
+
 internal sealed record ParityCaptureSet(
     ParityImage Storm,
+    StormOpenGlEvidence? OpenGlEvidence,
     IReadOnlyList<SilkParityCapture> SilkCaptures);
 
 internal interface IStormGlContextFactory
@@ -51,6 +65,8 @@ internal interface IStormGlContextFactory
 internal interface IStormGlContext : IDisposable
 {
     uint Framebuffer { get; }
+
+    StormOpenGlEvidence? OpenGlEvidence { get; }
 
     ParityImage ReadTopDownRgba();
 
@@ -74,17 +90,17 @@ internal static class ParityCaptureDriver
 
         await using UsdStageScheduler scheduler = UsdStageScheduler.Open(input.StagePath);
         using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync().ConfigureAwait(false);
-        ParityImage storm = CaptureStorm(input, stormContextFactory, source);
+        StormParityCapture storm = CaptureStorm(input, stormContextFactory, source);
         var silkCaptures = new List<SilkParityCapture>(silkBackends.Count);
         foreach (SilkParityBackend backend in silkBackends)
         {
             silkCaptures.Add(CaptureSilk(input, source, backend));
         }
 
-        return new ParityCaptureSet(storm, silkCaptures);
+        return new ParityCaptureSet(storm.Image, storm.OpenGlEvidence, silkCaptures);
     }
 
-    private static ParityImage CaptureStorm(
+    private static StormParityCapture CaptureStorm(
         ParityCaptureInput input,
         IStormGlContextFactory stormContextFactory,
         UsdStageRenderSource source)
@@ -93,7 +109,7 @@ internal static class ParityCaptureDriver
             input.Width,
             input.Height,
             input.ClearColor);
-        using OpenUsdStormRenderer renderer = OpenUsdStormRuntime.Create(input.PluginPath, source);
+        using OpenUsdStormRenderer renderer = CreateStormRenderer(input.PluginPath, source, context);
         context.Clear(input.ClearColor);
         _ = renderer.Render(
             input.Width,
@@ -102,7 +118,31 @@ internal static class ParityCaptureDriver
             input.TimeCode,
             input.Camera);
         context.Finish();
-        return NormalizeCapture(context.ReadTopDownRgba(), input.ClearColor);
+        return new StormParityCapture(
+            NormalizeCapture(context.ReadTopDownRgba(), input.ClearColor),
+            context.OpenGlEvidence);
+    }
+
+    private static OpenUsdStormRenderer CreateStormRenderer(
+        string pluginPath,
+        UsdStageRenderSource source,
+        IStormGlContext context)
+    {
+        try
+        {
+            return OpenUsdStormRuntime.Create(pluginPath, source);
+        }
+        catch (OpenUsdStormException exception) when (context.OpenGlEvidence is not null)
+        {
+            StormOpenGlEvidence evidence = context.OpenGlEvidence;
+            throw new InvalidOperationException(
+                exception.Message +
+                $" Managed WGL evidence: loadedOpenGl32='{evidence.LoadedOpenGl32}', " +
+                $"sha256='{evidence.LoadedOpenGl32Sha256}', renderer='{evidence.Renderer}', " +
+                $"currentDC={evidence.CurrentDeviceContext}, " +
+                $"currentContext={evidence.CurrentContext}.",
+                exception);
+        }
     }
 
     private static SilkParityCapture CaptureSilk(
