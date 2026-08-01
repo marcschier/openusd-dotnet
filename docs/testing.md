@@ -105,7 +105,8 @@ After a Release build, run the Pester-free runner contract checks with:
 ## Performance safety gates
 
 The native-independent performance gate builds the focused TUnit safety project, repeats allocation,
-retained-resource, batching, and P/Invoke-boundary contracts, then runs a BenchmarkDotNet smoke:
+retained-resource, batching, checked-shader cold-start, and P/Invoke-boundary contracts, then runs a
+BenchmarkDotNet smoke:
 
 ```powershell
 ./eng/run-performance.ps1
@@ -119,8 +120,9 @@ measurement locally when validating the workflow:
 ```
 
 Full benchmark artifacts are opt-in and remain informational until release-machine baselines are
-calibrated. Ordinary CI fails only on deterministic allocation, resource, source-boundary, build, or
-benchmark execution regressions; it does not assert wall-clock timings:
+calibrated. Ordinary CI fails only on deterministic allocation, resource, source-boundary, checked
+shader, curated-scene counter, build, or benchmark execution regressions; it does not assert wall-clock
+timings:
 
 ```powershell
 ./eng/run-performance.ps1 `
@@ -131,6 +133,13 @@ benchmark execution regressions; it does not assert wall-clock timings:
 
 The suite requires .NET SDK 10.0.301 but no native OpenUSD installation. Results include
 BenchmarkDotNet Markdown, CSV, and full JSON reports under the selected artifact directory.
+
+The curated Storm/hdSilk parity capture remains the render gate for the 12 scene set. In addition to
+the adjusted-IoU floor, each captured hdSilk backend must stay under per-scene deterministic resource
+thresholds recorded in [Performance](performance.md#object-and-resource-churn). Thresholds are measured
+counter values plus modest headroom, not shared global ceilings. These gates prefer counters over
+frame-time budgets because hosted runners have noisy CPU/GPU scheduling; the counters catch the resource
+regressions the renderer controls without becoming flaky.
 
 Workflow and native-input contracts are also executable without a platform build:
 

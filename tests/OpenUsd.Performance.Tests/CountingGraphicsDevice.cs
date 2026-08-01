@@ -16,6 +16,12 @@ internal sealed class CountingGraphicsDevice : ISilkGraphicsDevice
 
     internal int LiveBufferCount => CreatedBufferCount - DisposedBufferCount;
 
+    internal int CreatedShaderModuleCount { get; private set; }
+
+    internal List<SilkShaderModuleDescriptor> ShaderModules { get; } = [];
+
+    internal int CreatedPipelineCount { get; private set; }
+
     public SilkGraphicsBackend Backend => SilkGraphicsBackend.Vulkan;
 
     public SilkGraphicsCapabilities Capabilities { get; } =
@@ -47,8 +53,12 @@ internal sealed class CountingGraphicsDevice : ISilkGraphicsDevice
         new CountingGraphicsSampler(descriptor);
 
     public ISilkGraphicsShaderModule CreateShaderModule(
-        SilkShaderModuleDescriptor descriptor) =>
-        new CountingGraphicsShaderModule(descriptor);
+        SilkShaderModuleDescriptor descriptor)
+    {
+        CreatedShaderModuleCount++;
+        ShaderModules.Add(descriptor);
+        return new CountingGraphicsShaderModule(descriptor);
+    }
 
     public ISilkGraphicsBindingLayout CreateBindingLayout(
         SilkBindingLayoutDescriptor descriptor) =>
@@ -59,8 +69,11 @@ internal sealed class CountingGraphicsDevice : ISilkGraphicsDevice
         new CountingGraphicsShaderProgram(descriptor.BindingLayout);
 
     public ISilkGraphicsPipeline CreateGraphicsPipeline(
-        SilkGraphicsPipelineDescriptor descriptor) =>
-        new CountingGraphicsPipeline(descriptor);
+        SilkGraphicsPipelineDescriptor descriptor)
+    {
+        CreatedPipelineCount++;
+        return new CountingGraphicsPipeline(descriptor);
+    }
 
     public ISilkComputeBindingLayout CreateComputeBindingLayout(
         SilkComputeBindingLayoutDescriptor descriptor) =>

@@ -21,6 +21,8 @@ public sealed class StormSilkParityCaptureDriverTests
     private const int Height = 128;
     private const double TimeCode = 1;
     private const double MinimumDiscriminationMargin = 0.18;
+    private const string D3D12WarpBackendName = "D3D12 WARP";
+    private const string VulkanSwiftShaderBackendName = "Vulkan SwiftShader";
 
     /// <summary>
     /// Largest single-channel difference tolerated on a scene that binds a real
@@ -94,6 +96,7 @@ public sealed class StormSilkParityCaptureDriverTests
                     .IsTrue()
                     .Because($"{firstSilk.BackendName} parity capture for {scene.Name} must be byte-stable.");
                 await Assert.That(firstSilk.DrawCount).IsGreaterThan(0);
+                await AssertPerformanceBudget(scene, firstSilk);
                 ParityComparisonResult result = ParityImageComparer.Compare(
                     first.Storm,
                     firstSilk.Image,
@@ -127,6 +130,9 @@ public sealed class StormSilkParityCaptureDriverTests
                     firstHash = Hash(firstSilk.Image),
                     secondHash = Hash(secondSilk.Image),
                     firstSilk.DrawCount,
+                    performance = ToEvidence(
+                        firstSilk.Statistics,
+                        scene.GetPerformanceBudget(firstSilk.BackendName)),
                     firstSilk.Revision,
                     comparison = ToEvidence(result),
                     deterministic = firstSilk.Image.Rgba.Span.SequenceEqual(secondSilk.Image.Rgba.Span),
@@ -802,10 +808,10 @@ public sealed class StormSilkParityCaptureDriverTests
 
     [SupportedOSPlatform("windows")]
     private static SilkParityBackend CreateD3D12WarpBackend() =>
-        new("D3D12 WARP", static () => D3D12SilkGraphicsDevice.Create(useWarp: true));
+        new(D3D12WarpBackendName, static () => D3D12SilkGraphicsDevice.Create(useWarp: true));
 
     private static SilkParityBackend CreateVulkanBackend() =>
-        new("Vulkan SwiftShader", static () => VulkanSilkGraphicsDevice.Create());
+        new(VulkanSwiftShaderBackendName, static () => VulkanSilkGraphicsDevice.Create());
 
     private static ParityTolerance CreateTolerance(ParityScene scene) =>
         ParityTolerance.Geometry with
@@ -852,7 +858,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "against a 0.592750 worst perturbation. 0.92 keeps 0.08 for " +
                     "rasterization differences on other backends while staying 0.33 " +
                     "clear of the nearest perturbation.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 692, 692, 0)),
+            },
             new ParityScene(
                 "clip-plane-asymmetric",
                 Path.Combine(assetRoot, "parity-clip-plane-asymmetric.usda"),
@@ -867,6 +877,8 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 ClipPlanes = [new Vector4(1, 0, 0, 0.12f)],
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 736, 736, 0)),
             },
             new ParityScene(
                 "depth-overlap-multiprim",
@@ -879,7 +891,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "a 0.184333 margin. It was rejected at 0.074416 only because the " +
                     "projection mismatch depressed the correct score; with exact agreement " +
                     "it clears the required margin.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(3, 3, 3, 3, 3, 3, 900, 900, 0)),
+            },
             new ParityScene(
                 "material-normals-uv",
                 Path.Combine(assetRoot, "parity-material-normals-uv.usda"),
@@ -892,7 +908,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "vertically symmetric and still scored 0.865109 mirrored, a 0.134891 " +
                     "margin below the required 0.18; the pennant shape concentrates mass " +
                     "in the upper right so a flip now costs 0.689940.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 676, 596, 0)),
+            },
             new ParityScene(
                 "materials-textures",
                 Path.Combine(assetRoot, "parity-material-texture-asymmetric.usda"),
@@ -903,7 +923,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "Texture-backed material coverage and colour now gate: 1.000000 " +
                     "correct adjusted IoU against a 0.781397 worst perturbation " +
                     "(0.218603 margin), with colour deltas max 13 / mean 4.476.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 692, 612, 262_144)),
+            },
             new ParityScene(
                 "point-instancer-cluster",
                 Path.Combine(assetRoot, "parity-point-instancer-cluster.usda"),
@@ -916,7 +940,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "triangles make a transform error move coverage rather than merely " +
                     "resize it, so a wrong instance transform collapses the score instead " +
                     "of nudging it.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 4, 1, 1, 1, 4, 740, 740, 0)),
+            },
             new ParityScene(
                 "points-asymmetric",
                 Path.Combine(assetRoot, "parity-points-asymmetric.usda"),
@@ -929,7 +957,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "width 0.01 because Storm's default point width is world-space " +
                     "and intentionally covers most of the frame; at this measured " +
                     "width both Storm and hdSilk rasterize one pixel per point.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 3_496, 3_496, 0)),
+            },
             new ParityScene(
                 "cards-draw-mode",
                 Path.Combine(assetRoot, "parity-cards-draw-mode.usda"),
@@ -943,7 +975,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "The extent is off-centre and strongly non-square on purpose: a card is " +
                     "an axis-aligned rectangle, and a centred near-square one measured a " +
                     "0.012661 margin because mirroring barely changed it.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_136, 1_136, 0)),
+            },
             new ParityScene(
                 "single-sided-winding",
                 Path.Combine(assetRoot, "parity-single-sided-winding.usda"),
@@ -961,7 +997,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "adds the pennant's coverage and collapses the score, drawing nothing " +
                     "at all fails the positive-coverage requirement, and the perturbations " +
                     "move real coverage.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 700, 700, 0)),
+            },
             new ParityScene(
                 "bounds-draw-mode",
                 Path.Combine(assetRoot, "parity-bounds-draw-mode.usda"),
@@ -972,7 +1012,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "1.000000 correct adjusted IoU against a 0.243309 worst perturbation, " +
                     "a 0.756691 margin. hdSilk emits the draw-mode basisCurves as line " +
                     "topology, matching Storm's 251 one-pixel line coverage exactly.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_088, 1_088, 0)),
+            },
             new ParityScene(
                 "origin-draw-mode",
                 Path.Combine(assetRoot, "parity-origin-draw-mode.usda"),
@@ -983,7 +1027,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "1.000000 correct adjusted IoU against a 0.229167 worst perturbation, " +
                     "a 0.770833 margin. hdSilk emits the draw-mode basisCurves as line " +
                     "topology, matching Storm's 116 one-pixel origin-axis pixels exactly.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 584, 584, 0)),
+            },
             new ParityScene(
                 "time-varying-transform-primvar",
                 Path.Combine(assetRoot, "parity-time-varying-transform-primvar.usda"),
@@ -998,6 +1046,8 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 TimeCode = 2,
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 700, 700, 0)),
             },
         ];
         // parity-curve-width-probe.usda is a diagnostic and is never gated: it
@@ -1133,6 +1183,7 @@ public sealed class StormSilkParityCaptureDriverTests
             ".github\\workflows\\render.yml",
             "eng\\run-parity-capture.ps1",
             "src\\OpenUsd.Rendering\\ParityImageComparison.cs",
+            "src\\OpenUsd.Rendering.Silk\\SilkSceneState.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\OpenUsd.Rendering.ConformanceTests.csproj",
             "tests\\OpenUsd.Rendering.ConformanceTests\\ParityCaptureDriver.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\StormSilkParityCaptureDriverTests.cs",
@@ -1147,6 +1198,7 @@ public sealed class StormSilkParityCaptureDriverTests
             "test-assets\\parity\\parity-cards-draw-mode.usda",
             "test-assets\\parity\\parity-bounds-draw-mode.usda",
             "test-assets\\parity\\parity-origin-draw-mode.usda",
+            "docs\\performance.md",
             "docs\\testing.md",
         ];
         var files = new List<object>();
@@ -1283,6 +1335,58 @@ public sealed class StormSilkParityCaptureDriverTests
             result.Diagnostics,
         };
 
+    private static object ToEvidence(
+        SilkSceneGpuStatistics statistics,
+        ParityPerformanceBudget budget) =>
+        new
+        {
+            statistics.MeshCount,
+            statistics.GeometryBuilds,
+            statistics.VertexUploads,
+            statistics.IndexUploads,
+            statistics.UniformUploads,
+            statistics.BufferAllocationBytes,
+            statistics.BufferWriteBytes,
+            statistics.TextureUploadBytes,
+            budget,
+        };
+
+    private static async Task AssertPerformanceBudget(
+        ParityScene scene,
+        SilkParityCapture capture)
+    {
+        ParityPerformanceBudget budget = scene.GetPerformanceBudget(capture.BackendName);
+        await Assert.That(capture.DrawCount)
+            .IsLessThanOrEqualTo(budget.MaxDrawCount)
+            .Because($"{scene.Name} {capture.BackendName} draw count must stay within the curated-scene budget.");
+        await Assert.That(capture.Statistics.MeshCount)
+            .IsLessThanOrEqualTo(budget.MaxMeshCount)
+            .Because($"{scene.Name} {capture.BackendName} mesh count must stay within the curated-scene budget.");
+        await Assert.That(capture.Statistics.GeometryBuilds)
+            .IsLessThanOrEqualTo(budget.MaxGeometryBuilds)
+            .Because($"{scene.Name} {capture.BackendName} geometry builds must stay within the curated-scene budget.");
+        await Assert.That(capture.Statistics.VertexUploads)
+            .IsLessThanOrEqualTo(budget.MaxVertexUploads)
+            .Because($"{scene.Name} {capture.BackendName} vertex uploads must stay within the curated-scene budget.");
+        await Assert.That(capture.Statistics.IndexUploads)
+            .IsLessThanOrEqualTo(budget.MaxIndexUploads)
+            .Because($"{scene.Name} {capture.BackendName} index uploads must stay within the curated-scene budget.");
+        await Assert.That(capture.Statistics.UniformUploads)
+            .IsLessThanOrEqualTo(budget.MaxUniformUploads)
+            .Because($"{scene.Name} {capture.BackendName} uniform uploads must stay within the curated-scene budget.");
+        await Assert.That(capture.Statistics.BufferAllocationBytes)
+            .IsLessThanOrEqualTo(budget.MaxBufferAllocationBytes)
+            .Because(
+                $"{scene.Name} {capture.BackendName} retained buffer bytes must stay within the curated-scene budget.");
+        await Assert.That(capture.Statistics.BufferWriteBytes)
+            .IsLessThanOrEqualTo(budget.MaxBufferWriteBytes)
+            .Because($"{scene.Name} {capture.BackendName} upload bytes must stay within the curated-scene budget.");
+        await Assert.That(capture.Statistics.TextureUploadBytes)
+            .IsLessThanOrEqualTo(budget.MaxTextureUploadBytes)
+            .Because(
+                $"{scene.Name} {capture.BackendName} texture upload bytes must stay within the curated-scene budget.");
+    }
+
     private static string FormatMetrics(
         ParityScene scene,
         ParityCaptureInput input,
@@ -1291,15 +1395,25 @@ public sealed class StormSilkParityCaptureDriverTests
         ParityComparisonResult result) =>
         string.Format(
             CultureInfo.InvariantCulture,
-            "Scene {0}; Storm vs {1}: storm={2}x{3}, silkRevision={4}, draws={5}, headlight={6}, " +
-            "rawIoU={7:F6}, adjustedIoU={8:F6}, coverageDiff={9:F6}, referenceCoverage={10}, " +
-            "candidateCoverage={11}, maxChannelDiff={12}, meanChannelDiff={13:F3}, passed={14}; ",
+            "Scene {0}; Storm vs {1}: storm={2}x{3}, silkRevision={4}, draws={5}, meshes={6}, " +
+            "geometryBuilds={7}, vertexUploads={8}, indexUploads={9}, uniformUploads={10}, " +
+            "bufferAllocationBytes={11}, bufferWriteBytes={12}, textureUploadBytes={13}, headlight={14}, " +
+            "rawIoU={15:F6}, adjustedIoU={16:F6}, coverageDiff={17:F6}, referenceCoverage={18}, " +
+            "candidateCoverage={19}, maxChannelDiff={20}, meanChannelDiff={21:F3}, passed={22}; ",
             scene.Name,
             silk.BackendName,
             storm.Width,
             storm.Height,
             silk.Revision,
             silk.DrawCount,
+            silk.Statistics.MeshCount,
+            silk.Statistics.GeometryBuilds,
+            silk.Statistics.VertexUploads,
+            silk.Statistics.IndexUploads,
+            silk.Statistics.UniformUploads,
+            silk.Statistics.BufferAllocationBytes,
+            silk.Statistics.BufferWriteBytes,
+            silk.Statistics.TextureUploadBytes,
             input.Headlight,
             result.CoverageIntersectionOverUnion,
             result.AdjustedCoverageIntersectionOverUnion,
@@ -1349,6 +1463,14 @@ public sealed class StormSilkParityCaptureDriverTests
     private static string FileHash(string path) =>
         Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
 
+    private static Dictionary<string, ParityPerformanceBudget> CurrentBackendBudgets(
+        ParityPerformanceBudget budget) =>
+        new Dictionary<string, ParityPerformanceBudget>(StringComparer.Ordinal)
+        {
+            [D3D12WarpBackendName] = budget,
+            [VulkanSwiftShaderBackendName] = budget,
+        };
+
     private sealed record ParityScene(
         string Name,
         string StagePath,
@@ -1361,5 +1483,73 @@ public sealed class StormSilkParityCaptureDriverTests
         public IReadOnlyList<Vector4> ClipPlanes { get; init; } = [];
 
         public double TimeCode { get; init; } = StormSilkParityCaptureDriverTests.TimeCode;
+
+        public required Dictionary<string, ParityPerformanceBudget> PerformanceBudgets { get; init; }
+
+        public ParityPerformanceBudget GetPerformanceBudget(string backendName) =>
+            PerformanceBudgets.TryGetValue(backendName, out ParityPerformanceBudget budget)
+                ? budget
+                : throw new InvalidOperationException(
+                    $"Scene '{Name}' has no performance budget for backend '{backendName}'.");
+    }
+
+    private readonly record struct ParityPerformanceBudget(
+        int MeasuredDrawCount,
+        int MaxDrawCount,
+        int MeasuredMeshCount,
+        int MaxMeshCount,
+        ulong MeasuredGeometryBuilds,
+        ulong MaxGeometryBuilds,
+        ulong MeasuredVertexUploads,
+        ulong MaxVertexUploads,
+        ulong MeasuredIndexUploads,
+        ulong MaxIndexUploads,
+        ulong MeasuredUniformUploads,
+        ulong MaxUniformUploads,
+        ulong MeasuredBufferAllocationBytes,
+        ulong MaxBufferAllocationBytes,
+        ulong MeasuredBufferWriteBytes,
+        ulong MaxBufferWriteBytes,
+        ulong MeasuredTextureUploadBytes,
+        ulong MaxTextureUploadBytes)
+    {
+        public static ParityPerformanceBudget FromMeasured(
+            int drawCount,
+            int meshCount,
+            ulong geometryBuilds,
+            ulong vertexUploads,
+            ulong indexUploads,
+            ulong uniformUploads,
+            ulong bufferAllocationBytes,
+            ulong bufferWriteBytes,
+            ulong textureUploadBytes) =>
+            new(
+                drawCount,
+                CountBudget(drawCount),
+                meshCount,
+                CountBudget(meshCount),
+                geometryBuilds,
+                CountBudget(geometryBuilds),
+                vertexUploads,
+                CountBudget(vertexUploads),
+                indexUploads,
+                CountBudget(indexUploads),
+                uniformUploads,
+                CountBudget(uniformUploads),
+                bufferAllocationBytes,
+                ByteBudget(bufferAllocationBytes),
+                bufferWriteBytes,
+                ByteBudget(bufferWriteBytes),
+                textureUploadBytes,
+                ByteBudget(textureUploadBytes));
+
+        private static int CountBudget(int measured) =>
+            measured == 0 ? 0 : measured + Math.Max(1, (measured + 3) / 4);
+
+        private static ulong CountBudget(ulong measured) =>
+            measured == 0 ? 0 : checked(measured + Math.Max(1UL, (measured + 3) / 4));
+
+        private static ulong ByteBudget(ulong measured) =>
+            measured == 0 ? 0 : checked(measured + Math.Max(256UL, (measured + 3) / 4));
     }
 }

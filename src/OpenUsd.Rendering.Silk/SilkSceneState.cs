@@ -1152,12 +1152,18 @@ public sealed class SilkSceneGpuResources : IDisposable
         _geometryBuilds,
         _vertexUploads,
         _indexUploads,
-        _uniformUploads);
+        _uniformUploads,
+        _bufferAllocationBytes,
+        _bufferWriteBytes,
+        _textureUploadBytes);
 
     private ulong _geometryBuilds;
     private ulong _vertexUploads;
     private ulong _indexUploads;
     private ulong _uniformUploads;
+    private ulong _bufferAllocationBytes;
+    private ulong _bufferWriteBytes;
+    private ulong _textureUploadBytes;
 
     /// <summary>Applies only the mesh changes reported by a scene delta.</summary>
     public void Apply(SilkSceneState scene, SilkSceneDelta delta)
@@ -1248,6 +1254,7 @@ public sealed class SilkSceneGpuResources : IDisposable
             {
                 uploads++;
                 _uniformUploads++;
+                _bufferWriteBytes += SilkSceneUniformWriter.ByteSize;
             }
         }
         return uploads;
@@ -1259,7 +1266,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(frame);
         bool created = _frameBuffer is null;
-        _frameBuffer ??= _device.CreateBuffer(
+        _frameBuffer ??= CreateTrackedBuffer(
             SilkFrameUniformWriter.ByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         if (_frameRevision != frame.Revision)
@@ -1268,7 +1275,7 @@ public sealed class SilkSceneGpuResources : IDisposable
             SilkFrameUniformWriter.Write(frame, constants, _device.ClipSpaceYPointsDown);
             if (created || !constants.SequenceEqual(_frameBytes))
             {
-                _frameBuffer.Write(constants);
+                WriteTracked(_frameBuffer, constants);
                 constants.CopyTo(_frameBytes);
             }
             _frameRevision = frame.Revision;
@@ -1333,7 +1340,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         ISilkGraphicsBuffer? buffer = null;
         try
         {
-            buffer = _device.CreateBuffer(
+            buffer = CreateTrackedBuffer(
                 SilkSurfaceUniformWriter.ByteSize,
                 SilkBufferUsage.Storage | SilkBufferUsage.Upload);
             WriteSurface(buffer, material, light);
@@ -1346,14 +1353,14 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
     }
 
-    private static void WriteSurface(
+    private void WriteSurface(
         ISilkGraphicsBuffer buffer,
         SilkMaterialData? material,
         RenderHeadlight light)
     {
         Span<byte> constants = stackalloc byte[SilkSurfaceUniformWriter.ByteSize];
         SilkSurfaceUniformWriter.Write(material, light, constants);
-        buffer.Write(constants);
+        WriteTracked(buffer, constants);
     }
 
     internal void BindMaterialTexture(
@@ -1372,6 +1379,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         if (!entry.Uploaded)
         {
             commands.UploadTexture(entry.Texture, entry.Pixels);
+            _textureUploadBytes += checked((ulong)entry.Pixels.Length);
             entry.Uploaded = true;
         }
         commands.SetSampler(0, 1, RequireSampler(texture));
@@ -1393,6 +1401,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         if (!entry.Uploaded)
         {
             commands.UploadTexture(entry.Texture, entry.Pixels);
+            _textureUploadBytes += checked((ulong)entry.Pixels.Length);
             entry.Uploaded = true;
         }
     }
@@ -1573,7 +1582,7 @@ public sealed class SilkSceneGpuResources : IDisposable
             // aliased it onto the uniform buffer; Metal's explicit [[buffer(6)]]
             // read nothing and collapsed every vertex, which is why hosted macOS
             // produced only clear-color pixels.
-            uniformBuffer = _device.CreateBuffer(
+            uniformBuffer = CreateTrackedBuffer(
                 SilkSceneUniformWriter.ByteSize,
                 SilkBufferUsage.Uniform | SilkBufferUsage.Storage |
                     SilkBufferUsage.Upload);
@@ -1627,20 +1636,20 @@ public sealed class SilkSceneGpuResources : IDisposable
         ISilkGraphicsBuffer? indexBuffer = null;
         try
         {
-            vertexBuffer = _device.CreateBuffer(
+            vertexBuffer = CreateTrackedBuffer(
                 GetAllocationSize(vertexBytes.Length),
                 SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
             if (!vertexBytes.IsEmpty)
             {
-                vertexBuffer.Write(vertexBytes);
+                WriteTracked(vertexBuffer, vertexBytes);
                 _vertexUploads++;
             }
-            indexBuffer = _device.CreateBuffer(
+            indexBuffer = CreateTrackedBuffer(
                 GetAllocationSize(indexBytes.Length),
                 SilkBufferUsage.Index | SilkBufferUsage.Upload);
             if (!indexBytes.IsEmpty)
             {
-                indexBuffer.Write(indexBytes);
+                WriteTracked(indexBuffer, indexBytes);
                 _indexUploads++;
             }
 
@@ -1698,6 +1707,18 @@ public sealed class SilkSceneGpuResources : IDisposable
 
     private static nuint GetAllocationSize(int dataLength) =>
         checked((nuint)Math.Max(dataLength, sizeof(uint)));
+
+    private ISilkGraphicsBuffer CreateTrackedBuffer(nuint size, SilkBufferUsage usage)
+    {
+        _bufferAllocationBytes += checked((ulong)size);
+        return _device.CreateBuffer(size, usage);
+    }
+
+    private void WriteTracked(ISilkGraphicsBuffer buffer, ReadOnlySpan<byte> data, nuint offset = 0)
+    {
+        buffer.Write(data, offset);
+        _bufferWriteBytes += checked((ulong)data.Length);
+    }
 }
 
 /// <summary>
@@ -2026,4 +2047,7 @@ public readonly record struct SilkSceneGpuStatistics(
     ulong GeometryBuilds,
     ulong VertexUploads,
     ulong IndexUploads,
-    ulong UniformUploads);
+    ulong UniformUploads,
+    ulong BufferAllocationBytes,
+    ulong BufferWriteBytes,
+    ulong TextureUploadBytes);

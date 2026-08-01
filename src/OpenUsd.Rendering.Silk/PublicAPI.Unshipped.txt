@@ -942,7 +942,11 @@ OpenUsd.Rendering.Silk.SilkSceneGpuResources.SilkSceneGpuResources(OpenUsd.Rende
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Statistics.get -> OpenUsd.Rendering.Silk.SilkSceneGpuStatistics
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.UpdateUniforms(OpenUsd.Rendering.Silk.SilkFrameState! frame) -> int
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics
-OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.Deconstruct(out int MeshCount, out ulong GeometryBuilds, out ulong VertexUploads, out ulong IndexUploads, out ulong UniformUploads) -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.BufferAllocationBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.BufferAllocationBytes.init -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.BufferWriteBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.BufferWriteBytes.init -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.Deconstruct(out int MeshCount, out ulong GeometryBuilds, out ulong VertexUploads, out ulong IndexUploads, out ulong UniformUploads, out ulong BufferAllocationBytes, out ulong BufferWriteBytes, out ulong TextureUploadBytes) -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.Equals(OpenUsd.Rendering.Silk.SilkSceneGpuStatistics other) -> bool
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.GeometryBuilds.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.GeometryBuilds.init -> void
@@ -951,7 +955,9 @@ OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.IndexUploads.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.MeshCount.get -> int
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.MeshCount.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.SilkSceneGpuStatistics() -> void
-OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.SilkSceneGpuStatistics(int MeshCount, ulong GeometryBuilds, ulong VertexUploads, ulong IndexUploads, ulong UniformUploads) -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.SilkSceneGpuStatistics(int MeshCount, ulong GeometryBuilds, ulong VertexUploads, ulong IndexUploads, ulong UniformUploads, ulong BufferAllocationBytes, ulong BufferWriteBytes, ulong TextureUploadBytes) -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureUploadBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureUploadBytes.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.UniformUploads.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.UniformUploads.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.VertexUploads.get -> ulong
