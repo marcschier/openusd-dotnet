@@ -40,11 +40,13 @@ internal static class PerformanceTestData
         string pathValue = "/World/PerformanceMesh",
         int primId = 42,
         int triangleCount = 1,
-        float color = 0.7f)
+        float color = 0.7f,
+        string materialPath = "")
     {
         ArgumentOutOfRangeException.ThrowIfNegative(primId);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(triangleCount);
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
+        byte[] material = Encoding.UTF8.GetBytes(materialPath);
         const int pointCount = 3;
         int indexCount = checked(triangleCount * 3);
         int size = checked(
@@ -52,7 +54,8 @@ internal static class PerformanceTestData
             path.Length +
             (pointCount * 3 * sizeof(float)) +
             (indexCount * sizeof(uint)) +
-            (triangleCount * sizeof(uint)));
+            (triangleCount * sizeof(uint)) +
+            material.Length);
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
@@ -70,6 +73,8 @@ internal static class PerformanceTestData
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), pointCount);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56), (uint)indexCount);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(60), (uint)triangleCount);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(208), ComputeStableHash(material));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(216), (uint)material.Length);
         for (int component = 0; component < 4; component++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
@@ -110,6 +115,7 @@ internal static class PerformanceTestData
                 bytes.AsSpan(subprimsOffset + (triangle * sizeof(uint))),
                 checked((uint)triangle));
         }
+        material.CopyTo(bytes, subprimsOffset + (triangleCount * sizeof(uint)));
         return bytes;
     }
 

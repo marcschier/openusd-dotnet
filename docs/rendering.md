@@ -135,6 +135,18 @@ The cache never compiles shaders. It creates shader modules only from embedded c
 names the missing artifact; hdSilk does not silently drop map bits or substitute a less specialized shader because that
 would produce a plausible but wrong render.
 
+### hdSilk draw ordering and retained uploads
+
+`SilkMeshRenderer` builds retained draw batches by geometry, material path, shader feature permutation, cull mode,
+and topology, then orders those batches by pipeline-affecting state and material before recording draws. This keeps
+compatible pipelines and material surface buffers contiguous without changing the page ABI or allocating steady-state
+per-frame buffers. The renderer still binds the required frame, instance, and surface slots on each draw path before
+use; it only skips redundant pipeline and surface-buffer commands when the already-bound state is identical.
+
+Point-instanced geometry keeps a persistent device-local instance table. When transforms change, the table encoder
+compares the newly encoded 80-byte instance constants with the retained bytes and uploads only changed contiguous
+ranges; unchanged frames and unchanged instances do not rewrite the whole table.
+
 ## Renderer-neutral picking contract
 
 `OpenUsd.Rendering` owns picking identity and revision semantics; Storm, hdSilk, RHIs, and the Viewer
