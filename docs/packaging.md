@@ -201,6 +201,8 @@ packages. `eng/pack-packages.ps1` is the
 single source of truth for that set. It enumerates the packages explicitly rather than packing the
 solution, and asserts afterwards that the produced set matches exactly, so adding a project cannot
 silently ship it and a missing native input fails the run instead of publishing a partial release.
+`OpenUsd.LiveAuthoring` is intentionally outside this set because it is source-only sample code, not a
+supported package surface.
 
 `OpenUsd.Viewer` stays classified as an application project so the strict production-library gates
 are not applied to its Avalonia UI code, but it opts back into packing because hosts embed the

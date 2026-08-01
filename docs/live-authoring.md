@@ -4,6 +4,12 @@ The live-authoring sample library adapts ordered external updates to one schedul
 provides data-only update records, pure validation, bounded admission, tail coalescing, scheduler
 execution, and ownership of the exact render source used by its consumer.
 
+`OpenUsd.LiveAuthoring` is deliberately source-only sample code in the `0.3.x` line. It is not one of
+the NuGet packages published by this repository, and external consumers must not assume a stable
+NuGet package or a frozen compatibility contract for these types. The sample exists to demonstrate a
+safe boundary that can be copied, vendored, or project-referenced while the API gaps below are still
+being evaluated.
+
 It is not a renderer, transaction engine, multi-producer ordering service, or OPC UA client. The
 external Pump integration described below is outside this repository.
 
@@ -196,17 +202,16 @@ An external Pump adapter owns:
 The Pump should submit batches and observe every returned task. It should not open the USD stage, call
 native APIs, own render leases, or add its domain-specific types to the live-authoring contracts.
 
-This repository does not ship or validate the external OPC UA integration. The sample library is the
-boundary that such an integration can consume.
+This repository does not ship or validate the external OPC UA integration. The sample library is a
+source pattern for such an integration, not a NuGet-delivered dependency.
 
 ### OPC UA Pump spike findings
 
 The `opcua-pump-spike` package-consumer test models the Pump outside this repository. Its external
-adapter defines its own `IUsdSink` and `OpenUsdStageSink`, consumes local packages only, and maps
-ordered simulated OPC UA samples into the real `ILiveAuthoringSink` and `LiveAuthoringBatch` types. The
-test executor records every `custom:sourceSequence` time sample and fails on the first gap, duplicate,
-drop, or reorder. It also restores from an isolated local feed and asserts that `OpenUsd.LiveAuthoring`,
-`OpenUsd`, and `OpenUsd.Interop` are packages, not project references.
+adapter defines its own `IUsdSink` and `OpenUsdStageSink`, consumes local packages for shipped
+OpenUSD assemblies, and maps ordered simulated OPC UA samples into the real `ILiveAuthoringSink` and
+`LiveAuthoringBatch` types from vendored sample source. The test executor records every
+`custom:sourceSequence` time sample and fails on the first gap, duplicate, drop, or reorder.
 
 The real public names are:
 
@@ -215,11 +220,12 @@ The real public names are:
   `OpenUsdStageSink`; and
 - `LiveAuthoringBatch` for ordered update groups.
 
-API gaps found by the first external ordered-update consumer:
+API gaps found by the first external ordered-update consumer, and the current disposition:
 
-1. `OpenUsd.LiveAuthoring` is a sample project and is not in the published package set, so the spike has
-   to force-pack it locally. A real Pump cannot consume the boundary from NuGet until this is either
-   promoted to a shipped package or documented as source-only sample code.
+1. `OpenUsd.LiveAuthoring` is a sample project and is not in the published package set. This is now an
+   explicit source-only contract: a real Pump vendors this directory, keeps it as a source
+   `ProjectReference`, or copies the relevant pattern into its own boundary assembly while referencing
+   shipped `OpenUsd` packages normally.
 2. `ILiveAuthoringSink.ApplyAsync` completes after execution, not after admission. An external producer
    that wants several admitted-but-not-yet-applied batches must serialize submission itself, as the spike
    does, because there is no admission receipt separate from the eventual execution result.
@@ -238,9 +244,13 @@ API gaps found by the first external ordered-update consumer:
    There is no structured admission/execution failure event stream for an external health endpoint, so
    the Pump must wrap every returned task and maintain its own counters.
 
-The surface is still sufficient for a single serialized external producer that can allocate positive
-batch sequences, convert domain values into data-only updates, and observe every returned task. No OPC UA
-domain type or client dependency is required in this repository.
+These gaps are accepted for the source sample because they describe integration policy rather than a
+frozen OpenUSD package contract. They are the reason the library stays outside the shipped package set:
+promoting it now would lock an admission model, correlation shape, ordering policy, and update coverage
+before a production Pump has validated them. The surface is still sufficient for a single serialized
+external producer that can allocate positive batch sequences, convert domain values into data-only
+updates, and observe every returned task. No OPC UA domain type or client dependency is required in this
+repository.
 
 ## Operational checklist
 

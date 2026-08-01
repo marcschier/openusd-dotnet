@@ -62,10 +62,9 @@ sample source, not a published package. An external package-based host should:
 2. replace repository `OpenUsd` project references with `PackageReference Include="OpenUsd"`, and
 3. add `OpenUsd.Runtime.Core.<rid>` at the same package version to the executable.
 
-These packages are repository build artifacts and are not published to NuGet.org. Follow
-[Pack](../../docs/packaging.md#pack) and the
-[package-only execution gate](../../docs/packaging.md#package-only-execution-gate) to build the local
-feed and configure source mapping.
+Follow [Pack](../../docs/packaging.md#pack) and the
+[package-only execution gate](../../docs/packaging.md#package-only-execution-gate) to build a local
+feed and configure source mapping when validating repository-built packages.
 
 The Core package stages native libraries and `usd/**`. A package-based bootstrap must register the
 copied `usd` plugin tree or set `PXR_PLUGINPATH_NAME` before creating the host. Add an Imaging runtime

@@ -30,6 +30,7 @@ members.
 | Source build | Supported |
 | CI/local-feed package build | Implemented |
 | Default managed build includes native OpenUSD | No |
+| Live-authoring boundary | Source-only sample; not a published package |
 
 See [Getting started](getting-started.md) for the supported source workflow and
 [Packaging](packaging.md) for package production and clean-consumer evidence. Compatibility rules are
@@ -59,7 +60,9 @@ not public-feed publication.
 | `OpenUsd.Runtime.Imaging.osx-arm64` | `net8.0` carrier | Matching macOS Core package |
 
 The runtime projects use `net8.0` to carry RID assets and transitive build targets. The managed
-libraries they support target all three production frameworks.
+libraries they support target all three production frameworks. `OpenUsd.LiveAuthoring` is intentionally
+absent from this package table: it remains source-only sample code until its admission/completion,
+correlation, ordering, update-coverage, and health-reporting gaps are resolved by a production consumer.
 
 ## Target frameworks
 
@@ -68,7 +71,7 @@ libraries they support target all three production frameworks.
 | Packable managed libraries | ✅ | ✅ | ✅ | Multi-TFM build and tests |
 | Public API analyzer baseline | ✅ | ✅ | ✅ | Production managed libraries |
 | AOT, trim, single-file analyzers | ✅ | ✅ | ✅ | Enabled for production libraries |
-| `OpenUsd.LiveAuthoring` sample library | ✅ | ✅ | ✅ | Analyzer-enabled source sample |
+| `OpenUsd.LiveAuthoring` sample library | ✅ | ✅ | ✅ | Analyzer-enabled source-only sample |
 | Viewer library | ✅ | ✅ | ✅ | Embeddable `OpenUsd.Viewer` package |
 | Viewer desktop application | — | — | ✅ | `OpenUsd.Viewer.App` entry point |
 | Executable samples and probes | — | — | ✅ | Development and evidence projects |
