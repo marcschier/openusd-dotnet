@@ -21,6 +21,8 @@ public sealed class SilkMeshCommandEncoderContractTests
 {
     private const int FixedHeaderSize = 224;
 
+    private const string ThisFileName = "SilkMeshCommandEncoderContractTests.cs";
+
     private static readonly string[] SearchRoots =
     [
         "src",
@@ -61,6 +63,13 @@ public sealed class SilkMeshCommandEncoderContractTests
                     continue;
                 }
 
+                // This test names the stale patterns as string literals, so it
+                // would otherwise report itself.
+                if (Path.GetFileName(file) == ThisFileName)
+                {
+                    continue;
+                }
+
                 encoderCount++;
 
                 // The parser itself and the retained state consume the command
@@ -91,11 +100,30 @@ public sealed class SilkMeshCommandEncoderContractTests
 
     private static bool ContainsStaleHeaderLiteral(string text)
     {
-        foreach (int stale in (int[])[216, 208, 212])
+        // The current 224-byte header ends with the material hash at 208, the
+        // material path length at 216 and the attribute count at 220, so 208 and
+        // 216 are LEGITIMATE offsets and must never be flagged. What moved when
+        // the header grew from 216 to 224 is the size base and the two offsets
+        // that sat where the material hash and attribute count now begin.
+        string[] stalePatterns =
+        [
+            // The variable-length section used to start at 216.
+            "CopyTo(bytes, 216)",
+            // The fixed header used to be 216 bytes, so a size base of 216 is stale.
+            "new byte[216 +",
+            "= 216 +",
+            "216 +\n",
+            "216 +\r",
+            // The material hash used to sit at 200 and the attribute count at 212.
+            "AsSpan(200)",
+            "AsSpan(200,",
+            "AsSpan(212)",
+            "AsSpan(212,"
+        ];
+
+        foreach (string pattern in stalePatterns)
         {
-            if (text.Contains($"AsSpan({stale})", StringComparison.Ordinal) ||
-                text.Contains($"CopyTo(bytes, {stale})", StringComparison.Ordinal) ||
-                text.Contains($"new byte[{stale}", StringComparison.Ordinal))
+            if (text.Contains(pattern, StringComparison.Ordinal))
             {
                 return true;
             }

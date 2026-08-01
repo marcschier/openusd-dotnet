@@ -617,6 +617,7 @@ public sealed class SilkMeshRenderer :
         ValidateTargets(colorTarget, depthTarget);
         ValidateOptions(options);
         int uniformUploads = GpuResources.UpdateUniforms(Scene.Frame);
+        ISilkGraphicsBuffer frameBuffer = GpuResources.RequireFrameBuffer(Scene.Frame);
         bool renderSelectionOutline = PrepareSelectionOutline(depthTarget);
         using ISilkGraphicsCommandList commands = _device.CreateCommandList();
         ISilkSelectionOutlineGraphicsCommandList? selectionCommands = null;
@@ -681,6 +682,10 @@ public sealed class SilkMeshRenderer :
                     commands.SetStorageBuffer(0, 6, mesh.UniformBuffer);
                     commands.SetStorageBuffer(
                         0,
+                        SilkBindingLayoutDescriptor.FrameParametersBinding,
+                        frameBuffer);
+                    commands.SetStorageBuffer(
+                        0,
                         SilkBindingLayoutDescriptor.SurfaceParametersBinding,
                         GpuResources.RequireSurfaceBuffer(Scene, mesh.Mesh, RenderHeadlight.Deterministic));
                     commands.DrawIndexed(mesh.IndexCount);
@@ -698,6 +703,10 @@ public sealed class SilkMeshRenderer :
             commands.SetIndexBuffer(first.IndexBuffer);
             commands.SetUniformBuffer(0, 0, first.UniformBuffer);
             commands.SetStorageBuffer(0, 6, batch.Key.Geometry.RequireInstanceBuffer());
+            commands.SetStorageBuffer(
+                0,
+                SilkBindingLayoutDescriptor.FrameParametersBinding,
+                frameBuffer);
             commands.SetStorageBuffer(
                 0,
                 SilkBindingLayoutDescriptor.SurfaceParametersBinding,

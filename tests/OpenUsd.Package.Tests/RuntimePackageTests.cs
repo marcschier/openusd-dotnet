@@ -21,7 +21,7 @@ public sealed class RuntimePackageTests
     private const ulong PreviousDataCapabilities = 0x7F;
     private const int RequiredStormAbiVersion = 6;
     private const int RequiredSilkSessionAbiVersion = 4;
-    private const int RequiredSilkPageAbiVersion = 6;
+    private const int RequiredSilkPageAbiVersion = 7;
     private const int RequiredStormChildAbiVersion = 7;
     private const int RequiredStormChildNavigationInputVersion = 1;
 

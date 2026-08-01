@@ -71,13 +71,20 @@ public readonly ref struct SilkCommand
 public readonly ref struct SilkFrameCommand
 {
     private const int MinimumSize = 272;
+    private const int ExtendedSize = 536;
+    private const int ClipPlaneOffset = MinimumSize + 8;
     private readonly ReadOnlySpan<byte> _bytes;
 
     internal SilkFrameCommand(ReadOnlySpan<byte> bytes)
     {
-        if (bytes.Length != MinimumSize)
+        if (bytes.Length != MinimumSize && bytes.Length != ExtendedSize)
         {
-            throw new InvalidDataException("The frame command must be exactly 272 bytes.");
+            throw new InvalidDataException("The frame command must be exactly 272 or 536 bytes.");
+        }
+        if (bytes.Length == ExtendedSize &&
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes[MinimumSize..(MinimumSize + 4)]) > 8)
+        {
+            throw new InvalidDataException("The frame command clip plane count is invalid.");
         }
         _bytes = bytes;
     }
@@ -93,6 +100,27 @@ public readonly ref struct SilkFrameCommand
 
     /// <summary>Gets an element from the row-major projection matrix.</summary>
     public double GetProjectionElement(int index) => ReadMatrixElement(144, index);
+
+    /// <summary>Gets the number of eye-space clip planes.</summary>
+    internal uint ClipPlaneCount =>
+        _bytes.Length == ExtendedSize
+            ? BinaryPrimitives.ReadUInt32LittleEndian(_bytes[MinimumSize..(MinimumSize + 4)])
+            : 0;
+
+    /// <summary>Gets an element from the eye-space clip plane table.</summary>
+    internal double GetClipPlaneElement(int plane, int component)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(plane);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(plane, 8);
+        ArgumentOutOfRangeException.ThrowIfNegative(component);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(component, 4);
+        if (_bytes.Length != ExtendedSize)
+        {
+            return 0;
+        }
+        return BinaryPrimitives.ReadDoubleLittleEndian(
+            _bytes.Slice(ClipPlaneOffset + (((plane * 4) + component) * 8), 8));
+    }
 
     private double ReadMatrixElement(int offset, int index)
     {

@@ -10,7 +10,7 @@ internal static class SilkBenchmarkData
 {
     internal static byte[] CreateFrameCommand(int width = 1920, int height = 1080)
     {
-        var bytes = new byte[272];
+        var bytes = new byte[536];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Frame);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8), width);

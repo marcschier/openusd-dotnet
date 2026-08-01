@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace OpenUsd.Rendering.Silk;
@@ -292,6 +294,17 @@ public sealed class SilkFrameState
 {
     private readonly double[] _view = new double[16];
     private readonly double[] _projection = new double[16];
+    private readonly double[] _clipPlanes = new double[32];
+
+    /// <summary>Initializes an identity camera and viewport state.</summary>
+    public SilkFrameState()
+    {
+        for (int i = 0; i < 16; i += 5)
+        {
+            _view[i] = 1;
+            _projection[i] = 1;
+        }
+    }
 
     /// <summary>Gets the viewport width.</summary>
     public int Width { get; private set; }
@@ -305,14 +318,23 @@ public sealed class SilkFrameState
     /// <summary>Gets the row-major projection matrix.</summary>
     public ReadOnlyMemory<double> Projection => _projection;
 
+    /// <summary>Gets the number of eye-space clip planes.</summary>
+    internal uint ClipPlaneCount { get; private set; }
+
+    /// <summary>Gets the eye-space clip plane table.</summary>
+    internal ReadOnlyMemory<double> ClipPlanes => _clipPlanes;
+
     /// <summary>Gets the revision of the retained camera or viewport state.</summary>
     public ulong Revision { get; private set; }
 
     internal void Update(SilkFrameCommand command)
     {
-        bool changed = Width != command.Width || Height != command.Height;
+        bool changed = Width != command.Width ||
+            Height != command.Height ||
+            ClipPlaneCount != command.ClipPlaneCount;
         Width = command.Width;
         Height = command.Height;
+        ClipPlaneCount = command.ClipPlaneCount;
         for (int i = 0; i < 16; i++)
         {
             double view = command.GetViewElement(i);
@@ -321,11 +343,145 @@ public sealed class SilkFrameState
             _view[i] = view;
             _projection[i] = projection;
         }
+        for (int i = 0; i < _clipPlanes.Length; i++)
+        {
+            double clipPlane = command.GetClipPlaneElement(i / 4, i % 4);
+            changed |= _clipPlanes[i] != clipPlane;
+            _clipPlanes[i] = clipPlane;
+        }
         if (changed)
         {
             Revision++;
         }
     }
+}
+
+internal static class SilkFrameUniformWriter
+{
+    internal const int ByteSize = 208;
+
+    internal static void Write(
+        SilkFrameState frame,
+        Span<byte> destination,
+        bool flipClipSpaceY)
+    {
+        if (destination.Length != ByteSize)
+        {
+            throw new ArgumentException(
+                $"Frame constants must be exactly {ByteSize} bytes.",
+                nameof(destination));
+        }
+
+        Span<double> projection = stackalloc double[16];
+        ConvertOpenGlDepthToZeroToOne(frame.Projection.Span, projection);
+        if (flipClipSpaceY)
+        {
+            MirrorClipSpaceY(projection);
+        }
+
+        Matrix4x4 projected = ToMatrix4x4(projection);
+        if (!Matrix4x4.Invert(projected, out Matrix4x4 clipToEye))
+        {
+            throw new InvalidDataException("The frame projection matrix is not invertible.");
+        }
+
+        WriteMatrixTranspose(destination, 0, clipToEye);
+        WriteSingle(destination, 64, frame.ClipPlaneCount);
+        WriteSingle(destination, 68, 0u);
+        WriteSingle(destination, 72, 0u);
+        WriteSingle(destination, 76, 0u);
+
+        ReadOnlySpan<double> planes = frame.ClipPlanes.Span;
+        for (int i = 0; i < 32; i++)
+        {
+            float value = ToFiniteSingle(planes[i], $"clipPlanes[{i / 4},{i % 4}]");
+            WriteSingle(destination, 80 + (i * sizeof(float)), value);
+        }
+    }
+
+    private static Matrix4x4 ToMatrix4x4(ReadOnlySpan<double> values) =>
+        new(
+            ToFiniteSingle(values[0], "projection[0,0]"),
+            ToFiniteSingle(values[1], "projection[0,1]"),
+            ToFiniteSingle(values[2], "projection[0,2]"),
+            ToFiniteSingle(values[3], "projection[0,3]"),
+            ToFiniteSingle(values[4], "projection[1,0]"),
+            ToFiniteSingle(values[5], "projection[1,1]"),
+            ToFiniteSingle(values[6], "projection[1,2]"),
+            ToFiniteSingle(values[7], "projection[1,3]"),
+            ToFiniteSingle(values[8], "projection[2,0]"),
+            ToFiniteSingle(values[9], "projection[2,1]"),
+            ToFiniteSingle(values[10], "projection[2,2]"),
+            ToFiniteSingle(values[11], "projection[2,3]"),
+            ToFiniteSingle(values[12], "projection[3,0]"),
+            ToFiniteSingle(values[13], "projection[3,1]"),
+            ToFiniteSingle(values[14], "projection[3,2]"),
+            ToFiniteSingle(values[15], "projection[3,3]"));
+
+    private static void ConvertOpenGlDepthToZeroToOne(
+        ReadOnlySpan<double> source,
+        Span<double> destination)
+    {
+        for (int row = 0; row < 4; row++)
+        {
+            int offset = row * 4;
+            destination[offset] = source[offset];
+            destination[offset + 1] = source[offset + 1];
+            destination[offset + 2] = (source[offset + 2] + source[offset + 3]) * 0.5;
+            destination[offset + 3] = source[offset + 3];
+        }
+    }
+
+    private static void MirrorClipSpaceY(Span<double> projection)
+    {
+        for (int row = 0; row < 4; row++)
+        {
+            projection[(row * 4) + 1] = -projection[(row * 4) + 1];
+        }
+    }
+
+    private static void WriteMatrixTranspose(
+        Span<byte> destination,
+        int offset,
+        Matrix4x4 matrix)
+    {
+        Span<float> values =
+        [
+            matrix.M11, matrix.M12, matrix.M13, matrix.M14,
+            matrix.M21, matrix.M22, matrix.M23, matrix.M24,
+            matrix.M31, matrix.M32, matrix.M33, matrix.M34,
+            matrix.M41, matrix.M42, matrix.M43, matrix.M44
+        ];
+        for (int row = 0; row < 4; row++)
+        {
+            for (int column = 0; column < 4; column++)
+            {
+                WriteSingle(
+                    destination,
+                    offset + (((row * 4) + column) * sizeof(float)),
+                    values[(column * 4) + row]);
+            }
+        }
+    }
+
+    private static float ToFiniteSingle(double value, string name)
+    {
+        if (!double.IsFinite(value) || value > float.MaxValue || value < -float.MaxValue)
+        {
+            throw new InvalidDataException($"The frame {name} value is invalid.");
+        }
+        return (float)value;
+    }
+
+    private static void WriteSingle(Span<byte> destination, int offset, float value) =>
+        BinaryPrimitives.WriteInt32LittleEndian(
+            destination.Slice(offset, sizeof(float)),
+            BitConverter.SingleToInt32Bits(value));
+
+    private static void WriteSingle(Span<byte> destination, int offset, uint value) =>
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            destination.Slice(offset, sizeof(uint)),
+            value);
 }
 
 /// <summary>
@@ -854,6 +1010,9 @@ public sealed class SilkSceneGpuResources : IDisposable
     private readonly Dictionary<string, SurfaceBuffer> _surfaceBuffers =
         new(StringComparer.Ordinal);
     private ISilkGraphicsBuffer? _defaultSurfaceBuffer;
+    private ISilkGraphicsBuffer? _frameBuffer;
+    private readonly byte[] _frameBytes = new byte[SilkFrameUniformWriter.ByteSize];
+    private ulong _frameRevision = ulong.MaxValue;
     private bool _disposed;
 
     private readonly record struct SurfaceBuffer(
@@ -949,6 +1108,29 @@ public sealed class SilkSceneGpuResources : IDisposable
             }
         }
         return uploads;
+    }
+
+    /// <summary>Returns the per-frame constants the mesh shader reads.</summary>
+    internal ISilkGraphicsBuffer RequireFrameBuffer(SilkFrameState frame)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(frame);
+        bool created = _frameBuffer is null;
+        _frameBuffer ??= _device.CreateBuffer(
+            SilkFrameUniformWriter.ByteSize,
+            SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        if (_frameRevision != frame.Revision)
+        {
+            Span<byte> constants = stackalloc byte[SilkFrameUniformWriter.ByteSize];
+            SilkFrameUniformWriter.Write(frame, constants, _device.ClipSpaceYPointsDown);
+            if (created || !constants.SequenceEqual(_frameBytes))
+            {
+                _frameBuffer.Write(constants);
+                constants.CopyTo(_frameBytes);
+            }
+            _frameRevision = frame.Revision;
+        }
+        return _frameBuffer;
     }
 
     /// <summary>
@@ -1051,6 +1233,8 @@ public sealed class SilkSceneGpuResources : IDisposable
         _surfaceBuffers.Clear();
         _defaultSurfaceBuffer?.Dispose();
         _defaultSurfaceBuffer = null;
+        _frameBuffer?.Dispose();
+        _frameBuffer = null;
         _disposed = true;
         SilkManagedDiagnostics.GpuSceneDestroyed();
     }

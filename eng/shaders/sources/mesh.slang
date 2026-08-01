@@ -43,6 +43,7 @@ struct VertexInput
 struct VertexOutput
 {
     float4 position : SV_Position;
+    float3 eyePosition : TEXCOORD1;
     float3 normal : NORMAL;
     float4 tint : COLOR0;
 #if HAS_UV
@@ -59,6 +60,18 @@ cbuffer SceneParameters : register(b0)
     float4x4 objectToClip;
     float4 tint;
 };
+
+#if VERTEX_STAGE || FRAGMENT_STAGE
+struct FrameParameters
+{
+    float4x4 clipToEye;
+    uint4 clipPlaneCount;
+    float4 clipPlanes[8];
+};
+
+[[vk::binding(8, 0)]]
+StructuredBuffer<FrameParameters> frameParameters : register(t8);
+#endif
 
 #if VERTEX_STAGE
 struct InstanceParameters
@@ -97,8 +110,12 @@ Texture2D<float4> emissiveTexture : register(t3);
 VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_InstanceID)
 {
     InstanceParameters instance = instanceParameters[instanceId];
+    FrameParameters frame = frameParameters[0];
     VertexOutput output;
-    output.position = mul(instance.objectToClip, float4(input.position, 1.0));
+    float4 clipPosition = mul(instance.objectToClip, float4(input.position, 1.0));
+    float4 eyePosition = mul(frame.clipToEye, clipPosition);
+    output.position = clipPosition;
+    output.eyePosition = eyePosition.xyz / eyePosition.w;
     output.normal = input.normal;
     output.tint = instance.tint;
 #if HAS_UV
@@ -178,13 +195,40 @@ float3 EvaluateDirectSpecular(
     float g = Geometric(specularRoughness, normalDotLight, normalDotEye);
     return (f * g * d) / ((4.0 * normalDotLight * normalDotEye) + SurfaceEpsilon);
 }
+
+[ForceInline]
+float3 GetEyeVector(float3 eyePosition)
+{
+    float lengthSquared = dot(eyePosition, eyePosition);
+    return lengthSquared > SurfaceEpsilon
+        ? -eyePosition * rsqrt(lengthSquared)
+        : float3(0.0, 0.0, 1.0);
+}
+
+[ForceInline]
+void DiscardClippedFragment(float3 eyePosition, FrameParameters frame)
+{
+    uint count = min(frame.clipPlaneCount.x, 8u);
+    for (uint index = 0; index < count; index++)
+    {
+        float4 plane = frame.clipPlanes[index];
+        if (dot(plane.xyz, eyePosition) + plane.w < 0.0)
+        {
+            discard;
+        }
+    }
+}
 #endif
 
 [shader("fragment")]
-float4 FRAGMENT_ENTRY_POINT(VertexOutput input) : SV_Target0
+float4 FRAGMENT_ENTRY_POINT(
+    VertexOutput input,
+    bool isFrontFace : SV_IsFrontFace) : SV_Target0
 {
 #if FRAGMENT_STAGE
     SurfaceParameters surface = surfaceParameters[0];
+    FrameParameters frame = frameParameters[0];
+    DiscardClippedFragment(input.eyePosition, frame);
 
     // shaded is zero for the shared default block, which a mesh with no supported
     // material bound uses. Storm shows the display colour for such a prim, so the
@@ -229,14 +273,12 @@ float4 FRAGMENT_ENTRY_POINT(VertexOutput input) : SV_Target0
         discard;
     }
 
-    // The headlight is expressed in camera space and the curated parity scenes are
-    // camera-aligned, so the eye vector is the camera forward axis.
     float3 normal = normalize(shadingNormal);
-    float3 eye = float3(0.0, 0.0, 1.0);
-    // Storm's mesh shader flips the normal for back faces before shading, so a
-    // double-sided surface is lit from whichever side is visible. Without this a
-    // prim whose computed face normal points away from the camera renders black.
-    normal = dot(normal, eye) < 0.0 ? -normal : normal;
+    float3 eye = GetEyeVector(input.eyePosition);
+    // Storm flips the shading normal for rasterized back faces. Basing this on
+    // coverage-facing state rather than the eye vector keeps orthographic parity
+    // scenes with identity projection from turning black when Peye.z is positive.
+    normal = isFrontFace ? normal : -normal;
     float3 lightDirection = normalize(surface.lightDirectionIntensity.xyz);
     float3 half = normalize(lightDirection + eye);
     float normalDotLight = saturate(dot(normal, lightDirection));

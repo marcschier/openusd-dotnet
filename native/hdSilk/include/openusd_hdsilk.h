@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 6u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 7u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 4u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -45,6 +45,9 @@ extern "C" {
 ///   int32  height
 ///   double view_matrix[16]        (row-major)
 ///   double projection_matrix[16]  (row-major)
+///   uint32 clip_plane_count       (0..8)
+///   uint32 reserved               (0)
+///   double clip_planes[8][4]      (eye-space planes, unused entries zero)
 ///
 /// MESH_UPSERT (type = 2):
 ///   Offset Size Type     Field
@@ -112,6 +115,9 @@ extern "C" {
 /// ABI v6 adds double_sided and cull_style. They are the resolved Hydra mesh
 /// render state; consumers use them to match Storm's authored single-sided
 /// culling while keeping double-sided meshes uncullled.
+///
+/// ABI v7 extends FRAME with camera clip planes. Mesh and material command
+/// layouts are unchanged.
 ///
 /// All offsets are from the command header's first byte. stable_id_hash is
 /// 64-bit FNV-1a over the exact path bytes and is an index only: path is the

@@ -509,7 +509,7 @@ internal static class Program
 
     private static byte[] CreateVulkanPickFrame(uint width, uint height)
     {
-        var bytes = new byte[272];
+        var bytes = new byte[536];
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes,
             (uint)SilkCommandType.Frame);
@@ -1011,6 +1011,7 @@ internal static class Program
             80,
             SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         using ISilkGraphicsBuffer surfaceConstants = CreateSurfaceConstants(device);
+        using ISilkGraphicsBuffer frameConstants = CreateFrameConstants(device);
         vertices.Write(MemoryMarshal.AsBytes<float>(
         [
             -3.0f, -3.0f, 0, 0, 1, 0,
@@ -1020,7 +1021,7 @@ internal static class Program
             -0.75f, -0.75f, 0, 0, 0, 1,
              0.75f, -0.75f, 0, 0, 0, 1
         ]));
-        indices.Write(MemoryMarshal.AsBytes<uint>([4, 2, 5]));
+        indices.Write(MemoryMarshal.AsBytes<uint>([4, 5, 2]));
         uniforms.Write(MemoryMarshal.AsBytes<float>(
         [
             0.5f, 0, 0, 0,
@@ -1040,7 +1041,7 @@ internal static class Program
         commands.SetVertexBuffer(vertices);
         commands.SetIndexBuffer(indices);
         commands.SetUniformBuffer(0, 0, uniforms);
-        BindAlwaysOnSlots(commands, uniforms, surfaceConstants);
+        BindAlwaysOnSlots(commands, uniforms, surfaceConstants, frameConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
         using ISilkGraphicsSubmission submission = device.Submit(commands);
@@ -1082,6 +1083,7 @@ internal static class Program
                 indices,
                 uniforms,
                 surfaceConstants,
+                frameConstants,
                 size);
             ordered.ClearColor(color, new SilkColor(0, 1, 0, 1));
             using ISilkGraphicsSubmission orderedSubmission = device.Submit(ordered);
@@ -1103,6 +1105,7 @@ internal static class Program
                 indices,
                 uniforms,
                 surfaceConstants,
+                frameConstants,
                 size);
             ordered.ClearColor(color, new SilkColor(1, 1, 0, 1));
             using ISilkGraphicsSubmission orderedSubmission = device.Submit(ordered);
@@ -1142,6 +1145,7 @@ internal static class Program
                 computedIndices,
                 uniforms,
                 surfaceConstants,
+                frameConstants,
                 size);
             using ISilkGraphicsSubmission barrierSubmission =
                 device.Submit(barrierCommands);
@@ -1162,6 +1166,7 @@ internal static class Program
         ISilkGraphicsBuffer indices,
         ISilkGraphicsBuffer uniforms,
         ISilkGraphicsBuffer surfaceConstants,
+        ISilkGraphicsBuffer frameConstants,
         uint size)
     {
         commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
@@ -1171,7 +1176,7 @@ internal static class Program
         commands.SetVertexBuffer(vertices);
         commands.SetIndexBuffer(indices);
         commands.SetUniformBuffer(0, 0, uniforms);
-        BindAlwaysOnSlots(commands, uniforms, surfaceConstants);
+        BindAlwaysOnSlots(commands, uniforms, surfaceConstants, frameConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
     }
@@ -1185,13 +1190,18 @@ internal static class Program
     private static void BindAlwaysOnSlots(
         ISilkGraphicsCommandList commands,
         ISilkGraphicsBuffer uniforms,
-        ISilkGraphicsBuffer surfaceConstants)
+        ISilkGraphicsBuffer surfaceConstants,
+        ISilkGraphicsBuffer frameConstants)
     {
         commands.SetStorageBuffer(0, 6, uniforms);
         commands.SetStorageBuffer(
             0,
             SilkBindingLayoutDescriptor.SurfaceParametersBinding,
             surfaceConstants);
+        commands.SetStorageBuffer(
+            0,
+            SilkBindingLayoutDescriptor.FrameParametersBinding,
+            frameConstants);
     }
 
     /// <summary>
@@ -1211,9 +1221,24 @@ internal static class Program
             0, 0.5f, 0, 0,
             0, 0.01f, 0, 0,
             0, 0, 1, 1,
-            1, 1, 1, 0,
+            1, 1, 1, 1,
             0, 0, 0, 0
         ]));
+        return buffer;
+    }
+
+    private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
+    {
+        ISilkGraphicsBuffer buffer = device.CreateBuffer(
+            208,
+            SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        var values = new byte[208];
+        Span<float> floats = MemoryMarshal.Cast<byte, float>(values.AsSpan());
+        floats[0] = 1;
+        floats[5] = 1;
+        floats[10] = 1;
+        floats[15] = 1;
+        buffer.Write(values);
         return buffer;
     }
 

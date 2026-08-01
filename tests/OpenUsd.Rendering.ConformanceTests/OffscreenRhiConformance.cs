@@ -462,13 +462,14 @@ internal static class OffscreenRhiConformance
             80,
             SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         using ISilkGraphicsBuffer surfaceConstants = CreateSurfaceConstants(device);
+        using ISilkGraphicsBuffer frameConstants = CreateFrameConstants(device);
         vertices.Write(MemoryMarshal.AsBytes<float>(
         [
             -0.75f, -0.75f, 0, 0, 0, 1,
              0.00f,  0.75f, 0, 0, 0, 1,
              0.75f, -0.75f, 0, 0, 0, 1
         ]));
-        indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
+        indices.Write(MemoryMarshal.AsBytes<uint>([0, 2, 1]));
         uniforms.Write(MemoryMarshal.AsBytes<float>(
         [
             1, 0, 0, 0,
@@ -511,7 +512,7 @@ internal static class OffscreenRhiConformance
             commands.SetVertexBuffer(vertices);
             commands.SetIndexBuffer(indices);
             commands.SetUniformBuffer(0, 0, uniforms);
-            BindAlwaysOnSlots(commands, uniforms, surfaceConstants);
+            BindAlwaysOnSlots(commands, uniforms, surfaceConstants, frameConstants);
             commands.DrawIndexed(3);
             commands.EndRendering();
             using ISilkGraphicsSubmission submission = device.Submit(commands);
@@ -563,13 +564,14 @@ internal static class OffscreenRhiConformance
             80,
             SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         ISilkGraphicsBuffer surfaceConstants = CreateSurfaceConstants(device);
+        ISilkGraphicsBuffer frameConstants = CreateFrameConstants(device);
         vertices.Write(MemoryMarshal.AsBytes<float>(
         [
             -0.75f, -0.75f, 0, 0, 0, 1,
              0.00f,  0.75f, 0, 0, 0, 1,
              0.75f, -0.75f, 0, 0, 0, 1
         ]));
-        indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
+        indices.Write(MemoryMarshal.AsBytes<uint>([0, 2, 1]));
         uniforms.Write(MemoryMarshal.AsBytes<float>(
         [
             1, 0, 0, 0,
@@ -588,7 +590,7 @@ internal static class OffscreenRhiConformance
         commands.SetVertexBuffer(vertices);
         commands.SetIndexBuffer(indices);
         commands.SetUniformBuffer(0, 0, uniforms);
-        BindAlwaysOnSlots(commands, uniforms, surfaceConstants);
+        BindAlwaysOnSlots(commands, uniforms, surfaceConstants, frameConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
         ISilkGraphicsSubmission submission = device.Submit(commands);
@@ -604,6 +606,7 @@ internal static class OffscreenRhiConformance
         vertices.Dispose();
         indices.Dispose();
         surfaceConstants.Dispose();
+        frameConstants.Dispose();
         uniforms.Dispose();
 
         await Assert.That(
@@ -909,7 +912,7 @@ internal static class OffscreenRhiConformance
         using ISilkGraphicsBuffer indices = device.CreateBuffer(
             12,
             SilkBufferUsage.Index | SilkBufferUsage.Upload);
-        indices.Write(MemoryMarshal.AsBytes<uint>([0, 1, 2]));
+        indices.Write(MemoryMarshal.AsBytes<uint>([0, 2, 1]));
         using ISilkGraphicsCommandList commands = device.CreateCommandList();
         compute.RecordFill(commands, elementCount);
         commands.BufferBarrier(compute.Output);
@@ -1004,7 +1007,11 @@ internal static class OffscreenRhiConformance
         commands.SetVertexBuffer(vertices);
         commands.SetIndexBuffer(indices);
         commands.SetUniformBuffer(0, 0, resources.Uniforms);
-        BindAlwaysOnSlots(commands, resources.Uniforms, resources.SurfaceConstants);
+        BindAlwaysOnSlots(
+            commands,
+            resources.Uniforms,
+            resources.SurfaceConstants,
+            resources.FrameConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
     }
@@ -1019,13 +1026,18 @@ internal static class OffscreenRhiConformance
     private static void BindAlwaysOnSlots(
         ISilkGraphicsCommandList commands,
         ISilkGraphicsBuffer uniforms,
-        ISilkGraphicsBuffer surfaceConstants)
+        ISilkGraphicsBuffer surfaceConstants,
+        ISilkGraphicsBuffer frameConstants)
     {
         commands.SetStorageBuffer(0, 6, uniforms);
         commands.SetStorageBuffer(
             0,
             SilkBindingLayoutDescriptor.SurfaceParametersBinding,
             surfaceConstants);
+        commands.SetStorageBuffer(
+            0,
+            SilkBindingLayoutDescriptor.FrameParametersBinding,
+            frameConstants);
     }
 
     /// <summary>
@@ -1045,9 +1057,24 @@ internal static class OffscreenRhiConformance
             0, 0.5f, 0, 0,
             0, 0.01f, 0, 0,
             0, 0, 1, 1,
-            1, 1, 1, 0,
+            1, 1, 1, 1,
             0, 0, 0, 0
         ]));
+        return buffer;
+    }
+
+    private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
+    {
+        ISilkGraphicsBuffer buffer = device.CreateBuffer(
+            208,
+            SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        var values = new byte[208];
+        Span<float> floats = MemoryMarshal.Cast<byte, float>(values.AsSpan());
+        floats[0] = 1;
+        floats[5] = 1;
+        floats[10] = 1;
+        floats[15] = 1;
+        buffer.Write(values);
         return buffer;
     }
 
@@ -1101,7 +1128,11 @@ internal static class OffscreenRhiConformance
         commands.SetVertexBuffer(resources.Vertices);
         commands.SetIndexBuffer(resources.Indices);
         commands.SetUniformBuffer(0, 0, resources.Uniforms);
-        BindAlwaysOnSlots(commands, resources.Uniforms, resources.SurfaceConstants);
+        BindAlwaysOnSlots(
+            commands,
+            resources.Uniforms,
+            resources.SurfaceConstants,
+            resources.FrameConstants);
         commands.DrawIndexed(3);
         commands.EndRendering();
     }
@@ -1233,7 +1264,8 @@ internal static class OffscreenRhiConformance
                  0.75f, -0.75f, 0, 0, 0, 1
             ]));
             SurfaceConstants = CreateSurfaceConstants(device);
-            Indices.Write(MemoryMarshal.AsBytes<uint>([4, 2, 5]));
+            FrameConstants = CreateFrameConstants(device);
+            Indices.Write(MemoryMarshal.AsBytes<uint>([4, 5, 2]));
             Uniforms.Write(MemoryMarshal.AsBytes<float>(
             [
                 0.5f, 0, 0, 0,
@@ -1268,8 +1300,11 @@ internal static class OffscreenRhiConformance
 
         internal ISilkGraphicsBuffer SurfaceConstants { get; }
 
+        internal ISilkGraphicsBuffer FrameConstants { get; }
+
         public void Dispose()
         {
+            FrameConstants.Dispose();
             SurfaceConstants.Dispose();
             Uniforms.Dispose();
             Indices.Dispose();
