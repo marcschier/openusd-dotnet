@@ -126,6 +126,27 @@ struct HdSilkMaterialRecord
     std::vector<HdSilkMaterialTexture> textures;
 };
 
+/// One resolved UsdLux light entry. Transforms stay in world space on the wire;
+/// managed frame packing converts them to eye space together with the camera.
+struct HdSilkLightRecord
+{
+    std::string path;
+    uint32_t type = 0;
+    uint32_t shadowEnabled = 0;
+    float color[3] = {1.0f, 1.0f, 1.0f};
+    float intensity = 1.0f;
+    double transform[16] = {
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0};
+    float exposure = 0.0f;
+    float diffuse = 1.0f;
+    float specular = 1.0f;
+    float radius = 0.5f;
+    bool ambientOnly = false;
+};
+
 /// Derives a stable, non-zero 31-bit identifier for an instancer path. The
 /// value is diagnostic only: (path, instanceIndex) remains the authoritative
 /// identity of a published record.
@@ -195,6 +216,12 @@ public:
     void ReplaceMaterial(HdSilkMaterialRecord record);
     void RemoveMaterial(const std::string& path);
 
+    /// Publishes supported UsdLux light state. Dome lights are retained as
+    /// ambient-only records; unsupported light-linking/shadow controls are
+    /// preserved only as diagnostics for now.
+    void ReplaceLight(HdSilkLightRecord record);
+    void RemoveLight(const std::string& path);
+
     /// Number of mesh records rejected by wire validation since process
     /// start. Rejected records are skipped with a diagnostic so that one
     /// malformed prim cannot blank an otherwise renderable scene.
@@ -231,6 +258,7 @@ private:
     std::vector<HdSilkMeshKey> _pendingRemovals;
     std::unordered_map<std::string, _MaterialEntry> _materials;
     std::vector<std::string> _pendingMaterialRemovals;
+    std::unordered_map<std::string, HdSilkLightRecord> _lights;
     HdSilkFrameState _frame;
     uint64_t _revision = 0;
 };

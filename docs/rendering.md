@@ -78,7 +78,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v6 and
-hdSilk session ABI v4; the hdSilk page ABI is v5. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v4; the hdSilk page ABI is v9. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -270,7 +270,7 @@ Coalesced same-path Rprim recreation may therefore emit a logical old-prim remov
 upsert, or reset topology revision under the same prim ID, without exposing range internals.
 `SilkSceneGpuResources` applies that delta, the renderer looks up the current range by
 `(path, instance index)` for each draw, and deactivated ranges are pruned from searchable storage so
-old tokens cannot resolve. Pick identity is per instance, matching page ABI 5: a point-instanced
+old tokens cannot resolve. Pick identity is per instance, matching page ABI 9: a point-instanced
 prototype allocates one range per resolved instance, so picking selects the instance that was
 actually drawn, and retiring one instance leaves the others resolvable. The prim ID and path hash
 indexes are shared by every instance of a prototype and are retired only with the last one.
@@ -457,14 +457,21 @@ loss, and still releases every slot's mappings, buffers, command pool, fence, an
 registration. The NativeAOT RHI probe gates on SwiftShader and verifies an ID hit, one-pixel
 readback, authoritative token resolution, and nullable geometry.
 
-Storm ABI v6 renders with one repository-owned camera-space directional headlight before any parity
-capture or pick. The convention is defined in `native/include/openusd_render_lighting.h` and
-`native/openusd_hydra/src/openusd_hydra.cpp`, and managed consumers read it through
+Storm ABI v6 renders with the repository-owned camera-space directional headlight when a parity stage
+has no authored `UsdLux` light. The convention is defined in `native/include/openusd_render_lighting.h`
+and `native/openusd_hydra/src/openusd_hydra.cpp`, and managed consumers read it through
 `OpenUsdStormRuntime.Headlight`: direction `(0, 0, 1)` from the shaded point toward the camera in
-camera space, linear RGB colour `(1, 1, 1)`, intensity `1`, and ambient `0`. Storm sets
-`enableLighting=true`, `enableSceneLights=false`, and `enableSceneMaterials=true`; authored
-materials affect shading, but authored `UsdLux` lights are ignored so scene content cannot add a
-second, parity-breaking light to the reference image.
+camera space, linear RGB colour `(1, 1, 1)`, intensity `1`, and ambient `0`. When a stage does contain
+UsdLux lights, hdSilk publishes a measured subset to frame constants instead of widening the pinned
+80-byte scene/instance block. The parity harness also records that clearing Storm's fallback headlight
+for the direct-light scenes currently makes Storm draw no lit coverage, so direct-light colour parity
+remains measurement-only rather than gated.
+
+The hdSilk subset is intentionally narrow: `UsdLuxDistantLight` and `UsdLuxSphereLight` travel as
+direct lights with colour, intensity, exposure, diffuse/specular multipliers, radius, and world
+transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Shadow-enable is preserved as a
+diagnostic bit only. Shadow maps, PCF filtering, light linking, dome textures, image-based lighting,
+and instanced-shadow parity remain scoped out until they can be measured and gated honestly.
 
 Storm ABI v6 implements nearest-hit primitive picking with the pinned OpenUSD v26.05
 `UsdImagingGLEngine::TestIntersection` convention. The versioned native request binds one physical
@@ -674,6 +681,12 @@ Page ABI v8 stops repeating prototype geometry for those point-instancer records
 still carries the full mesh payload and transform; later records keep the same fixed header but set
 the geometry, material-path, and attribute counts to zero and reuse instance zero's retained
 geometry, material path, and attributes.
+
+Page ABI v9 extends `FRAME` with a fixed four-entry light table and ambient vector. Lights are
+frame-local rather than material-local: the managed renderer converts world-space light transforms to
+eye space alongside the camera, and every draw path already binds slot 8. Keeping light data there
+avoids widening `SceneParameters`, which remains pinned at 80 bytes and mirrored by the instance
+table.
 
 Page ABI v4 adds the vertex attribute table and the material binding, and is the transport every material
 feature depends on. Each `MESH_UPSERT` carries `attribute_count` entries of `(semantic, component_count,

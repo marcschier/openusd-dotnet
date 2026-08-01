@@ -28,7 +28,9 @@
 #include "pxr/pxr.h"
 #include "pxr/usd/sdf/path.h"
 #include "pxr/usd/usd/prim.h"
+#include "pxr/usd/usd/primRange.h"
 #include "pxr/usd/usd/stage.h"
+#include "pxr/usd/usdLux/lightAPI.h"
 #include "pxr/usdImaging/usdImagingGL/engine.h"
 #include "pxr/usdImaging/usdImagingGL/renderParams.h"
 
@@ -125,6 +127,22 @@ GlfSimpleMaterial MakeStormFallbackMaterial()
     material.SetEmission(GfVec4f(0.0f, 0.0f, 0.0f, 1.0f));
     material.SetShininess(32.0);
     return material;
+}
+
+bool HasSupportedSceneLights(const UsdStageRefPtr& stage)
+{
+    if (!stage)
+    {
+        return false;
+    }
+    for (const UsdPrim& prim : stage->Traverse())
+    {
+        if (prim && prim.HasAPI<UsdLuxLightAPI>())
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 void UpdatePeak(std::atomic_size_t& peak, size_t value) noexcept
@@ -949,6 +967,7 @@ openusd_status openusd_storm_render_v2(
                 GfVec4d(0.0, 0.0, width, height));
             renderer->engine->SetPresentationOutput(
                 HgiTokens->OpenGL, VtValue(framebuffer));
+            const bool hasSupportedSceneLights = HasSupportedSceneLights(renderer->stage);
             renderer->engine->SetLightingState(
                 MakeStormHeadlightLights(),
                 MakeStormFallbackMaterial(),
@@ -961,7 +980,7 @@ openusd_status openusd_storm_render_v2(
             parameters.frame = UsdTimeCode(time_code);
             parameters.showRender = true;
             parameters.enableLighting = true;
-            parameters.enableSceneLights = false;
+            parameters.enableSceneLights = hasSupportedSceneLights;
             parameters.enableSceneMaterials = true;
             parameters.highlight = true;
             parameters.clearColor = GfVec4f(0.055f, 0.055f, 0.055f, 1.0f);

@@ -67,6 +67,12 @@ struct FrameParameters
     float4x4 clipToEye;
     uint4 clipPlaneCount;
     float4 clipPlanes[8];
+    float4 ambientLight;
+    float4 lightPositionType[4];
+    float4 lightDirectionRadius[4];
+    float4 lightColorIntensity[4];
+    float4 lightControls[4];
+    float4x4 eyeToWorld;
 };
 
 [[vk::binding(8, 0)]]
@@ -279,25 +285,18 @@ float4 FRAGMENT_ENTRY_POINT(
     // coverage-facing state rather than the eye vector keeps orthographic parity
     // scenes with identity projection from turning black when Peye.z is positive.
     normal = isFrontFace ? normal : -normal;
-    float3 lightDirection = normalize(surface.lightDirectionIntensity.xyz);
-    float3 half = normalize(lightDirection + eye);
-    float normalDotLight = saturate(dot(normal, lightDirection));
     float normalDotEye = saturate(abs(dot(normal, eye)) + 1.0e-5);
-    float normalDotHalf = saturate(dot(normal, half));
-    float eyeDotHalf = saturate(dot(eye, half));
 
     // Storm clamps roughness rather than clamping into a minimum band.
     float specularRoughness = max(0.001, roughness);
     float clearcoatAmount = surface.clearcoatShaded.x;
     float clearcoatRoughness = max(0.001, surface.clearcoatShaded.y);
-    float fresnel = SchlickFresnel(eyeDotHalf);
     float reflectanceRatio =
         (1.0 - surface.specularIor.a) / (1.0 + surface.specularIor.a);
 
     // Diffuse carries the 1/pi Lambert normalization, exactly as Storm's
     // evaluateDirectDiffuse does; the light supplies the matching pi of irradiance.
     float3 diffuse = diffuseColor / SurfacePi;
-    float3 specular = float3(0.0, 0.0, 0.0);
     float3 normalIncidence;
     float3 grazingIncidence;
     if (surface.metallicRoughnessThresholdWorkflow.w >= 0.5)
@@ -317,36 +316,79 @@ float4 FRAGMENT_ENTRY_POINT(
         diffuse *= 1.0 - metallic;
     }
 
-    specular = EvaluateDirectSpecular(
-        normalIncidence,
-        grazingIncidence,
-        specularRoughness,
-        fresnel,
-        normalDotLight,
-        normalDotEye,
-        normalDotHalf);
-    // Glazing angles trade diffuse for specular.
-    diffuse *= 1.0 - lerp(normalIncidence, grazingIncidence, fresnel);
-
-    if (clearcoatAmount > 0.0)
+    bool hasSceneLighting =
+        frame.ambientLight.w > 0.5 ||
+        dot(frame.ambientLight.rgb, frame.ambientLight.rgb) > 0.0;
+    uint lightCount = min((uint)frame.ambientLight.w, 4u);
+    float3 sceneEye = normalize(mul(frame.eyeToWorld, float4(eye, 0.0)).xyz);
+    float3 worldPosition = mul(frame.eyeToWorld, float4(input.eyePosition, 1.0)).xyz;
+    float3 color = diffuseColor * surface.lightColorAmbient.a;
+    color += diffuseColor * frame.ambientLight.rgb;
+    if (!hasSceneLighting)
     {
-        specular += clearcoatAmount * EvaluateDirectSpecular(
-            reflectanceRatio * reflectanceRatio * float3(1.0, 1.0, 1.0),
-            float3(1.0, 1.0, 1.0),
-            clearcoatRoughness,
+        lightCount = 1u;
+    }
+    for (uint lightIndex = 0u; lightIndex < lightCount; lightIndex++)
+    {
+        float lightType = lightIndex == 0u && !hasSceneLighting
+            ? 1.0
+            : frame.lightPositionType[lightIndex].w;
+        float3 lightDirection = lightIndex == 0u && !hasSceneLighting
+            ? normalize(surface.lightDirectionIntensity.xyz)
+            : normalize(frame.lightDirectionRadius[lightIndex].xyz);
+        float lightIntensity = lightIndex == 0u && !hasSceneLighting
+            ? surface.lightDirectionIntensity.w
+            : frame.lightColorIntensity[lightIndex].w;
+        float3 lightColor = lightIndex == 0u && !hasSceneLighting
+            ? surface.lightColorAmbient.rgb
+            : frame.lightColorIntensity[lightIndex].rgb;
+        float diffuseScale = lightIndex == 0u && !hasSceneLighting
+            ? 1.0
+            : frame.lightControls[lightIndex].x;
+        float specularScale = lightIndex == 0u && !hasSceneLighting
+            ? 1.0
+            : frame.lightControls[lightIndex].y;
+        float3 lightEye = lightIndex == 0u && !hasSceneLighting
+            ? eye
+            : sceneEye;
+        if (lightType == 2.0)
+        {
+            float3 toLight = frame.lightPositionType[lightIndex].xyz - worldPosition;
+            float distanceSquared = max(dot(toLight, toLight), SurfaceEpsilon);
+            lightDirection = toLight * rsqrt(distanceSquared);
+            lightIntensity /= distanceSquared;
+        }
+        float3 half = normalize(lightDirection + lightEye);
+        float normalDotLight = saturate(dot(normal, lightDirection));
+        float normalDotHalf = saturate(dot(normal, half));
+        float eyeDotHalf = saturate(dot(lightEye, half));
+        float fresnel = SchlickFresnel(eyeDotHalf);
+        float3 directDiffuse =
+            diffuse * (1.0 - lerp(normalIncidence, grazingIncidence, fresnel));
+        float3 directSpecular = EvaluateDirectSpecular(
+            normalIncidence,
+            grazingIncidence,
+            specularRoughness,
             fresnel,
             normalDotLight,
             normalDotEye,
             normalDotHalf);
+        if (clearcoatAmount > 0.0)
+        {
+            directSpecular += clearcoatAmount * EvaluateDirectSpecular(
+                reflectanceRatio * reflectanceRatio * float3(1.0, 1.0, 1.0),
+                float3(1.0, 1.0, 1.0),
+                clearcoatRoughness,
+                fresnel,
+                normalDotLight,
+                normalDotEye,
+                normalDotHalf);
+        }
+        float3 irradiance = lightColor * lightIntensity * SurfacePi;
+        color += occlusion * normalDotLight *
+            ((directDiffuse * diffuseScale) + (directSpecular * specularScale)) *
+            irradiance;
     }
-
-    // An intensity of one means an irradiance of pi, which is what makes a fully
-    // lit Lambertian surface return its albedo and is the convention Storm's
-    // headlight uses.
-    float3 irradiance =
-        surface.lightColorAmbient.rgb * surface.lightDirectionIntensity.w * SurfacePi;
-    float3 color = occlusion * normalDotLight * (diffuse + specular) * irradiance;
-    color += diffuseColor * surface.lightColorAmbient.a;
     color += emissiveColor;
     return float4(color, opacity);
 #else

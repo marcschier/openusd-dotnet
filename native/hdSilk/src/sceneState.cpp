@@ -155,14 +155,63 @@ void ValidatePath(const std::string& path)
     static_cast<void>(CheckedCount(path.size(), "path byte count"));
 }
 
-void AppendFrame(std::vector<uint8_t>& buffer, const HdSilkFrameState& frame)
+void AppendLight(
+    std::vector<uint8_t>& payload,
+    const HdSilkLightRecord* record)
+{
+    if (record == nullptr)
+    {
+        AppendU32(payload, 0);
+        AppendU32(payload, 0);
+        AppendU32(payload, 0);
+        AppendU32(payload, 0);
+        for (int i = 0; i < 4; ++i)
+        {
+            AppendF32(payload, 0.0f);
+        }
+        for (int i = 0; i < 16; ++i)
+        {
+            AppendF64(payload, i % 5 == 0 ? 1.0 : 0.0);
+        }
+        AppendF32(payload, 0.0f);
+        AppendF32(payload, 0.0f);
+        AppendF32(payload, 0.0f);
+        AppendF32(payload, 0.0f);
+        return;
+    }
+
+    AppendU32(payload, record->type);
+    AppendU32(payload, record->shadowEnabled);
+    AppendU32(payload, 0);
+    AppendU32(payload, 0);
+    AppendF32(payload, record->color[0]);
+    AppendF32(payload, record->color[1]);
+    AppendF32(payload, record->color[2]);
+    AppendF32(payload, record->intensity);
+    for (double value : record->transform)
+    {
+        AppendF64(payload, value);
+    }
+    AppendF32(payload, record->exposure);
+    AppendF32(payload, record->diffuse);
+    AppendF32(payload, record->specular);
+    AppendF32(payload, record->radius);
+}
+
+void AppendFrame(
+    std::vector<uint8_t>& buffer,
+    const HdSilkFrameState& frame,
+    const std::vector<HdSilkLightRecord>& lights)
 {
     std::vector<uint8_t> payload;
     payload.reserve(
         16 +
         sizeof(frame.viewMatrix) +
         sizeof(frame.projectionMatrix) +
-        sizeof(frame.clipPlanes));
+        sizeof(frame.clipPlanes) +
+        16 +
+        (static_cast<size_t>(OPENUSD_SILK_MAX_FRAME_LIGHTS) * 176) +
+        16);
     AppendI32(payload, frame.width);
     AppendI32(payload, frame.height);
     for (double value : frame.viewMatrix)
@@ -182,6 +231,40 @@ void AppendFrame(std::vector<uint8_t>& buffer, const HdSilkFrameState& frame)
             AppendF64(payload, value);
         }
     }
+
+    std::vector<HdSilkLightRecord> directLights;
+    float ambientColor[3] = {0.0f, 0.0f, 0.0f};
+    float ambientIntensity = 0.0f;
+    for (const HdSilkLightRecord& light : lights)
+    {
+        if (light.ambientOnly)
+        {
+            // Storm's untextured DomeLight path falls back to unit diffuse
+            // irradiance rather than tinting by authored color/intensity.
+            ambientColor[0] = 0.96f;
+            ambientColor[1] = 0.96f;
+            ambientColor[2] = 0.96f;
+            ambientIntensity = 1.0f;
+            continue;
+        }
+        if (directLights.size() < OPENUSD_SILK_MAX_FRAME_LIGHTS)
+        {
+            directLights.push_back(light);
+        }
+    }
+
+    AppendU32(payload, CheckedCount(directLights.size(), "frame light count"));
+    AppendU32(payload, 0);
+    AppendU32(payload, 0);
+    AppendU32(payload, 0);
+    for (size_t i = 0; i < OPENUSD_SILK_MAX_FRAME_LIGHTS; ++i)
+    {
+        AppendLight(payload, i < directLights.size() ? &directLights[i] : nullptr);
+    }
+    AppendF32(payload, ambientColor[0]);
+    AppendF32(payload, ambientColor[1]);
+    AppendF32(payload, ambientColor[2]);
+    AppendF32(payload, ambientIntensity);
     AppendCommand(buffer, OPENUSD_SILK_COMMAND_FRAME, payload);
 }
 
@@ -660,6 +743,25 @@ HdSilkSceneState::RemoveMaterial(const std::string& path)
     }
 }
 
+void
+HdSilkSceneState::ReplaceLight(HdSilkLightRecord record)
+{
+    if (record.path.empty())
+    {
+        throw std::invalid_argument("An hdSilk light record requires a path.");
+    }
+    std::lock_guard<std::mutex> lock(_mutex);
+    const std::string path = record.path;
+    _lights[path] = std::move(record);
+}
+
+void
+HdSilkSceneState::RemoveLight(const std::string& path)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    _lights.erase(path);
+}
+
 std::vector<uint8_t>
 HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
 {
@@ -707,7 +809,21 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         std::unique(removals.begin(), removals.end()),
         removals.end());
 
-    AppendFrame(buffer, _frame);
+    std::vector<HdSilkLightRecord> lights;
+    lights.reserve(_lights.size());
+    for (const auto& entry : _lights)
+    {
+        lights.push_back(entry.second);
+    }
+    std::sort(
+        lights.begin(),
+        lights.end(),
+        [](const HdSilkLightRecord& left, const HdSilkLightRecord& right)
+        {
+            return Utf8PathLess(left.path, right.path);
+        });
+
+    AppendFrame(buffer, _frame, lights);
     size_t appendedCommands = 1;
 
     // Materials precede meshes so a consumer that applies the page in order

@@ -309,10 +309,130 @@
                 "elementStride": 16,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "ambientLight",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 208,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightPositionType",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 224,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightDirectionRadius",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 288,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightColorIntensity",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 352,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightControls",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 416,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "eyeToWorld",
+              "type": {
+                "kind": "matrix",
+                "rowCount": 4,
+                "columnCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 480,
+                "size": 64,
+                "elementStride": 0,
+                "matrixStride": 16,
+                "matrixLayout": "row-major"
+              }
             }
           ]
         },
-        "elementStride": 208,
+        "elementStride": 544,
         "size": null
       },
       "vulkanLayout": {
@@ -379,10 +499,130 @@
                 "elementStride": 16,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "ambientLight",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 208,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightPositionType",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 224,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightDirectionRadius",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 288,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightColorIntensity",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 352,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightControls",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 416,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "eyeToWorld",
+              "type": {
+                "kind": "matrix",
+                "rowCount": 4,
+                "columnCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 480,
+                "size": 64,
+                "elementStride": 0,
+                "matrixStride": 16,
+                "matrixLayout": "row-major"
+              }
             }
           ]
         },
-        "elementStride": 208,
+        "elementStride": 544,
         "size": null
       }
     }

@@ -101,10 +101,10 @@ public sealed class SilkGraphicsPipelineTests
 
         await Assert.That(reflection).IsEqualTo(
             new SilkSceneParametersReflection(true, 0, 64, 64, 16, 80));
-        await Assert.That(dxilVertex.Code.Length).IsEqualTo(5920);
-        await Assert.That(dxilFragment.Code.Length).IsEqualTo(7472);
-        await Assert.That(spirvVertex.Code.Length).IsEqualTo(2476);
-        await Assert.That(spirvFragment.Code.Length).IsEqualTo(7756);
+        await Assert.That(dxilVertex.Code.Length).IsEqualTo(6120);
+        await Assert.That(dxilFragment.Code.Length).IsEqualTo(8304);
+        await Assert.That(spirvVertex.Code.Length).IsEqualTo(2892);
+        await Assert.That(spirvFragment.Code.Length).IsEqualTo(10632);
         await Assert.That(dxilVertex.EntryPoint).IsEqualTo("vertexMain");
         await Assert.That(dxilFragment.EntryPoint).IsEqualTo("fragmentMain");
         await Assert.That(spirvVertex.EntryPoint).IsEqualTo("main");

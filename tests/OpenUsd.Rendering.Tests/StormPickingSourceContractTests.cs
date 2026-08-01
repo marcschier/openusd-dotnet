@@ -90,7 +90,8 @@ public sealed class StormPickingSourceContractTests
         await Assert.That(hydraSource).Contains(
             "instances.emplace_back(path, item.instance_index)");
         await Assert.That(hydraSource).Contains("kStormHeadlight");
-        await Assert.That(hydraSource).Contains("parameters.enableSceneLights = false");
+        await Assert.That(hydraSource).Contains(
+            "parameters.enableSceneLights = HasSupportedSceneLights(renderer->stage)");
         await Assert.That(hydraSource).Contains("parameters.enableSceneMaterials = true");
         await Assert.That(hydraSource).Contains("parameters.highlight = true");
         await Assert.That(hydraSource).Contains("parameters.enableLighting = true");

@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 8u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 9u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 4u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -126,6 +126,28 @@ extern "C" {
 /// material_path_byte_count and attribute_count all zero; consumers reuse the
 /// instance-zero prototype geometry, material path and attributes.
 ///
+/// ABI v9 extends FRAME with a fixed light table. hdSilk currently publishes
+/// direct DistantLight and SphereLight entries plus DomeLight as ambient only.
+/// The table is frame-local because lights are evaluated in eye space by the
+/// managed renderer after applying the current view matrix.
+///
+/// FRAME v9 appends after clip_planes:
+///   uint32 light_count (0..4 direct lights)
+///   uint32 reserved[3] (0)
+///   repeated 4 times:
+///     uint32 light_type (OPENUSD_SILK_LIGHT_*)
+///     uint32 shadow_enabled (diagnostic only)
+///     uint32 reserved[2] (0)
+///     float color[3]
+///     float intensity
+///     double transform[16] (row-major)
+///     float exposure
+///     float diffuse
+///     float specular
+///     float radius
+///   float ambient_color[3]
+///   float ambient_intensity
+///
 /// All offsets are from the command header's first byte. stable_id_hash is
 /// 64-bit FNV-1a over the exact path bytes and is an index only: path is the
 /// authoritative identity. prim_id is Hydra's explicit non-negative Rprim
@@ -212,6 +234,9 @@ extern "C" {
 #define OPENUSD_SILK_COMMAND_MESH_REMOVE 3u
 #define OPENUSD_SILK_COMMAND_MATERIAL_UPSERT 4u
 #define OPENUSD_SILK_COMMAND_MATERIAL_REMOVE 5u
+#define OPENUSD_SILK_MAX_FRAME_LIGHTS 4u
+#define OPENUSD_SILK_LIGHT_DISTANT 1u
+#define OPENUSD_SILK_LIGHT_SPHERE 2u
 #define OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST 1u
 #define OPENUSD_SILK_TOPOLOGY_LINE_LIST 2u
 #define OPENUSD_SILK_TOPOLOGY_POINT_LIST 3u

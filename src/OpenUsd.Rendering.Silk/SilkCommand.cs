@@ -72,19 +72,32 @@ public readonly ref struct SilkFrameCommand
 {
     private const int MinimumSize = 272;
     private const int ExtendedSize = 536;
+    private const int LightingSize = 1272;
     private const int ClipPlaneOffset = MinimumSize + 8;
+    private const int LightCountOffset = ExtendedSize;
+    private const int LightTableOffset = ExtendedSize + 16;
+    private const int LightEntrySize = 176;
+    private const int AmbientOffset = LightTableOffset + (4 * LightEntrySize);
     private readonly ReadOnlySpan<byte> _bytes;
 
     internal SilkFrameCommand(ReadOnlySpan<byte> bytes)
     {
-        if (bytes.Length != MinimumSize && bytes.Length != ExtendedSize)
+        if (bytes.Length != MinimumSize &&
+            bytes.Length != ExtendedSize &&
+            bytes.Length != LightingSize)
         {
-            throw new InvalidDataException("The frame command must be exactly 272 or 536 bytes.");
+            throw new InvalidDataException(
+                "The frame command must be exactly 272, 536, or 1272 bytes.");
         }
-        if (bytes.Length == ExtendedSize &&
+        if (bytes.Length >= ExtendedSize &&
             BinaryPrimitives.ReadUInt32LittleEndian(bytes[MinimumSize..(MinimumSize + 4)]) > 8)
         {
             throw new InvalidDataException("The frame command clip plane count is invalid.");
+        }
+        if (bytes.Length == LightingSize &&
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes[LightCountOffset..(LightCountOffset + 4)]) > 4)
+        {
+            throw new InvalidDataException("The frame command light count is invalid.");
         }
         _bytes = bytes;
     }
@@ -103,7 +116,7 @@ public readonly ref struct SilkFrameCommand
 
     /// <summary>Gets the number of eye-space clip planes.</summary>
     internal uint ClipPlaneCount =>
-        _bytes.Length == ExtendedSize
+        _bytes.Length >= ExtendedSize
             ? BinaryPrimitives.ReadUInt32LittleEndian(_bytes[MinimumSize..(MinimumSize + 4)])
             : 0;
 
@@ -114,12 +127,85 @@ public readonly ref struct SilkFrameCommand
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(plane, 8);
         ArgumentOutOfRangeException.ThrowIfNegative(component);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(component, 4);
-        if (_bytes.Length != ExtendedSize)
+        if (_bytes.Length < ExtendedSize)
         {
             return 0;
         }
         return BinaryPrimitives.ReadDoubleLittleEndian(
             _bytes.Slice(ClipPlaneOffset + (((plane * 4) + component) * 8), 8));
+    }
+
+    internal uint LightCount =>
+        _bytes.Length == LightingSize
+            ? BinaryPrimitives.ReadUInt32LittleEndian(_bytes[LightCountOffset..(LightCountOffset + 4)])
+            : 0;
+
+    internal uint GetLightType(int light) => ReadLightUInt32(light, 0);
+
+    internal uint GetLightShadowEnabled(int light) => ReadLightUInt32(light, 4);
+
+    internal float GetLightColor(int light, int component) =>
+        ReadLightSingle(light, 16 + (component * 4));
+
+    internal float GetLightIntensity(int light) => ReadLightSingle(light, 28);
+
+    internal double GetLightTransformElement(int light, int index)
+    {
+        ValidateLight(light);
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, 16);
+        if (_bytes.Length != LightingSize)
+        {
+            return index % 5 == 0 ? 1 : 0;
+        }
+        return BinaryPrimitives.ReadDoubleLittleEndian(
+            _bytes.Slice(LightTableOffset + (light * LightEntrySize) + 32 + (index * 8), 8));
+    }
+
+    internal float GetLightExposure(int light) => ReadLightSingle(light, 160);
+
+    internal float GetLightDiffuse(int light) => ReadLightSingle(light, 164);
+
+    internal float GetLightSpecular(int light) => ReadLightSingle(light, 168);
+
+    internal float GetLightRadius(int light) => ReadLightSingle(light, 172);
+
+    internal float GetAmbientColor(int component)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(component);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(component, 3);
+        return _bytes.Length == LightingSize
+            ? BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(AmbientOffset + (component * 4), 4))
+            : 0;
+    }
+
+    internal float AmbientIntensity =>
+        _bytes.Length == LightingSize
+            ? BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(AmbientOffset + 12, 4))
+            : 0;
+
+    private uint ReadLightUInt32(int light, int offset)
+    {
+        ValidateLight(light);
+        return _bytes.Length == LightingSize
+            ? BinaryPrimitives.ReadUInt32LittleEndian(
+                _bytes.Slice(LightTableOffset + (light * LightEntrySize) + offset, 4))
+            : 0;
+    }
+
+    private float ReadLightSingle(int light, int offset)
+    {
+        ValidateLight(light);
+        return _bytes.Length == LightingSize
+            ? BinaryPrimitives.ReadSingleLittleEndian(
+                _bytes.Slice(LightTableOffset + (light * LightEntrySize) + offset, 4))
+            : 0;
+    }
+
+    private static void ValidateLight(int light)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(light);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(light, 4);
     }
 
     private double ReadMatrixElement(int offset, int index)

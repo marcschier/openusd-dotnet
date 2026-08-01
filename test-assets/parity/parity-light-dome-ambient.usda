@@ -1,0 +1,56 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 1
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def DomeLight "AmbientFill"
+    {
+        color3f inputs:color = (1.0, 1.0, 1.0)
+        float inputs:intensity = 1.0
+        float inputs:exposure = 0.0
+    }
+
+    def Mesh "AmbientHook" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/AmbientMat>
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (-0.86, -0.70, 0.08), (-0.34, -0.62, 0.08),
+            (-0.42, 0.62, 0.08), (-0.82, 0.72, 0.08),
+            (0.74, 0.30, 0.08), (-0.36, 0.08, 0.08)
+        ]
+        int[] faceVertexCounts = [3, 3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3, 2, 5, 4]
+        normal3f[] normals = [
+            (0, 0, 1), (0.12, -0.05, 0.99), (0.06, 0.24, 0.97),
+            (-0.18, 0.04, 0.98), (0.30, -0.08, 0.95), (0.02, -0.18, 0.98)
+        ] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Scope "Looks"
+    {
+        def Material "AmbientMat"
+        {
+            token outputs:surface.connect = </World/Looks/AmbientMat/PreviewSurface.outputs:surface>
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.86, 0.80, 0.36)
+                float inputs:roughness = 0.9
+                token outputs:surface
+            }
+        }
+    }
+}

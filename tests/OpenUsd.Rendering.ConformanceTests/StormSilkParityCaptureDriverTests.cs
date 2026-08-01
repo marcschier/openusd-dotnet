@@ -929,6 +929,37 @@ public sealed class StormSilkParityCaptureDriverTests
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 692, 612, 262_144)),
             },
             new ParityScene(
+                "light-distant-exposure",
+                Path.Combine(assetRoot, "parity-light-distant-exposure.usda"),
+                "UsdLuxDistantLight colour, intensity, and exposure direct-light measurement.",
+                ColorComparisonReady: true,
+                GateEnabled: false,
+                GateReason:
+                    "Direct-light transport is measured, but Storm's capture path still renders " +
+                    "the fallback headlight here; current colour deltas are max 122 / mean 114.450.",
+                RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
+                "light-sphere-point",
+                Path.Combine(assetRoot, "parity-light-sphere-point.usda"),
+                "UsdLuxSphereLight direct-light transport and point-attenuation measurement.",
+                ColorComparisonReady: true,
+                GateEnabled: false,
+                GateReason:
+                    "Direct-light transport is measured, but Storm's capture path still renders " +
+                    "the fallback headlight here; current colour deltas are max 166 / mean 96.922.",
+                RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
+                "light-dome-ambient",
+                Path.Combine(assetRoot, "parity-light-dome-ambient.usda"),
+                "UsdLuxDomeLight without a texture contributes ambient fill only.",
+                ColorComparisonReady: true,
+                GateEnabled: true,
+                GateReason:
+                    "Untextured dome ambient fill gates against Storm's measured fallback: " +
+                    "1.000000 adjusted IoU, 0.462455 perturbation margin, and colour " +
+                    "deltas max 11 / mean 3.619.",
+                RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
                 "point-instancer-cluster",
                 Path.Combine(assetRoot, "parity-point-instancer-cluster.usda"),
                 "Asymmetric point-instanced placement proves expansion and transform handling.",

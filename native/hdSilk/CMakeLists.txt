@@ -9,6 +9,8 @@ set(OPENUSD_HDSILK_SOURCES
     src/implicitSurfaceSceneIndexPlugin.cpp
     src/instancer.h
     src/instancer.cpp
+    src/light.h
+    src/light.cpp
     src/material.h
     src/material.cpp
     src/mesh.h

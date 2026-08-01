@@ -5,6 +5,7 @@
 #include "openusd_hdsilk.h"
 #include "basisCurves.h"
 #include "instancer.h"
+#include "light.h"
 #include "material.h"
 #include "mesh.h"
 #include "points.h"
@@ -46,6 +47,9 @@ const TfTokenVector HdSilkRenderDelegate::SUPPORTED_SPRIM_TYPES =
     // Without the material Sprim the render index never resolves a binding, so
     // a mesh's materialPath would always be empty no matter what is authored.
     HdPrimTypeTokens->material,
+    HdPrimTypeTokens->distantLight,
+    HdPrimTypeTokens->sphereLight,
+    HdPrimTypeTokens->domeLight,
 };
 
 const TfTokenVector HdSilkRenderDelegate::SUPPORTED_BPRIM_TYPES =
@@ -203,6 +207,12 @@ HdSilkRenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprimId)
     {
         return new HdSilkMaterial(sprimId);
     }
+    if (typeId == HdPrimTypeTokens->distantLight ||
+        typeId == HdPrimTypeTokens->sphereLight ||
+        typeId == HdPrimTypeTokens->domeLight)
+    {
+        return new HdSilkLight(sprimId, typeId);
+    }
     TF_CODING_ERROR("Unknown Sprim type=%s id=%s", typeId.GetText(), sprimId.GetText());
     return nullptr;
 }
@@ -218,6 +228,12 @@ HdSilkRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
     {
         return new HdSilkMaterial(SdfPath::EmptyPath());
     }
+    if (typeId == HdPrimTypeTokens->distantLight ||
+        typeId == HdPrimTypeTokens->sphereLight ||
+        typeId == HdPrimTypeTokens->domeLight)
+    {
+        return new HdSilkLight(SdfPath::EmptyPath(), typeId);
+    }
     TF_CODING_ERROR("Creating unknown fallback sprim type=%s", typeId.GetText());
     return nullptr;
 }
@@ -228,10 +244,16 @@ HdSilkRenderDelegate::DestroySprim(HdSprim* sprim)
     // A destroyed material must retire its published record, or a consumer
     // keeps shading with a material the scene no longer has.
     if (sprim != nullptr && _sceneState != nullptr &&
-        dynamic_cast<HdSilkMaterial*>(sprim) != nullptr &&
         !sprim->GetId().IsEmpty())
     {
-        _sceneState->RemoveMaterial(sprim->GetId().GetString());
+        if (dynamic_cast<HdSilkMaterial*>(sprim) != nullptr)
+        {
+            _sceneState->RemoveMaterial(sprim->GetId().GetString());
+        }
+        else if (dynamic_cast<HdSilkLight*>(sprim) != nullptr)
+        {
+            _sceneState->RemoveLight(sprim->GetId().GetString());
+        }
     }
     delete sprim;
 }

@@ -160,6 +160,16 @@ coarse/control-cage-like surface rather than full refinement. An eager
 OpenSubdiv refinement experiment moved hdSilk away from Storm, so subdivision
 remains measured but ungated until the remaining divergence is eliminated.
 
+## hdSilk lighting parity
+
+| Feature | Status | Detail |
+| --- | --- | --- |
+| Deterministic headlight | Implemented and parity-gated | Used when no authored UsdLux light is present |
+| `UsdLuxDistantLight` | Measurement-only | Transported; Storm direct-light capture still uses fallback |
+| `UsdLuxSphereLight` | Measurement-only | Transported; Storm capture and attenuation remain ungated |
+| `UsdLuxDomeLight` | Ambient-only and parity-gated | Untextured dome ambient is gated; image IBL is not implemented |
+| Shadows and light linking | Not implemented | Shadow-enable is diagnostic-only; no instanced-shadow parity |
+
 ## Data and authoring features
 
 | Feature | Status | Detail |

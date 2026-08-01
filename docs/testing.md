@@ -218,7 +218,7 @@ commit and artifact set.
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 8 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 9 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 Instance identity has dedicated coverage. One case serializes a point-instanced scene and
@@ -909,6 +909,46 @@ wrong-time probe 0.534601. The weakest required margin is therefore **0.274348**
 Capturing the undeformed timeCode 1 pose was the deliberate red proof for this
 gate; it failed the 0.92 threshold before the registration stayed at timeCode 2.
 GPU skinning remains a measured gap rather than a claimed feature.
+
+### UsdLux lighting scenes
+
+`parity-light-distant-exposure.usda`, `parity-light-sphere-point.usda`, and
+`parity-light-dome-ambient.usda` are registered with `ColorComparisonReady: true`.
+The first run found exact coverage but very large colour deltas because hdSilk
+packed light constants as an array-of-structs while the shader reflection expects
+four structure-of-arrays tables. That made direct lights read the wrong slots.
+
+After fixing that packing, untextured dome ambient gates: adjusted IoU
+**1.000000**, worst perturbation **0.537545**, margin **0.462455**, and colour
+deltas **11 / 3.619** on both D3D12 WARP and Vulkan SwiftShader. Distant and
+sphere remain measurement-only. They now transport real direct-light data, but
+the Storm capture path still renders the deterministic fallback headlight for
+these direct-light scenes; deliberately removing that fallback made Storm
+coverage drop to zero.
+
+The ratio measurement identifies that as the remaining cause for
+`light-distant-exposure`. Mean Storm/Silk channel ratios on non-background,
+non-clipped D3D12 and Vulkan pixels are **0.4225 / 0.5983 / 1.0347**. The
+authored light scale is `intensity * 2^exposure * color`, or
+`1.6 * 2^0.5 * (1.0, 0.72, 0.42)` = **2.2627 / 1.6292 / 0.9504**; its inverse is
+**0.4419 / 0.6138 / 1.0522**, matching the measured ratios within the saturated
+pixels. The direct-light delta is therefore not a π/exposure transport bug in
+hdSilk; Storm is comparing the white fallback headlight against hdSilk's authored
+warm light. Sphere has the same direct-light capture limitation plus an
+attenuation mismatch to measure separately: its current ratios are
+**1.3828 / 0.8339 / 0.6562**, while `glf/simpleLighting.glslfx` attenuates point
+lights as `1 / (constant + linear * d + quadratic * d * d)`.
+
+Their current colour deltas therefore quantify the gap rather than define a
+gate: distant **122 / 114.450**, sphere **166 / 96.922** on both D3D12 WARP and
+Vulkan SwiftShader. Their weakest perturbation margins are **0.170558** and
+**0.137485**, so they also need stronger asymmetric scenes before gating.
+
+The implementation carries direct DistantLight/SphereLight data and untextured
+DomeLight ambient through page ABI 9, but shadows, PCF, light linking, dome
+textures/image lighting, and instanced-shadow parity remain scoped out until the
+Storm measurements can support real gates.
+
 
 ### Draw modes: cards, bounds, and origin are gated
 

@@ -312,9 +312,12 @@ public sealed class SilkSceneState
 /// </summary>
 public sealed class SilkFrameState
 {
+    internal const int MaximumLights = 4;
     private readonly double[] _view = new double[16];
     private readonly double[] _projection = new double[16];
     private readonly double[] _clipPlanes = new double[32];
+    private readonly SilkFrameLight[] _lights = new SilkFrameLight[MaximumLights];
+    private Vector4 _ambientLight;
 
     /// <summary>Initializes an identity camera and viewport state.</summary>
     public SilkFrameState()
@@ -344,6 +347,12 @@ public sealed class SilkFrameState
     /// <summary>Gets the eye-space clip plane table.</summary>
     internal ReadOnlyMemory<double> ClipPlanes => _clipPlanes;
 
+    internal ReadOnlySpan<SilkFrameLight> Lights => _lights;
+
+    internal Vector4 AmbientLight => _ambientLight;
+
+    internal uint LightCount { get; private set; }
+
     /// <summary>Gets the revision of the retained camera or viewport state.</summary>
     public ulong Revision { get; private set; }
 
@@ -351,10 +360,12 @@ public sealed class SilkFrameState
     {
         bool changed = Width != command.Width ||
             Height != command.Height ||
-            ClipPlaneCount != command.ClipPlaneCount;
+            ClipPlaneCount != command.ClipPlaneCount ||
+            LightCount != command.LightCount;
         Width = command.Width;
         Height = command.Height;
         ClipPlaneCount = command.ClipPlaneCount;
+        LightCount = command.LightCount;
         for (int i = 0; i < 16; i++)
         {
             double view = command.GetViewElement(i);
@@ -369,6 +380,19 @@ public sealed class SilkFrameState
             changed |= _clipPlanes[i] != clipPlane;
             _clipPlanes[i] = clipPlane;
         }
+        for (int lightIndex = 0; lightIndex < MaximumLights; lightIndex++)
+        {
+            SilkFrameLight light = SilkFrameLight.CopyFrom(command, lightIndex);
+            changed |= !_lights[lightIndex].Equals(light);
+            _lights[lightIndex] = light;
+        }
+        var ambient = new Vector4(
+            command.GetAmbientColor(0),
+            command.GetAmbientColor(1),
+            command.GetAmbientColor(2),
+            command.AmbientIntensity);
+        changed |= _ambientLight != ambient;
+        _ambientLight = ambient;
         if (changed)
         {
             Revision++;
@@ -376,9 +400,58 @@ public sealed class SilkFrameState
     }
 }
 
+internal readonly record struct SilkFrameLight(
+    uint Type,
+    uint ShadowEnabled,
+    Vector3 Color,
+    float Intensity,
+    Matrix4x4 Transform,
+    float Exposure,
+    float Diffuse,
+    float Specular,
+    float Radius)
+{
+    internal static SilkFrameLight CopyFrom(SilkFrameCommand command, int light) =>
+        new(
+            command.GetLightType(light),
+            command.GetLightShadowEnabled(light),
+            new Vector3(
+                command.GetLightColor(light, 0),
+                command.GetLightColor(light, 1),
+                command.GetLightColor(light, 2)),
+            command.GetLightIntensity(light),
+            ReadTransform(command, light),
+            command.GetLightExposure(light),
+            command.GetLightDiffuse(light),
+            command.GetLightSpecular(light),
+            command.GetLightRadius(light));
+
+    private static Matrix4x4 ReadTransform(SilkFrameCommand command, int light) =>
+        new(
+            ToSingle(command.GetLightTransformElement(light, 0)),
+            ToSingle(command.GetLightTransformElement(light, 1)),
+            ToSingle(command.GetLightTransformElement(light, 2)),
+            ToSingle(command.GetLightTransformElement(light, 3)),
+            ToSingle(command.GetLightTransformElement(light, 4)),
+            ToSingle(command.GetLightTransformElement(light, 5)),
+            ToSingle(command.GetLightTransformElement(light, 6)),
+            ToSingle(command.GetLightTransformElement(light, 7)),
+            ToSingle(command.GetLightTransformElement(light, 8)),
+            ToSingle(command.GetLightTransformElement(light, 9)),
+            ToSingle(command.GetLightTransformElement(light, 10)),
+            ToSingle(command.GetLightTransformElement(light, 11)),
+            ToSingle(command.GetLightTransformElement(light, 12)),
+            ToSingle(command.GetLightTransformElement(light, 13)),
+            ToSingle(command.GetLightTransformElement(light, 14)),
+            ToSingle(command.GetLightTransformElement(light, 15)));
+
+    private static float ToSingle(double value) =>
+        double.IsFinite(value) ? (float)value : 0;
+}
+
 internal static class SilkFrameUniformWriter
 {
-    internal const int ByteSize = 208;
+    internal const int ByteSize = 544;
 
     internal static void Write(
         SilkFrameState frame,
@@ -417,6 +490,77 @@ internal static class SilkFrameUniformWriter
             float value = ToFiniteSingle(planes[i], $"clipPlanes[{i / 4},{i % 4}]");
             WriteSingle(destination, 80 + (i * sizeof(float)), value);
         }
+
+        Matrix4x4 worldToEye = ToMatrix4x4(frame.View.Span);
+        if (!Matrix4x4.Invert(worldToEye, out Matrix4x4 eyeToWorld))
+        {
+            throw new InvalidDataException("The frame view matrix is not invertible.");
+        }
+
+        Vector4 ambient = frame.AmbientLight;
+        WriteVector4(
+            destination,
+            208,
+            ambient.X,
+            ambient.Y,
+            ambient.Z,
+            (float)Math.Min(frame.LightCount, (uint)SilkFrameState.MaximumLights));
+        ReadOnlySpan<SilkFrameLight> lights = frame.Lights;
+        for (int i = 0; i < SilkFrameState.MaximumLights; i++)
+        {
+            WriteLight(destination, i, lights[i]);
+        }
+        WriteMatrixTranspose(destination, 480, eyeToWorld);
+    }
+
+    private static void WriteLight(
+        Span<byte> destination,
+        int index,
+        SilkFrameLight light)
+    {
+        int positionOffset = 224 + (index * 16);
+        int directionOffset = 288 + (index * 16);
+        int colorOffset = 352 + (index * 16);
+        int controlOffset = 416 + (index * 16);
+        if (light.Type == 0)
+        {
+            WriteVector4(destination, positionOffset, 0, 0, 0, 0);
+            WriteVector4(destination, directionOffset, 0, 0, 1, 0);
+            WriteVector4(destination, colorOffset, 0, 0, 0, 0);
+            WriteVector4(destination, controlOffset, 0, 0, 0, 0);
+            return;
+        }
+
+        Vector3 position = new(light.Transform.M41, light.Transform.M42, light.Transform.M43);
+        Vector3 direction = Vector3.TransformNormal(Vector3.UnitZ, light.Transform);
+        direction = Normalize(direction, Vector3.UnitZ);
+        float exposed = light.Intensity * MathF.Pow(2.0f, light.Exposure);
+        WriteVector4(destination, positionOffset, position.X, position.Y, position.Z, light.Type);
+        WriteVector4(destination, directionOffset, direction.X, direction.Y, direction.Z, light.Radius);
+        WriteVector4(
+            destination,
+            colorOffset,
+            light.Color.X,
+            light.Color.Y,
+            light.Color.Z,
+            exposed);
+        WriteVector4(
+            destination,
+            controlOffset,
+            light.Diffuse,
+            light.Specular,
+            light.ShadowEnabled,
+            0);
+    }
+
+    private static Vector3 Normalize(Vector3 value, Vector3 fallback)
+    {
+        float lengthSquared = value.LengthSquared();
+        if (!float.IsFinite(lengthSquared) || lengthSquared <= float.Epsilon)
+        {
+            return fallback;
+        }
+        return value / MathF.Sqrt(lengthSquared);
     }
 
     private static Matrix4x4 ToMatrix4x4(ReadOnlySpan<double> values) =>
@@ -497,6 +641,20 @@ internal static class SilkFrameUniformWriter
         BinaryPrimitives.WriteInt32LittleEndian(
             destination.Slice(offset, sizeof(float)),
             BitConverter.SingleToInt32Bits(value));
+
+    private static void WriteVector4(
+        Span<byte> destination,
+        int offset,
+        float x,
+        float y,
+        float z,
+        float w)
+    {
+        WriteSingle(destination, offset, x);
+        WriteSingle(destination, offset + 4, y);
+        WriteSingle(destination, offset + 8, z);
+        WriteSingle(destination, offset + 12, w);
+    }
 
     private static void WriteSingle(Span<byte> destination, int offset, uint value) =>
         BinaryPrimitives.WriteUInt32LittleEndian(
