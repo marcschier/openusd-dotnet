@@ -565,11 +565,9 @@ skip and the suite stays green.
 
 The parity scenes were measured on Windows with the staged Storm runtime from
 `native/install`, Mesa llvmpipe WGL 26.1.5, D3D12 WARP, and packaged
-SwiftShader. The gate is intentionally narrow until the scenes are redesigned:
-only `orientation-asymmetric` has enough separation to enforce a threshold with
-driver headroom. Its 0.61 adjusted-IoU floor sits between the 0.709154 correct
-capture and the 0.516599 worst perturbation, leaving about 0.09 headroom on both
-sides for llvmpipe, WARP, and SwiftShader variation.
+SwiftShader. Each gated scene must keep at least 0.18 adjusted-IoU separation
+between the correct capture and the closest vertical, horizontal, transpose, or
+camera-shift perturbation before it can use the 0.92 threshold.
 
 | Scene | Correct | Vertical flip | Horizontal mirror | Transpose | Shifted camera | Margin | Gate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -578,12 +576,13 @@ sides for llvmpipe, WARP, and SwiftShader variation.
 | `material-normals-uv` | 1.000000 | 0.310060 | 0.253340 | 0.557888 | 0.216277 | 0.442112 | yes, threshold 0.92 |
 | `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | yes, threshold 0.92 |
 | `cards-draw-mode` | 1.000000 | 0.250000 | 0.418182 | 0.730337 | 0.431193 | 0.269663 | yes, threshold 0.92 |
+| `bounds-draw-mode` | 1.000000 | 0.094421 | 0.231884 | 0.047847 | 0.243309 | 0.756691 | yes, threshold 0.92 |
 
 Storm and hdSilk agree **exactly** on coverage for every curated scene: raw IoU
-1.000000 with identical coverage counts. All four scenes are gated at 0.92,
+1.000000 with identical coverage counts. All gated scenes use a 0.92 threshold,
 which leaves 0.08 for rasterization differences on backends other than D3D12
 WARP and Vulkan SwiftShader -- both of which currently produce byte-identical
-captures -- while staying at least 0.36 clear of the nearest perturbation.
+captures -- while staying at least 0.18 clear of the nearest perturbation.
 
 ### Colour parity
 
@@ -688,7 +687,7 @@ entirely. Measured on the same model:
 | `bounds` | 276 | **0** |
 
 So cards was already at exact parity and had simply never been tested, while
-origin and bounds render nothing at all in hdSilk. The curves are
+origin and bounds rendered nothing at all in hdSilk before line topology landed. The curves are
 `HdBasisCurvesTopology(linear, bezier, segmented)` -- independent line segments
 with widths.
 
@@ -697,7 +696,6 @@ with widths.
 The obvious design is to tessellate each segment into a two-triangle ribbon and
 emit it as an ordinary mesh record, needing no new page ABI command, RHI
 topology or pipeline. That was implemented and measured, and it is wrong.
-
 `UsdImagingGLDrawModeAdapter` authors `widths = [1.0]` constant for bounds and
 origin (`drawModeAdapter.cpp:641-644`). Ribbons built from that width against a
 ~1.2 unit box swallow the screen:
@@ -735,11 +733,20 @@ construction rather than by tuning a constant. `SilkTopologyKind` gains
 field, so this is **not** a page ABI change.
 
 Thin one-pixel lines are the worst case for coverage IoU, since a single pixel
-of rasterization difference is a large fraction of a thin shape. Whether
-`parity-bounds-draw-mode.usda` can be gated on coverage at all is therefore an
-open measurement, not an assumption.
+of rasterization difference is a large fraction of a thin shape, so whether the
+scene could be gated at all was left as an open measurement rather than an
+assumption. It was then measured, and the concern did not materialise: Storm,
+D3D12 WARP and Vulkan SwiftShader all produce **exactly 251** covered pixels,
+adjusted IoU 1.000000, against a 0.243309 worst perturbation -- a 0.756691
+margin. `parity-bounds-draw-mode.usda` is gated at 0.92.
 
-`parity-cards-draw-mode.usda` gates the half that works. Two things about it are
+Matching by construction is what made that possible. Because none of the three
+backends has a line width state to get wrong, there was no constant left to
+tune, and the agreement is exact rather than approximate.
+
+### Draw modes: cards and bounds are both gated
+
+`parity-cards-draw-mode.usda` gates the mesh half. Two things about it are
 deliberate. Its inner mesh is a small triangle rather than a quad matching the
 model extent, because the first version used a matching quad and measured
 identically whether or not the draw mode applied -- it could not have failed.

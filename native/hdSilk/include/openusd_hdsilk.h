@@ -116,11 +116,14 @@ extern "C" {
 /// All offsets are from the command header's first byte. stable_id_hash is
 /// 64-bit FNV-1a over the exact path bytes and is an index only: path is the
 /// authoritative identity. prim_id is Hydra's explicit non-negative Rprim
-/// identifier. topology_kind is OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST,
-/// index_count must equal triangle_count * 3, and each triangle_subprims entry
-/// is the authored USD face index decoded from HdMeshUtil primitiveParams for
-/// the corresponding emitted triangle. topology_revision starts at 1 and
-/// changes only when Hydra reports dirty topology.
+/// identifier. topology_kind is OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST or
+/// OPENUSD_SILK_TOPOLOGY_LINE_LIST. For triangle lists, index_count must equal
+/// triangle_count * 3 and each triangle_subprims entry is the authored USD face
+/// index decoded from HdMeshUtil primitiveParams for the corresponding emitted
+/// triangle. For line lists, index_count must equal triangle_count * 2 and each
+/// triangle_subprims entry is the authored USD curve segment index for the
+/// corresponding emitted line. topology_revision starts at 1 and changes only
+/// when Hydra reports dirty topology.
 ///
 /// In ABI v3 instance identity is meaningful. A prim with no instancer
 /// publishes exactly one record with instance_id and instance_index both zero.
@@ -196,6 +199,7 @@ extern "C" {
 #define OPENUSD_SILK_COMMAND_MATERIAL_UPSERT 4u
 #define OPENUSD_SILK_COMMAND_MATERIAL_REMOVE 5u
 #define OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST 1u
+#define OPENUSD_SILK_TOPOLOGY_LINE_LIST 2u
 
 #define OPENUSD_SILK_CULL_STYLE_DONT_CARE 0u
 #define OPENUSD_SILK_CULL_STYLE_NOTHING 1u

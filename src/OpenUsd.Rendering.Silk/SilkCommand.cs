@@ -133,10 +133,18 @@ public readonly ref struct SilkMeshUpsertCommand
         _triangleCount = ReadCount(bytes, 60, "triangle");
         _materialPathLength = ReadCount(bytes, 216, "material path byte");
         _attributeCount = ReadCount(bytes, 220, "attribute");
-        if ((long)_triangleCount * 3 != _indexCount)
+        SilkTopologyKind topologyKind =
+            (SilkTopologyKind)BinaryPrimitives.ReadUInt32LittleEndian(bytes[28..32]);
+        int indicesPerPrimitive = topologyKind switch
+        {
+            SilkTopologyKind.TriangleList => 3,
+            SilkTopologyKind.LineList => 2,
+            _ => throw new InvalidDataException("The mesh topology kind is unsupported.")
+        };
+        if ((long)_triangleCount * indicesPerPrimitive != _indexCount)
         {
             throw new InvalidDataException(
-                "The mesh index count must equal three times the triangle count.");
+                "The mesh index count must match the primitive count and topology kind.");
         }
 
         long fixedAndArrays = FixedSize +
@@ -158,11 +166,6 @@ public readonly ref struct SilkMeshUpsertCommand
         {
             throw new InvalidDataException(
                 "The mesh instance index must be non-negative.");
-        }
-        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes[28..32]) !=
-            (uint)SilkTopologyKind.TriangleList)
-        {
-            throw new InvalidDataException("The mesh topology kind is unsupported.");
         }
         if (BinaryPrimitives.ReadUInt64LittleEndian(bytes[32..40]) == 0)
         {
@@ -291,10 +294,10 @@ public readonly ref struct SilkMeshUpsertCommand
     /// <summary>Gets the number of mesh points.</summary>
     public int PointCount => _pointCount;
 
-    /// <summary>Gets the number of triangle indices.</summary>
+    /// <summary>Gets the number of topology indices.</summary>
     public int IndexCount => _indexCount;
 
-    /// <summary>Gets the number of emitted triangles and subprim mappings.</summary>
+    /// <summary>Gets the number of emitted primitives and subprim mappings.</summary>
     public int TriangleCount => _triangleCount;
 
     /// <summary>Gets a display-color component.</summary>
@@ -324,7 +327,7 @@ public readonly ref struct SilkMeshUpsertCommand
         return BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(offset, 4));
     }
 
-    /// <summary>Gets one triangle index.</summary>
+    /// <summary>Gets one topology index.</summary>
     public uint GetIndex(int index)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
@@ -936,9 +939,11 @@ public readonly ref struct SilkMaterialRemoveCommand
 /// <summary>Describes the pointer-free topology emitted by hdSilk.</summary>
 public enum SilkTopologyKind : uint
 {
-
     /// <summary>Three indices and one authored face mapping per triangle.</summary>
-    TriangleList = 1
+    TriangleList = 1,
+
+    /// <summary>Two indices and one authored segment mapping per line.</summary>
+    LineList = 2
 }
 
 internal static class SilkWireFormat

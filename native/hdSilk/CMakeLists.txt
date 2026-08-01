@@ -3,6 +3,8 @@ set(OPENUSD_HDSILK_SOURCES
     include/openusd_hdsilk.h
     ../private/openusd_render_camera_internal.h
     src/api.cpp
+    src/basisCurves.h
+    src/basisCurves.cpp
     src/implicitSurfaceSceneIndexPlugin.h
     src/implicitSurfaceSceneIndexPlugin.cpp
     src/instancer.h

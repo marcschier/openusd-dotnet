@@ -194,7 +194,8 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         throw std::invalid_argument(
             "An hdSilk mesh instance index must be non-negative.");
     }
-    if (record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST)
+    if (record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST &&
+        record.topologyKind != OPENUSD_SILK_TOPOLOGY_LINE_LIST)
     {
         throw std::invalid_argument("An hdSilk mesh has an unsupported topology kind.");
     }
@@ -216,25 +217,27 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         throw std::invalid_argument(
             "An hdSilk mesh point component count must be divisible by three.");
     }
-    if ((record.indices.size() % 3) != 0)
+    const size_t indicesPerPrimitive =
+        record.topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ? 3u : 2u;
+    if ((record.indices.size() % indicesPerPrimitive) != 0)
     {
         throw std::invalid_argument(
-            "An hdSilk mesh index count must be divisible by three.");
+            "An hdSilk mesh index count does not match its topology kind.");
     }
 
     const size_t pointCount = record.points.size() / 3;
-    const size_t triangleCount = record.indices.size() / 3;
-    if (record.triangleSubprims.size() != triangleCount)
+    const size_t primitiveCount = record.indices.size() / indicesPerPrimitive;
+    if (record.triangleSubprims.size() != primitiveCount)
     {
         throw std::invalid_argument(
-            "An hdSilk mesh requires one authored subprim index per triangle.");
+            "An hdSilk mesh requires one authored subprim index per primitive.");
     }
     for (uint32_t index : record.indices)
     {
         if (index >= pointCount)
         {
             throw std::invalid_argument(
-                "An hdSilk triangle index is outside the point array.");
+                "An hdSilk primitive index is outside the point array.");
         }
     }
     for (const HdSilkMeshAttribute& attribute : record.attributes)
@@ -285,7 +288,7 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         CheckedByteCount(
             record.triangleSubprims.size(),
             sizeof(uint32_t),
-            "triangle subprim"),
+            "primitive subprim"),
         "mesh payload");
     payloadSize = CheckedAdd(
         payloadSize, record.materialPath.size(), "mesh payload");
@@ -309,7 +312,7 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         CheckedCount(record.path.size(), "path byte count"),
         CheckedCount(pointCount, "point count"),
         CheckedCount(record.indices.size(), "index count"),
-        CheckedCount(triangleCount, "triangle count"),
+        CheckedCount(primitiveCount, "primitive count"),
         payloadSize};
 }
 

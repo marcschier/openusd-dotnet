@@ -629,7 +629,8 @@ public readonly record struct SilkGraphicsPipelineDescriptor(
     SilkVertexLayoutDescriptor VertexLayout,
     SilkTextureFormat ColorFormat,
     SilkTextureFormat DepthFormat,
-    SilkCullMode CullMode = SilkCullMode.None)
+    SilkCullMode CullMode = SilkCullMode.None,
+    SilkTopologyKind TopologyKind = SilkTopologyKind.TriangleList)
 {
     /// <summary>Validates formats and vertex input.</summary>
     public void Validate()
@@ -647,6 +648,11 @@ public readonly record struct SilkGraphicsPipelineDescriptor(
         if (CullMode is not (SilkCullMode.None or SilkCullMode.Back))
         {
             throw new ArgumentOutOfRangeException(nameof(CullMode));
+        }
+        if (TopologyKind is not SilkTopologyKind.TriangleList and
+            not SilkTopologyKind.LineList)
+        {
+            throw new ArgumentException("The topology kind is unsupported.");
         }
     }
 }
@@ -697,7 +703,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkVertexLayoutDescriptor vertexLayout,
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
-        SilkCullMode cullMode = SilkCullMode.None)
+        SilkCullMode cullMode = SilkCullMode.None,
+        SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList)
     {
         DeviceGenerationKey generation = ReadDeviceGeneration(_device);
         PipelineCacheKey key = new(
@@ -706,6 +713,7 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
             colorFormat,
             depthFormat,
             cullMode,
+            topologyKind,
             _shaderFormat,
             generation);
 
@@ -720,7 +728,13 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
 
             if (!_entries.TryGetValue(key, out CachedPipelineEntry? entry))
             {
-                entry = CreateEntry(permutation, vertexLayout, colorFormat, depthFormat, cullMode);
+                entry = CreateEntry(
+                    permutation,
+                    vertexLayout,
+                    colorFormat,
+                    depthFormat,
+                    cullMode,
+                    topologyKind);
                 _entries.Add(key, entry);
             }
 
@@ -748,7 +762,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkVertexLayoutDescriptor vertexLayout,
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
-        SilkCullMode cullMode)
+        SilkCullMode cullMode,
+        SilkTopologyKind topologyKind)
     {
         ISilkGraphicsShaderModule? vertexShader = null;
         ISilkGraphicsShaderModule? fragmentShader = null;
@@ -772,7 +787,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
                 vertexLayout,
                 colorFormat,
                 depthFormat,
-                cullMode));
+                cullMode,
+                topologyKind));
             return new CachedPipelineEntry(
                 vertexShader,
                 fragmentShader,
@@ -842,6 +858,7 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkTextureFormat ColorFormat,
         SilkTextureFormat DepthFormat,
         SilkCullMode CullMode,
+        SilkTopologyKind TopologyKind,
         SilkShaderBinaryFormat ShaderFormat,
         DeviceGenerationKey Generation);
 

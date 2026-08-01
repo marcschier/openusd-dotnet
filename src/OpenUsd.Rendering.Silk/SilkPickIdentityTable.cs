@@ -338,11 +338,15 @@ public sealed class SilkPickIdentityTable
             mesh.Path[0] != '/' ||
             mesh.InstanceId < 0 ||
             mesh.InstanceIndex < 0 ||
-            mesh.TopologyKind != SilkTopologyKind.TriangleList ||
+            mesh.TopologyKind is not SilkTopologyKind.TriangleList and
+                not SilkTopologyKind.LineList ||
             mesh.TopologyRevision == 0 ||
             mesh.Points.Length % 3 != 0 ||
-            mesh.Indices.Length % 3 != 0 ||
-            mesh.TriangleSubprims.Length != mesh.Indices.Length / 3)
+            mesh.Indices.Length %
+                (mesh.TopologyKind == SilkTopologyKind.TriangleList ? 3 : 2) != 0 ||
+            mesh.TriangleSubprims.Length !=
+                mesh.Indices.Length /
+                    (mesh.TopologyKind == SilkTopologyKind.TriangleList ? 3 : 2))
         {
             throw new InvalidDataException(
                 $"Mesh '{mesh.Path}' has invalid Silk pick identity or topology.");
@@ -391,6 +395,7 @@ public sealed class SilkPickIdentityTable
     private sealed class CompactPickIdentity
     {
         private readonly int[] _triangleSubprims;
+        private readonly bool _isPickable;
 
         private CompactPickIdentity(
             string path,
@@ -400,6 +405,7 @@ public sealed class SilkPickIdentityTable
             int instanceIndex,
             ulong topologyRevision,
             int[] triangleSubprims,
+            bool isPickable,
             ulong topologyFingerprint)
         {
             Path = path;
@@ -409,6 +415,7 @@ public sealed class SilkPickIdentityTable
             InstanceIndex = instanceIndex;
             TopologyRevision = topologyRevision;
             _triangleSubprims = triangleSubprims;
+            _isPickable = isPickable;
             TopologyFingerprint = topologyFingerprint;
         }
 
@@ -437,12 +444,15 @@ public sealed class SilkPickIdentityTable
                 mesh.InstanceId,
                 mesh.InstanceIndex,
                 mesh.TopologyRevision,
-                mesh.TriangleSubprims.ToArray(),
+                mesh.TopologyKind == SilkTopologyKind.LineList
+                    ? []
+                    : mesh.TriangleSubprims.ToArray(),
+                mesh.TopologyKind == SilkTopologyKind.TriangleList,
                 mesh.TopologyFingerprint);
         }
 
         internal bool HasSameTopology(SilkMeshData mesh) =>
-            TriangleCount == mesh.TriangleCount &&
+            (!_isPickable || TriangleCount == mesh.TriangleCount) &&
             TopologyFingerprint == mesh.TopologyFingerprint;
 
         internal SilkPickIdentity Resolve(int triangleIndex) =>

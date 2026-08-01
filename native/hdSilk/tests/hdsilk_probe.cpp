@@ -38,6 +38,7 @@ constexpr char SurfaceShaderPath[] = "/World/ProbeMaterial/Surface";
 constexpr char TextureShaderPath[] = "/World/ProbeMaterial/Texture";
 constexpr char MaterialTextureAsset[] = "textures/probe-albedo.png";
 constexpr char PrimvarMeshPath[] = "/World/PrimvarMesh";
+constexpr char BasisCurvesPath[] = "/World/ProbeBasisCurves";
 
 /// One parsed entry of the ABI 4 vertex attribute table.
 struct ParsedAttribute
@@ -141,6 +142,12 @@ struct ParsedPage
     std::vector<std::string> material_remove_paths;
     std::vector<ParsedAttribute> primvar_mesh_attributes;
     bool found_primvar_mesh = false;
+    bool found_basis_curves = false;
+    uint32_t basis_curves_topology_kind = 0;
+    uint32_t basis_curves_triangle_count = 0;
+    std::vector<float> basis_curves_points;
+    std::vector<uint32_t> basis_curves_indices;
+    std::vector<uint32_t> basis_curves_subprims;
     int32_t frame_width = 0;
     int32_t frame_height = 0;
     std::array<double, 16> frame_view{};
@@ -371,9 +378,14 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     }
                     attributes.push_back(std::move(parsed));
                 }
+                const uint32_t indicesPerPrimitive =
+                    topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ? 2u : 3u;
                 sizesValid = sizesValid &&
                     expectedSize == byteSize &&
-                    static_cast<uint64_t>(triangleCount) * 3 == indexCount &&
+                    (topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ||
+                     topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST) &&
+                    static_cast<uint64_t>(triangleCount) *
+                        indicesPerPrimitive == indexCount &&
                     doubleSided <= 1 &&
                     cullStyle <= OPENUSD_SILK_CULL_STYLE_FRONT_UNLESS_DOUBLE_SIDED;
                 if (!sizesValid)
@@ -398,7 +410,8 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                         path.front() == '/' &&
                         stableHash == ComputeStableHash(path) &&
                         primId >= 0 &&
-                        topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST &&
+                        (topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ||
+                         topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST) &&
                         topologyRevision != 0;
                     result.instance_fields_zero &=
                         instanceId == 0 && instanceIndex == 0;
@@ -450,6 +463,46 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     {
                         result.found_primvar_mesh = true;
                         result.primvar_mesh_attributes = std::move(attributes);
+                    }
+                    else if (path == BasisCurvesPath)
+                    {
+                        result.found_basis_curves = true;
+                        result.basis_curves_topology_kind = topologyKind;
+                        result.basis_curves_triangle_count = triangleCount;
+                        result.basis_curves_subprims = std::move(subprims);
+                        result.basis_curves_points.resize(
+                            static_cast<size_t>(pointCount) * 3);
+                        for (size_t component = 0;
+                             component < result.basis_curves_points.size();
+                             ++component)
+                        {
+                            if (!ReadValue(
+                                    data,
+                                    size,
+                                    pointsOffset +
+                                        (component * sizeof(float)),
+                                    &result.basis_curves_points[component]))
+                            {
+                                result.mesh_identity_valid = false;
+                                break;
+                            }
+                        }
+                        result.basis_curves_indices.resize(indexCount);
+                        const size_t indicesOffset = pointsOffset + pointBytes;
+                        for (uint32_t index = 0; index < indexCount; ++index)
+                        {
+                            if (!ReadValue(
+                                    data,
+                                    size,
+                                    indicesOffset +
+                                        (static_cast<size_t>(index) *
+                                         sizeof(uint32_t)),
+                                    &result.basis_curves_indices[index]))
+                            {
+                                result.mesh_identity_valid = false;
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -1202,6 +1255,115 @@ bool AuthorTopologyMesh(
             error) == OPENUSD_STATUS_OK;
 }
 
+bool AuthorBasisCurves(
+    openusd_stage* stage,
+    openusd_error_buffer* error)
+{
+    const std::array<openusd_vec3f, 2> points{
+        openusd_vec3f{0.0F, 0.0F, 0.0F},
+        openusd_vec3f{1.0F, 0.0F, 0.0F}};
+    const std::array<int32_t, 1> counts{2};
+    const std::array<float, 1> widths{0.2F};
+    // The generic vec3f setter creates Float3Array, while a typed
+    // BasisCurves prim predeclares points as Point3fArray. Author the arrays
+    // before applying the schema so this probe can use the public C ABI without
+    // adding a test-only BasisCurves authoring entry point.
+    return openusd_stage_define_prim(stage, BasisCurvesPath, "Scope", error) ==
+            OPENUSD_STATUS_OK &&
+        openusd_stage_set_token(
+            stage,
+            BasisCurvesPath,
+            "type",
+            "linear",
+            0,
+            0.0,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_stage_set_token(
+            stage,
+            BasisCurvesPath,
+            "basis",
+            "bezier",
+            0,
+            0.0,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_stage_set_token(
+            stage,
+            BasisCurvesPath,
+            "wrap",
+            "segmented",
+            0,
+            0.0,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_stage_set_vec3f_array(
+            stage,
+            BasisCurvesPath,
+            "points",
+            points.data(),
+            points.size(),
+            0,
+            0.0,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_stage_set_int32_array(
+            stage,
+            BasisCurvesPath,
+            "curveVertexCounts",
+            counts.data(),
+            counts.size(),
+            0,
+            0.0,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_stage_set_float_array(
+            stage,
+            BasisCurvesPath,
+            "widths",
+            widths.data(),
+            widths.size(),
+            0,
+            0.0,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_stage_define_prim(stage, BasisCurvesPath, "BasisCurves", error) ==
+            OPENUSD_STATUS_OK &&
+        openusd_stage_set_token(
+            stage,
+            BasisCurvesPath,
+            "type",
+            "linear",
+            0,
+            0.0,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_stage_set_token(
+            stage,
+            BasisCurvesPath,
+            "basis",
+            "bezier",
+            0,
+            0.0,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_stage_set_token(
+            stage,
+            BasisCurvesPath,
+            "wrap",
+            "segmented",
+            0,
+            0.0,
+            error) == OPENUSD_STATUS_OK;
+}
+
+bool VerifyBasisCurvesTessellation(const ParsedPage& page)
+{
+    const std::vector<float> expectedPoints{
+        0.0F, 0.0F, 0.0F,
+        1.0F, 0.0F, 0.0F};
+    const std::vector<uint32_t> expectedIndices{0, 1};
+    const std::vector<uint32_t> expectedSubprims{0};
+    return page.found_basis_curves &&
+    page.basis_curves_topology_kind == OPENUSD_SILK_TOPOLOGY_LINE_LIST &&
+    page.basis_curves_triangle_count == 1 &&
+        page.basis_curves_points == expectedPoints &&
+        page.basis_curves_indices == expectedIndices &&
+        page.basis_curves_subprims == expectedSubprims;
+}
+
 bool EditSharedMeshTopologyToQuad(
     openusd_stage* stage,
     openusd_error_buffer* error)
@@ -1504,6 +1666,7 @@ int main(int argc, char** argv)
         openusd_stage_set_edit_target_session_layer(stage, &error) != OPENUSD_STATUS_OK ||
         !AuthorSharedMesh(stage, 0.0F, &error) ||
         !AuthorTopologyMesh(stage, &error) ||
+        !AuthorBasisCurves(stage, &error) ||
         !AuthorSharedMaterial(stage, &error))
     {
         openusd_stage_release(stage);
@@ -1565,6 +1728,7 @@ int main(int argc, char** argv)
         initial.shared_triangle_count != 1 ||
         initial.shared_subprims != std::vector<uint32_t>{0} ||
         initial.topology_subprims != std::vector<uint32_t>({0, 0, 1}) ||
+        !VerifyBasisCurvesTessellation(initial) ||
         !std::is_sorted(
             initial.upsert_paths.begin(),
             initial.upsert_paths.end(),

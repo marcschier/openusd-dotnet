@@ -22,9 +22,15 @@ internal static class SilkMeshGeometryBuilder
         {
             throw InvalidMesh(mesh, "point component count must be divisible by three");
         }
-        if (meshIndices.Length % 3 != 0)
+        int indicesPerPrimitive = mesh.TopologyKind switch
         {
-            throw InvalidMesh(mesh, "index count must be divisible by three");
+            SilkTopologyKind.TriangleList => 3,
+            SilkTopologyKind.LineList => 2,
+            _ => throw InvalidMesh(mesh, "topology kind is unsupported")
+        };
+        if (meshIndices.Length % indicesPerPrimitive != 0)
+        {
+            throw InvalidMesh(mesh, "index count does not match its topology kind");
         }
 
         int pointCount = points.Length / 3;
@@ -39,40 +45,45 @@ internal static class SilkMeshGeometryBuilder
 
         uint[] indices = new uint[meshIndices.Length];
         double[] normals = new double[points.Length];
-        for (int triangle = 0; triangle < meshIndices.Length; triangle += 3)
+        for (int i = 0; i < meshIndices.Length; i++)
         {
-            int a = ValidateIndex(mesh, meshIndices, pointCount, triangle);
-            int b = ValidateIndex(mesh, meshIndices, pointCount, triangle + 1);
-            int c = ValidateIndex(mesh, meshIndices, pointCount, triangle + 2);
-            indices[triangle] = checked((uint)a);
-            indices[triangle + 1] = checked((uint)b);
-            indices[triangle + 2] = checked((uint)c);
+            indices[i] = checked((uint)ValidateIndex(mesh, meshIndices, pointCount, i));
+        }
 
-            int pa = a * 3;
-            int pb = b * 3;
-            int pc = c * 3;
-            double abx = points[pb] - points[pa];
-            double aby = points[pb + 1] - points[pa + 1];
-            double abz = points[pb + 2] - points[pa + 2];
-            double acx = points[pc] - points[pa];
-            double acy = points[pc + 1] - points[pa + 1];
-            double acz = points[pc + 2] - points[pa + 2];
-            double nx = (aby * acz) - (abz * acy);
-            double ny = (abz * acx) - (abx * acz);
-            double nz = (abx * acy) - (aby * acx);
-            double lengthSquared = (nx * nx) + (ny * ny) + (nz * nz);
-            if (!double.IsFinite(lengthSquared) || lengthSquared <= NormalEpsilonSquared)
+        if (mesh.TopologyKind == SilkTopologyKind.TriangleList)
+        {
+            for (int triangle = 0; triangle < meshIndices.Length; triangle += 3)
             {
-                continue;
-            }
+                int a = checked((int)indices[triangle]);
+                int b = checked((int)indices[triangle + 1]);
+                int c = checked((int)indices[triangle + 2]);
 
-            double inverseLength = 1.0 / Math.Sqrt(lengthSquared);
-            nx *= inverseLength;
-            ny *= inverseLength;
-            nz *= inverseLength;
-            Accumulate(normals, pa, nx, ny, nz);
-            Accumulate(normals, pb, nx, ny, nz);
-            Accumulate(normals, pc, nx, ny, nz);
+                int pa = a * 3;
+                int pb = b * 3;
+                int pc = c * 3;
+                double abx = points[pb] - points[pa];
+                double aby = points[pb + 1] - points[pa + 1];
+                double abz = points[pb + 2] - points[pa + 2];
+                double acx = points[pc] - points[pa];
+                double acy = points[pc + 1] - points[pa + 1];
+                double acz = points[pc + 2] - points[pa + 2];
+                double nx = (aby * acz) - (abz * acy);
+                double ny = (abz * acx) - (abx * acz);
+                double nz = (abx * acy) - (aby * acx);
+                double lengthSquared = (nx * nx) + (ny * ny) + (nz * nz);
+                if (!double.IsFinite(lengthSquared) || lengthSquared <= NormalEpsilonSquared)
+                {
+                    continue;
+                }
+
+                double inverseLength = 1.0 / Math.Sqrt(lengthSquared);
+                nx *= inverseLength;
+                ny *= inverseLength;
+                nz *= inverseLength;
+                Accumulate(normals, pa, nx, ny, nz);
+                Accumulate(normals, pb, nx, ny, nz);
+                Accumulate(normals, pc, nx, ny, nz);
+            }
         }
 
         // Authored normals win when the delegate resolved them onto emitted

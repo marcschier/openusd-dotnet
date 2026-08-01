@@ -106,6 +106,7 @@ public sealed class SilkMeshRenderer :
     private readonly ISilkGraphicsShaderProgram _program;
     private readonly ISilkGraphicsPipeline _pipeline;
     private readonly ISilkGraphicsPipeline _backCullPipeline;
+    private readonly ISilkGraphicsPipeline _linePipeline;
     private readonly SilkShaderBinaryFormat _shaderFormat;
     private readonly ISilkPickingGraphicsDevice? _pickingDevice;
     private readonly ISilkSelectionOutlineGraphicsDevice? _selectionOutlineDevice;
@@ -188,6 +189,7 @@ public sealed class SilkMeshRenderer :
         ISilkGraphicsShaderProgram? program = null;
         ISilkGraphicsPipeline? pipeline = null;
         ISilkGraphicsPipeline? backCullPipeline = null;
+        ISilkGraphicsPipeline? linePipeline = null;
         ISilkPickGraphicsPipeline? pickPipeline = null;
         SilkPickReadbackRing? pickReadbacks = null;
         try
@@ -212,6 +214,16 @@ public sealed class SilkMeshRenderer :
                 SilkTextureFormat.Rgba8Unorm,
                 SilkTextureFormat.D32Float,
                 SilkCullMode.Back));
+            // Lines are never culled: Storm rasterizes curve segments as
+            // screen-space lines, which have no facing to cull against.
+            linePipeline = device.CreateGraphicsPipeline(
+                new SilkGraphicsPipelineDescriptor(
+                    program,
+                    SilkVertexLayoutDescriptor.PositionNormal,
+                    SilkTextureFormat.Rgba8Unorm,
+                    SilkTextureFormat.D32Float,
+                    SilkCullMode.None,
+                    SilkTopologyKind.LineList));
             if (_pickingDevice is not null)
             {
                 SilkPickPipelineDescriptor pickDescriptor =
@@ -227,6 +239,7 @@ public sealed class SilkMeshRenderer :
             pickReadbacks?.Dispose();
             pickPipeline?.Dispose();
             backCullPipeline?.Dispose();
+            linePipeline?.Dispose();
             pipeline?.Dispose();
             program?.Dispose();
             bindingLayout?.Dispose();
@@ -242,6 +255,7 @@ public sealed class SilkMeshRenderer :
         _program = program;
         _pipeline = pipeline;
         _backCullPipeline = backCullPipeline;
+        _linePipeline = linePipeline;
         _pickPipeline = pickPipeline;
         _pickReadbacks = pickReadbacks;
         if (pickReadbacks is not null)
@@ -586,6 +600,7 @@ public sealed class SilkMeshRenderer :
             GpuResources.Dispose();
             _backCullPipeline.Dispose();
             _pipeline.Dispose();
+            _linePipeline.Dispose();
             _program.Dispose();
             _bindingLayout.Dispose();
             _fragmentShader.Dispose();
@@ -632,7 +647,10 @@ public sealed class SilkMeshRenderer :
             {
                 continue;
             }
-            BatchKey key = new(mesh.Geometry, GetCullMode(mesh.Mesh));
+            BatchKey key = new(
+                mesh.Geometry,
+                GetCullMode(mesh.Mesh),
+                mesh.Mesh.TopologyKind);
             if (!batches.TryGetValue(key, out List<SilkMeshGpuResource>? batch))
             {
                 batch = [];
@@ -644,14 +662,13 @@ public sealed class SilkMeshRenderer :
         foreach (KeyValuePair<BatchKey, List<SilkMeshGpuResource>> batch in batches)
         {
             SilkMeshGpuResource first = batch.Value[0];
-            commands.SetGraphicsPipeline(
-                batch.Key.CullMode == SilkCullMode.Back ? _backCullPipeline : _pipeline);
             // A batch of one gains nothing from instancing and would cost an
             // instance storage buffer per unique geometry, which for a scene of
             // mostly distinct meshes is a pure allocation regression. The
             // per-mesh uniform path already carries the single transform.
             if (!instancingSupported || batch.Value.Count < 2)
             {
+                commands.SetGraphicsPipeline(GetPipeline(batch.Key.CullMode, batch.Key.TopologyKind));
                 commands.SetVertexBuffer(first.VertexBuffer);
                 commands.SetIndexBuffer(first.IndexBuffer);
                 foreach (SilkMeshGpuResource mesh in batch.Value)
@@ -676,6 +693,7 @@ public sealed class SilkMeshRenderer :
                 Scene.Frame,
                 batch.Value,
                 _device.ClipSpaceYPointsDown);
+            commands.SetGraphicsPipeline(GetPipeline(batch.Key.CullMode, batch.Key.TopologyKind));
             commands.SetVertexBuffer(first.VertexBuffer);
             commands.SetIndexBuffer(first.IndexBuffer);
             commands.SetUniformBuffer(0, 0, first.UniformBuffer);
@@ -709,9 +727,24 @@ public sealed class SilkMeshRenderer :
     private static SilkCullMode GetCullMode(SilkMeshData mesh) =>
         mesh.DoubleSided ? SilkCullMode.None : SilkCullMode.Back;
 
+    // Lines carry no facing, so a line batch always uses the unculled line
+    // pipeline regardless of the mesh's authored cull style.
+    private ISilkGraphicsPipeline GetPipeline(
+        SilkCullMode cullMode,
+        SilkTopologyKind topologyKind) =>
+        topologyKind switch
+        {
+            SilkTopologyKind.LineList => _linePipeline,
+            SilkTopologyKind.TriangleList =>
+                cullMode == SilkCullMode.Back ? _backCullPipeline : _pipeline,
+            _ => throw new InvalidDataException(
+                $"Unsupported Silk topology kind '{topologyKind}'.")
+        };
+
     private readonly record struct BatchKey(
         SilkMeshGpuGeometryResource Geometry,
-        SilkCullMode CullMode);
+        SilkCullMode CullMode,
+        SilkTopologyKind TopologyKind);
 
     private void ApplySceneDelta(SilkSceneDelta delta)
     {
@@ -838,7 +871,8 @@ public sealed class SilkMeshRenderer :
                     continue;
                 }
                 resolvedAnyInstance = true;
-                if (resource.IndexCount == 0)
+                if (resource.IndexCount == 0 ||
+                    instances[instance].TopologyKind == SilkTopologyKind.LineList)
                 {
                     continue;
                 }
@@ -1208,7 +1242,8 @@ public sealed class SilkMeshRenderer :
 
             foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
             {
-                if (mesh.IndexCount == 0)
+                if (mesh.IndexCount == 0 ||
+                    mesh.Mesh.TopologyKind == SilkTopologyKind.LineList)
                 {
                     continue;
                 }
