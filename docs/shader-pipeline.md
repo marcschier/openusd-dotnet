@@ -81,6 +81,29 @@ metallib evidence are uploaded for review.
 
 ## Payload contracts
 
+### Non-shader files are hashed inputs too
+
+The checked manifest records a SHA-256 for each of its 45 inputs, and several are
+not shader sources: `.github/workflows/ci.yml`, `release.yml`, `package.yml` and
+`render.yml`, and `tests/OpenUsd.Package.Tests/RuntimePackageTests.cs` are all
+hashed. Editing a workflow or a package test therefore requires regenerating the
+payload, which is easy to forget because it does not feel like touching shaders.
+
+It has been forgotten twice. Both times the only thing that caught it was
+`shader platform validation` failing on **every** platform after a push, roughly
+twenty minutes into hosted CI, with
+`ValueError: Checked manifest input hash mismatch`.
+
+`eng/shaders/validate-checked-payload.ps1` detects this locally, but it needs
+Python and is not part of an ordinary test pass.
+`CheckedShaderManifestInputContractTests` in `tests/OpenUsd.Rendering.Tests`
+performs the same input-hash comparison in milliseconds with no external tooling,
+so the failure now lands in the normal test run and names both the offending file
+and the fix. It checks only the recorded input hashes; validating the compiled
+programs remains the payload validator's job.
+
+Regenerate with `eng/shaders/update-checked.ps1 -Offline` and commit the manifest.
+
 MSL stage attributes must be attached to the exact expected function
 declaration; prior attributes and helper or prefix/suffix names are rejected.
 Metallib symbol validation requires an exact exported function-table entry.
