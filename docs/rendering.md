@@ -730,7 +730,10 @@ The UsdSkel facade is present on the data side: native code exposes `UsdSkelRoot
 `UsdSkelAnimation`, `UsdSkelBindingAPI`, joints, bind/rest transforms, blend-shape targets, joint indices/weights, and
 validation helpers. Rendering still consumes only the Hydra-computed points produced by the CPU ExtComputation path
 above. hdSilk does not yet upload joints, weights, or blend-shape deltas to GPU buffers, and no shader path evaluates
-skinning. The supported blend-shape scope for the next rendering slice is therefore deliberately limited to OpenUSD
+skinning. The measured `parity-skinned-pennant.usda` scene confirms Storm does deform a skinned mesh at timeCode 2:
+Storm, D3D12 WARP, and Vulkan SwiftShader all cover 2606 pixels with adjusted IoU 1.000000, while the undeformed
+timeCode 1 capture scores 0.534601. The supported blend-shape scope for the next rendering slice is therefore
+deliberately limited to OpenUSD
 blend-shape targets resolved through a bound `UsdSkelAnimation`, linear weights, point-position offsets, and normal
 offsets only; in-betweens, arbitrary primvar deltas, tangent deltas, and mixed CPU/GPU deformation are out of scope.
 Replacing the CPU ExtComputation pull with GPU compute remains a separate ABI/shader design task because it must define
