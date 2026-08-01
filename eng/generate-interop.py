@@ -108,6 +108,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return "ref OpenUsdNativeBounds3d", managed_name
     if native_type == "openusd_geom_camera_state*":
         return "ref OpenUsdNativeCameraState", managed_name
+    if native_type == "openusd_image_info*":
+        return "ref OpenUsdNativeImageInfo", managed_name
     if native_type == "size_t":
         return "nuint", managed_name
     if native_type == "size_t*":
@@ -139,6 +141,10 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return "float*", managed_name
     if native_type == "float*":
         return ("out float" if native_name == "value" else "float*"), managed_name
+    if native_type == "const uint8_t*":
+        return "byte*", managed_name
+    if native_type == "uint8_t*":
+        return "byte*", managed_name
     enum_types = {
         "openusd_shade_value_type",
         "openusd_shade_attribute_type",

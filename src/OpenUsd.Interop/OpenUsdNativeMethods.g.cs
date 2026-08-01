@@ -83,6 +83,20 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_decode_image_rgba8",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus DecodeImageRgba8(
+            string assetPath,
+            uint convertSrgbToLinear,
+            ref OpenUsdNativeImageInfo info,
+            byte* rgba,
+            nuint rgbaSize,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_stage_open",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
