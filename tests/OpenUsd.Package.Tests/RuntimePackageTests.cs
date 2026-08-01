@@ -1769,6 +1769,322 @@ public sealed class RuntimePackageTests
     }
 
     [Test]
+    public async Task PackageOnlyPumpSpikeAppliesOrderedExternalBatches()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+            PackedPackage interopPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Interop",
+                packageRoot);
+            PackedPackage openUsdPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd",
+                packageRoot);
+            PackedPackage liveAuthoringPackage = await PackProjectPackageAsync(
+                repositoryRoot,
+                Path.Combine("samples", "OpenUsd.LiveAuthoring", "OpenUsd.LiveAuthoring.csproj"),
+                "OpenUsd.LiveAuthoring",
+                packageRoot);
+            string consumerRoot = Path.Combine(workRoot, "opcua-pump-spike-consumer");
+            Directory.CreateDirectory(consumerRoot);
+            await File.WriteAllTextAsync(
+                Path.Combine(consumerRoot, "Directory.Build.props"),
+                "<Project />");
+            await File.WriteAllTextAsync(
+                Path.Combine(consumerRoot, "Directory.Packages.props"),
+                """
+                <Project>
+                  <PropertyGroup>
+                    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+                  </PropertyGroup>
+                </Project>
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(consumerRoot, "NuGet.config"),
+                $"""
+                <?xml version="1.0" encoding="utf-8"?>
+                <configuration>
+                  <packageSources>
+                    <clear />
+                    <add key="isolated-openusd-feed" value="{packageRoot}" />
+                    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+                  </packageSources>
+                  <packageSourceMapping>
+                    <packageSource key="isolated-openusd-feed">
+                      <package pattern="OpenUsd*" />
+                    </packageSource>
+                    <packageSource key="nuget.org">
+                      <package pattern="Microsoft.*" />
+                      <package pattern="runtime.*" />
+                    </packageSource>
+                  </packageSourceMapping>
+                </configuration>
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(consumerRoot, "Consumer.csproj"),
+                $"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <OutputType>Exe</OutputType>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <ImplicitUsings>enable</ImplicitUsings>
+                    <Nullable>enable</Nullable>
+                    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <PackageReference Include="OpenUsd.Interop" Version="{interopPackage.Version}" />
+                    <PackageReference Include="OpenUsd" Version="{openUsdPackage.Version}" />
+                    <PackageReference Include="OpenUsd.LiveAuthoring"
+                                      Version="{liveAuthoringPackage.Version}" />
+                  </ItemGroup>
+                </Project>
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(consumerRoot, "Program.cs"),
+                """
+                using OpenUsd;
+                using OpenUsd.LiveAuthoring;
+
+                const int sampleCount = 24;
+                var executor = new OrderingProofExecutor(sampleCount);
+                await using var queue = new QueuedLiveAuthoringSink(executor, capacity: 2);
+                var stageSink = new OpenUsdStageSink(queue);
+                await new SimulatedOpcUaPump(stageSink, sampleCount, batchSize: 3).RunAsync();
+
+                bool ordered = executor.SourceSequences.SequenceEqual(
+                    Enumerable.Range(1, sampleCount).Select(static value => (long)value));
+                bool bounded = queue.PeakPendingBatchCount <= queue.Capacity;
+                bool gapDetected = await DetectGapAsync(stageSink);
+                Console.WriteLine($"REAL_SINK_TYPE={typeof(ILiveAuthoringSink).FullName}");
+                Console.WriteLine($"REAL_BATCH_TYPE={typeof(LiveAuthoringBatch).FullName}");
+                Console.WriteLine($"ORDERED_SOURCE_SEQUENCES={ordered}");
+                Console.WriteLine($"BOUNDED_PENDING={bounded}");
+                Console.WriteLine($"GAP_DETECTED={gapDetected}");
+                Console.WriteLine($"APPLIED={string.Join(",", executor.SourceSequences)}");
+                return ordered && bounded && gapDetected ? 0 : 1;
+
+                static async Task<bool> DetectGapAsync(IUsdSink sink)
+                {
+                    try
+                    {
+                        await sink.ApplyAsync(
+                            new PumpBatch([new PumpSample(26, 12.5, "Running")]),
+                            CancellationToken.None);
+                        return false;
+                    }
+                    catch (InvalidOperationException exception)
+                        when (exception.Message.Contains("strictly increasing", StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+                }
+
+                public interface IUsdSink
+                {
+                    ValueTask<LiveAuthoringBatchResult> ApplyAsync(
+                        PumpBatch batch,
+                        CancellationToken cancellationToken);
+                }
+
+                public sealed class OpenUsdStageSink(ILiveAuthoringSink inner) : IUsdSink
+                {
+                    private readonly SemaphoreSlim _producerGate = new(1, 1);
+                    private long _lastSourceSequence;
+                    private long _nextBatchSequence;
+                    private bool _primDefined;
+
+                    public async ValueTask<LiveAuthoringBatchResult> ApplyAsync(
+                        PumpBatch batch,
+                        CancellationToken cancellationToken)
+                    {
+                        ArgumentNullException.ThrowIfNull(batch);
+                        Task<LiveAuthoringBatchResult> submitted;
+                        await _producerGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        try
+                        {
+                            var updates = new List<LiveStageUpdate>();
+                            if (!_primDefined)
+                            {
+                                updates.Add(new DefinePrimUpdate("/Plant", "Xform"));
+                                updates.Add(new DefinePrimUpdate("/Plant/Pump1", "Xform"));
+                                _primDefined = true;
+                            }
+
+                            foreach (PumpSample sample in batch.Samples)
+                            {
+                                if (sample.SourceSequence != _lastSourceSequence + 1)
+                                {
+                                    throw new InvalidOperationException(
+                                        "Pump source sequences must be strictly increasing.");
+                                }
+
+                                _lastSourceSequence = sample.SourceSequence;
+                                updates.Add(new SetScalarUpdate(
+                                    "/Plant/Pump1",
+                                    "custom:sourceSequence",
+                                    LiveScalarValue.FromInt64(sample.SourceSequence),
+                                    TimeCode: sample.SourceSequence));
+                                updates.Add(new SetScalarUpdate(
+                                    "/Plant/Pump1",
+                                    "custom:pressure",
+                                    LiveScalarValue.FromDouble(sample.Pressure),
+                                    TimeCode: sample.SourceSequence));
+                                updates.Add(new SetScalarUpdate(
+                                    "/Plant/Pump1",
+                                    "custom:state",
+                                    LiveScalarValue.FromToken(sample.State),
+                                    TimeCode: sample.SourceSequence));
+                            }
+
+                            var usdBatch = new LiveAuthoringBatch(++_nextBatchSequence, updates);
+                            submitted = inner.ApplyAsync(usdBatch, cancellationToken).AsTask();
+                        }
+                        finally
+                        {
+                            _producerGate.Release();
+                        }
+
+                        return await submitted.ConfigureAwait(false);
+                    }
+                }
+
+                public sealed class SimulatedOpcUaPump(IUsdSink sink, int sampleCount, int batchSize)
+                {
+                    public async Task RunAsync(CancellationToken cancellationToken = default)
+                    {
+                        var pending = new List<Task<LiveAuthoringBatchResult>>();
+                        for (int first = 1; first <= sampleCount; first += batchSize)
+                        {
+                            await Task.Yield();
+                            PumpSample[] samples = Enumerable
+                                .Range(first, Math.Min(batchSize, sampleCount - first + 1))
+                                .Select(static sequence => new PumpSample(
+                                    sequence,
+                                    10 + sequence * 0.25,
+                                    sequence % 2 == 0 ? "Running" : "Idle"))
+                                .ToArray();
+                            pending.Add(sink.ApplyAsync(new PumpBatch(samples), cancellationToken).AsTask());
+                        }
+
+                        await Task.WhenAll(pending).ConfigureAwait(false);
+                    }
+                }
+
+                public sealed class OrderingProofExecutor(int expectedSamples) : ILiveAuthoringBatchExecutor
+                {
+                    private long _nextSourceSequence = 1;
+
+                    public List<long> SourceSequences { get; } = [];
+
+                    public ValueTask<LiveAuthoringBatchResult> ExecuteAsync(
+                        LiveAuthoringBatch batch,
+                        CancellationToken cancellationToken)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        foreach (SetScalarUpdate update in batch.Updates.OfType<SetScalarUpdate>())
+                        {
+                            if (update.AttributeName != "custom:sourceSequence")
+                            {
+                                continue;
+                            }
+
+                            long sourceSequence = update.Value.Int64Value;
+                            if (sourceSequence != _nextSourceSequence)
+                            {
+                                throw new InvalidOperationException(
+                                    $"Expected source sequence {_nextSourceSequence}, saw {sourceSequence}.");
+                            }
+
+                            SourceSequences.Add(sourceSequence);
+                            _nextSourceSequence++;
+                        }
+
+                        return ValueTask.FromResult(new LiveAuthoringBatchResult(
+                            batch.Sequence,
+                            batch.Sequence,
+                            1,
+                            batch.Updates.Count,
+                            batch.Invalidation,
+                            (ulong)batch.Sequence,
+                            (ulong)batch.Sequence + 1,
+                            "session"));
+                    }
+
+                    public ValueTask DisposeAsync()
+                    {
+                        if (SourceSequences.Count != expectedSamples)
+                        {
+                            throw new InvalidOperationException(
+                                $"Expected {expectedSamples} samples, saw {SourceSequences.Count}.");
+                        }
+
+                        return ValueTask.CompletedTask;
+                    }
+                }
+
+                public sealed record PumpBatch(IReadOnlyList<PumpSample> Samples);
+
+                public sealed record PumpSample(long SourceSequence, double Pressure, string State);
+                """);
+
+            string globalPackagesRoot = Path.Combine(workRoot, "opcua-global-packages");
+            CommandResult restoreResult = await RunDotnetAsync(
+                consumerRoot,
+                [
+                    "restore",
+                    "Consumer.csproj",
+                    "--nologo",
+                    "--configfile",
+                    "NuGet.config",
+                ],
+                globalPackagesRoot);
+            if (restoreResult.ExitCode != 0)
+            {
+                throw new InvalidOperationException(restoreResult.Output);
+            }
+
+            CommandResult runResult = await RunDotnetAsync(
+                consumerRoot,
+                [
+                    "run",
+                    "--project",
+                    "Consumer.csproj",
+                    "-c",
+                    "Release",
+                    "--no-restore",
+                    "--nologo",
+                ],
+                globalPackagesRoot);
+            await Assert.That(runResult.ExitCode)
+                .IsEqualTo(0)
+                .Because(runResult.Output);
+            await Assert.That(runResult.Output)
+                .Contains("REAL_SINK_TYPE=OpenUsd.LiveAuthoring.ILiveAuthoringSink");
+            await Assert.That(runResult.Output)
+                .Contains("REAL_BATCH_TYPE=OpenUsd.LiveAuthoring.LiveAuthoringBatch");
+            await Assert.That(runResult.Output).Contains("ORDERED_SOURCE_SEQUENCES=True");
+            await Assert.That(runResult.Output).Contains("BOUNDED_PENDING=True");
+            await Assert.That(runResult.Output).Contains("GAP_DETECTED=True");
+            AssertPackageOnlyGraph(
+                Path.Combine(consumerRoot, "obj", "project.assets.json"),
+                ["OpenUsd.Interop", "OpenUsd", "OpenUsd.LiveAuthoring"]);
+            string consumerProject = await File.ReadAllTextAsync(
+                Path.Combine(consumerRoot, "Consumer.csproj"));
+            await Assert.That(consumerProject).DoesNotContain("ProjectReference");
+            await AssertNoSourcePathLeakageAsync(consumerProject, repositoryRoot);
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task ManagedPackagesExecuteNativeAotStageRoundTrip()
     {
         string repositoryRoot = FindRepositoryRoot();
@@ -2230,6 +2546,20 @@ public sealed class RuntimePackageTests
         string packageRoot)
     {
         string projectPath = Path.Combine(repositoryRoot, "src", packageId, $"{packageId}.csproj");
+        return await PackProjectPackageAsync(repositoryRoot, projectPath, packageId, packageRoot);
+    }
+
+    private static async Task<PackedPackage> PackProjectPackageAsync(
+        string repositoryRoot,
+        string projectPath,
+        string packageId,
+        string packageRoot)
+    {
+        if (!Path.IsPathRooted(projectPath))
+        {
+            projectPath = Path.Combine(repositoryRoot, projectPath);
+        }
+
         var arguments = new List<string>
         {
             "pack",
@@ -2239,6 +2569,7 @@ public sealed class RuntimePackageTests
             "--nologo",
             "-p:BuildInParallel=false",
             $"-p:PackageOutputPath={packageRoot}",
+            "-p:IsPackable=true",
         };
         if (packageId == "OpenUsd.Rendering.Silk.Metal")
         {
