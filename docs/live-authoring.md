@@ -199,6 +199,49 @@ native APIs, own render leases, or add its domain-specific types to the live-aut
 This repository does not ship or validate the external OPC UA integration. The sample library is the
 boundary that such an integration can consume.
 
+### OPC UA Pump spike findings
+
+The `opcua-pump-spike` package-consumer test models the Pump outside this repository. Its external
+adapter defines its own `IUsdSink` and `OpenUsdStageSink`, consumes local packages only, and maps
+ordered simulated OPC UA samples into the real `ILiveAuthoringSink` and `LiveAuthoringBatch` types. The
+test executor records every `custom:sourceSequence` time sample and fails on the first gap, duplicate,
+drop, or reorder. It also restores from an isolated local feed and asserts that `OpenUsd.LiveAuthoring`,
+`OpenUsd`, and `OpenUsd.Interop` are packages, not project references.
+
+The real public names are:
+
+- `ILiveAuthoringSink`, not `IUsdSink`;
+- `UsdLiveAuthoringHost`, `QueuedLiveAuthoringSink`, and `UsdStageBatchExecutor`, not
+  `OpenUsdStageSink`; and
+- `LiveAuthoringBatch` for ordered update groups.
+
+API gaps found by the first external ordered-update consumer:
+
+1. `OpenUsd.LiveAuthoring` is a sample project and is not in the published package set, so the spike has
+   to force-pack it locally. A real Pump cannot consume the boundary from NuGet until this is either
+   promoted to a shipped package or documented as source-only sample code.
+2. `ILiveAuthoringSink.ApplyAsync` completes after execution, not after admission. An external producer
+   that wants several admitted-but-not-yet-applied batches must serialize submission itself, as the spike
+   does, because there is no admission receipt separate from the eventual execution result.
+3. Sequence enforcement is strictly "in call/admission order". The sink rejects a late lower sequence
+   instead of buffering or reordering, so multi-callback OPC UA clients need their own single producer,
+   source-sequence gap detection, and reconnect/resubscribe policy before calling OpenUSD.
+4. `LiveAuthoringBatchResult` reports batch sequence ranges, update counts, invalidation, and change
+   serials, but it has no caller-supplied correlation key. The spike had to encode source sequence as a
+   USD attribute update to prove delivery; production diagnostics would benefit from an opaque batch
+   correlation value that is returned in the result but never authored to the stage.
+5. The data-only update set covers scalar, relationship, composition, activation, instanceability, and
+   variants, but not common external telemetry shapes such as arrays, quality/status codes, source/server
+   timestamps as metadata, or explicit "clear attribute" operations. The workaround is to map those
+   concepts into custom scalar attributes, which may not preserve the external model cleanly.
+6. Queue health is pull-only (`PendingBatchCount`, `PeakPendingBatchCount`, and `CoalescedBatchCount`).
+   There is no structured admission/execution failure event stream for an external health endpoint, so
+   the Pump must wrap every returned task and maintain its own counters.
+
+The surface is still sufficient for a single serialized external producer that can allocate positive
+batch sequences, convert domain values into data-only updates, and observe every returned task. No OPC UA
+domain type or client dependency is required in this repository.
+
 ## Operational checklist
 
 - Use one logical producer with positive, strictly increasing sequences.
