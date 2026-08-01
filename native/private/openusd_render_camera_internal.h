@@ -12,6 +12,8 @@
 
 namespace openusd_render_camera_detail
 {
+inline constexpr uint32_t MaxClipPlaneCount = 8;
+
 inline openusd_render_camera Automatic() noexcept
 {
     openusd_render_camera camera{};
@@ -33,6 +35,22 @@ inline bool Validate(
     {
         error = "The render camera structure has an invalid size.";
         return false;
+    }
+    if (camera->clip_plane_count > MaxClipPlaneCount)
+    {
+        error = "The render camera clip plane count is invalid.";
+        return false;
+    }
+    for (uint32_t plane = 0; plane < camera->clip_plane_count; ++plane)
+    {
+        for (double value : camera->clip_planes[plane])
+        {
+            if (!std::isfinite(value))
+            {
+                error = "The render camera clip planes must be finite.";
+                return false;
+            }
+        }
     }
     if (camera->mode == OPENUSD_RENDER_CAMERA_MODE_AUTO)
     {
@@ -113,6 +131,19 @@ inline uint64_t Signature(const openusd_render_camera& camera) noexcept
             uint64_t bits = 0;
             std::memcpy(&bits, &value, sizeof(bits));
             append(bits);
+        }
+    }
+    if (camera.clip_plane_count != 0)
+    {
+        append(camera.clip_plane_count);
+        for (uint32_t plane = 0; plane < camera.clip_plane_count; ++plane)
+        {
+            for (double value : camera.clip_planes[plane])
+            {
+                uint64_t bits = 0;
+                std::memcpy(&bits, &value, sizeof(bits));
+                append(bits);
+            }
         }
     }
     return hash;

@@ -30,6 +30,8 @@ typedef struct openusd_render_camera
     openusd_render_camera_mode mode;
     double view[16];
     double projection[16];
+    uint32_t clip_plane_count;
+    double clip_planes[8][4];
 } openusd_render_camera;
 
 #if defined(__cplusplus)
@@ -39,14 +41,18 @@ static_assert(offsetof(openusd_render_camera, struct_size) == 0);
 static_assert(offsetof(openusd_render_camera, mode) == 4);
 static_assert(offsetof(openusd_render_camera, view) == 8);
 static_assert(offsetof(openusd_render_camera, projection) == 136);
-static_assert(sizeof(openusd_render_camera) == 264);
+static_assert(offsetof(openusd_render_camera, clip_plane_count) == 264);
+static_assert(offsetof(openusd_render_camera, clip_planes) == 272);
+static_assert(sizeof(openusd_render_camera) == 528);
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 _Static_assert(sizeof(openusd_render_camera_mode) == 4, "camera mode must be 4 bytes");
 _Static_assert(offsetof(openusd_render_camera, struct_size) == 0, "invalid struct_size offset");
 _Static_assert(offsetof(openusd_render_camera, mode) == 4, "invalid mode offset");
 _Static_assert(offsetof(openusd_render_camera, view) == 8, "invalid view offset");
 _Static_assert(offsetof(openusd_render_camera, projection) == 136, "invalid projection offset");
-_Static_assert(sizeof(openusd_render_camera) == 264, "invalid camera size");
+_Static_assert(offsetof(openusd_render_camera, clip_plane_count) == 264, "invalid clip count offset");
+_Static_assert(offsetof(openusd_render_camera, clip_planes) == 272, "invalid clip planes offset");
+_Static_assert(sizeof(openusd_render_camera) == 528, "invalid camera size");
 #endif
 
 #endif

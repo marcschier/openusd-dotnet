@@ -149,7 +149,7 @@ typedef struct openusd_storm_selection_update
 } openusd_storm_selection_update;
 
 #if defined(__cplusplus)
-static_assert(sizeof(openusd_render_pick_request) == 344);
+static_assert(sizeof(openusd_render_pick_request) == 608);
 static_assert(offsetof(openusd_render_pick_request, time_code) == 48);
 static_assert(offsetof(openusd_render_pick_request, camera) == 80);
 static_assert(sizeof(openusd_render_pick_result) == 136);

@@ -234,7 +234,7 @@ thread. The child owns its context and prioritized command queue. Frame requests
 while synchronous lifecycle, picking, input, diagnostics, and teardown commands retain explicit
 ordering. The child creates Storm from a lease on the exact scheduler stage.
 
-Both paths use the shared 264-byte naturally aligned camera struct. Storm picking uses caller-owned
+Both paths use the shared 528-byte naturally aligned camera struct. Storm picking uses caller-owned
 buffers, and selection crosses the ABI once as a packed update.
 
 ### Hydra to Silk

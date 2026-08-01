@@ -82,7 +82,7 @@ bool VerifyProjection(GfFrustum frustum)
 
 int main()
 {
-    static_assert(sizeof(openusd_render_pick_request) == 344);
+    static_assert(sizeof(openusd_render_pick_request) == 608);
     static_assert(sizeof(openusd_render_pick_result) == 136);
     static_assert(sizeof(openusd_render_pick_instance_context) == 24);
 

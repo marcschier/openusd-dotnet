@@ -12,6 +12,7 @@
 #include "pxr/base/gf/vec2i.h"
 #include "pxr/base/gf/vec3d.h"
 #include "pxr/base/gf/vec3f.h"
+#include "pxr/base/gf/vec4d.h"
 #include "pxr/base/gf/vec4f.h"
 #include "pxr/base/plug/plugin.h"
 #include "pxr/base/plug/registry.h"
@@ -73,6 +74,8 @@ struct openusd_storm_renderer
     uint64_t rendered_state_revision = 0;
     uint64_t rendered_scene_revision = 0;
     uint32_t rendered_revision_flags = 0;
+    size_t last_render_clip_plane_count = 0;
+    size_t last_pick_clip_plane_count = 0;
     bool has_rendered_state = false;
 };
 
@@ -342,7 +345,8 @@ void ResolveCamera(
 
 openusd_render_camera AppliedCamera(
     const GfMatrix4d& view,
-    const GfMatrix4d& projection) noexcept
+    const GfMatrix4d& projection,
+    const openusd_render_camera& requested) noexcept
 {
     openusd_render_camera camera{};
     camera.struct_size = sizeof(camera);
@@ -352,7 +356,28 @@ openusd_render_camera AppliedCamera(
         camera.projection,
         projection.GetArray(),
         sizeof(camera.projection));
+    camera.clip_plane_count = requested.clip_plane_count;
+    std::memcpy(
+        camera.clip_planes,
+        requested.clip_planes,
+        sizeof(camera.clip_planes));
     return camera;
+}
+
+void ApplyClipPlanes(
+    const openusd_render_camera& camera,
+    UsdImagingGLRenderParams& parameters)
+{
+    parameters.clipPlanes.clear();
+    parameters.clipPlanes.reserve(camera.clip_plane_count);
+    for (uint32_t plane = 0; plane < camera.clip_plane_count; ++plane)
+    {
+        parameters.clipPlanes.emplace_back(
+            camera.clip_planes[plane][0],
+            camera.clip_planes[plane][1],
+            camera.clip_planes[plane][2],
+            camera.clip_planes[plane][3]);
+    }
 }
 
 openusd_status ValidateStormThread(
@@ -537,7 +562,15 @@ bool ExactCamera(
     const openusd_render_camera& right) noexcept
 {
     if (left.struct_size != right.struct_size ||
-        left.mode != right.mode)
+        left.mode != right.mode ||
+        left.clip_plane_count != right.clip_plane_count)
+    {
+        return false;
+    }
+    if (std::memcmp(
+            left.clip_planes,
+            right.clip_planes,
+            static_cast<size_t>(left.clip_plane_count) * 4 * sizeof(double)) != 0)
     {
         return false;
     }
@@ -910,7 +943,7 @@ openusd_status openusd_storm_render_v2(
             ResolveCamera(*camera, width, height, view, projection);
 
             renderer->engine->SetCameraState(view, projection);
-            renderer->applied_camera = AppliedCamera(view, projection);
+            renderer->applied_camera = AppliedCamera(view, projection, *camera);
             renderer->engine->SetRenderBufferSize(GfVec2i(width, height));
             renderer->engine->SetRenderViewport(
                 GfVec4d(0.0, 0.0, width, height));
@@ -932,6 +965,8 @@ openusd_status openusd_storm_render_v2(
             parameters.enableSceneMaterials = true;
             parameters.highlight = true;
             parameters.clearColor = GfVec4f(0.055f, 0.055f, 0.055f, 1.0f);
+            ApplyClipPlanes(*camera, parameters);
+            renderer->last_render_clip_plane_count = parameters.clipPlanes.size();
             renderer->engine->Render(renderer->stage->GetPseudoRoot(), parameters);
             if (!mark.IsClean())
             {
@@ -1066,6 +1101,8 @@ openusd_status openusd_storm_pick(
             UsdImagingGLRenderParams parameters;
             parameters.frame = UsdTimeCode(request->time_code);
             parameters.showRender = true;
+            ApplyClipPlanes(request->camera, parameters);
+            renderer->last_pick_clip_plane_count = parameters.clipPlanes.size();
             if ((request->flags &
                  OPENUSD_RENDER_PICK_REQUEST_CULL_BACK_FACES) != 0)
             {
@@ -1395,5 +1432,17 @@ extern "C" int32_t openusd_hydra_test_get_applied_camera(
     }
     *camera = renderer->applied_camera;
     return 1;
+}
+
+extern "C" size_t openusd_hydra_test_get_last_render_clip_plane_count(
+    const openusd_storm_renderer* renderer) noexcept
+{
+    return renderer == nullptr ? 0 : renderer->last_render_clip_plane_count;
+}
+
+extern "C" size_t openusd_hydra_test_get_last_pick_clip_plane_count(
+    const openusd_storm_renderer* renderer) noexcept
+{
+    return renderer == nullptr ? 0 : renderer->last_pick_clip_plane_count;
 }
 #endif

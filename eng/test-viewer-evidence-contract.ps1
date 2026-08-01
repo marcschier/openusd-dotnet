@@ -184,7 +184,7 @@ try
     $pixelRecords = Assert-ViewerPixelArtifacts `
         -Pixels @($pixel, $stormPixel, $restoredPixel) `
         -EvidenceRoot $testRoot
-    $automaticCameraBytes = [byte[]]::new(260)
+    $automaticCameraBytes = [byte[]]::new(524)
     $explicitCameraBytes = [byte[]]$automaticCameraBytes.Clone()
     [BitConverter]::GetBytes([uint32]1).CopyTo($explicitCameraBytes, 0)
     [BitConverter]::GetBytes([double]1).CopyTo($explicitCameraBytes, 4)

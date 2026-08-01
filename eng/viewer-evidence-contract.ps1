@@ -49,9 +49,12 @@ function Assert-ViewerCameraStateEvidence
     {
         throw 'Viewer camera payload is not canonical base64.'
     }
-    if ($payload.Length -ne 260)
+    $cameraPayloadLength = 524
+    $clipPlaneCountOffset = 260
+    $clipPlaneOffset = 268
+    if ($payload.Length -ne $cameraPayloadLength)
     {
-        throw "Viewer camera payload must contain exactly 260 bytes, got $($payload.Length)."
+        throw "Viewer camera payload must contain exactly $cameraPayloadLength bytes, got $($payload.Length)."
     }
     $encodedMode = [uint32]$payload[0] -bor
         ([uint32]$payload[1] -shl 8) -bor
@@ -61,12 +64,26 @@ function Assert-ViewerCameraStateEvidence
     {
         throw 'Viewer camera payload mode does not match cameraMode.'
     }
-    for ($offset = 4; $offset -lt $payload.Length; $offset += 8)
+    $clipPlaneCount = [BitConverter]::ToUInt32($payload, $clipPlaneCountOffset)
+    if ($clipPlaneCount -gt 8)
+    {
+        throw 'Viewer camera payload contains too many clip planes.'
+    }
+    for ($offset = 4; $offset -lt $clipPlaneCountOffset; $offset += 8)
     {
         $value = [BitConverter]::ToDouble($payload, $offset)
         if (-not [double]::IsFinite($value))
         {
             throw 'Viewer camera payload contains a non-finite matrix value.'
+        }
+    }
+    $clipPlaneEnd = $clipPlaneOffset + ($clipPlaneCount * 4 * 8)
+    for ($offset = $clipPlaneOffset; $offset -lt $clipPlaneEnd; $offset += 8)
+    {
+        $value = [BitConverter]::ToDouble($payload, $offset)
+        if (-not [double]::IsFinite($value))
+        {
+            throw 'Viewer camera payload contains a non-finite clip plane value.'
         }
     }
     $signature = [string](Get-ViewerEvidenceProperty $State 'cameraSignature')

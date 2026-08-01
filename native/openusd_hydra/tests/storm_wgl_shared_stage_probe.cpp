@@ -115,6 +115,21 @@ openusd_render_camera ExplicitCamera()
     return camera;
 }
 
+openusd_render_camera ClippedCamera()
+{
+    openusd_render_camera camera = ExplicitCamera();
+    camera.clip_plane_count = 2;
+    camera.clip_planes[0][0] = 0.0;
+    camera.clip_planes[0][1] = 0.0;
+    camera.clip_planes[0][2] = 0.0;
+    camera.clip_planes[0][3] = 1.0;
+    camera.clip_planes[1][0] = 0.0;
+    camera.clip_planes[1][1] = 0.0;
+    camera.clip_planes[1][2] = 0.0;
+    camera.clip_planes[1][3] = 2.0;
+    return camera;
+}
+
 using GlGenFramebuffers = void(APIENTRY*)(GLsizei, GLuint*);
 using GlBindFramebuffer = void(APIENTRY*)(GLenum, GLuint);
 using GlFramebufferTexture2D =
@@ -535,6 +550,23 @@ bool VerifyCameraAbi(
         return false;
     }
 
+    const openusd_render_camera clippedCamera = ClippedCamera();
+    static_cast<void>(
+        Render(renderer, framebuffer, error, &status, &clippedCamera));
+    applied.struct_size = sizeof(applied);
+    if (status != OPENUSD_STATUS_OK ||
+        openusd_hydra_test_get_applied_camera(renderer, &applied) != 1 ||
+        applied.clip_plane_count != clippedCamera.clip_plane_count ||
+        openusd_hydra_test_get_last_render_clip_plane_count(renderer) !=
+            clippedCamera.clip_plane_count ||
+        std::memcmp(
+            applied.clip_planes,
+            clippedCamera.clip_planes,
+            sizeof(applied.clip_planes)) != 0)
+    {
+        return false;
+    }
+
     openusd_render_camera invalid = explicitCamera;
     invalid.struct_size = sizeof(invalid) - 1;
     if (!RejectsCamera(renderer, framebuffer, &invalid, error))
@@ -555,6 +587,18 @@ bool VerifyCameraAbi(
     }
     invalid = explicitCamera;
     invalid.projection[10] = std::numeric_limits<double>::infinity();
+    if (!RejectsCamera(renderer, framebuffer, &invalid, error))
+    {
+        return false;
+    }
+    invalid = clippedCamera;
+    invalid.clip_plane_count = 9;
+    if (!RejectsCamera(renderer, framebuffer, &invalid, error))
+    {
+        return false;
+    }
+    invalid = clippedCamera;
+    invalid.clip_planes[1][2] = std::nan("");
     return RejectsCamera(renderer, framebuffer, &invalid, error) &&
         RejectsCamera(renderer, framebuffer, nullptr, error);
 }
