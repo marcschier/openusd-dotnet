@@ -921,9 +921,14 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             SetPickRootConstants(nativeCommands, pickBaseToken);
                         }
                         nativeCommands->IASetPrimitiveTopology(
-                            pipeline?.Descriptor.TopologyKind == SilkTopologyKind.LineList
-                                ? D3DPrimitiveTopology.D3DPrimitiveTopologyLinelist
-                                : D3DPrimitiveTopology.D3DPrimitiveTopologyTrianglelist);
+                            pipeline?.Descriptor.TopologyKind switch
+                            {
+                                SilkTopologyKind.LineList =>
+                                    D3DPrimitiveTopology.D3DPrimitiveTopologyLinelist,
+                                SilkTopologyKind.PointList =>
+                                    D3DPrimitiveTopology.D3DPrimitiveTopologyPointlist,
+                                _ => D3DPrimitiveTopology.D3DPrimitiveTopologyTrianglelist
+                            });
                         nativeCommands->DrawIndexedInstanced(
                             command.IndexCount,
                             command.Kind == SilkGraphicsCommandKind.DrawIndexedInstanced

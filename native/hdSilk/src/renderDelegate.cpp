@@ -7,6 +7,7 @@
 #include "instancer.h"
 #include "material.h"
 #include "mesh.h"
+#include "points.h"
 #include "renderPass.h"
 
 #include "pxr/base/tf/diagnostic.h"
@@ -32,6 +33,7 @@ const TfTokenVector HdSilkRenderDelegate::SUPPORTED_RPRIM_TYPES =
 {
     HdPrimTypeTokens->mesh,
     HdPrimTypeTokens->basisCurves,
+    HdPrimTypeTokens->points,
 };
 
 const TfTokenVector HdSilkRenderDelegate::SUPPORTED_SPRIM_TYPES =
@@ -171,6 +173,10 @@ HdSilkRenderDelegate::CreateRprim(TfToken const& typeId, SdfPath const& rprimId)
     if (typeId == HdPrimTypeTokens->basisCurves)
     {
         return new HdSilkBasisCurves(rprimId);
+    }
+    if (typeId == HdPrimTypeTokens->points)
+    {
+        return new HdSilkPoints(rprimId);
     }
     TF_CODING_ERROR("Unknown Rprim type=%s id=%s", typeId.GetText(), rprimId.GetText());
     return nullptr;

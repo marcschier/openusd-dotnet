@@ -1323,6 +1323,7 @@ OpenUsd.Rendering.Silk.SilkTextureWrap.Mirror = 3 -> OpenUsd.Rendering.Silk.Silk
 OpenUsd.Rendering.Silk.SilkTextureWrap.Repeat = 2 -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkTopologyKind
 OpenUsd.Rendering.Silk.SilkTopologyKind.LineList = 2 -> OpenUsd.Rendering.Silk.SilkTopologyKind
+OpenUsd.Rendering.Silk.SilkTopologyKind.PointList = 3 -> OpenUsd.Rendering.Silk.SilkTopologyKind
 OpenUsd.Rendering.Silk.SilkTopologyKind.TriangleList = 1 -> OpenUsd.Rendering.Silk.SilkTopologyKind
 OpenUsd.Rendering.Silk.SilkVertexAttributeData
 OpenUsd.Rendering.Silk.SilkVertexAttributeData.ComponentCount.get -> int

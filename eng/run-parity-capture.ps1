@@ -384,7 +384,7 @@ function Enable-MesaWglParity
     $env:OPENUSD_MESA_WGL_OPENGL32_PATH = $testHostOpenGl
     $script:removeTestHostOpenGlInFinally = $true
     Write-Host (
-        '[parity-capture] StormGl=Mesa gates 6 scenes; excludes ' +
+        '[parity-capture] StormGl=Mesa gates 7 scenes; excludes ' +
         'single-sided-winding, bounds-draw-mode, origin-draw-mode.')
 }
 
@@ -456,7 +456,7 @@ try
     {
         if ($StormGl -eq 'Mesa')
         {
-            $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = '6'
+            $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = '7'
             $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES =
                 'single-sided-winding,bounds-draw-mode,origin-draw-mode'
             Enable-MesaWglParity
@@ -466,7 +466,7 @@ try
             Remove-TestHostMesaOpenGl
             $env:OPENUSD_MESA_WGL_OPENGL32_PATH = $null
             $env:OPENUSD_MESA_WGL_OPENGL32_SHA256 = $null
-            $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = '9'
+            $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = '10'
             $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES = ''
             $systemReportPath = Join-Path $stageRoot 'system-wgl-preflight.json'
             $systemReport = Invoke-WindowsSystemWglPreflight -ReportPath $systemReportPath
@@ -474,7 +474,7 @@ try
             {
                 Write-Host (
                     "[parity-capture] StormGl=Auto using system OpenGL; " +
-                    "gates 9 scenes; loadedOpenGl32=$($systemReport.loadedOpenGl32) " +
+                    "gates 10 scenes; loadedOpenGl32=$($systemReport.loadedOpenGl32) " +
                     "sha256=$($systemReport.loadedOpenGl32Sha256)")
                 Write-Host (
                     "[parity-capture] System GL_VENDOR='$($systemReport.glVendor)' " +
@@ -482,12 +482,12 @@ try
             }
             else
             {
-                $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = '6'
+                $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = '7'
                 $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES =
                     'single-sided-winding,bounds-draw-mode,origin-draw-mode'
                 Write-Warning (
                     'StormGl=Auto could not find a system WGL implementation usable by Storm; ' +
-                    'falling back to Mesa llvmpipe. This gates 6 scenes, not 9, and excludes ' +
+                    'falling back to Mesa llvmpipe. This gates 7 scenes, not 10, and excludes ' +
                     'single-sided-winding, bounds-draw-mode, origin-draw-mode.')
                 Enable-MesaWglParity
             }

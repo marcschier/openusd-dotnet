@@ -663,7 +663,8 @@ public readonly record struct SilkGraphicsPipelineDescriptor(
             throw new ArgumentOutOfRangeException(nameof(CullMode));
         }
         if (TopologyKind is not SilkTopologyKind.TriangleList and
-            not SilkTopologyKind.LineList)
+            not SilkTopologyKind.LineList and
+            not SilkTopologyKind.PointList)
         {
             throw new ArgumentException("The topology kind is unsupported.");
         }

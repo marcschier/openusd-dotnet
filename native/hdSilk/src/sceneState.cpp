@@ -208,7 +208,8 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
             "An hdSilk mesh instance index must be non-negative.");
     }
     if (record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST &&
-        record.topologyKind != OPENUSD_SILK_TOPOLOGY_LINE_LIST)
+        record.topologyKind != OPENUSD_SILK_TOPOLOGY_LINE_LIST &&
+        record.topologyKind != OPENUSD_SILK_TOPOLOGY_POINT_LIST)
     {
         throw std::invalid_argument("An hdSilk mesh has an unsupported topology kind.");
     }
@@ -231,7 +232,9 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
             "An hdSilk mesh point component count must be divisible by three.");
     }
     const size_t indicesPerPrimitive =
-        record.topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ? 3u : 2u;
+        record.topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST
+            ? 3u
+            : (record.topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ? 2u : 1u);
     if ((record.indices.size() % indicesPerPrimitive) != 0)
     {
         throw std::invalid_argument(

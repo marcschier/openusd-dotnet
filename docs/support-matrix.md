@@ -137,6 +137,18 @@ Selection rendering is related but separate from the capability enum:
 
 See [Rendering](rendering.md) for request binding, stale results, GPU passes, and lifecycle detail.
 
+## hdSilk geometry parity
+
+| Feature | Status | Detail |
+| --- | --- | --- |
+| Mesh triangle topology | Implemented and parity-gated | Asymmetric mesh scenes gate at 1.000000 adjusted IoU |
+| Hardware point-instancer prototypes | Implemented and parity-gated | ABI 8 carries prototype geometry once |
+| Basis curves | Implemented subset and parity-gated | Linear segmented curves emit one-pixel line lists |
+| Points | Implemented subset and parity-gated | `UsdGeomPoints` emits point-list topology |
+| Mesh primvar interpolation | Implemented resolver | Constant, vertex, varying, uniform, and face-varying |
+| Display styles / draw modes | Partial | Cards, bounds, and origin are gated; wire/shaded-wire are not |
+| Subdivision surfaces | Not implemented | Coarse topology only; no subdivision refinement |
+
 ## Data and authoring features
 
 | Feature | Status | Detail |

@@ -107,6 +107,7 @@ public sealed class SilkMeshRenderer :
     private readonly ISilkGraphicsPipeline _pipeline;
     private readonly ISilkGraphicsPipeline _backCullPipeline;
     private readonly ISilkGraphicsPipeline _linePipeline;
+    private readonly ISilkGraphicsPipeline _pointPipeline;
     private readonly SilkShaderBinaryFormat _shaderFormat;
     private readonly ISilkPickingGraphicsDevice? _pickingDevice;
     private readonly ISilkSelectionOutlineGraphicsDevice? _selectionOutlineDevice;
@@ -190,6 +191,7 @@ public sealed class SilkMeshRenderer :
         ISilkGraphicsPipeline? pipeline = null;
         ISilkGraphicsPipeline? backCullPipeline = null;
         ISilkGraphicsPipeline? linePipeline = null;
+        ISilkGraphicsPipeline? pointPipeline = null;
         ISilkPickGraphicsPipeline? pickPipeline = null;
         SilkPickReadbackRing? pickReadbacks = null;
         try
@@ -224,6 +226,14 @@ public sealed class SilkMeshRenderer :
                     SilkTextureFormat.D32Float,
                     SilkCullMode.None,
                     SilkTopologyKind.LineList));
+            pointPipeline = device.CreateGraphicsPipeline(
+                new SilkGraphicsPipelineDescriptor(
+                    program,
+                    SilkVertexLayoutDescriptor.PositionNormal,
+                    SilkTextureFormat.Rgba8Unorm,
+                    SilkTextureFormat.D32Float,
+                    SilkCullMode.None,
+                    SilkTopologyKind.PointList));
             if (_pickingDevice is not null)
             {
                 SilkPickPipelineDescriptor pickDescriptor =
@@ -240,6 +250,7 @@ public sealed class SilkMeshRenderer :
             pickPipeline?.Dispose();
             backCullPipeline?.Dispose();
             linePipeline?.Dispose();
+            pointPipeline?.Dispose();
             pipeline?.Dispose();
             program?.Dispose();
             bindingLayout?.Dispose();
@@ -256,6 +267,7 @@ public sealed class SilkMeshRenderer :
         _pipeline = pipeline;
         _backCullPipeline = backCullPipeline;
         _linePipeline = linePipeline;
+        _pointPipeline = pointPipeline;
         _pickPipeline = pickPipeline;
         _pickReadbacks = pickReadbacks;
         if (pickReadbacks is not null)
@@ -601,6 +613,7 @@ public sealed class SilkMeshRenderer :
             _backCullPipeline.Dispose();
             _pipeline.Dispose();
             _linePipeline.Dispose();
+            _pointPipeline.Dispose();
             _program.Dispose();
             _bindingLayout.Dispose();
             _fragmentShader.Dispose();
@@ -735,14 +748,15 @@ public sealed class SilkMeshRenderer :
     private static SilkCullMode GetCullMode(SilkMeshData mesh) =>
         mesh.DoubleSided ? SilkCullMode.None : SilkCullMode.Back;
 
-    // Lines carry no facing, so a line batch always uses the unculled line
-    // pipeline regardless of the mesh's authored cull style.
+    // Lines and points carry no facing, so those batches always use the
+    // unculled pipeline for their topology regardless of authored cull style.
     private ISilkGraphicsPipeline GetPipeline(
         SilkCullMode cullMode,
         SilkTopologyKind topologyKind) =>
         topologyKind switch
         {
             SilkTopologyKind.LineList => _linePipeline,
+            SilkTopologyKind.PointList => _pointPipeline,
             SilkTopologyKind.TriangleList =>
                 cullMode == SilkCullMode.Back ? _backCullPipeline : _pipeline,
             _ => throw new InvalidDataException(
@@ -880,7 +894,8 @@ public sealed class SilkMeshRenderer :
                 }
                 resolvedAnyInstance = true;
                 if (resource.IndexCount == 0 ||
-                    instances[instance].TopologyKind == SilkTopologyKind.LineList)
+                    instances[instance].TopologyKind is SilkTopologyKind.LineList or
+                        SilkTopologyKind.PointList)
                 {
                     continue;
                 }
@@ -1251,7 +1266,7 @@ public sealed class SilkMeshRenderer :
             foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
             {
                 if (mesh.IndexCount == 0 ||
-                    mesh.Mesh.TopologyKind == SilkTopologyKind.LineList)
+                    mesh.Mesh.TopologyKind is SilkTopologyKind.LineList or SilkTopologyKind.PointList)
                 {
                     continue;
                 }

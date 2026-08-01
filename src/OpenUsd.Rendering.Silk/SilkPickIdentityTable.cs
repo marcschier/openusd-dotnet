@@ -339,19 +339,27 @@ public sealed class SilkPickIdentityTable
             mesh.InstanceId < 0 ||
             mesh.InstanceIndex < 0 ||
             mesh.TopologyKind is not SilkTopologyKind.TriangleList and
-                not SilkTopologyKind.LineList ||
+                not SilkTopologyKind.LineList and
+                not SilkTopologyKind.PointList ||
             mesh.TopologyRevision == 0 ||
             mesh.Points.Length % 3 != 0 ||
-            mesh.Indices.Length %
-                (mesh.TopologyKind == SilkTopologyKind.TriangleList ? 3 : 2) != 0 ||
+            mesh.Indices.Length % IndicesPerPrimitive(mesh.TopologyKind) != 0 ||
             mesh.TriangleSubprims.Length !=
-                mesh.Indices.Length /
-                    (mesh.TopologyKind == SilkTopologyKind.TriangleList ? 3 : 2))
+                mesh.Indices.Length / IndicesPerPrimitive(mesh.TopologyKind))
         {
             throw new InvalidDataException(
                 $"Mesh '{mesh.Path}' has invalid Silk pick identity or topology.");
         }
     }
+
+    private static int IndicesPerPrimitive(SilkTopologyKind topologyKind) =>
+        topologyKind switch
+        {
+            SilkTopologyKind.TriangleList => 3,
+            SilkTopologyKind.LineList => 2,
+            SilkTopologyKind.PointList => 1,
+            _ => 0
+        };
 
     private static void EnsureStableIdentity(
         CompactPickIdentity previous,
@@ -444,9 +452,9 @@ public sealed class SilkPickIdentityTable
                 mesh.InstanceId,
                 mesh.InstanceIndex,
                 mesh.TopologyRevision,
-                mesh.TopologyKind == SilkTopologyKind.LineList
-                    ? []
-                    : mesh.TriangleSubprims.ToArray(),
+                mesh.TopologyKind == SilkTopologyKind.TriangleList
+                    ? mesh.TriangleSubprims.ToArray()
+                    : [],
                 mesh.TopologyKind == SilkTopologyKind.TriangleList,
                 mesh.TopologyFingerprint);
         }
