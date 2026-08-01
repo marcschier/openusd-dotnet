@@ -41,7 +41,7 @@ internal static class SilkBenchmarkData
         const int pointCount = 3;
         int indexCount = checked(triangleCount * 3);
         int size = checked(
-            216 +
+            224 +
             path.Length +
             (pointCount * 3 * sizeof(float)) +
             (indexCount * sizeof(uint)) +
@@ -59,20 +59,24 @@ internal static class SilkBenchmarkData
             bytes.AsSpan(28),
             (uint)SilkTopologyKind.TriangleList);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), (uint)path.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44), pointCount);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), (uint)indexCount);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), (uint)triangleCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(44),
+            (uint)SilkMeshCullStyle.BackUnlessDoubleSided);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), (uint)path.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), pointCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56), (uint)indexCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(60), (uint)triangleCount);
         for (int component = 0; component < 4; component++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
-                bytes.AsSpan(56 + (component * sizeof(float))),
+                bytes.AsSpan(64 + (component * sizeof(float))),
                 component == 3 ? 1 : color);
         }
-        WriteIdentityMatrix(bytes.AsSpan(72, 16 * sizeof(double)));
-        path.CopyTo(bytes, 216);
+        WriteIdentityMatrix(bytes.AsSpan(80, 16 * sizeof(double)));
+        path.CopyTo(bytes, 224);
 
-        int pointsOffset = 216 + path.Length;
+        int pointsOffset = 224 + path.Length;
         ReadOnlySpan<float> points = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         for (int index = 0; index < points.Length; index++)
         {
