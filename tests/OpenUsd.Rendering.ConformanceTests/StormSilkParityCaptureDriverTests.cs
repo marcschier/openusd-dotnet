@@ -621,6 +621,17 @@ public sealed class StormSilkParityCaptureDriverTests
         // so registering it would fail the driver's requirement that a reference
         // capture contain coverage. It becomes the acceptance test the moment
         // hdSilk honours authored double-sidedness; see mesh-parity-cull-style.
+        //
+        // parity-bounds-draw-mode.usda is likewise authored and measured but not
+        // registered. hdSilk skips basisCurves entirely today, so it would score
+        // zero against Storm's 251 pixels. It becomes the acceptance test for
+        // hdsilk-basis-curves. parity-curve-width-probe.usda is a diagnostic and
+        // is never gated: it proved that Storm rasterizes linear basis curves as
+        // 1-pixel screen-space lines, ignoring authored world-space widths --
+        // Storm draws 128 pixels for two segments authored 0.24 units wide. That
+        // is why ribbon tessellation was measured and rejected in favour of line
+        // topology; see "Ribbon tessellation was tried and measured" in
+        // docs/testing.md.
     }
 
     private static CameraState ShiftCamera(CameraState camera, float x)

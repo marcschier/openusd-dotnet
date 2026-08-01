@@ -1,0 +1,35 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 1
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+# Diagnostic scene, not a registered parity scene. It exists to answer one
+# question: does Storm expand linear basis curves into world-space ribbons using
+# the authored widths, or does it rasterize them as screen-space lines?
+#
+# The width is deliberately large (0.24 world units against a ~1 unit span). If
+# Storm honours world-space widths the coverage is large; if Storm draws lines
+# the coverage is a few hundred pixels regardless.
+def Xform "World"
+{
+    def BasisCurves "Curves"
+    {
+        uniform token type = "linear"
+        uniform token basis = "bezier"
+        uniform token wrap = "segmented"
+        int[] curveVertexCounts = [2, 2]
+        point3f[] points = [
+            (-0.70, -0.40, 0), (0.30, 0.10, 0),
+            (-0.60, 0.45, 0), (0.40, 0.20, 0)
+        ]
+        float[] widths = [0.24]
+        uniform token widths:interpolation = "constant"
+        color3f[] primvars:displayColor = [(0.80, 0.35, 0.55)]
+        uniform token primvars:displayColor:interpolation = "constant"
+    }
+}

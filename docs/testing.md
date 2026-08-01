@@ -663,9 +663,54 @@ entirely. Measured on the same model:
 So cards was already at exact parity and had simply never been tested, while
 origin and bounds render nothing at all in hdSilk. The curves are
 `HdBasisCurvesTopology(linear, bezier, segmented)` -- independent line segments
-with widths -- so supporting them does not need a new page ABI command, RHI
-topology or pipeline: each segment tessellates into a two-triangle ribbon
-emitted as an ordinary mesh record.
+with widths.
+
+#### Ribbon tessellation was tried and measured, and it cannot work
+
+The obvious design is to tessellate each segment into a two-triangle ribbon and
+emit it as an ordinary mesh record, needing no new page ABI command, RHI
+topology or pipeline. That was implemented and measured, and it is wrong.
+
+`UsdImagingGLDrawModeAdapter` authors `widths = [1.0]` constant for bounds and
+origin (`drawModeAdapter.cpp:641-644`). Ribbons built from that width against a
+~1.2 unit box swallow the screen:
+
+| `parity-bounds-draw-mode.usda` | coverage |
+| --- | ---: |
+| Storm | 251 |
+| hdSilk, world-space ribbons | 10878 |
+
+The decisive measurement is a plain `BasisCurves` prim, not a draw mode, with an
+explicit large constant width of 0.24 world units --
+`parity-curve-width-probe.usda`:
+
+| | coverage |
+| --- | ---: |
+| Storm | 128 |
+| hdSilk, world-space ribbons | 2093 |
+
+Two segments of roughly 71 px projected length are ~142 px if drawn one pixel
+wide, and Storm measured 128. **Storm rasterizes linear basis curves as
+1-pixel screen-space lines and ignores authored world-space widths entirely.**
+That is not specific to draw modes; it is how Storm draws linear curves at the
+complexity the harness uses.
+
+So no ribbon width and no orientation rule can reach parity, because Storm is
+not drawing a ribbon at all. It also explains why the ribbon attempt had no
+good answer for orientation: `Sync()` has no camera state, and a camera-facing
+ribbon is exactly what Storm never builds.
+
+The corrected design is to emit **line topology**. D3D12 has no line width state
+at all, Vulkan needs the `wideLines` feature for anything but 1.0, and Metal has
+none, so all three rasterize lines at exactly one pixel -- matching Storm by
+construction rather than by tuning a constant. `SilkTopologyKind` gains
+`LineList`, which is additive because the wire already carries a topology kind
+field, so this is **not** a page ABI change.
+
+Thin one-pixel lines are the worst case for coverage IoU, since a single pixel
+of rasterization difference is a large fraction of a thin shape. Whether
+`parity-bounds-draw-mode.usda` can be gated on coverage at all is therefore an
+open measurement, not an assumption.
 
 `parity-cards-draw-mode.usda` gates the half that works. Two things about it are
 deliberate. Its inner mesh is a small triangle rather than a quad matching the

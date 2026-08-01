@@ -1,0 +1,48 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 1
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    # UsdImaging replaces this component's geometry with a wireframe box,
+    # inserted as a basisCurves Rprim with linear bezier segmented topology --
+    # twelve independent line segments, one per box edge. hdSilk tessellates
+    # each segment into a ribbon and emits it as an ordinary mesh record.
+    #
+    # The extent is off-centre in both axes and strongly non-square for the same
+    # reason the cards scene is: a bounds wireframe is an axis-aligned rectangle
+    # in projection, so a centred near-square one is nearly invariant under
+    # mirroring and would not support a trustworthy threshold.
+    #
+    # The inner mesh is a triangle well inside the extent, so applying the draw
+    # mode replaces filled interior coverage with a hollow outline. That is a
+    # large change, which is what makes the scene able to fail.
+    def Xform "Bounds" (
+        prepend apiSchemas = ["GeomModelAPI"]
+        kind = "component"
+    )
+    {
+        token model:drawMode = "bounds"
+        bool model:applyDrawMode = 1
+        float3[] extentsHint = [(-0.86, -0.14, -0.30), (0.34, 0.63, 0.30)]
+
+        def Mesh "Inner"
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            point3f[] points = [
+                (-0.78, -0.08, 0), (-0.20, -0.08, 0), (-0.78, 0.34, 0)
+            ]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            color3f[] primvars:displayColor = [(0.80, 0.35, 0.55)]
+            uniform token primvars:displayColor:interpolation = "constant"
+        }
+    }
+}
