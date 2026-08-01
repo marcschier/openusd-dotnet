@@ -139,7 +139,7 @@ jobs:
           -SoakSeconds 90
       - name: Execute Windows WGL Storm-to-hdSilk parity capture
         shell: pwsh
-        run: ./eng/run-parity-capture.ps1 -Rid win-x64 -Configuration Release
+        run: ./eng/run-parity-capture.ps1 -Rid win-x64 -Configuration Release -StormGl Mesa
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

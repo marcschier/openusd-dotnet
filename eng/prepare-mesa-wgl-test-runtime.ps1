@@ -422,6 +422,8 @@ if ($Activate)
     $env:OPENUSD_MESA_WGL_ARCHIVE_SHA256 = $archiveSha256
     $env:GALLIUM_DRIVER = 'llvmpipe'
     $env:LIBGL_ALWAYS_SOFTWARE = '1'
+    $env:LP_NUM_THREADS = '1'
+    $env:MESA_SHADER_CACHE_DISABLE = 'true'
     Write-Host (
         "[mesa-wgl-runtime] rid=$Rid version=$($lock.package.version) " +
         "license=$($lock.package.license)")

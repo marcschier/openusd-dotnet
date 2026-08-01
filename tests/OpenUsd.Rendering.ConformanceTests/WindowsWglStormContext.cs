@@ -1,8 +1,10 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Security.Cryptography;
 using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Rendering.ConformanceTests;
@@ -22,8 +24,12 @@ internal sealed partial class WindowsWglStormContext : IStormGlContext
     private const int PfdDoubleBuffer = 0x00000001;
     private const byte PfdTypeRgba = 0;
     private const byte PfdMainPlane = 0;
+    private const uint CsOwnDc = 0x0020;
     private const uint GlColorBufferBit = 0x00004000;
     private const uint GlDepthBufferBit = 0x00000100;
+    private const uint GlVendor = 0x1F00;
+    private const uint GlRenderer = 0x1F01;
+    private const uint GlVersion = 0x1F02;
     private const uint GlTexture2D = 0x0DE1;
     private const uint GlRgba = 0x1908;
     private const uint GlUnsignedByte = 0x1401;
@@ -56,6 +62,7 @@ internal sealed partial class WindowsWglStormContext : IStormGlContext
         nint deviceContext,
         nint glContext,
         GlFunctions gl,
+        StormOpenGlEvidence openGlEvidence,
         uint framebuffer,
         uint colorTexture,
         uint depthRenderbuffer)
@@ -66,12 +73,15 @@ internal sealed partial class WindowsWglStormContext : IStormGlContext
         _deviceContext = deviceContext;
         _glContext = glContext;
         _gl = gl;
+        OpenGlEvidence = openGlEvidence;
         Framebuffer = framebuffer;
         _colorTexture = colorTexture;
         _depthRenderbuffer = depthRenderbuffer;
     }
 
     public uint Framebuffer { get; private set; }
+
+    public StormOpenGlEvidence OpenGlEvidence { get; }
 
     public static WindowsWglStormContext Create(int width, int height, SilkColor clearColor)
     {
@@ -82,6 +92,7 @@ internal sealed partial class WindowsWglStormContext : IStormGlContext
         var windowClass = new WindowClass
         {
             Size = (uint)Marshal.SizeOf<WindowClass>(),
+            Style = CsOwnDc,
             WindowProcedure = Marshal.GetFunctionPointerForDelegate(WindowProcedure),
             Instance = module,
             ClassName = className
@@ -131,6 +142,7 @@ internal sealed partial class WindowsWglStormContext : IStormGlContext
                 throw new Win32Exception(Marshal.GetLastPInvokeError(), "wglCreateContext or wglMakeCurrent failed.");
             }
 
+            StormOpenGlEvidence openGlEvidence = CaptureOpenGlEvidence();
             GlFunctions gl = GlFunctions.Load();
             uint framebuffer = CreateFramebuffer(gl, width, height, out uint colorTexture, out uint depthRenderbuffer);
             var context = new WindowsWglStormContext(
@@ -140,6 +152,7 @@ internal sealed partial class WindowsWglStormContext : IStormGlContext
                 deviceContext,
                 glContext,
                 gl,
+                openGlEvidence,
                 framebuffer,
                 colorTexture,
                 depthRenderbuffer);
@@ -228,6 +241,7 @@ internal sealed partial class WindowsWglStormContext : IStormGlContext
             PixelType = PfdTypeRgba,
             ColorBits = 32,
             DepthBits = 24,
+            StencilBits = 8,
             LayerType = PfdMainPlane
         };
         int format = ChoosePixelFormat(deviceContext, ref descriptor);
@@ -266,6 +280,40 @@ internal sealed partial class WindowsWglStormContext : IStormGlContext
         }
         return framebuffer;
     }
+
+    private static StormOpenGlEvidence CaptureOpenGlEvidence()
+    {
+        string? expectedPath = Environment.GetEnvironmentVariable("OPENUSD_MESA_WGL_OPENGL32_PATH");
+        ProcessModule? module = Process.GetCurrentProcess().Modules.Cast<ProcessModule>().FirstOrDefault(
+            candidate => !string.IsNullOrWhiteSpace(expectedPath) &&
+                string.Equals(candidate.FileName, expectedPath, StringComparison.OrdinalIgnoreCase)) ??
+            Process.GetCurrentProcess().Modules.Cast<ProcessModule>().FirstOrDefault(
+                candidate => string.Equals(
+                    candidate.ModuleName,
+                    "opengl32.dll",
+                    StringComparison.OrdinalIgnoreCase));
+        string loadedPath = module?.FileName ?? string.Empty;
+        string loadedSha256 = File.Exists(loadedPath)
+            ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(loadedPath)))
+            : string.Empty;
+        return new StormOpenGlEvidence(
+            loadedPath,
+            loadedSha256,
+            GetGlString(GlVendor),
+            GetGlString(GlRenderer),
+            GetGlString(GlVersion),
+            FormatHandle(WglGetCurrentDC()),
+            FormatHandle(WglGetCurrentContext()));
+    }
+
+    private static string GetGlString(uint name)
+    {
+        nint pointer = GlGetString(name);
+        return pointer == 0 ? string.Empty : Marshal.PtrToStringAnsi(pointer) ?? string.Empty;
+    }
+
+    private static string FormatHandle(nint handle) =>
+        $"0x{unchecked((nuint)handle):X}";
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -485,6 +533,12 @@ internal sealed partial class WindowsWglStormContext : IStormGlContext
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool WglMakeCurrent(nint deviceContext, nint glContext);
 
+    [LibraryImport("opengl32.dll", EntryPoint = "wglGetCurrentDC", SetLastError = true)]
+    private static partial nint WglGetCurrentDC();
+
+    [LibraryImport("opengl32.dll", EntryPoint = "wglGetCurrentContext", SetLastError = true)]
+    private static partial nint WglGetCurrentContext();
+
     [LibraryImport("opengl32.dll", EntryPoint = "wglDeleteContext", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool WglDeleteContext(nint glContext);
@@ -501,6 +555,9 @@ internal sealed partial class WindowsWglStormContext : IStormGlContext
 
     [LibraryImport("opengl32.dll", EntryPoint = "glClear")]
     private static partial void GlClear(uint mask);
+
+    [LibraryImport("opengl32.dll", EntryPoint = "glGetString")]
+    private static partial nint GlGetString(uint name);
 
     [LibraryImport("opengl32.dll", EntryPoint = "glFinish")]
     private static partial void GlFinish();
