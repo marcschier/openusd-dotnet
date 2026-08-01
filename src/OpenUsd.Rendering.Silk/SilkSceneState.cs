@@ -1901,7 +1901,9 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
             _instanceMeshes = new SilkMeshData[instances.Count];
         }
 
-        Span<byte> destination = _instanceBytes.AsSpan(0, required);
+        Span<byte> encoded = stackalloc byte[SilkSceneUniformWriter.ByteSize];
+        int changedStart = -1;
+        int changedLength = 0;
         for (int index = 0; index < instances.Count; index++)
         {
             SilkMeshData mesh = instances[index].Mesh;
@@ -1909,12 +1911,42 @@ internal sealed class SilkMeshGpuGeometryResource : IDisposable
             SilkSceneUniformWriter.Write(
                 mesh,
                 frame,
-                destination.Slice(
-                    index * SilkSceneUniformWriter.ByteSize,
-                    SilkSceneUniformWriter.ByteSize),
+                encoded,
                 flipClipSpaceY);
+            int offset = index * SilkSceneUniformWriter.ByteSize;
+            Span<byte> retained = _instanceBytes.AsSpan(
+                offset,
+                SilkSceneUniformWriter.ByteSize);
+            if (encoded.SequenceEqual(retained))
+            {
+                continue;
+            }
+
+            encoded.CopyTo(retained);
+            if (changedStart < 0)
+            {
+                changedStart = offset;
+                changedLength = SilkSceneUniformWriter.ByteSize;
+            }
+            else if (changedStart + changedLength == offset)
+            {
+                changedLength += SilkSceneUniformWriter.ByteSize;
+            }
+            else
+            {
+                RequireInstanceBuffer().Write(
+                    _instanceBytes.AsSpan(changedStart, changedLength),
+                    checked((nuint)changedStart));
+                changedStart = offset;
+                changedLength = SilkSceneUniformWriter.ByteSize;
+            }
         }
-        RequireInstanceBuffer().Write(destination);
+        if (changedStart >= 0)
+        {
+            RequireInstanceBuffer().Write(
+                _instanceBytes.AsSpan(changedStart, changedLength),
+                checked((nuint)changedStart));
+        }
         _instanceFrameRevision = frame.Revision;
     }
 

@@ -138,6 +138,74 @@ public sealed class ResourceStabilityTests
     }
 
     [Test]
+    public async Task InstanceTransformUpdatesUploadOnlyChangedInstanceRange()
+    {
+        const int instanceCount = 4;
+        byte[][] commands = CreateInstanceCommands(instanceCount, changedIndex: -1);
+        var scene = new SilkSceneState();
+        var device = new CountingGraphicsDevice();
+        var resources = new SilkSceneGpuResources(device);
+        SilkSceneDelta initialDelta = scene.Apply(
+            PerformanceTestData.Concat(commands),
+            (uint)commands.Length,
+            revision: 1);
+        resources.Apply(scene, initialDelta);
+        UpdateInstanceBuffer(resources, device, scene);
+        CountingGraphicsBuffer instanceBuffer = GetInstanceBuffer(resources);
+        int initialWriteCount = instanceBuffer.WriteCount;
+        int initialByteCount = instanceBuffer.WrittenByteCount;
+
+        commands = CreateInstanceCommands(instanceCount, changedIndex: 2);
+        SilkSceneDelta delta = scene.Apply(
+            PerformanceTestData.Concat(commands),
+            (uint)commands.Length,
+            revision: 2);
+        resources.Apply(scene, delta);
+        UpdateInstanceBuffer(resources, device, scene);
+
+        await Assert.That(instanceBuffer.WriteCount - initialWriteCount).IsEqualTo(1);
+        await Assert.That(instanceBuffer.WrittenByteCount - initialByteCount)
+            .IsEqualTo(80);
+
+        resources.Dispose();
+        device.Dispose();
+    }
+
+    [Test]
+    public async Task RendererOrdersDrawsByPipelineAndMaterialToReduceBindingChurn()
+    {
+        var commands = new byte[8][];
+        for (int index = 0; index < commands.Length; index++)
+        {
+            string material = index % 2 == 0 ? "/Looks/A" : "/Looks/B";
+            commands[index] = PerformanceTestData.CreateMeshCommand(
+                pathValue: $"/World/Mesh{index}",
+                primId: 100 + index,
+                triangleCount: 1,
+                materialPath: material);
+        }
+        using OpenUsdSilkPage page = CreatePage(
+            SilkCommandParser.PageAbiVersion,
+            revision: 1,
+            PerformanceTestData.Concat(commands),
+            (uint)commands.Length);
+        var device = new CountingGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(64, 64));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(64, 64));
+
+        SilkMeshRenderResult result = renderer.ApplyAndRender(page, color, depth);
+        CountingGraphicsCommandList recorded = device.LastSubmittedCommandList ??
+            throw new InvalidOperationException("Renderer did not submit commands.");
+
+        await Assert.That(result.DrawCount).IsEqualTo(commands.Length);
+        await Assert.That(recorded.PipelineBindCount).IsEqualTo(1);
+        await Assert.That(recorded.SurfaceBufferBindCount).IsEqualTo(2);
+    }
+
+    [Test]
     public async Task ManagedPageCounterReturnsToBaseline()
     {
         SilkCounterSnapshot baseline = ReadSilkCounters();
@@ -168,6 +236,59 @@ public sealed class ResourceStabilityTests
                 "The managed Silk page constructor is unavailable.");
         return (OpenUsdSilkPage)constructor.Invoke(
             [abiVersion, revision, data, commandCount]);
+    }
+
+    private static byte[][] CreateInstanceCommands(int instanceCount, int changedIndex)
+    {
+        byte[][] commands = new byte[instanceCount][];
+        commands[0] = PerformanceTestData.CreateMeshCommand(triangleCount: 8);
+        for (int index = 1; index < commands.Length; index++)
+        {
+            double x = index == changedIndex ? index + 10 : index;
+            commands[index] = PerformanceTestData.CreateMeshInstanceReferenceCommand(
+                instanceIndex: index,
+                x: x);
+        }
+        return commands;
+    }
+
+    private static void UpdateInstanceBuffer(
+        SilkSceneGpuResources resources,
+        CountingGraphicsDevice device,
+        SilkSceneState scene)
+    {
+        SilkMeshGpuResource[] instances = [.. resources.Meshes.Values];
+        object geometry = GetGeometry(instances[0]);
+        MethodInfo method = geometry.GetType().GetMethod(
+            "UpdateInstanceBuffer",
+            BindingFlags.Instance | BindingFlags.NonPublic) ??
+            throw new InvalidOperationException("Instance buffer updater is unavailable.");
+        method.Invoke(
+            geometry,
+            [device, scene.Frame, instances, ((ISilkGraphicsDevice)device).ClipSpaceYPointsDown]);
+    }
+
+    private static CountingGraphicsBuffer GetInstanceBuffer(
+        SilkSceneGpuResources resources)
+    {
+        SilkMeshGpuResource first = resources.Meshes.Values.First();
+        object geometry = GetGeometry(first);
+        PropertyInfo property = geometry.GetType().GetProperty(
+            "InstanceBuffer",
+            BindingFlags.Instance | BindingFlags.NonPublic) ??
+            throw new InvalidOperationException("Instance buffer property is unavailable.");
+        return (CountingGraphicsBuffer)(property.GetValue(geometry) ??
+            throw new InvalidOperationException("Instance buffer was not created."));
+    }
+
+    private static object GetGeometry(SilkMeshGpuResource mesh)
+    {
+        PropertyInfo property = typeof(SilkMeshGpuResource).GetProperty(
+            "Geometry",
+            BindingFlags.Instance | BindingFlags.NonPublic) ??
+            throw new InvalidOperationException("Geometry property is unavailable.");
+        return property.GetValue(mesh) ??
+            throw new InvalidOperationException("Geometry property returned null.");
     }
 
     private static SilkCounterSnapshot ReadSilkCounters()
