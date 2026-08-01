@@ -63,7 +63,9 @@ public sealed class CheckedShaderManifestInputContractTests
             }
 
             checkedCount++;
-            string actual = Convert.ToHexStringLower(
+            // Convert.ToHexStringLower is .NET 9+, and this project also targets
+            // net8.0; the comparison below is case-insensitive regardless.
+            string actual = Convert.ToHexString(
                 SHA256.HashData(await File.ReadAllBytesAsync(absolute)));
             if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
             {
