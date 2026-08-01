@@ -209,10 +209,7 @@ jobs:
       contents: read
       actions: read
       packages: write
-    # Job-level so the nuget.org step can test for the secret in its own `if`: a step
-    # cannot read an env value declared in that same step's env block.
-    env:
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      id-token: write   # required: OIDC token for NuGet trusted publishing
     steps:
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
@@ -249,14 +246,22 @@ jobs:
             --no-symbols `
             --skip-duplicate
       # nuget.org is a one-way door: a pushed version can be unlisted but never
-      # replaced. NUGET_API_KEY is scoped by the release environment, and
+      # replaced. Publishing uses NuGet trusted publishing (OIDC), not a long-lived
+      # key, so NUGET_API_KEY is deliberately absent. An earlier version of this
+      # step guarded on `if: env.NUGET_API_KEY != ''`, which meant it silently
+      # skipped on every release and read as a failed promotion. The login is done
+      # immediately before the push so the short-lived token is fresh, and
       # --skip-duplicate keeps a re-run of a partially failed push idempotent.
+      - name: NuGet login (OIDC trusted publishing)
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ secrets.NUGET_USER }}
       - name: Push to nuget.org
-        if: env.NUGET_API_KEY != ''
         shell: pwsh
         run: |
           dotnet nuget push 'artifacts/nupkg/*.nupkg' `
-            --api-key $env:NUGET_API_KEY `
+            --api-key '${{ steps.login.outputs.NUGET_API_KEY }}' `
             --source https://api.nuget.org/v3/index.json `
             --skip-duplicate
       - name: Upload the published packages
