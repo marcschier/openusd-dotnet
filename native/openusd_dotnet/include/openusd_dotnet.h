@@ -71,6 +71,15 @@ typedef struct openusd_payload_arc_list_view
     size_t count;
 } openusd_payload_arc_list_view;
 
+#define OPENUSD_IMAGE_INFO_VERSION 1u
+typedef struct openusd_image_info
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint32_t width;
+    uint32_t height;
+} openusd_image_info;
+
 #define OPENUSD_CAPABILITY_STRING_LIST_V2 (UINT64_C(1) << 0)
 #define OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS (UINT64_C(1) << 1)
 #define OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES (UINT64_C(1) << 2)
@@ -369,6 +378,14 @@ OPENUSD_DOTNET_API openusd_status openusd_get_version(
 OPENUSD_DOTNET_API openusd_status openusd_register_plugins(
     const char* path,
     size_t* plugin_count,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_decode_image_rgba8(
+    const char* asset_path,
+    uint32_t convert_srgb_to_linear,
+    openusd_image_info* info,
+    uint8_t* rgba,
+    size_t rgba_size,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_stage_open(

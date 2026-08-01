@@ -84,18 +84,8 @@ struct KernelContext_0
         break;
     }
     float4 _S5 = float4(surface_0.clearcoatShaded_0) ;
-    bool shaded_0 = (_S5.z) >= 0.5f;
-    float3 diffuseColor_0;
-    if(shaded_0)
-    {
-        diffuseColor_0 = (float4(surface_0.diffuseOpacity_0) ).xyz;
-    }
-    else
-    {
-        diffuseColor_0 = _S1.tint_0.xyz;
-    }
     float opacity_0;
-    if(shaded_0)
+    if((_S5.z) >= 0.5f)
     {
         opacity_0 = (float4(surface_0.diffuseOpacity_0) ).w;
     }
@@ -110,7 +100,7 @@ struct KernelContext_0
     float metallic_0 = saturate(_S7.x);
     float roughness_0 = clamp(_S7.y, 0.00999999977648258f, 1.0f);
     float4 sampledBaseColor_0 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->materialSampler_0), (_S1.texCoord_0)));
-    float3 diffuseColor_1 = diffuseColor_0 * sampledBaseColor_0.xyz;
+    float3 diffuseColor_0 = sampledBaseColor_0.xyz;
     float opacity_1 = opacity_0 * sampledBaseColor_0.w;
     float opacityThreshold_0 = _S7.z;
     bool _S8;
@@ -128,13 +118,14 @@ struct KernelContext_0
     }
     float3 normal_1 = normalize(_S1.normal_0);
     float lengthSquared_0 = dot(_S1.eyePosition_0, _S1.eyePosition_0);
+    float3 normalIncidence_0;
     if(lengthSquared_0 > 0.00100000004749745f)
     {
-        diffuseColor_0 = - _S1.eyePosition_0 * float3(rsqrt(lengthSquared_0)) ;
+        normalIncidence_0 = - _S1.eyePosition_0 * float3(rsqrt(lengthSquared_0)) ;
     }
     else
     {
-        diffuseColor_0 = float3(0.0f, 0.0f, 1.0f);
+        normalIncidence_0 = float3(0.0f, 0.0f, 1.0f);
     }
     float3 normal_2;
     if(isFrontFace_0)
@@ -147,20 +138,19 @@ struct KernelContext_0
     }
     float4 _S9 = float4(surface_0.lightDirectionIntensity_0) ;
     float3 lightDirection_0 = normalize(_S9.xyz);
-    float3 half_0 = normalize(lightDirection_0 + diffuseColor_0);
+    float3 half_0 = normalize(lightDirection_0 + normalIncidence_0);
     float normalDotLight_0 = saturate(dot(normal_2, lightDirection_0));
-    float normalDotEye_0 = saturate(abs(dot(normal_2, diffuseColor_0)) + 0.00000999999974738f);
+    float normalDotEye_0 = saturate(abs(dot(normal_2, normalIncidence_0)) + 0.00000999999974738f);
     float normalDotHalf_0 = saturate(dot(normal_2, half_0));
     float _S10 = max(0.00100000004749745f, roughness_0);
     float clearcoatAmount_0 = _S5.x;
     float _S11 = max(0.00100000004749745f, _S5.y);
-    float _S12 = pow(max(0.0f, 1.0f - saturate(dot(diffuseColor_0, half_0))), 5.0f);
+    float _S12 = pow(max(0.0f, 1.0f - saturate(dot(normalIncidence_0, half_0))), 5.0f);
     float4 _S13 = float4(surface_0.specularIor_0) ;
     float _S14 = _S13.w;
     float reflectanceRatio_0 = (1.0f - _S14) / (1.0f + _S14);
     float3 _S15 = float3(3.14159274101257324f) ;
-    float3 diffuse_0 = diffuseColor_1 / _S15;
-    float3 normalIncidence_0;
+    float3 diffuse_0 = diffuseColor_0 / _S15;
     float3 grazingIncidence_0;
     float3 diffuse_1;
     if((_S7.w) >= 0.5f)
@@ -173,7 +163,7 @@ struct KernelContext_0
     else
     {
         float3 _S17 = float3(metallic_0) ;
-        float3 specularTint_0 = mix(float3(1.0f, 1.0f, 1.0f), diffuseColor_1, _S17);
+        float3 specularTint_0 = mix(float3(1.0f, 1.0f, 1.0f), diffuseColor_0, _S17);
         float3 diffuse_2 = diffuse_0 * float3((1.0f - metallic_0)) ;
         normalIncidence_0 = mix(float3((reflectanceRatio_0 * reflectanceRatio_0))  * specularTint_0, specularTint_0, _S17);
         grazingIncidence_0 = specularTint_0;
@@ -205,7 +195,7 @@ struct KernelContext_0
         specular_0 = _S22;
     }
     float4 _S24 = float4(surface_0.lightColorAmbient_0) ;
-    pixelOutput_0 _S25 = { float4(float3((occlusion_0 * normalDotLight_0))  * (diffuse_3 + specular_0) * (_S24.xyz * float3(_S9.w)  * _S15) + diffuseColor_1 * float3(_S24.w)  + emissiveColor_0, opacity_1) };
+    pixelOutput_0 _S25 = { float4(float3((occlusion_0 * normalDotLight_0))  * (diffuse_3 + specular_0) * (_S24.xyz * float3(_S9.w)  * _S15) + diffuseColor_0 * float3(_S24.w)  + emissiveColor_0, opacity_1) };
     return _S25;
 }
 

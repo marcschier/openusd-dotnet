@@ -23,6 +23,7 @@
 #include "pxr/base/vt/array.h"
 #include "pxr/base/vt/dictionary.h"
 #include "pxr/base/vt/value.h"
+#include "pxr/imaging/hio/image.h"
 #include "pxr/pxr.h"
 #include "pxr/usd/pcp/composeSite.h"
 #include "pxr/usd/pcp/errors.h"
@@ -251,6 +252,11 @@ static_assert(
 static_assert(
     offsetof(openusd_payload_arc_list_view, count) ==
     sizeof(uint32_t) * 2 + sizeof(void*) * 4);
+static_assert(sizeof(openusd_image_info) == sizeof(uint32_t) * 4);
+static_assert(offsetof(openusd_image_info, struct_size) == 0);
+static_assert(offsetof(openusd_image_info, version) == sizeof(uint32_t));
+static_assert(offsetof(openusd_image_info, width) == sizeof(uint32_t) * 2);
+static_assert(offsetof(openusd_image_info, height) == sizeof(uint32_t) * 3);
 static_assert(sizeof(openusd_vec2f) == sizeof(float) * 2);
 static_assert(offsetof(openusd_vec2f, x) == 0);
 static_assert(offsetof(openusd_vec2f, y) == sizeof(float));
@@ -2988,6 +2994,91 @@ openusd_status openusd_register_plugins(
             return OPENUSD_STATUS_OK;
         });
 
+    });
+}
+
+openusd_status openusd_decode_image_rgba8(
+    const char* asset_path,
+    uint32_t convert_srgb_to_linear,
+    openusd_image_info* info,
+    uint8_t* rgba,
+    size_t rgba_size,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return Guard(error, [&]() -> openusd_status
+    {
+        if (asset_path == nullptr || info == nullptr ||
+            info->struct_size != sizeof(openusd_image_info) ||
+            info->version != OPENUSD_IMAGE_INFO_VERSION)
+        {
+            WriteError(error, "A valid image asset path and image-info output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+
+        return Guard(error, [&]()
+        {
+            TfErrorMark mark;
+            HioImageSharedPtr image = HioImage::OpenForReading(
+                asset_path,
+                0,
+                0,
+                HioImage::SourceColorSpace::Raw);
+            if (!image)
+            {
+                WriteError(error, std::string("Could not open image: ") + asset_path);
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+            if (!mark.IsClean())
+            {
+                WriteError(error, ConsumeErrors(mark));
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            const int width = image->GetWidth();
+            const int height = image->GetHeight();
+            if (width <= 0 || height <= 0)
+            {
+                WriteError(error, "Image dimensions are invalid.");
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            info->width = static_cast<uint32_t>(width);
+            info->height = static_cast<uint32_t>(height);
+            const size_t required =
+                static_cast<size_t>(width) * static_cast<size_t>(height) * 4u;
+            if (rgba == nullptr || rgba_size < required)
+            {
+                return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+            }
+
+            HioImage::StorageSpec storage;
+            storage.width = width;
+            storage.height = height;
+            storage.depth = 1;
+            storage.format = HioFormatUNorm8Vec4;
+            storage.flipped = false;
+            storage.data = rgba;
+            if (!image->Read(storage))
+            {
+                WriteError(error, std::string("Could not read image: ") + asset_path);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            if (convert_srgb_to_linear != 0)
+            {
+                for (size_t index = 0; index < required; index += 4)
+                {
+                    for (size_t component = 0; component < 3; ++component)
+                    {
+                        const double srgb = static_cast<double>(rgba[index + component]) / 255.0;
+                        const double linear = srgb <= 0.04045
+                            ? srgb / 12.92
+                            : std::pow((srgb + 0.055) / 1.055, 2.4);
+                        const long rounded = std::lround(std::max(0.0, std::min(1.0, linear)) * 255.0);
+                        rgba[index + component] = static_cast<uint8_t>(rounded);
+                    }
+                }
+            }
+            return OPENUSD_STATUS_OK;
+        });
     });
 }
 

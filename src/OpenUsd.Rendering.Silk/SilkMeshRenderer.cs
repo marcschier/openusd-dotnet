@@ -107,9 +107,11 @@ public sealed class SilkMeshRenderer :
     private readonly ISilkGraphicsPipeline _pipeline;
     private readonly ISilkGraphicsPipeline _backCullPipeline;
     private readonly ISilkGraphicsPipeline _linePipeline;
+    private readonly SilkGraphicsPipelineCache _pipelineCache;
     private readonly SilkShaderBinaryFormat _shaderFormat;
     private readonly ISilkPickingGraphicsDevice? _pickingDevice;
     private readonly ISilkSelectionOutlineGraphicsDevice? _selectionOutlineDevice;
+    private readonly Dictionary<BatchKey, List<SilkMeshGpuResource>> _batches = [];
     private ISilkPickGraphicsPipeline? _pickPipeline;
     private SilkPickReadbackRing? _pickReadbacks;
     private PendingPick?[]? _inFlightPicks;
@@ -256,6 +258,7 @@ public sealed class SilkMeshRenderer :
         _pipeline = pipeline;
         _backCullPipeline = backCullPipeline;
         _linePipeline = linePipeline;
+        _pipelineCache = new SilkGraphicsPipelineCache(device, shaderFormat);
         _pickPipeline = pickPipeline;
         _pickReadbacks = pickReadbacks;
         if (pickReadbacks is not null)
@@ -598,6 +601,7 @@ public sealed class SilkMeshRenderer :
             _pickPipeline?.Dispose();
             DisposeSelectionOutlineInfrastructure();
             GpuResources.Dispose();
+            _pipelineCache.Dispose();
             _backCullPipeline.Dispose();
             _pipeline.Dispose();
             _linePipeline.Dispose();
@@ -628,6 +632,55 @@ public sealed class SilkMeshRenderer :
                     "A selection-outline-capable device must create " +
                     "selection-outline-capable command lists.");
         }
+        SilkMeshGpuResource? singleMesh = null;
+        if (GpuResources.MeshValues.Count == 1)
+        {
+            foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
+            {
+                singleMesh = mesh.IndexCount == 0 ? null : mesh;
+            }
+        }
+
+        if (singleMesh is not null)
+        {
+            PrepareMaterialTextures(commands, singleMesh, GetMaterialFeatures(singleMesh.Mesh));
+        }
+
+        if (singleMesh is null)
+        {
+            foreach (List<SilkMeshGpuResource> batch in _batches.Values)
+            {
+                batch.Clear();
+            }
+            foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
+            {
+                if (mesh.IndexCount == 0)
+                {
+                    continue;
+                }
+                BatchKey key = new(
+                    mesh.Geometry,
+                    mesh.Mesh.MaterialPath,
+                    GetMaterialFeatures(mesh.Mesh),
+                    GetCullMode(mesh.Mesh),
+                    mesh.Mesh.TopologyKind);
+                if (!_batches.TryGetValue(key, out List<SilkMeshGpuResource>? batch))
+                {
+                    batch = [];
+                    _batches.Add(key, batch);
+                }
+                batch.Add(mesh);
+            }
+            foreach (KeyValuePair<BatchKey, List<SilkMeshGpuResource>> batch in _batches)
+            {
+                if (batch.Value.Count == 0)
+                {
+                    continue;
+                }
+                PrepareMaterialTextures(commands, batch.Value[0], batch.Key.Features);
+            }
+        }
+
         commands.ClearColor(colorTarget, options.ClearColor);
         commands.ClearDepth(depthTarget, options.ClearDepth);
         commands.BeginRendering(new SilkRenderingDescriptor(colorTarget, depthTarget));
@@ -641,26 +694,56 @@ public sealed class SilkMeshRenderer :
         commands.SetScissor(new SilkScissor(0, 0, colorTarget.Width, colorTarget.Height));
 
         int drawCount = 0;
-        Dictionary<BatchKey, List<SilkMeshGpuResource>> batches = [];
-        foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
+        bool instancingSupported = _device.Backend != SilkGraphicsBackend.Vulkan;
+        if (singleMesh is not null)
         {
-            if (mesh.IndexCount == 0)
+            SilkShaderFeatures features = GetMaterialFeatures(singleMesh.Mesh);
+            ISilkGraphicsPipeline pipeline = GetPipeline(
+                singleMesh,
+                features,
+                GetCullMode(singleMesh.Mesh),
+                singleMesh.Mesh.TopologyKind);
+            commands.SetGraphicsPipeline(pipeline);
+            DisposePipelineLease(pipeline);
+            commands.SetVertexBuffer(singleMesh.VertexBuffer);
+            commands.SetIndexBuffer(singleMesh.IndexBuffer);
+            commands.SetUniformBuffer(0, 0, singleMesh.UniformBuffer);
+            commands.SetStorageBuffer(0, 6, singleMesh.UniformBuffer);
+            commands.SetStorageBuffer(
+                0,
+                SilkBindingLayoutDescriptor.FrameParametersBinding,
+                frameBuffer);
+            commands.SetStorageBuffer(
+                0,
+                SilkBindingLayoutDescriptor.SurfaceParametersBinding,
+                GpuResources.RequireSurfaceBuffer(Scene, singleMesh.Mesh, RenderHeadlight.Deterministic));
+            BindMaterialResources(commands, singleMesh, features);
+            commands.DrawIndexed(singleMesh.IndexCount);
+            drawCount++;
+            commands.EndRendering();
+            if (selectionCommands is not null)
+            {
+                RecordSelectionOutline(
+                    commands,
+                    selectionCommands,
+                    colorTarget,
+                    depthTarget);
+            }
+
+            using ISilkGraphicsSubmission singleSubmission = _device.Submit(commands);
+            singleSubmission.Wait();
+            if (pickBinding is { } singleBinding)
+            {
+                ProcessPicking(colorTarget, singleBinding);
+            }
+            return new SilkMeshRenderResult(drawCount, uniformUploads, GpuResources.Statistics);
+        }
+        foreach (KeyValuePair<BatchKey, List<SilkMeshGpuResource>> batch in _batches)
+        {
+            if (batch.Value.Count == 0)
             {
                 continue;
             }
-            BatchKey key = new(
-                mesh.Geometry,
-                GetCullMode(mesh.Mesh),
-                mesh.Mesh.TopologyKind);
-            if (!batches.TryGetValue(key, out List<SilkMeshGpuResource>? batch))
-            {
-                batch = [];
-                batches.Add(key, batch);
-            }
-            batch.Add(mesh);
-        }
-        foreach (KeyValuePair<BatchKey, List<SilkMeshGpuResource>> batch in batches)
-        {
             SilkMeshGpuResource first = batch.Value[0];
             // A batch of one gains nothing from instancing and would cost an
             // instance storage buffer per unique geometry, which for a scene of
@@ -668,7 +751,13 @@ public sealed class SilkMeshRenderer :
             // per-mesh uniform path already carries the single transform.
             if (batch.Value.Count < 2)
             {
-                commands.SetGraphicsPipeline(GetPipeline(batch.Key.CullMode, batch.Key.TopologyKind));
+                ISilkGraphicsPipeline pipeline = GetPipeline(
+                    first,
+                    batch.Key.Features,
+                    batch.Key.CullMode,
+                    batch.Key.TopologyKind);
+                commands.SetGraphicsPipeline(pipeline);
+                DisposePipelineLease(pipeline);
                 commands.SetVertexBuffer(first.VertexBuffer);
                 commands.SetIndexBuffer(first.IndexBuffer);
                 foreach (SilkMeshGpuResource mesh in batch.Value)
@@ -687,6 +776,7 @@ public sealed class SilkMeshRenderer :
                         0,
                         SilkBindingLayoutDescriptor.SurfaceParametersBinding,
                         GpuResources.RequireSurfaceBuffer(Scene, mesh.Mesh, RenderHeadlight.Deterministic));
+                    BindMaterialResources(commands, mesh, batch.Key.Features);
                     commands.DrawIndexed(mesh.IndexCount);
                     drawCount++;
                 }
@@ -697,7 +787,13 @@ public sealed class SilkMeshRenderer :
                 Scene.Frame,
                 batch.Value,
                 _device.ClipSpaceYPointsDown);
-            commands.SetGraphicsPipeline(GetPipeline(batch.Key.CullMode, batch.Key.TopologyKind));
+            ISilkGraphicsPipeline instancedPipeline = GetPipeline(
+                first,
+                batch.Key.Features,
+                batch.Key.CullMode,
+                batch.Key.TopologyKind);
+            commands.SetGraphicsPipeline(instancedPipeline);
+            DisposePipelineLease(instancedPipeline);
             commands.SetVertexBuffer(first.VertexBuffer);
             commands.SetIndexBuffer(first.IndexBuffer);
             commands.SetUniformBuffer(0, 0, first.UniformBuffer);
@@ -710,6 +806,7 @@ public sealed class SilkMeshRenderer :
                 0,
                 SilkBindingLayoutDescriptor.SurfaceParametersBinding,
                 GpuResources.RequireSurfaceBuffer(Scene, first.Mesh, RenderHeadlight.Deterministic));
+            BindMaterialResources(commands, first, batch.Key.Features);
             commands.DrawIndexedInstanced(first.IndexCount, checked((uint)batch.Value.Count));
             drawCount++;
         }
@@ -738,19 +835,132 @@ public sealed class SilkMeshRenderer :
     // Lines carry no facing, so a line batch always uses the unculled line
     // pipeline regardless of the mesh's authored cull style.
     private ISilkGraphicsPipeline GetPipeline(
+        SilkMeshGpuResource mesh,
+        SilkShaderFeatures features,
         SilkCullMode cullMode,
-        SilkTopologyKind topologyKind) =>
-        topologyKind switch
+        SilkTopologyKind topologyKind)
+    {
+        if (features == SilkShaderFeatures.None &&
+            mesh.VertexLayout.Equals(SilkVertexLayoutDescriptor.PositionNormal))
         {
-            SilkTopologyKind.LineList => _linePipeline,
-            SilkTopologyKind.TriangleList =>
-                cullMode == SilkCullMode.Back ? _backCullPipeline : _pipeline,
-            _ => throw new InvalidDataException(
-                $"Unsupported Silk topology kind '{topologyKind}'.")
-        };
+            return topologyKind switch
+            {
+                SilkTopologyKind.LineList => _linePipeline,
+                SilkTopologyKind.TriangleList =>
+                    cullMode == SilkCullMode.Back ? _backCullPipeline : _pipeline,
+                _ => throw new InvalidDataException(
+                    $"Unsupported Silk topology kind '{topologyKind}'.")
+            };
+        }
+        return _pipelineCache.GetOrCreateMeshPipeline(
+            new SilkShaderPermutationId(features),
+            mesh.VertexLayout,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.D32Float,
+            cullMode,
+            topologyKind);
+    }
+
+    private static void DisposePipelineLease(ISilkGraphicsPipeline pipeline)
+    {
+        if (pipeline is ISilkGraphicsPipelineLease)
+        {
+            pipeline.Dispose();
+        }
+    }
+
+    private SilkMaterialData? ResolveMaterial(SilkMeshData mesh)
+    {
+        if (string.IsNullOrEmpty(mesh.MaterialPath))
+        {
+            return null;
+        }
+        return Scene.Materials.TryGetValue(mesh.MaterialPath, out SilkMaterialData? material) &&
+            material.IsSupported
+            ? material
+            : null;
+    }
+
+    private SilkShaderFeatures GetMaterialFeatures(SilkMeshData mesh) =>
+        ResolveMaterial(mesh)?.GetTextureFeatures() ?? SilkShaderFeatures.None;
+
+    private void BindMaterialResources(
+        ISilkGraphicsCommandList commands,
+        SilkMeshGpuResource mesh,
+        SilkShaderFeatures features)
+    {
+        if ((features & SilkShaderFeatures.BaseColorMap) != 0)
+        {
+            GpuResources.BindMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.DiffuseColor,
+                2);
+        }
+        if ((features & SilkShaderFeatures.NormalMap) != 0)
+        {
+            GpuResources.BindMaterialTexture(commands, ResolveMaterial(mesh.Mesh)!, SilkMaterialParameter.Normal, 3);
+        }
+        if ((features & SilkShaderFeatures.RoughnessMetallicMap) != 0)
+        {
+            SilkMaterialData material = ResolveMaterial(mesh.Mesh)!;
+            GpuResources.BindMaterialTexture(
+                commands,
+                material,
+                material.GetTexture(SilkMaterialParameter.Roughness) is not null
+                    ? SilkMaterialParameter.Roughness
+                    : SilkMaterialParameter.Metallic,
+                4);
+        }
+        if ((features & SilkShaderFeatures.EmissiveMap) != 0)
+        {
+            GpuResources.BindMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.EmissiveColor,
+                5);
+        }
+    }
+
+    private void PrepareMaterialTextures(
+        ISilkGraphicsCommandList commands,
+        SilkMeshGpuResource mesh,
+        SilkShaderFeatures features)
+    {
+        if ((features & SilkShaderFeatures.BaseColorMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.DiffuseColor);
+        }
+        if ((features & SilkShaderFeatures.NormalMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(commands, ResolveMaterial(mesh.Mesh)!, SilkMaterialParameter.Normal);
+        }
+        if ((features & SilkShaderFeatures.RoughnessMetallicMap) != 0)
+        {
+            SilkMaterialData material = ResolveMaterial(mesh.Mesh)!;
+            GpuResources.UploadMaterialTexture(
+                commands,
+                material,
+                material.GetTexture(SilkMaterialParameter.Roughness) is not null
+                    ? SilkMaterialParameter.Roughness
+                    : SilkMaterialParameter.Metallic);
+        }
+        if ((features & SilkShaderFeatures.EmissiveMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.EmissiveColor);
+        }
+    }
 
     private readonly record struct BatchKey(
         SilkMeshGpuGeometryResource Geometry,
+        string MaterialPath,
+        SilkShaderFeatures Features,
         SilkCullMode CullMode,
         SilkTopologyKind TopologyKind);
 

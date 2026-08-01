@@ -141,19 +141,18 @@ public sealed partial class MetalSilkGraphicsDevice
             var depthDescriptor = new MTLDepthStencilDescriptor();
             try
             {
-                MTLVertexAttributeDescriptor position =
-                    vertexDescriptor.Attributes.Object(0);
-                position.Format = MTLVertexFormat.Float3;
-                position.Offset = 0;
-                position.BufferIndex = 30;
-                MTLVertexAttributeDescriptor normal =
-                    vertexDescriptor.Attributes.Object(1);
-                normal.Format = MTLVertexFormat.Float3;
-                normal.Offset = 12;
-                normal.BufferIndex = 30;
+                foreach (SilkVertexAttributeDescriptor attribute in
+                    descriptor.VertexLayout.Attributes)
+                {
+                    MTLVertexAttributeDescriptor nativeAttribute =
+                        vertexDescriptor.Attributes.Object(attribute.Location);
+                    nativeAttribute.Format = GetFormat(attribute.Format);
+                    nativeAttribute.Offset = attribute.Offset;
+                    nativeAttribute.BufferIndex = 30;
+                }
                 MTLVertexBufferLayoutDescriptor layout =
                     vertexDescriptor.Layouts.Object(30);
-                layout.Stride = 24;
+                layout.Stride = descriptor.VertexLayout.Stride;
                 layout.StepFunction = MTLVertexStepFunction.PerVertex;
 
                 pipelineDescriptor.VertexFunction = vertexFunction;
@@ -236,6 +235,15 @@ public sealed partial class MetalSilkGraphicsDevice
             }
         }
     }
+
+    private static MTLVertexFormat GetFormat(SilkVertexFormat format) =>
+        format switch
+        {
+            SilkVertexFormat.Float2 => MTLVertexFormat.Float2,
+            SilkVertexFormat.Float3 => MTLVertexFormat.Float3,
+            SilkVertexFormat.Float4 => MTLVertexFormat.Float4,
+            _ => throw new ArgumentOutOfRangeException(nameof(format))
+        };
 }
 
 [SupportedOSPlatform("macos")]

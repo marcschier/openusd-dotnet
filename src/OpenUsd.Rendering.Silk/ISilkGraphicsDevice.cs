@@ -792,7 +792,10 @@ public enum SilkSamplerAddressMode
     ClampToEdge,
 
     /// <summary>Repeats texture coordinates.</summary>
-    Repeat
+    Repeat,
+
+    /// <summary>Mirrors texture coordinates across integer boundaries.</summary>
+    MirrorRepeat
 }
 
 /// <summary>

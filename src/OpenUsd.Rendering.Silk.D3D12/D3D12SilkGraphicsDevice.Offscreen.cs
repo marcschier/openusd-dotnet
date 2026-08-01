@@ -392,6 +392,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             D3D12SilkGraphicsBuffer? computeUniformBuffer = null;
             List<D3D12MaterialBinding> materialBindings = [];
             D3D12SilkGraphicsTexture? materialTexture;
+            uint vertexStride = SilkVertexLayoutDescriptor.PositionNormal.Stride;
             SilkViewport? currentViewport = null;
             SilkScissor? currentScissor = null;
             bool rendering = false;
@@ -766,6 +767,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         selectionOutlineBinding = null;
                         nativeCommands->SetGraphicsRootSignature(pipeline.RootSignature);
                         nativeCommands->SetPipelineState(pipeline.Pipeline);
+                        vertexStride = pipeline.Descriptor.VertexLayout.Stride;
                         break;
                     case SilkGraphicsCommandKind.SetViewport:
                         currentViewport = command.Viewport;
@@ -799,7 +801,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         var vertexView = new VertexBufferView(
                             vertexBuffer.Resource->GetGPUVirtualAddress(),
                             checked((uint)vertexBuffer.Size),
-                            24);
+                            vertexStride);
                         nativeCommands->IASetVertexBuffers(0, 1, &vertexView);
                         break;
                     case SilkGraphicsCommandKind.SetIndexBuffer:
@@ -1531,6 +1533,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         {
             SilkSamplerAddressMode.ClampToEdge => TextureAddressMode.Clamp,
             SilkSamplerAddressMode.Repeat => TextureAddressMode.Wrap,
+            SilkSamplerAddressMode.MirrorRepeat => TextureAddressMode.Mirror,
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
 

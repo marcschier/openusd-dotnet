@@ -863,6 +863,17 @@ public sealed class StormSilkParityCaptureDriverTests
                     "in the upper right so a flip now costs 0.689940.",
                 RecommendedMinimumAdjustedIou: 0.92),
             new ParityScene(
+                "materials-textures",
+                Path.Combine(assetRoot, "parity-material-texture-asymmetric.usda"),
+                "Texture-backed PreviewSurface samples an asymmetric sRGB asset through UVs.",
+                ColorComparisonReady: true,
+                GateEnabled: true,
+                GateReason:
+                    "Texture-backed material coverage and colour now gate: 1.000000 " +
+                    "correct adjusted IoU against a 0.781397 worst perturbation " +
+                    "(0.218603 margin), with colour deltas max 13 / mean 4.476.",
+                RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
                 "point-instancer-cluster",
                 Path.Combine(assetRoot, "parity-point-instancer-cluster.usda"),
                 "Asymmetric point-instanced placement proves expansion and transform handling.",

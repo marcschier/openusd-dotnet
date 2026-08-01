@@ -244,7 +244,7 @@ float4 FRAGMENT_ENTRY_POINT(
 
 #if MAP_BASE_COLOR
     float4 sampledBaseColor = baseColorTexture.Sample(materialSampler, input.texCoord);
-    diffuseColor *= sampledBaseColor.rgb;
+    diffuseColor = sampledBaseColor.rgb;
     opacity *= sampledBaseColor.a;
 #endif
 #if MAP_NORMAL
@@ -264,7 +264,7 @@ float4 FRAGMENT_ENTRY_POINT(
     metallic = saturate(metallic * sampledRoughnessMetallic.b);
 #endif
 #if MAP_EMISSIVE
-    emissiveColor *= emissiveTexture.Sample(materialSampler, input.texCoord).rgb;
+    emissiveColor = emissiveTexture.Sample(materialSampler, input.texCoord).rgb;
 #endif
 
     float opacityThreshold = surface.metallicRoughnessThresholdWorkflow.z;

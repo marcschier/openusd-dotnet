@@ -384,8 +384,9 @@ function Enable-MesaWglParity
     $env:OPENUSD_MESA_WGL_OPENGL32_PATH = $testHostOpenGl
     $script:removeTestHostOpenGlInFinally = $true
     Write-Host (
-        '[parity-capture] StormGl=Mesa gates 6 scenes; excludes ' +
-        'single-sided-winding, bounds-draw-mode, origin-draw-mode.')
+        "[parity-capture] StormGl=Mesa gates " +
+        "$($env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT) scenes; excludes " +
+        "$($env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES).")
 }
 
 foreach ($layout in @(
@@ -452,13 +453,25 @@ try
     $env:OPENUSD_PLUGIN_PATH = $pluginPath
     $env:OPENUSD_PARITY_CAPTURE_REQUIRED = '1'
 
+    # Declared once, deliberately, rather than derived from the scene list: an
+    # expected count that reads from the same source it is checking would pass
+    # no matter how many scenes silently disappeared. Adding a parity scene
+    # means incrementing this by one, and adding one that Storm cannot render
+    # on Mesa llvmpipe also means naming it in $mesaExcludedScenes.
+    $totalParityScenes = 10
+    $mesaExcludedScenes = @(
+        'single-sided-winding',
+        'bounds-draw-mode',
+        'origin-draw-mode')
+    $mesaSceneCount = $totalParityScenes - $mesaExcludedScenes.Count
+    $mesaExcludedList = $mesaExcludedScenes -join ','
+
     if ($Rid -eq 'win-x64')
     {
         if ($StormGl -eq 'Mesa')
         {
-            $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = '6'
-            $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES =
-                'single-sided-winding,bounds-draw-mode,origin-draw-mode'
+            $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = "$mesaSceneCount"
+            $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES = $mesaExcludedList
             Enable-MesaWglParity
         }
         else
@@ -466,7 +479,7 @@ try
             Remove-TestHostMesaOpenGl
             $env:OPENUSD_MESA_WGL_OPENGL32_PATH = $null
             $env:OPENUSD_MESA_WGL_OPENGL32_SHA256 = $null
-            $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = '9'
+            $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = "$totalParityScenes"
             $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES = ''
             $systemReportPath = Join-Path $stageRoot 'system-wgl-preflight.json'
             $systemReport = Invoke-WindowsSystemWglPreflight -ReportPath $systemReportPath
@@ -474,7 +487,8 @@ try
             {
                 Write-Host (
                     "[parity-capture] StormGl=Auto using system OpenGL; " +
-                    "gates 9 scenes; loadedOpenGl32=$($systemReport.loadedOpenGl32) " +
+                    "gates $totalParityScenes scenes; " +
+                    "loadedOpenGl32=$($systemReport.loadedOpenGl32) " +
                     "sha256=$($systemReport.loadedOpenGl32Sha256)")
                 Write-Host (
                     "[parity-capture] System GL_VENDOR='$($systemReport.glVendor)' " +
@@ -482,13 +496,12 @@ try
             }
             else
             {
-                $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = '6'
-                $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES =
-                    'single-sided-winding,bounds-draw-mode,origin-draw-mode'
+                $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = "$mesaSceneCount"
+                $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES = $mesaExcludedList
                 Write-Warning (
                     'StormGl=Auto could not find a system WGL implementation usable by Storm; ' +
-                    'falling back to Mesa llvmpipe. This gates 6 scenes, not 9, and excludes ' +
-                    'single-sided-winding, bounds-draw-mode, origin-draw-mode.')
+                    "falling back to Mesa llvmpipe. This gates $mesaSceneCount scenes, not " +
+                    "$totalParityScenes, and excludes $mesaExcludedList.")
                 Enable-MesaWglParity
             }
         }

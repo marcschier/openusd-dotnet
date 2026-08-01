@@ -210,4 +210,41 @@ public sealed class SilkMaterialData
         }
         return null;
     }
+
+    internal SilkShaderFeatures GetTextureFeatures()
+    {
+        SilkShaderFeatures features = SilkShaderFeatures.None;
+        if (GetTexture(SilkMaterialParameter.DiffuseColor) is not null)
+        {
+            features |= SilkShaderFeatures.BaseColorMap;
+        }
+        if (GetTexture(SilkMaterialParameter.Normal) is not null)
+        {
+            features |= SilkShaderFeatures.NormalMap;
+        }
+        if (GetTexture(SilkMaterialParameter.Roughness) is not null ||
+            GetTexture(SilkMaterialParameter.Metallic) is not null)
+        {
+            features |= SilkShaderFeatures.RoughnessMetallicMap;
+        }
+        if (GetTexture(SilkMaterialParameter.EmissiveColor) is not null)
+        {
+            features |= SilkShaderFeatures.EmissiveMap;
+        }
+        return features == SilkShaderFeatures.None
+            ? features
+            : features | SilkShaderFeatures.Uv;
+    }
+
+    internal string GetPrimaryUvPrimvar()
+    {
+        foreach (SilkMaterialTexture texture in Textures)
+        {
+            if (!string.IsNullOrEmpty(texture.UvPrimvar))
+            {
+                return texture.UvPrimvar;
+            }
+        }
+        return string.Empty;
+    }
 }

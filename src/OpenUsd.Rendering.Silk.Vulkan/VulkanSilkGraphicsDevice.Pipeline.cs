@@ -521,26 +521,28 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             };
             var binding = new VertexInputBindingDescription(
                 0,
-                24,
+                descriptor.VertexLayout.Stride,
                 VertexInputRate.Vertex);
             VertexInputAttributeDescription* attributes =
-                stackalloc VertexInputAttributeDescription[2];
-            attributes[0] = new VertexInputAttributeDescription(
-                0,
-                0,
-                Format.R32G32B32Sfloat,
-                0);
-            attributes[1] = new VertexInputAttributeDescription(
-                1,
-                0,
-                Format.R32G32B32Sfloat,
-                12);
+                stackalloc VertexInputAttributeDescription[
+                    descriptor.VertexLayout.Attributes.Count];
+            for (int index = 0; index < descriptor.VertexLayout.Attributes.Count; index++)
+            {
+                SilkVertexAttributeDescriptor attribute =
+                    descriptor.VertexLayout.Attributes[index];
+                attributes[index] = new VertexInputAttributeDescription(
+                    attribute.Location,
+                    0,
+                    GetFormat(attribute.Format),
+                    attribute.Offset);
+            }
             var vertexInput = new PipelineVertexInputStateCreateInfo
             {
                 SType = StructureType.PipelineVertexInputStateCreateInfo,
                 VertexBindingDescriptionCount = 1,
                 PVertexBindingDescriptions = &binding,
-                VertexAttributeDescriptionCount = 2,
+                VertexAttributeDescriptionCount =
+                    checked((uint)descriptor.VertexLayout.Attributes.Count),
                 PVertexAttributeDescriptions = attributes
             };
             var inputAssembly = new PipelineInputAssemblyStateCreateInfo
@@ -638,6 +640,15 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             SilkCullMode.None => CullModeFlags.None,
             SilkCullMode.Back => CullModeFlags.BackBit,
             _ => throw new ArgumentOutOfRangeException(nameof(cullMode))
+        };
+
+    private static Format GetFormat(SilkVertexFormat format) =>
+        format switch
+        {
+            SilkVertexFormat.Float2 => Format.R32G32Sfloat,
+            SilkVertexFormat.Float3 => Format.R32G32B32Sfloat,
+            SilkVertexFormat.Float4 => Format.R32G32B32A32Sfloat,
+            _ => throw new ArgumentOutOfRangeException(nameof(format))
         };
 }
 
