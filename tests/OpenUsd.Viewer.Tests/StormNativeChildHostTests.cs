@@ -480,6 +480,14 @@ public sealed class StormNativeChildHostTests
         await Assert.That(workflow).Contains("libxtst-dev");
         await Assert.That(workflow).Contains("libxtst6");
 
+        string linuxRunner = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "eng",
+            "run-storm-native-child-linux.sh"));
+        await Assert.That(linuxRunner).Contains("bin/openusd_storm_child_probe");
+        await Assert.That(linuxRunner)
+            .Contains("\"$repo_root/native/install/shim/linux-x64/lib\" 2>&1 | tee \"$probe_log\"");
+
         var state = new LinuxX11Threading.InitializationState();
         var calls = new List<string>();
         var initializedDuringCallbacks = new List<bool>();

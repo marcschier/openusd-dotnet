@@ -376,6 +376,15 @@ produces 100 Storm/Vulkan switches; only a schema-valid typed unavailable diagno
 Storm-only proof. Runner crashes, timeouts, missing/malformed artifacts, and zero native counters
 fail.
 
+Archive-mode runs execute the installed Linux probe at
+`native/install/shim/linux-x64/bin/openusd_storm_child_probe` before the viewer soak. The probe's
+Linux ABI-7 contract requires three arguments: the OpenUSD plugin directory, the stage path, and the
+installed shim `lib` directory containing `libopenusd_storm_child.so -> .so.7 -> .so.7.0.0`. Passing
+the runtime directory is part of the gate, not a convenience: release run `30699741174` reached this
+step and failed with the probe's usage error before it could collect any Storm switching evidence.
+The older `30440292326` release failed earlier on stale Vulkan ICD discovery, which is a separate
+workflow defect in the same hosted Linux graphics setup rather than Storm child product behaviour.
+
 ## macOS native Storm child and Metal shell
 
 The macOS child is an application-owned `NSView` hosted by Avalonia `NativeControlHost` while
