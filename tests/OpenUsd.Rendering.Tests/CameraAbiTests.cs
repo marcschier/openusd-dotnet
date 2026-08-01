@@ -16,13 +16,19 @@ public sealed class CameraAbiTests
     {
         await Assert.That(Unsafe.SizeOf<NativeRenderMatrix>()).IsEqualTo(128);
         await Assert.That(Marshal.SizeOf<NativeRenderMatrix>()).IsEqualTo(128);
+        await Assert.That(Unsafe.SizeOf<NativeRenderClipPlane>()).IsEqualTo(32);
+        await Assert.That(Marshal.SizeOf<NativeRenderClipPlane>()).IsEqualTo(32);
         await Assert.That(OffsetOf<NativeRenderMatrix>(nameof(NativeRenderMatrix.M11)))
             .IsEqualTo(0);
         await Assert.That(OffsetOf<NativeRenderMatrix>(nameof(NativeRenderMatrix.M44)))
             .IsEqualTo(120);
+        await Assert.That(OffsetOf<NativeRenderClipPlane>(nameof(NativeRenderClipPlane.X)))
+            .IsEqualTo(0);
+        await Assert.That(OffsetOf<NativeRenderClipPlane>(nameof(NativeRenderClipPlane.W)))
+            .IsEqualTo(24);
 
-        await Assert.That(Unsafe.SizeOf<NativeRenderCamera>()).IsEqualTo(264);
-        await Assert.That(Marshal.SizeOf<NativeRenderCamera>()).IsEqualTo(264);
+        await Assert.That(Unsafe.SizeOf<NativeRenderCamera>()).IsEqualTo(528);
+        await Assert.That(Marshal.SizeOf<NativeRenderCamera>()).IsEqualTo(528);
         await Assert.That(OffsetOf<NativeRenderCamera>(nameof(NativeRenderCamera.StructSize)))
             .IsEqualTo(0);
         await Assert.That(OffsetOf<NativeRenderCamera>(nameof(NativeRenderCamera.Mode)))
@@ -31,12 +37,21 @@ public sealed class CameraAbiTests
             .IsEqualTo(8);
         await Assert.That(OffsetOf<NativeRenderCamera>(nameof(NativeRenderCamera.Projection)))
             .IsEqualTo(136);
+        await Assert.That(OffsetOf<NativeRenderCamera>(nameof(NativeRenderCamera.ClipPlaneCount)))
+            .IsEqualTo(264);
+        await Assert.That(OffsetOf<NativeRenderCamera>(nameof(NativeRenderCamera.ClipPlane0)))
+            .IsEqualTo(272);
+        await Assert.That(OffsetOf<NativeRenderCamera>(nameof(NativeRenderCamera.ClipPlane7)))
+            .IsEqualTo(496);
         await Assert.That(RuntimeHelpers.IsReferenceOrContainsReferences<NativeRenderCamera>())
             .IsFalse();
         await Assert.That(RuntimeHelpers.IsReferenceOrContainsReferences<NativeRenderMatrix>())
             .IsFalse();
+        await Assert.That(RuntimeHelpers.IsReferenceOrContainsReferences<NativeRenderClipPlane>())
+            .IsFalse();
         await Assert.That(ContainsManagedArray(typeof(NativeRenderCamera))).IsFalse();
         await Assert.That(ContainsManagedArray(typeof(NativeRenderMatrix))).IsFalse();
+        await Assert.That(ContainsManagedArray(typeof(NativeRenderClipPlane))).IsFalse();
     }
 
     [Test]
@@ -59,9 +74,17 @@ public sealed class CameraAbiTests
         var explicitIdentity = new NativeRenderCamera(new CameraState(
             Matrix4x4.Identity,
             Matrix4x4.Identity));
+        var clipped = new NativeRenderCamera(new CameraState(
+            view,
+            projection,
+            [
+                new Vector4(1, 2, 3, 4),
+                new Vector4(-1, -2, -3, -4),
+            ]));
 
-        await Assert.That(automatic.StructSize).IsEqualTo(264u);
+        await Assert.That(automatic.StructSize).IsEqualTo(528u);
         await Assert.That(automatic.Mode).IsEqualTo(CameraMode.Automatic);
+        await Assert.That(automatic.ClipPlaneCount).IsEqualTo(0u);
         await Assert.That(NativeBytesEqual(automatic, namedAutomatic)).IsTrue();
         await Assert.That(automatic.View.M11).IsEqualTo(0d);
         await Assert.That(automatic.View.M44).IsEqualTo(0d);
@@ -78,6 +101,40 @@ public sealed class CameraAbiTests
         await Assert.That(matrices.Projection.M14).IsEqualTo(20d);
         await Assert.That(matrices.Projection.M41).IsEqualTo(29d);
         await Assert.That(matrices.Projection.M44).IsEqualTo(32d);
+        await Assert.That(clipped.ClipPlaneCount).IsEqualTo(2u);
+        await Assert.That(clipped.ClipPlane0.X).IsEqualTo(1d);
+        await Assert.That(clipped.ClipPlane0.W).IsEqualTo(4d);
+        await Assert.That(clipped.ClipPlane1.X).IsEqualTo(-1d);
+        await Assert.That(clipped.ClipPlane1.W).IsEqualTo(-4d);
+        await Assert.That(clipped.ClipPlane2.X).IsEqualTo(0d);
+    }
+
+    [Test]
+    public async Task ExplicitCameraRejectsInvalidClipPlanes()
+    {
+        await Assert.That(
+            () => _ = new CameraState(
+                Matrix4x4.Identity,
+                Matrix4x4.Identity,
+                Enumerable.Repeat(Vector4.UnitX, CameraState.MaxClipPlanes + 1)))
+            .Throws<ArgumentOutOfRangeException>();
+
+        Vector4[] invalidValues =
+        [
+            new(float.NaN, 0, 0, 0),
+            new(0, float.PositiveInfinity, 0, 0),
+            new(0, 0, float.NegativeInfinity, 0),
+        ];
+
+        foreach (Vector4 invalidValue in invalidValues)
+        {
+            await Assert.That(
+                () => _ = new CameraState(
+                    Matrix4x4.Identity,
+                    Matrix4x4.Identity,
+                    [invalidValue]))
+                .Throws<ArgumentException>();
+        }
     }
 
     [Test]

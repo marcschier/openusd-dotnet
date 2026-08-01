@@ -16,10 +16,14 @@ internal readonly record struct ViewerCameraDescriptor(
 
 internal static class ViewerCameraEvidence
 {
-    internal const int PayloadSize = sizeof(uint) + (32 * sizeof(double));
+    internal const int PayloadSize =
+        sizeof(uint) + (32 * sizeof(double)) + sizeof(uint) + sizeof(uint) + (8 * 4 * sizeof(double));
 
     private const ulong FnvOffsetBasis = 14695981039346656037UL;
     private const ulong FnvPrime = 1099511628211UL;
+    private const int MatrixPayloadOffset = sizeof(uint);
+    private const int ClipPlaneCountOffset = MatrixPayloadOffset + (32 * sizeof(double));
+    private const int ClipPlanePayloadOffset = ClipPlaneCountOffset + sizeof(uint) + sizeof(uint);
 
     internal static CameraState CreateDeterministicExplicitCamera() =>
         new(
@@ -70,8 +74,14 @@ internal static class ViewerCameraEvidence
         {
             return false;
         }
-        if (bytes.Length != PayloadSize ||
-            BinaryPrimitives.ReadUInt32LittleEndian(bytes) != (uint)parsedMode ||
+        if (bytes.Length != PayloadSize)
+        {
+            return false;
+        }
+
+        uint clipPlaneCount = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(ClipPlaneCountOffset));
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes) != (uint)parsedMode ||
+            clipPlaneCount > CameraState.MaxClipPlanes ||
             !Convert.ToHexString(SHA256.HashData(bytes)).Equals(
                 signature,
                 StringComparison.OrdinalIgnoreCase))
@@ -79,11 +89,20 @@ internal static class ViewerCameraEvidence
             return false;
         }
 
-        for (int offset = sizeof(uint); offset < bytes.Length; offset += sizeof(double))
+        for (int offset = MatrixPayloadOffset;
+             offset < ClipPlaneCountOffset;
+             offset += sizeof(double))
         {
-            double value = BitConverter.Int64BitsToDouble(
-                (long)BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(offset)));
-            if (!double.IsFinite(value))
+            if (!IsFiniteDouble(bytes, offset))
+            {
+                return false;
+            }
+        }
+        for (int offset = ClipPlanePayloadOffset;
+             offset < ClipPlanePayloadOffset + (clipPlaneCount * 4 * sizeof(double));
+             offset += sizeof(double))
+        {
+            if (!IsFiniteDouble(bytes, offset))
             {
                 return false;
             }
@@ -98,10 +117,20 @@ internal static class ViewerCameraEvidence
 
     private static void WritePayload(CameraState camera, Span<byte> payload)
     {
+        payload.Clear();
         BinaryPrimitives.WriteUInt32LittleEndian(payload, (uint)camera.Mode);
         int offset = sizeof(uint);
         WriteMatrix(camera.View, payload, ref offset);
         WriteMatrix(camera.Projection, payload, ref offset);
+        BinaryPrimitives.WriteUInt32LittleEndian(payload[offset..], (uint)camera.ClipPlanes.Count);
+        offset += sizeof(uint) + sizeof(uint);
+        foreach (Vector4 plane in camera.ClipPlanes)
+        {
+            WriteDouble(plane.X, payload, ref offset);
+            WriteDouble(plane.Y, payload, ref offset);
+            WriteDouble(plane.Z, payload, ref offset);
+            WriteDouble(plane.W, payload, ref offset);
+        }
     }
 
     private static void WriteMatrix(
@@ -141,10 +170,6 @@ internal static class ViewerCameraEvidence
     private static ulong ComputeNativeSignature(CameraState camera)
     {
         ulong hash = Append(FnvOffsetBasis, (uint)camera.Mode);
-        if (camera.Mode != CameraMode.Matrices)
-        {
-            return hash;
-        }
 
         Span<byte> payload = stackalloc byte[PayloadSize];
         WritePayload(camera, payload);
@@ -156,15 +181,32 @@ internal static class ViewerCameraEvidence
         CameraMode mode)
     {
         ulong hash = Append(FnvOffsetBasis, (uint)mode);
-        if (mode != CameraMode.Matrices)
+        if (mode == CameraMode.Matrices)
         {
-            return hash;
+            for (int offset = MatrixPayloadOffset; offset < ClipPlaneCountOffset; offset += sizeof(ulong))
+            {
+                hash = Append(hash, BinaryPrimitives.ReadUInt64LittleEndian(payload[offset..]));
+            }
         }
-        for (int offset = sizeof(uint); offset < payload.Length; offset += sizeof(ulong))
+        uint clipPlaneCount = BinaryPrimitives.ReadUInt32LittleEndian(payload[ClipPlaneCountOffset..]);
+        if (clipPlaneCount != 0)
         {
-            hash = Append(hash, BinaryPrimitives.ReadUInt64LittleEndian(payload[offset..]));
+            hash = Append(hash, clipPlaneCount);
+            for (int offset = ClipPlanePayloadOffset;
+                 offset < ClipPlanePayloadOffset + (clipPlaneCount * 4 * sizeof(ulong));
+                 offset += sizeof(ulong))
+            {
+                hash = Append(hash, BinaryPrimitives.ReadUInt64LittleEndian(payload[offset..]));
+            }
         }
         return hash;
+    }
+
+    private static bool IsFiniteDouble(ReadOnlySpan<byte> bytes, int offset)
+    {
+        double value = BitConverter.Int64BitsToDouble(
+            (long)BinaryPrimitives.ReadUInt64LittleEndian(bytes[offset..]));
+        return double.IsFinite(value);
     }
 
     private static ulong Append(ulong hash, ulong value)

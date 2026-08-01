@@ -52,7 +52,7 @@ public sealed class StormPickingSourceContractTests
         await Assert.That(pickHeader).Contains("OPENUSD_RENDER_PICK_REQUEST_VERSION 1u");
         await Assert.That(pickHeader).Contains("OPENUSD_RENDER_PICK_RESULT_VERSION 1u");
         await Assert.That(pickHeader).Contains(
-            "static_assert(sizeof(openusd_render_pick_request) == 344)");
+            "static_assert(sizeof(openusd_render_pick_request) == 608)");
         await Assert.That(pickHeader).Contains(
             "static_assert(sizeof(openusd_render_pick_result) == 136)");
         await Assert.That(pickHeader).Contains(

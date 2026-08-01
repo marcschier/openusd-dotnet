@@ -24,9 +24,9 @@ public sealed class StormPickingTests
     public async Task NativePickLayoutsMatchTheVersionedCAbi()
     {
         await Assert.That(Unsafe.SizeOf<StormPickingInterop.NativePickRequest>())
-            .IsEqualTo(344);
+            .IsEqualTo(608);
         await Assert.That(Marshal.SizeOf<StormPickingInterop.NativePickRequest>())
-            .IsEqualTo(344);
+            .IsEqualTo(608);
         await Assert.That(Unsafe.SizeOf<StormPickingInterop.NativePickResult>())
             .IsEqualTo(136);
         await Assert.That(Unsafe.SizeOf<StormPickingInterop.NativePickInstanceContext>())

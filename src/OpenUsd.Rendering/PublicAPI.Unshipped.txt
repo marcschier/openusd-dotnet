@@ -5,8 +5,11 @@ OpenUsd.Rendering.CameraMode.Matrices = 1 -> OpenUsd.Rendering.CameraMode
 OpenUsd.Rendering.CameraState
 OpenUsd.Rendering.CameraState.CameraState() -> void
 OpenUsd.Rendering.CameraState.CameraState(System.Numerics.Matrix4x4 view, System.Numerics.Matrix4x4 projection) -> void
+OpenUsd.Rendering.CameraState.CameraState(System.Numerics.Matrix4x4 view, System.Numerics.Matrix4x4 projection, System.Collections.Generic.IEnumerable<System.Numerics.Vector4>! clipPlanes) -> void
+OpenUsd.Rendering.CameraState.ClipPlanes.get -> System.Collections.Generic.IReadOnlyList<System.Numerics.Vector4>!
 OpenUsd.Rendering.CameraState.Deconstruct(out System.Numerics.Matrix4x4 view, out System.Numerics.Matrix4x4 projection) -> void
 OpenUsd.Rendering.CameraState.Equals(OpenUsd.Rendering.CameraState other) -> bool
+const OpenUsd.Rendering.CameraState.MaxClipPlanes = 8 -> int
 OpenUsd.Rendering.CameraState.Mode.get -> OpenUsd.Rendering.CameraMode
 OpenUsd.Rendering.CameraState.Projection.get -> System.Numerics.Matrix4x4
 OpenUsd.Rendering.CameraState.View.get -> System.Numerics.Matrix4x4

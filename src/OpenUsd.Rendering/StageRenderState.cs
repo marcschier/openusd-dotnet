@@ -44,6 +44,11 @@ public enum CameraMode : uint
 /// </summary>
 public readonly record struct CameraState
 {
+    private readonly ImmutableArray<Vector4> _clipPlanes;
+
+    /// <summary>Gets the maximum number of camera clip planes accepted by the native ABI.</summary>
+    public const int MaxClipPlanes = 8;
+
     /// <summary>Initializes an explicit matrix camera.</summary>
     /// <param name="view">The world-to-view matrix.</param>
     /// <param name="projection">The view-to-clip projection matrix.</param>
@@ -51,7 +56,26 @@ public readonly record struct CameraState
     /// Either matrix contains a NaN or infinity value.
     /// </exception>
     public CameraState(Matrix4x4 view, Matrix4x4 projection)
+        : this(view, projection, Array.Empty<Vector4>())
     {
+    }
+
+    /// <summary>Initializes an explicit matrix camera with renderer clip planes.</summary>
+    /// <param name="view">The world-to-view matrix.</param>
+    /// <param name="projection">The view-to-clip projection matrix.</param>
+    /// <param name="clipPlanes">The view-space clipping plane equations.</param>
+    /// <exception cref="ArgumentException">
+    /// Either matrix or any clip plane contains a NaN or infinity value.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// More than <see cref="MaxClipPlanes"/> clip planes were supplied.
+    /// </exception>
+    public CameraState(
+        Matrix4x4 view,
+        Matrix4x4 projection,
+        IEnumerable<Vector4> clipPlanes)
+    {
+        ArgumentNullException.ThrowIfNull(clipPlanes);
         if (!IsFinite(view))
         {
             throw new ArgumentException(
@@ -65,9 +89,27 @@ public readonly record struct CameraState
                 nameof(projection));
         }
 
+        ImmutableArray<Vector4> planes = clipPlanes.ToImmutableArray();
+        if (planes.Length > MaxClipPlanes)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(clipPlanes),
+                $"A camera can contain at most {MaxClipPlanes} clip planes.");
+        }
+        foreach (Vector4 plane in planes)
+        {
+            if (!IsFinite(plane))
+            {
+                throw new ArgumentException(
+                    "Clip planes must contain only finite values.",
+                    nameof(clipPlanes));
+            }
+        }
+
         Mode = CameraMode.Matrices;
         View = view;
         Projection = projection;
+        _clipPlanes = planes;
     }
 
     /// <summary>Gets the automatic camera used for initial state.</summary>
@@ -82,12 +124,54 @@ public readonly record struct CameraState
     /// <summary>Gets the view-to-clip matrix when <see cref="Mode"/> is matrix-based.</summary>
     public Matrix4x4 Projection { get; }
 
+    /// <summary>Gets the view-space clipping plane equations.</summary>
+    public IReadOnlyList<Vector4> ClipPlanes =>
+        _clipPlanes.IsDefault ? Array.Empty<Vector4>() : _clipPlanes;
+
+    internal int ClipPlaneCount => _clipPlanes.IsDefault ? 0 : _clipPlanes.Length;
+
+    /// <inheritdoc/>
+    public bool Equals(CameraState other) =>
+        Mode == other.Mode &&
+        View.Equals(other.View) &&
+        Projection.Equals(other.Projection) &&
+        ClipPlaneCount == other.ClipPlaneCount &&
+        ClipPlanesEqual(other);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Mode);
+        hash.Add(View);
+        hash.Add(Projection);
+        for (int index = 0; index < ClipPlaneCount; index++)
+        {
+            hash.Add(GetClipPlane(index));
+        }
+        return hash.ToHashCode();
+    }
+
+    private bool ClipPlanesEqual(CameraState other)
+    {
+        for (int index = 0; index < ClipPlaneCount; index++)
+        {
+            if (GetClipPlane(index) != other.GetClipPlane(index))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>Deconstructs the explicit matrix values.</summary>
     public void Deconstruct(out Matrix4x4 view, out Matrix4x4 projection)
     {
         view = View;
         projection = Projection;
     }
+
+    internal Vector4 GetClipPlane(int index) => _clipPlanes[index];
 
     private static bool IsFinite(Matrix4x4 value) =>
         float.IsFinite(value.M11) &&
@@ -106,6 +190,12 @@ public readonly record struct CameraState
         float.IsFinite(value.M42) &&
         float.IsFinite(value.M43) &&
         float.IsFinite(value.M44);
+
+    private static bool IsFinite(Vector4 value) =>
+        float.IsFinite(value.X) &&
+        float.IsFinite(value.Y) &&
+        float.IsFinite(value.Z) &&
+        float.IsFinite(value.W);
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -158,12 +248,52 @@ internal readonly struct NativeRenderCamera
         Mode = camera.Mode;
         View = new NativeRenderMatrix(camera.View);
         Projection = new NativeRenderMatrix(camera.Projection);
+        ClipPlaneCount = checked((uint)camera.ClipPlaneCount);
+        Reserved0 = 0;
+        ClipPlane0 = GetClipPlane(camera, 0);
+        ClipPlane1 = GetClipPlane(camera, 1);
+        ClipPlane2 = GetClipPlane(camera, 2);
+        ClipPlane3 = GetClipPlane(camera, 3);
+        ClipPlane4 = GetClipPlane(camera, 4);
+        ClipPlane5 = GetClipPlane(camera, 5);
+        ClipPlane6 = GetClipPlane(camera, 6);
+        ClipPlane7 = GetClipPlane(camera, 7);
     }
 
     internal readonly uint StructSize;
     internal readonly CameraMode Mode;
     internal readonly NativeRenderMatrix View;
     internal readonly NativeRenderMatrix Projection;
+    internal readonly uint ClipPlaneCount;
+    internal readonly uint Reserved0;
+    internal readonly NativeRenderClipPlane ClipPlane0;
+    internal readonly NativeRenderClipPlane ClipPlane1;
+    internal readonly NativeRenderClipPlane ClipPlane2;
+    internal readonly NativeRenderClipPlane ClipPlane3;
+    internal readonly NativeRenderClipPlane ClipPlane4;
+    internal readonly NativeRenderClipPlane ClipPlane5;
+    internal readonly NativeRenderClipPlane ClipPlane6;
+    internal readonly NativeRenderClipPlane ClipPlane7;
+
+    private static NativeRenderClipPlane GetClipPlane(CameraState camera, int index) =>
+        index < camera.ClipPlaneCount ? new NativeRenderClipPlane(camera.GetClipPlane(index)) : default;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct NativeRenderClipPlane
+{
+    internal NativeRenderClipPlane(Vector4 value)
+    {
+        X = value.X;
+        Y = value.Y;
+        Z = value.Z;
+        W = value.W;
+    }
+
+    internal readonly double X;
+    internal readonly double Y;
+    internal readonly double Z;
+    internal readonly double W;
 }
 
 /// <summary>

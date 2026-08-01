@@ -270,10 +270,16 @@ for state in states:
         payload = base64.b64decode(get(state, "cameraPayload"), validate=True)
     except (KeyError, TypeError, ValueError) as error:
         raise SystemExit(f"Viewer camera payload is invalid: {error}")
-    if len(payload) != 260 or int.from_bytes(payload[:4], "little") != expected_mode:
+    if len(payload) != 524 or int.from_bytes(payload[:4], "little") != expected_mode:
         raise SystemExit("Viewer camera payload shape or mode is invalid.")
-    if not all(math.isfinite(item) for item in struct.unpack("<32d", payload[4:])):
+    clip_plane_count = int.from_bytes(payload[260:264], "little")
+    if clip_plane_count > 8:
+        raise SystemExit("Viewer camera payload contains too many clip planes.")
+    if not all(math.isfinite(item) for item in struct.unpack("<32d", payload[4:260])):
         raise SystemExit("Viewer camera payload contains non-finite values.")
+    clip_plane_end = 268 + (clip_plane_count * 4 * 8)
+    if clip_plane_count and not all(math.isfinite(item) for item in struct.unpack(f"<{clip_plane_count * 4}d", payload[268:clip_plane_end])):
+        raise SystemExit("Viewer camera payload contains non-finite clip plane values.")
     if hashlib.sha256(payload).hexdigest().upper() != get(state, "cameraSignature", ""):
         raise SystemExit("Viewer camera SHA-256 does not match its payload.")
     if not re.fullmatch(r"[0-9A-F]{16}", get(state, "nativeCameraSignature", "")):

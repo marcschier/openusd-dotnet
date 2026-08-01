@@ -742,6 +742,11 @@ openusd_status openusd_silk_session_sync(
         WriteError(error, camera_error);
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
+    if (camera->clip_plane_count != 0)
+    {
+        WriteError(error, "hdSilk does not support render camera clip planes.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
 
     return Guard(error, [&]()
     {
