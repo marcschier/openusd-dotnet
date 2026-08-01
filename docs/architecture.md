@@ -240,7 +240,7 @@ buffers, and selection crosses the ABI once as a packed update.
 ### Hydra to Silk
 
 `openusd_hdsilk` session ABI 4 registers the hdSilk Hydra plugin against the exact retained stage.
-Each sync returns a native-owned immutable page. Managed code validates page ABI 5, copies the page
+Each sync returns a native-owned immutable page. Managed code validates page ABI 8, copies the page
 bytes once, and releases the native page.
 
 The wire format is pointer-free and little-endian. Commands currently describe the frame,
@@ -251,7 +251,8 @@ Page ABI 3 made instance identity meaningful, so a retained mesh is keyed by
 the material binding, which is how authored normals, texture coordinates and arbitrary primvars
 travel without a further ABI bump. Page ABI 5 adds the material commands, whose scalar and texture
 parameter tables are keyed the same way, so supporting a further UsdPreviewSurface input needs a new
-parameter id rather than another bump.
+parameter id rather than another bump. Page ABI 8 keeps point-instancer prototype geometry in the
+instance-zero record and makes later records lightweight identity/transform references.
 
 Every attribute entry carries its authored primvar name, whatever its semantic, because a mesh may
 carry several texture coordinate sets and a `UsdUVTexture` reader selects one of them by name. A
@@ -266,11 +267,10 @@ than guessed, so a consumer sees an absent attribute instead of silently wrong d
 
 hdSilk creates mesh Rprims, an `extComputation` Sprim so skinned points can be pulled from computed
 primvars, a material Sprim that resolves a bound UsdPreviewSurface network, and a point instancer
-that resolves one record per instance. Page ABI 5 still duplicates prototype points and indices in
-each instance record. The managed Silk resource cache detects same-path, same-geometry instance
-records and shares one uploaded vertex/index buffer across their per-instance uniform buffers, but
-the wire still needs a later ABI redesign before native pages carry one prototype plus a transform
-array. A network hdSilk does not understand is still published, marked unsupported with empty tables,
+that resolves one record per instance. The managed Silk resource cache shares one uploaded
+vertex/index buffer across the per-instance uniform buffers, and ABI 8 avoids duplicating the
+prototype's points, indices, subprim mapping, material path and attributes on the wire. A network
+hdSilk does not understand is still published, marked unsupported with empty tables,
 so the consumer can diagnose it rather than silently approximate it. A prim that cannot be serialized
 is skipped and counted rather than aborting the page, so a single malformed prim cannot blank an
 entire frame.

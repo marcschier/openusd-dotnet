@@ -649,6 +649,11 @@ carries its own fully resolved transform. Consumers must therefore key retained 
 rather than by path alone. A `MESH_REMOVE` retires exactly one such identity, so a shrinking instancer emits one
 removal per dropped instance, and a selected path highlights all of its instances.
 
+Page ABI v8 stops repeating prototype geometry for those point-instancer records. Instance zero
+still carries the full mesh payload and transform; later records keep the same fixed header but set
+the geometry, material-path, and attribute counts to zero and reuse instance zero's retained
+geometry, material path, and attributes.
+
 Page ABI v4 adds the vertex attribute table and the material binding, and is the transport every material
 feature depends on. Each `MESH_UPSERT` carries `attribute_count` entries of `(semantic, component_count,
 interpolation, name, element_count, float data)`, plus a `material_binding_hash` and the authoritative bound

@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Buffers.Binary;
 using global::Silk.NET.Vulkan;
 
 namespace OpenUsd.Rendering.Silk.Vulkan;
@@ -16,7 +17,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         {
             throw new ArgumentException("Vulkan shader modules require SPIR-V.", nameof(descriptor));
         }
-        byte[] code = descriptor.Code.ToArray();
+        byte[] code = ShouldPatchSlangInstanceIndexLowering()
+            ? PatchSlangInstanceIndexLowering(descriptor.Code.Span)
+            : descriptor.Code.ToArray();
         ShaderModule module = default;
         RegisterDependentObject();
         bool success = false;
@@ -54,6 +57,134 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             }
         }
     }
+
+    internal static byte[] PatchSlangInstanceIndexLowering(ReadOnlySpan<byte> source)
+    {
+        if (source.Length < 20 || source.Length % sizeof(uint) != 0)
+        {
+            throw new InvalidDataException("The SPIR-V module is truncated.");
+        }
+
+        byte[] code = source.ToArray();
+        const uint magic = 0x07230203;
+        const ushort opDecorate = 71;
+        const ushort opLoad = 61;
+        const ushort opISub = 130;
+        const ushort opCopyObject = 83;
+        const uint decorationBuiltIn = 11;
+        const uint builtInInstanceIndex = 43;
+        const uint builtInBaseInstance = 4425;
+        // Slang lowers SV_InstanceID for SPIR-V as InstanceIndex - BaseInstance,
+        // which adds DrawParameters. SwiftShader advertises the module but reads
+        // BaseInstance incorrectly here, collapsing every instance to slot zero.
+        // VulkanSilkGraphicsDevice never issues a non-zero firstInstance, so the
+        // InstanceIndex operand is the correct table index and keeps SwiftShader
+        // on the hardware-instanced draw path.
+        if (readWord(source, 0) != magic)
+        {
+            throw new InvalidDataException("The SPIR-V module has an invalid magic number.");
+        }
+
+        uint instanceIndexVariable = 0;
+        uint baseInstanceVariable = 0;
+        var loadedVariablesByResult = new Dictionary<uint, uint>();
+        var patchOffsets = new List<int>();
+        int wordOffset = 5;
+        int wordCount = source.Length / sizeof(uint);
+        while (wordOffset < wordCount)
+        {
+            uint firstWord = readWord(source, wordOffset);
+            ushort instructionWords = (ushort)(firstWord >> 16);
+            ushort opcode = (ushort)firstWord;
+            if (instructionWords == 0 || wordOffset + instructionWords > wordCount)
+            {
+                throw new InvalidDataException("The SPIR-V module contains a truncated instruction.");
+            }
+
+            if (opcode == opDecorate && instructionWords == 4 &&
+                readWord(source, wordOffset + 2) == decorationBuiltIn)
+            {
+                uint target = readWord(source, wordOffset + 1);
+                switch (readWord(source, wordOffset + 3))
+                {
+                    case builtInInstanceIndex:
+                        assignUniqueBuiltin(
+                            ref instanceIndexVariable,
+                            target,
+                            nameof(builtInInstanceIndex));
+                        break;
+                    case builtInBaseInstance:
+                        assignUniqueBuiltin(
+                            ref baseInstanceVariable,
+                            target,
+                            nameof(builtInBaseInstance));
+                        break;
+                }
+            }
+            else if (opcode == opLoad && instructionWords >= 4)
+            {
+                loadedVariablesByResult[readWord(source, wordOffset + 2)] =
+                    readWord(source, wordOffset + 3);
+            }
+            else if (opcode == opISub && instructionWords == 5)
+            {
+                uint leftOperand = readWord(source, wordOffset + 3);
+                uint rightOperand = readWord(source, wordOffset + 4);
+                if (loadedVariablesByResult.TryGetValue(leftOperand, out uint leftVariable) &&
+                    loadedVariablesByResult.TryGetValue(rightOperand, out uint rightVariable) &&
+                    leftVariable == instanceIndexVariable &&
+                    rightVariable == baseInstanceVariable)
+                {
+                    patchOffsets.Add(wordOffset);
+                }
+            }
+
+            wordOffset += instructionWords;
+        }
+        if (baseInstanceVariable == 0)
+        {
+            return code;
+        }
+        if (instanceIndexVariable == 0)
+        {
+            throw new InvalidDataException(
+                "The SPIR-V module references BaseInstance without InstanceIndex.");
+        }
+        if (patchOffsets.Count != 1)
+        {
+            throw new InvalidDataException(
+                "The SPIR-V module references BaseInstance but does not match " +
+                "Slang's expected InstanceIndex - BaseInstance lowering.");
+        }
+        int patchOffset = patchOffsets[0];
+        uint instanceLoad = readWord(code, patchOffset + 3);
+        writeWord(code, patchOffset, ((uint)4 << 16) | opCopyObject);
+        writeWord(code, patchOffset + 3, instanceLoad);
+        writeWord(code, patchOffset + 4, 1u << 16);
+        return code;
+
+        static void assignUniqueBuiltin(ref uint current, uint target, string name)
+        {
+            if (current != 0 && current != target)
+            {
+                throw new InvalidDataException(
+                    $"The SPIR-V module decorates multiple variables as {name}.");
+            }
+            current = target;
+        }
+
+        static uint readWord(ReadOnlySpan<byte> bytes, int offset) =>
+            BinaryPrimitives.ReadUInt32LittleEndian(
+                bytes.Slice(offset * sizeof(uint), sizeof(uint)));
+
+        static void writeWord(Span<byte> bytes, int offset, uint value) =>
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.Slice(offset * sizeof(uint), sizeof(uint)),
+                value);
+    }
+
+    private bool ShouldPatchSlangInstanceIndexLowering() =>
+        Capabilities.DeviceName.Contains("SwiftShader", StringComparison.OrdinalIgnoreCase);
 
     /// <inheritdoc/>
     public ISilkGraphicsBindingLayout CreateBindingLayout(

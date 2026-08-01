@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 7u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 8u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 4u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -119,6 +119,13 @@ extern "C" {
 /// ABI v7 extends FRAME with camera clip planes. Mesh and material command
 /// layouts are unchanged.
 ///
+/// ABI v8 stops duplicating point-instancer prototype geometry. Instance index
+/// zero still carries the full mesh payload and per-instance transform. Later
+/// records for the same path carry instance_id, instance_index, render state,
+/// display_color and transform, with point_count, index_count, triangle_count,
+/// material_path_byte_count and attribute_count all zero; consumers reuse the
+/// instance-zero prototype geometry, material path and attributes.
+///
 /// All offsets are from the command header's first byte. stable_id_hash is
 /// 64-bit FNV-1a over the exact path bytes and is an index only: path is the
 /// authoritative identity. prim_id is Hydra's explicit non-negative Rprim
@@ -132,13 +139,14 @@ extern "C" {
 /// when Hydra reports dirty topology.
 ///
 /// In ABI v3 instance identity is meaningful. A prim with no instancer
-/// publishes exactly one record with instance_id and instance_index both zero.
-/// A point-instanced prototype publishes one record per resolved instance:
-/// path stays the authoritative prototype path, instance_index is the
-/// zero-based instance ordinal, and instance_id is a stable non-zero
-/// diagnostic identifier for the owning instancer. Consumers must therefore
-/// key retained meshes by (path, instance_index) rather than by path alone.
-/// Each instance record carries its own fully resolved transform.
+/// publishes exactly one full record with instance_id and instance_index both
+/// zero. A point-instanced prototype publishes one record per resolved
+/// instance: path stays the authoritative prototype path, instance_index is the
+/// zero-based instance ordinal, and instance_id is a stable non-zero diagnostic
+/// identifier for the owning instancer. Consumers must therefore key retained
+/// meshes by (path, instance_index) rather than by path alone. Since ABI v8,
+/// only instance zero carries geometry; later records carry their own fully
+/// resolved transform and reuse instance zero's geometry.
 ///
 /// MESH_REMOVE (type = 3):
 ///   uint64 stable_id_hash

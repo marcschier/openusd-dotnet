@@ -144,9 +144,10 @@ inline int32_t HdSilkStableInstanceId(const std::string& instancerPath)
 }
 
 /// Identity of one published mesh record. A non-instanced Rprim publishes a
-/// single record at instance index 0; a point-instanced prototype publishes
-/// one record per resolved instance. The USD prim path stays authoritative and
-/// is shared by every instance of the same prototype.
+/// single full record at instance index 0; a point-instanced prototype publishes
+/// full geometry in instance zero and lightweight transform-only records for
+/// later instances. The USD prim path stays authoritative and is shared by every
+/// instance of the same prototype.
 struct HdSilkMeshKey
 {
     std::string path;

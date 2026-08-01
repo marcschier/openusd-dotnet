@@ -670,6 +670,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             &descriptorSet,
                             0,
                             null);
+                        const uint firstInstance = 0;
                         _api.CmdDrawIndexed(
                             nativeCommands,
                             command.IndexCount,
@@ -678,7 +679,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                                 : 1,
                             0,
                             0,
-                            0);
+                            firstInstance);
                         _api.CmdEndRenderPass(nativeCommands);
                         break;
                     case SilkGraphicsCommandKind.DrawSelectionOutlineFullscreenTriangle:

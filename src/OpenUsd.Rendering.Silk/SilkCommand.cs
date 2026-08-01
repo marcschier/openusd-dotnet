@@ -174,7 +174,6 @@ public readonly ref struct SilkMeshUpsertCommand
             throw new InvalidDataException(
                 "The mesh index count must match the primitive count and topology kind.");
         }
-
         long fixedAndArrays = FixedSize +
             _pathLength +
             ((long)_pointCount * 12) +
@@ -295,9 +294,9 @@ public readonly ref struct SilkMeshUpsertCommand
 
     /// <summary>
     /// Gets the zero-based instance ordinal. A prim with no instancer always
-    /// reports zero; a point-instanced prototype reports one record per
-    /// instance, so (<see cref="Path"/>, <see cref="InstanceIndex"/>) is the
-    /// retained identity.
+    /// reports zero; a point-instanced prototype reports one full record for
+    /// instance zero and lightweight records for later instances, so
+    /// (<see cref="Path"/>, <see cref="InstanceIndex"/>) is the retained identity.
     /// </summary>
     public int InstanceIndex => BinaryPrimitives.ReadInt32LittleEndian(_bytes[24..28]);
 
@@ -327,6 +326,19 @@ public readonly ref struct SilkMeshUpsertCommand
 
     /// <summary>Gets the number of emitted primitives and subprim mappings.</summary>
     public int TriangleCount => _triangleCount;
+
+    /// <summary>
+    /// Gets whether this ABI v8 record is a lightweight point-instance record
+    /// that reuses the full prototype geometry carried by instance index zero.
+    /// </summary>
+    internal bool IsInstanceReference =>
+        InstanceId != 0 &&
+        InstanceIndex > 0 &&
+        PointCount == 0 &&
+        IndexCount == 0 &&
+        TriangleCount == 0 &&
+        AttributeCount == 0 &&
+        MaterialPath.Length == 0;
 
     /// <summary>Gets a display-color component.</summary>
     public float GetDisplayColor(int index)

@@ -56,7 +56,9 @@ protected:
 
 private:
     /// Expands one published record into per-instance records. A prim with no
-    /// instancer yields exactly one record at instance index 0.
+    /// instancer yields exactly one full record at instance index 0. Point
+    /// instancers publish full prototype geometry only in instance zero; later
+    /// records carry identity and transform only.
     std::vector<HdSilkMeshRecord> _BuildInstanceRecords(
         HdSceneDelegate* sceneDelegate,
         HdSilkMeshRecord record);

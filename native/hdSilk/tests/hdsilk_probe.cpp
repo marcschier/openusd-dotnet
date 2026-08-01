@@ -51,7 +51,7 @@ struct ParsedAttribute
     float firstValue = 0.0F;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 4);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 7);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 8);
 
 openusd_render_camera AutomaticCamera()
 {
@@ -126,6 +126,9 @@ struct ParsedPage
     std::vector<std::string> upsert_paths;
     std::vector<std::string> remove_paths;
     std::vector<ParsedMeshIdentity> mesh_identities;
+    std::vector<uint32_t> mesh_point_counts;
+    std::vector<uint32_t> mesh_index_counts;
+    std::vector<uint32_t> mesh_attribute_counts;
     uint32_t material_upsert_count = 0;
     uint32_t material_remove_count = 0;
     bool material_valid = true;
@@ -398,6 +401,9 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                         reinterpret_cast<const char*>(data + offset + pathOffset),
                         pathSize);
                     result.upsert_paths.push_back(path);
+                    result.mesh_point_counts.push_back(pointCount);
+                    result.mesh_index_counts.push_back(indexCount);
+                    result.mesh_attribute_counts.push_back(attributeCount);
                     result.mesh_identities.push_back(
                         ParsedMeshIdentity{
                             path,
@@ -695,8 +701,8 @@ void ReplaceSingleMesh(
 }
 
 /// Point-instanced prototypes publish one record per instance under a shared
-/// authoritative path, and a shrinking instancer must retire exactly the
-/// instances it dropped.
+/// authoritative path. ABI v8 carries geometry only in instance zero, and a
+/// shrinking instancer must retire exactly the instances it dropped.
 bool VerifyInstancedSceneStateSerialization()
 {
     constexpr char InstancedPath[] = "/Instanced";
@@ -709,6 +715,13 @@ bool VerifyInstancedSceneStateSerialization()
         record.instanceId = 42;
         record.instanceIndex = index;
         record.transform[3] = static_cast<double>(index);
+        if (index != 0)
+        {
+            record.points.clear();
+            record.indices.clear();
+            record.triangleSubprims.clear();
+            record.attributes.clear();
+        }
         instances.push_back(std::move(record));
     }
     state.ReplaceMeshInstances(InstancedPath, std::move(instances));
@@ -731,7 +744,12 @@ bool VerifyInstancedSceneStateSerialization()
         if (identity.path != InstancedPath ||
             identity.instance_id != 42 ||
             identity.instance_index != index ||
-            identity.prim_id != 7)
+            identity.prim_id != 7 ||
+            first.mesh_point_counts[static_cast<size_t>(index)] !=
+                (index == 0 ? 3u : 0u) ||
+            first.mesh_index_counts[static_cast<size_t>(index)] !=
+                (index == 0 ? 3u : 0u) ||
+            first.mesh_attribute_counts[static_cast<size_t>(index)] != 0u)
         {
             return false;
         }
