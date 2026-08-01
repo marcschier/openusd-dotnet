@@ -209,7 +209,7 @@ commit and artifact set.
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 5 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 7 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 Instance identity has dedicated coverage. One case serializes a point-instanced scene and
@@ -572,10 +572,12 @@ camera-shift perturbation before it can use the 0.92 threshold.
 | Scene | Correct | Vertical flip | Horizontal mirror | Transpose | Shifted camera | Margin | Gate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `orientation-asymmetric` | 1.000000 | 0.592750 | 0.360720 | 0.563545 | 0.193474 | 0.407250 | yes, threshold 0.92 |
+| `clip-plane-asymmetric` | 1.000000 | 0.675442 | 0.195327 | 0.358933 | 0.563869 | 0.324558 | yes, threshold 0.92 |
 | `depth-overlap-multiprim` | 1.000000 | 0.718102 | 0.815667 | 0.737040 | 0.432669 | 0.184333 | yes, threshold 0.92 |
 | `material-normals-uv` | 1.000000 | 0.310060 | 0.253340 | 0.557888 | 0.216277 | 0.442112 | yes, threshold 0.92 |
 | `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | yes, threshold 0.92 |
 | `cards-draw-mode` | 1.000000 | 0.250000 | 0.418182 | 0.730337 | 0.431193 | 0.269663 | yes, threshold 0.92 |
+| `single-sided-winding` | 1.000000 | 0.000000 | 0.000000 | 0.450163 | 0.060213 | 0.549837 | yes, threshold 0.92 |
 | `bounds-draw-mode` | 1.000000 | 0.094421 | 0.231884 | 0.047847 | 0.243309 | 0.756691 | yes, threshold 0.92 |
 
 Storm and hdSilk agree **exactly** on coverage for every curated scene: raw IoU
@@ -588,14 +590,16 @@ captures -- while staying at least 0.18 clear of the nearest perturbation.
 
 Colour is now measured on every scene and reported as `maxChannelDelta` and
 `meanChannelDelta` over the agreed coverage, but it only **gates** a scene that
-binds a real `UsdPreviewSurface`. Today that is `material-normals-uv`, at a
-measured 16 maximum and 11.677 mean, gated at 32 and 24.
+binds a real `UsdPreviewSurface`. Today that is `material-normals-uv`, measured
+at 10 maximum and 3.793 mean after the eye-space position interpolant replaced
+the constant eye vector, gated at 16 and 8.
 
 | Shading | max delta | mean delta |
 | --- | ---: | ---: |
 | Debug `abs(normal) * tint` | 149 | 140.726 |
 | BRDF with unnormalized Lambert | 15 | 13.072 |
 | BRDF modelled on Storm's Preview.Lighting | **16** | **11.677** |
+| BRDF with per-pixel `normalize(-Peye)` | **10** | **3.793** |
 
 The BRDF is written against Storm's own `Preview.Lighting` rather than against
 the UsdPreviewSurface prose: the same Trowbridge-Reitz distribution including
@@ -604,22 +608,33 @@ its epsilon, the same Schlick-GGX geometric term with `k = alpha/2`, the same
 `(1-ior)/(1+ior)`, and the same `(1-F)` diffuse attenuation. Storm's
 `evaluateDirectDiffuse` returns `1/pi`, so an intensity of one is an irradiance
 of pi, which is what makes a fully lit Lambertian surface return its albedo.
-Normals are faced toward the eye before shading, as Storm's mesh shader does
-with `gl_FrontFacing`; without that a prim whose computed face normal points
-away renders black.
+Normals are faced with `SV_IsFrontFace`, as Storm's mesh shader does with
+`gl_FrontFacing`; without that a prim whose computed face normal points away
+renders black. hdSilk also interpolates eye-space position and uses Storm's
+per-pixel `normalize(-Peye)` eye vector for the specular lobe.
 
-The remaining residual is entirely the specular lobe, and its cause is known:
-hdSilk uses a constant eye vector of (0,0,1) where Storm uses a per-pixel
-`normalize(-Peye)` from the interpolated eye-space position. Supplying that
-needs a new interpolant across every permutation, so it is deliberately left as
-follow-up rather than smuggled into the threshold. The gate is set above the
-measured value rather than at it, and is proven to fail if tightened to 8.
+The previous constant-eye residual was 16 max / 11.677 mean. The remaining
+10 max / 3.793 mean residual is below the tightened 16 / 8 gate with headroom.
 
-The other three scenes bind no material, so Storm shades them through its own
+The other scenes bind no material, so Storm shades them through its own
 fallback -- which is markedly brighter and which hdSilk does not reproduce.
-Their colour deltas sit near 88 and are recorded as evidence, not gated. Making
+Their colour deltas are recorded as evidence, not gated. Making
 them colour-gateable means binding materials to them, which is a scene change
 rather than a renderer change.
+
+### A measured gap, now closed: clip planes
+
+`test-assets/parity/parity-clip-plane-asymmetric.usda` pairs a large lobe that
+straddles an eye-space clip plane with an anchor mesh that must survive. The
+harness supplies plane `(1, 0, 0, 0.12)`, and Storm and hdSilk agree exactly at
+3907 covered pixels. That confirms the sign convention used by both renderers:
+discard when `dot(plane.xyz, Peye) + plane.w < 0`.
+
+Correct adjusted IoU is 1.000000. The closest perturbation is the vertical flip
+at 0.675442, so the measured margin is **0.324558** and the scene gates at 0.92.
+Deliberately disabling hdSilk clip-plane upload made the candidate draw the
+rejected lobe too: adjusted IoU fell to **0.554411**, candidate coverage rose
+from 3907 to 7186 pixels, and the gate failed red before the change was reverted.
 
 ### A measured gap, now closed: authored double-sidedness
 

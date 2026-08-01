@@ -32,10 +32,6 @@ public sealed class OpenUsdSilkSession : IDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_handle.IsClosed || _handle.IsInvalid, this);
-            if (camera.ClipPlaneCount != 0)
-            {
-                throw new NotSupportedException("hdSilk does not support camera clip planes yet.");
-            }
             return OpenUsdSilkRuntime.Sync(
                 _handle.DangerousGetHandle(),
                 width,

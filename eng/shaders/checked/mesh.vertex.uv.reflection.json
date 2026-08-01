@@ -231,6 +231,160 @@
         "elementStride": 80,
         "size": null
       }
+    },
+    {
+      "name": "frameParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 8,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 8,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": "FrameParameters",
+          "fields": [
+            {
+              "name": "clipToEye",
+              "type": {
+                "kind": "matrix",
+                "rowCount": 4,
+                "columnCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 64,
+                "elementStride": 0,
+                "matrixStride": 16,
+                "matrixLayout": "row-major"
+              }
+            },
+            {
+              "name": "clipPlaneCount",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "uint32"
+                }
+              },
+              "layout": {
+                "offset": 64,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "clipPlanes",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 80,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 208,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": "FrameParameters",
+          "fields": [
+            {
+              "name": "clipToEye",
+              "type": {
+                "kind": "matrix",
+                "rowCount": 4,
+                "columnCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 64,
+                "elementStride": 0,
+                "matrixStride": 16,
+                "matrixLayout": "row-major"
+              }
+            },
+            {
+              "name": "clipPlaneCount",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "uint32"
+                }
+              },
+              "layout": {
+                "offset": 64,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "clipPlanes",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 80,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 208,
+        "size": null
+      }
     }
   ],
   "stageInputs": [
@@ -318,13 +472,30 @@
       }
     },
     {
+      "name": "eyePosition",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 1,
+        "systemValue": false
+      },
+      "location": 0,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
       "name": "normal",
       "semantic": {
         "name": "NORMAL",
         "index": 0,
         "systemValue": false
       },
-      "location": 0,
+      "location": 1,
       "type": {
         "kind": "vector",
         "elementCount": 3,
@@ -341,7 +512,7 @@
         "index": 0,
         "systemValue": false
       },
-      "location": 1,
+      "location": 2,
       "type": {
         "kind": "vector",
         "elementCount": 4,
@@ -358,7 +529,7 @@
         "index": 0,
         "systemValue": false
       },
-      "location": 2,
+      "location": 3,
       "type": {
         "kind": "vector",
         "elementCount": 2,

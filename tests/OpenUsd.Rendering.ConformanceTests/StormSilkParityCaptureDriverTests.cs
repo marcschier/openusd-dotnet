@@ -24,17 +24,14 @@ public sealed class StormSilkParityCaptureDriverTests
 
     /// <summary>
     /// Largest single-channel difference tolerated on a scene that binds a real
-    /// UsdPreviewSurface, measured at 16 with a mean of 11.677 once the BRDF was
-    /// modelled on Storm's own Preview.Lighting. The residual is our constant eye
-    /// vector against Storm's per-pixel normalize(-Peye), which shifts the specular
-    /// lobe; it is entirely specular, so the headroom sits above it rather than
-    /// pretending the two agree exactly. The debug shading this replaced measured
-    /// 149, and an unnormalized Lambert measured 197, so the gate has ample room to
-    /// catch a real regression while the eye-vector work is outstanding.
+    /// UsdPreviewSurface, measured at 10 with a mean of 3.793 after hdSilk switched
+    /// to Storm's per-pixel normalize(-Peye) eye vector. The previous constant-eye
+    /// residual was 16 max / 11.677 mean; this leaves deliberate headroom while
+    /// catching the specular-lobe regression the eye-space interpolant closed.
     /// </summary>
-    private const byte MaximumShadedChannelDelta = 32;
+    private const byte MaximumShadedChannelDelta = 16;
 
-    private const double MaximumShadedMeanChannelDelta = 24;
+    private const double MaximumShadedMeanChannelDelta = 8;
     private static readonly JsonSerializerOptions EvidenceJsonOptions = new() { WriteIndented = true };
 
     [Test]
@@ -50,7 +47,7 @@ public sealed class StormSilkParityCaptureDriverTests
         var jsonEvidence = new List<object>();
         foreach (ParityScene scene in CreateScenes())
         {
-            if (!TryCreateInput(scene.StagePath, out ParityCaptureInput input))
+            if (!TryCreateInput(scene, out ParityCaptureInput input))
             {
                 return;
             }
@@ -159,7 +156,7 @@ public sealed class StormSilkParityCaptureDriverTests
         var failures = new List<string>();
         foreach (ParityScene scene in CreateScenes())
         {
-            if (!TryCreateInput(scene.StagePath, out ParityCaptureInput input))
+            if (!TryCreateInput(scene, out ParityCaptureInput input))
             {
                 return;
             }
@@ -359,11 +356,11 @@ public sealed class StormSilkParityCaptureDriverTests
         Console.WriteLine($"Skipping {reason}: {detail}");
     }
 
-    private static bool TryCreateInput(string stagePath, out ParityCaptureInput input)
+    private static bool TryCreateInput(ParityScene scene, out ParityCaptureInput input)
     {
         try
         {
-            input = CreateInput(stagePath);
+            input = CreateInput(scene);
             return true;
         }
         catch (Exception exception)
@@ -375,16 +372,16 @@ public sealed class StormSilkParityCaptureDriverTests
             return false;
         }
     }
-    private static ParityCaptureInput CreateInput(string stagePath)
+    private static ParityCaptureInput CreateInput(ParityScene scene)
     {
         RenderHeadlight headlight = OpenUsdStormRuntime.Headlight;
         return new ParityCaptureInput(
             ResolvePluginPath(),
-            stagePath,
+            scene.StagePath,
             Width,
             Height,
             TimeCode,
-            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity),
+            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, scene.ClipPlanes),
             new SilkColor(0, 0, 0, 1),
             headlight);
     }
@@ -522,6 +519,9 @@ public sealed class StormSilkParityCaptureDriverTests
             CreateVulkanBackend(),
         ];
 
+    private static float[] PlaneValues(Vector4 plane) =>
+        [plane.X, plane.Y, plane.Z, plane.W];
+
     [SupportedOSPlatform("windows")]
     private static SilkParityBackend CreateD3D12WarpBackend() =>
         new("D3D12 WARP", static () => D3D12SilkGraphicsDevice.Create(useWarp: true));
@@ -563,6 +563,21 @@ public sealed class StormSilkParityCaptureDriverTests
                     "rasterization differences on other backends while staying 0.33 " +
                     "clear of the nearest perturbation.",
                 RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
+                "clip-plane-asymmetric",
+                Path.Combine(assetRoot, "parity-clip-plane-asymmetric.usda"),
+                "Eye-space clip plane removes a substantial asymmetric lobe while an anchor survives.",
+                ColorComparisonReady: false,
+                GateEnabled: true,
+                GateReason:
+                    "1.000000 correct adjusted IoU against a 0.675442 worst perturbation, " +
+                    "a 0.324558 margin. The plane (1,0,0,0.12) confirms Storm's " +
+                    "dot(plane.xyz, Peye) + plane.w < 0 discard convention while " +
+                    "removing an asymmetric lobe and leaving the anchor geometry.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                ClipPlanes = [new Vector4(1, 0, 0, 0.12f)],
+            },
             new ParityScene(
                 "depth-overlap-multiprim",
                 Path.Combine(assetRoot, "parity-depth-overlap-multiprim.usda"),
@@ -658,7 +673,7 @@ public sealed class StormSilkParityCaptureDriverTests
     {
         Matrix4x4 view = camera.View;
         view.M41 += x;
-        return new CameraState(view, camera.Projection);
+        return new CameraState(view, camera.Projection, camera.ClipPlanes);
     }
 
     private static ParityImage MirrorVertically(ParityImage image)
@@ -732,6 +747,7 @@ public sealed class StormSilkParityCaptureDriverTests
             "test-assets\\parity\\parity-material-normals-uv.usda",
             "test-assets\\parity\\parity-point-instancer-cluster.usda",
             "test-assets\\parity\\parity-single-sided-winding.usda",
+            "test-assets\\parity\\parity-clip-plane-asymmetric.usda",
             "test-assets\\parity\\parity-cards-draw-mode.usda",
             "test-assets\\parity\\parity-bounds-draw-mode.usda",
             "docs\\testing.md",
@@ -778,6 +794,7 @@ public sealed class StormSilkParityCaptureDriverTests
             input.TimeCode,
             view = MatrixValues(input.Camera.View),
             projection = MatrixValues(input.Camera.Projection),
+            clipPlanes = input.Camera.ClipPlanes.Select(PlaneValues).ToArray(),
             clearColor = new[]
             {
                 input.ClearColor.Red,
@@ -937,5 +954,8 @@ public sealed class StormSilkParityCaptureDriverTests
         bool ColorComparisonReady,
         bool GateEnabled,
         string GateReason,
-        double RecommendedMinimumAdjustedIou);
+        double RecommendedMinimumAdjustedIou)
+    {
+        public IReadOnlyList<Vector4> ClipPlanes { get; init; } = [];
+    }
 }

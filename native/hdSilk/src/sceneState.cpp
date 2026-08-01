@@ -158,7 +158,11 @@ void ValidatePath(const std::string& path)
 void AppendFrame(std::vector<uint8_t>& buffer, const HdSilkFrameState& frame)
 {
     std::vector<uint8_t> payload;
-    payload.reserve(8 + sizeof(frame.viewMatrix) + sizeof(frame.projectionMatrix));
+    payload.reserve(
+        16 +
+        sizeof(frame.viewMatrix) +
+        sizeof(frame.projectionMatrix) +
+        sizeof(frame.clipPlanes));
     AppendI32(payload, frame.width);
     AppendI32(payload, frame.height);
     for (double value : frame.viewMatrix)
@@ -168,6 +172,15 @@ void AppendFrame(std::vector<uint8_t>& buffer, const HdSilkFrameState& frame)
     for (double value : frame.projectionMatrix)
     {
         AppendF64(payload, value);
+    }
+    AppendU32(payload, frame.clipPlaneCount);
+    AppendU32(payload, 0);
+    for (const auto& plane : frame.clipPlanes)
+    {
+        for (double value : plane)
+        {
+            AppendF64(payload, value);
+        }
     }
     AppendCommand(buffer, OPENUSD_SILK_COMMAND_FRAME, payload);
 }

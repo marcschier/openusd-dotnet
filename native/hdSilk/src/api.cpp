@@ -10,6 +10,7 @@
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/gf/vec2i.h"
 #include "pxr/base/gf/vec3d.h"
+#include "pxr/base/gf/vec4d.h"
 #include "pxr/base/plug/plugin.h"
 #include "pxr/base/plug/registry.h"
 #include "pxr/base/tf/errorMark.h"
@@ -742,12 +743,6 @@ openusd_status openusd_silk_session_sync(
         WriteError(error, camera_error);
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
-    if (camera->clip_plane_count != 0)
-    {
-        WriteError(error, "hdSilk does not support render camera clip planes.");
-        return OPENUSD_STATUS_INVALID_ARGUMENT;
-    }
-
     return Guard(error, [&]()
     {
         const std::shared_ptr<SilkSessionState> state =
@@ -818,6 +813,15 @@ openusd_status openusd_silk_session_sync(
             UsdImagingGLRenderParams parameters;
             parameters.frame = UsdTimeCode(time_code);
             parameters.showRender = true;
+            parameters.clipPlanes.reserve(camera->clip_plane_count);
+            for (uint32_t plane = 0; plane < camera->clip_plane_count; ++plane)
+            {
+                parameters.clipPlanes.emplace_back(
+                    camera->clip_planes[plane][0],
+                    camera->clip_planes[plane][1],
+                    camera->clip_planes[plane][2],
+                    camera->clip_planes[plane][3]);
+            }
             state->engine->Render(state->stage->GetPseudoRoot(), parameters);
             if (!mark.IsClean())
             {
@@ -840,6 +844,11 @@ openusd_status openusd_silk_session_sync(
             {
                 HdSilkFlattenMatrix(viewMatrix, frame.viewMatrix);
             }
+            frame.clipPlaneCount = camera->clip_plane_count;
+            std::memcpy(
+                frame.clipPlanes,
+                camera->clip_planes,
+                sizeof(frame.clipPlanes));
             state->sceneState->SetFrame(frame);
 
             auto result = std::make_unique<openusd_silk_page>();

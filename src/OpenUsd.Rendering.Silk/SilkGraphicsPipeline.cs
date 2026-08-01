@@ -378,7 +378,7 @@ public readonly record struct SilkBindingLayoutDescriptor(
     SilkShaderStageVisibility Visibility)
 {
     /// <summary>
-    /// Gets the material slots, empty for the checked SceneParameters layout.
+    /// Gets the additional material, instance, and frame-resource slots.
     /// </summary>
     /// <remarks>
     /// Additive on purpose. The renderer-neutral device interface is implemented by
@@ -391,6 +391,9 @@ public readonly record struct SilkBindingLayoutDescriptor(
 
     /// <summary>The binding slot carrying the surface constants and the light.</summary>
     public const uint SurfaceParametersBinding = 7;
+
+    /// <summary>The binding slot carrying per-frame projection and clip-plane data.</summary>
+    public const uint FrameParametersBinding = 8;
 
     /// <summary>Creates the checked mesh SceneParameters layout.</summary>
     public static SilkBindingLayoutDescriptor SceneParameters => new(
@@ -416,7 +419,17 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 SurfaceParametersBinding,
                 SilkBindingKind.StorageBuffer,
                 0,
-                SilkShaderStageVisibility.Fragment)
+                SilkShaderStageVisibility.Fragment),
+            // Per-frame data is deliberately separate from the per-material
+            // surface block: duplicating clip planes into every material buffer
+            // would turn camera state into material churn, while SceneParameters
+            // is pinned at 80 bytes and mirrored by the instance table.
+            new(
+                0,
+                FrameParametersBinding,
+                SilkBindingKind.StorageBuffer,
+                0,
+                SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment)
         ]
     };
 

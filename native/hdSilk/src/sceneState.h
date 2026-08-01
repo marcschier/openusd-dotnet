@@ -48,6 +48,8 @@ struct HdSilkFrameState
         0.0, 1.0, 0.0, 0.0,
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0};
+    uint32_t clipPlaneCount = 0;
+    double clipPlanes[8][4] = {};
 };
 
 /// One entry in the ABI v4 vertex attribute table. Data is always float and

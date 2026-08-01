@@ -27,7 +27,7 @@
     "data": 8,
     "dataCapabilities": 511,
     "storm": 6,
-    "renderCommands": 6
+    "renderCommands": 7
   },
   "vulkanSdk": {
     "version": "1.4.321.0",
