@@ -3016,6 +3016,13 @@ openusd_status openusd_decode_image_rgba8(
             return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
 
+        // ABI_OUTPUT_INITIALIZATION
+        // The caller supplies struct_size and version, but the decoded extent is
+        // an output and must be defined on every failure path, not only on
+        // success, so a caller that ignores the status never reads a stale size.
+        info->width = 0;
+        info->height = 0;
+
         return Guard(error, [&]()
         {
             TfErrorMark mark;
