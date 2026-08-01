@@ -107,7 +107,7 @@ public readonly ref struct SilkFrameCommand
 /// </summary>
 public readonly ref struct SilkMeshUpsertCommand
 {
-    private const int FixedSize = 216;
+    private const int FixedSize = 224;
     private const int AttributeFixedSize = 20;
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly string _path;
@@ -127,12 +127,12 @@ public readonly ref struct SilkMeshUpsertCommand
             throw new InvalidDataException("The mesh command is truncated.");
         }
 
-        _pathLength = ReadCount(bytes, 40, "path byte");
-        _pointCount = ReadCount(bytes, 44, "point");
-        _indexCount = ReadCount(bytes, 48, "index");
-        _triangleCount = ReadCount(bytes, 52, "triangle");
-        _materialPathLength = ReadCount(bytes, 208, "material path byte");
-        _attributeCount = ReadCount(bytes, 212, "attribute");
+        _pathLength = ReadCount(bytes, 48, "path byte");
+        _pointCount = ReadCount(bytes, 52, "point");
+        _indexCount = ReadCount(bytes, 56, "index");
+        _triangleCount = ReadCount(bytes, 60, "triangle");
+        _materialPathLength = ReadCount(bytes, 216, "material path byte");
+        _attributeCount = ReadCount(bytes, 220, "attribute");
         if ((long)_triangleCount * 3 != _indexCount)
         {
             throw new InvalidDataException(
@@ -168,8 +168,26 @@ public readonly ref struct SilkMeshUpsertCommand
         {
             throw new InvalidDataException("The mesh topology revision must be non-zero.");
         }
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes[40..44]) > 1)
+        {
+            throw new InvalidDataException("The mesh double-sided flag is unsupported.");
+        }
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes[44..48]) >
+            (uint)SilkMeshCullStyle.FrontUnlessDoubleSided)
+        {
+            throw new InvalidDataException("The mesh cull style is unsupported.");
+        }
 
-        _path = SilkWireFormat.DecodePath(bytes.Slice(FixedSize, _pathLength));
+        try
+        {
+            _path = SilkWireFormat.DecodePath(bytes.Slice(FixedSize, _pathLength));
+        }
+        catch (ArgumentOutOfRangeException exception)
+        {
+            throw new InvalidDataException(
+                "The mesh command size does not match its declared counts.",
+                exception);
+        }
         int subprimOffset = checked(
             FixedSize + _pathLength + (_pointCount * 12) + (_indexCount * sizeof(uint)));
         for (int triangle = 0; triangle < _triangleCount; triangle++)
@@ -260,6 +278,13 @@ public readonly ref struct SilkMeshUpsertCommand
     public ulong TopologyRevision =>
         BinaryPrimitives.ReadUInt64LittleEndian(_bytes[32..40]);
 
+    /// <summary>Gets whether Hydra resolved the mesh as double-sided.</summary>
+    public bool DoubleSided => BinaryPrimitives.ReadUInt32LittleEndian(_bytes[40..44]) != 0;
+
+    /// <summary>Gets Hydra's resolved cull style for this mesh.</summary>
+    public SilkMeshCullStyle CullStyle =>
+        (SilkMeshCullStyle)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[44..48]);
+
     /// <summary>Gets the USD prim path.</summary>
     public string Path => _path;
 
@@ -277,7 +302,7 @@ public readonly ref struct SilkMeshUpsertCommand
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, 4);
-        return BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(56 + (index * 4), 4));
+        return BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(64 + (index * 4), 4));
     }
 
     /// <summary>Gets an element from the row-major local-to-world transform.</summary>
@@ -285,7 +310,7 @@ public readonly ref struct SilkMeshUpsertCommand
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, 16);
-        return BinaryPrimitives.ReadDoubleLittleEndian(_bytes.Slice(72 + (index * 8), 8));
+        return BinaryPrimitives.ReadDoubleLittleEndian(_bytes.Slice(80 + (index * 8), 8));
     }
 
     /// <summary>Gets one point component, where component is 0=x, 1=y, 2=z.</summary>
@@ -329,7 +354,7 @@ public readonly ref struct SilkMeshUpsertCommand
 
     /// <summary>Gets the FNV-1a material path hash used only as an identity index.</summary>
     public ulong MaterialBindingHash =>
-        BinaryPrimitives.ReadUInt64LittleEndian(_bytes[200..208]);
+        BinaryPrimitives.ReadUInt64LittleEndian(_bytes[208..216]);
 
     /// <summary>Gets the number of vertex attributes carried with the mesh.</summary>
     public int AttributeCount => _attributeCount;
@@ -382,6 +407,28 @@ public enum SilkAttributeInterpolation
 
     /// <summary>One element per emitted vertex.</summary>
     Vertex = 1
+}
+
+/// <summary>Hydra cull style resolved for one mesh.</summary>
+public enum SilkMeshCullStyle
+{
+    /// <summary>No authored preference.</summary>
+    DontCare = 0,
+
+    /// <summary>Do not cull faces.</summary>
+    Nothing = 1,
+
+    /// <summary>Cull back-facing triangles.</summary>
+    Back = 2,
+
+    /// <summary>Cull front-facing triangles.</summary>
+    Front = 3,
+
+    /// <summary>Cull back-facing triangles only when the mesh is single-sided.</summary>
+    BackUnlessDoubleSided = 4,
+
+    /// <summary>Cull front-facing triangles only when the mesh is single-sided.</summary>
+    FrontUnlessDoubleSided = 5
 }
 
 /// <summary>

@@ -10,12 +10,9 @@
 
 def Xform "World"
 {
-    # Single sided, and wound so the camera sees the back face. Both renderers
-    # currently rasterize with culling disabled -- Storm because openusd_hydra
-    # states CULL_STYLE_NOTHING, hdSilk because its mesh pipeline uses no cull
-    # mode -- so this silhouette must appear in full. If either side starts
-    # culling back faces without the other, this scene's coverage collapses and
-    # the parity gate fails, which is the point of it.
+    # Single sided, and wound so the camera sees the back face. Storm culls this
+    # to zero coverage; hdSilk must do the same by honoring Hydra's resolved mesh
+    # double-sidedness and cull style.
     def Mesh "BackFacingPennant"
     {
         uniform bool doubleSided = 0

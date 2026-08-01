@@ -621,7 +621,10 @@ public sealed partial class MetalSilkGraphicsDevice
                                     encoder.SetDepthStencilState(
                                         currentPipeline.DepthState);
                                 }
-                                encoder.SetCullMode(MTLCullMode.None);
+                                encoder.SetFrontFacingWinding(MTLWinding.CounterClockwise);
+                                encoder.SetCullMode(currentPipeline is null
+                                    ? MTLCullMode.None
+                                    : ToMetalCullMode(currentPipeline.Descriptor.CullMode));
                                 encoder.SetViewport(new MTLViewport
                                 {
                                     originX = currentViewport.Value.X,
@@ -950,6 +953,14 @@ public sealed partial class MetalSilkGraphicsDevice
             binding.Sampler!.Sampler,
             binding.Binding);
     }
+
+    private static MTLCullMode ToMetalCullMode(SilkCullMode cullMode) =>
+        cullMode switch
+        {
+            SilkCullMode.None => MTLCullMode.None,
+            SilkCullMode.Back => MTLCullMode.Back,
+            _ => throw new ArgumentOutOfRangeException(nameof(cullMode))
+        };
 
     private static void EncodeSelectionOutlineDraw(
         MTLCommandBuffer commandBuffer,

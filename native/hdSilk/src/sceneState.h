@@ -74,6 +74,8 @@ struct HdSilkMeshRecord
     int32_t instanceIndex = 0;
     uint32_t topologyKind = 1;
     uint64_t topologyRevision = 0;
+    uint32_t doubleSided = 1;
+    uint32_t cullStyle = 4;
     double transform[16] = {
         1.0, 0.0, 0.0, 0.0,
         0.0, 1.0, 0.0, 0.0,

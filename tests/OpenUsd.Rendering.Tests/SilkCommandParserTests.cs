@@ -28,6 +28,8 @@ public sealed class SilkCommandParserTests
         int instanceIndex;
         SilkTopologyKind topologyKind;
         ulong topologyRevision;
+        bool doubleSided;
+        SilkMeshCullStyle cullStyle;
         int triangleCount;
         int subprim;
         {
@@ -57,6 +59,8 @@ public sealed class SilkCommandParserTests
             instanceIndex = meshCommand.InstanceIndex;
             topologyKind = meshCommand.TopologyKind;
             topologyRevision = meshCommand.TopologyRevision;
+            doubleSided = meshCommand.DoubleSided;
+            cullStyle = meshCommand.CullStyle;
             triangleCount = meshCommand.TriangleCount;
             subprim = meshCommand.GetTriangleSubprim(0);
         }
@@ -73,6 +77,8 @@ public sealed class SilkCommandParserTests
         await Assert.That(instanceIndex).IsEqualTo(0);
         await Assert.That(topologyKind).IsEqualTo(SilkTopologyKind.TriangleList);
         await Assert.That(topologyRevision).IsEqualTo(1ul);
+        await Assert.That(doubleSided).IsTrue();
+        await Assert.That(cullStyle).IsEqualTo(SilkMeshCullStyle.BackUnlessDoubleSided);
         await Assert.That(triangleCount).IsEqualTo(1);
         await Assert.That(subprim).IsEqualTo(17);
     }
@@ -206,16 +212,16 @@ public sealed class SilkCommandParserTests
 
         byte[] invalidPathCount = CreateMeshCommand();
         BinaryPrimitives.WriteUInt32LittleEndian(
-            invalidPathCount.AsSpan(40),
+            invalidPathCount.AsSpan(48),
             uint.MaxValue);
 
         byte[] invalidTriangleCount = CreateMeshCommand();
         BinaryPrimitives.WriteUInt32LittleEndian(
-            invalidTriangleCount.AsSpan(52),
+            invalidTriangleCount.AsSpan(60),
             2);
 
         byte[] invalidUtf8 = CreateMeshCommand();
-        invalidUtf8[216] = 0xFF;
+        invalidUtf8[224] = 0xFF;
 
         // Page ABI v3 makes instance identity meaningful, so a non-zero
         // instancer id is legitimate. A negative instance ordinal is not.
@@ -520,8 +526,8 @@ public sealed class SilkCommandParserTests
                 Array.Resize(ref page, random.Next(page.Length));
                 break;
             case 5:
-                int variableCountOffset = meshOffset + (random.Next(2) == 0 ? 48 : 52);
-                uint variableCount = variableCountOffset == meshOffset + 48 ? 4u : 2u;
+                int variableCountOffset = meshOffset + (random.Next(2) == 0 ? 56 : 60);
+                uint variableCount = variableCountOffset == meshOffset + 56 ? 4u : 2u;
                 BinaryPrimitives.WriteUInt32LittleEndian(
                     page.AsSpan(variableCountOffset, sizeof(uint)),
                     variableCount);
@@ -532,10 +538,10 @@ public sealed class SilkCommandParserTests
             case 7:
                 page = RemoveAt(
                     page,
-                    random.Next(meshOffset + 216, page.Length));
+                    random.Next(meshOffset + 224, page.Length));
                 break;
             case 8:
-                page[meshOffset + 216 + random.Next("/Cube".Length)] = 0xff;
+                page[meshOffset + 224 + random.Next("/Cube".Length)] = 0xff;
                 break;
             case 9:
                 uint[] commandCounts = [0, 1, 3, uint.MaxValue];
@@ -602,7 +608,7 @@ public sealed class SilkCommandParserTests
         int attributeBytes = authoredNormals is null
             ? 0
             : 20 + (normalElements * 3 * sizeof(float));
-        int size = 216 +
+        int size = 224 +
             path.Length +
             (pointCount * 12) +
             (indexCount * 4) +
@@ -620,20 +626,24 @@ public sealed class SilkCommandParserTests
         BinaryPrimitives.WriteUInt64LittleEndian(
             bytes.AsSpan(32, 8),
             topologyRevision);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40, 4), (uint)path.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44, 4), pointCount);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48, 4), indexCount);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52, 4), (uint)triangleCount);
-        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(56, 4), 0.7f);
-        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(60, 4), 0.7f);
-        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(64, 4), 0.75f);
-        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(68, 4), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40, 4), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(44, 4),
+            (uint)SilkMeshCullStyle.BackUnlessDoubleSided);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48, 4), (uint)path.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52, 4), pointCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56, 4), indexCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(60, 4), (uint)triangleCount);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(64, 4), 0.7f);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(68, 4), 0.7f);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(72, 4), 0.75f);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(76, 4), 1);
         for (int i = 0; i < 16; i++)
         {
-            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(72 + (i * 8), 8), i % 5 == 0 ? 1 : 0);
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(80 + (i * 8), 8), i % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 216);
-        int pointsOffset = 216 + path.Length;
+        path.CopyTo(bytes, 224);
+        int pointsOffset = 224 + path.Length;
         for (int i = 0; i < pointCount * 3; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(pointsOffset + (i * 4), 4), i);
@@ -651,10 +661,10 @@ public sealed class SilkCommandParserTests
                 checked((uint)triangleSubprims[i]));
         }
         BinaryPrimitives.WriteUInt64LittleEndian(
-            bytes.AsSpan(200, 8),
+        bytes.AsSpan(208, 8),
             material.Length == 0 ? 0 : SilkWireFormat.ComputeStableHash(materialPath));
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(208, 4), (uint)material.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(212, 4), (uint)attributeCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(216, 4), (uint)material.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(220, 4), (uint)attributeCount);
         int materialOffset = subprimsOffset + (triangleCount * sizeof(uint));
         material.CopyTo(bytes, materialOffset);
         if (authoredNormals is not null)

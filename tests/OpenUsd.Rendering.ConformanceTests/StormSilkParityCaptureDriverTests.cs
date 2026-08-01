@@ -85,8 +85,11 @@ public sealed class StormSilkParityCaptureDriverTests
                 string metrics = FormatMetrics(scene, input, first.Storm, firstSilk, result);
                 evidence.Add(metrics);
                 Console.WriteLine(metrics);
-                await Assert.That(result.ReferenceCoveragePixels).IsGreaterThan(0);
-                await Assert.That(result.CandidateCoveragePixels).IsGreaterThan(0);
+                if (scene.RequiresPositiveCoverage)
+                {
+                    await Assert.That(result.ReferenceCoveragePixels).IsGreaterThan(0);
+                    await Assert.That(result.CandidateCoveragePixels).IsGreaterThan(0);
+                }
                 if (scene.GateEnabled)
                 {
                     await Assert.That(result.Passed)
@@ -211,7 +214,7 @@ public sealed class StormSilkParityCaptureDriverTests
             string summary = FormatPerturbation(scene, correct, vertical, horizontal, transposed, shiftedResult);
             evidence.Add(summary);
             Console.WriteLine(summary);
-            if (scene.GateEnabled)
+            if (scene.GateEnabled && scene.RequiresPerturbationDiscrimination)
             {
                 if (vertical.Passed)
                 {
@@ -601,13 +604,23 @@ public sealed class StormSilkParityCaptureDriverTests
                     "resize it, so a wrong instance transform collapses the score instead " +
                     "of nudging it.",
                 RecommendedMinimumAdjustedIou: 0.92),
-
+            new ParityScene(
+                "single-sided-winding",
+                Path.Combine(assetRoot, "parity-single-sided-winding.usda"),
+                "Back-facing single-sided pennant proves authored double-sidedness is honoured.",
+                ColorComparisonReady: false,
+                GateEnabled: true,
+                GateReason:
+                    "After hdSilk culls single-sided back faces, Storm and hdSilk both produce " +
+                    "zero coverage: 1.000000 correct adjusted IoU. The four geometric " +
+                    "perturbations also measure 1.000000 because the intentionally empty " +
+                    "candidate remains empty; the non-vacuous regression signal is broken " +
+                    "culling, which draws 2279 candidate pixels against zero Storm pixels " +
+                    "and drops adjusted IoU to 0.000000.",
+                RecommendedMinimumAdjustedIou: 0.99,
+                RequiresPositiveCoverage: false,
+                RequiresPerturbationDiscrimination: false),
         ];
-        // parity-single-sided-winding.usda is authored and measured but not
-        // registered yet. Storm draws nothing for it and hdSilk draws it in full,
-        // so registering it would fail the driver's requirement that a reference
-        // capture contain coverage. It becomes the acceptance test the moment
-        // hdSilk honours authored double-sidedness; see mesh-parity-cull-style.
     }
 
     private static CameraState ShiftCamera(CameraState camera, float x)
@@ -891,5 +904,7 @@ public sealed class StormSilkParityCaptureDriverTests
         bool ColorComparisonReady,
         bool GateEnabled,
         string GateReason,
-        double RecommendedMinimumAdjustedIou);
+        double RecommendedMinimumAdjustedIou,
+        bool RequiresPositiveCoverage = true,
+        bool RequiresPerturbationDiscrimination = true);
 }
