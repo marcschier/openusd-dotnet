@@ -1,6 +1,6 @@
 # OpenUsd documentation
 
-OpenUsd is a private `0.2.0-alpha` project. Start with the route that matches what you are trying to
+OpenUsd is a private `0.3.0-alpha` project. Start with the route that matches what you are trying to
 do, then follow the deeper design or evidence documents only as needed.
 
 ## Choose your route

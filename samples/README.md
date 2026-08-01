@@ -69,7 +69,7 @@ To validate package consumption, first build the pre-alpha packages into a repos
 
 ```xml
 <PropertyGroup>
-  <OpenUsdPackageVersion>0.2.0-alpha</OpenUsdPackageVersion>
+  <OpenUsdPackageVersion>0.3.0-alpha</OpenUsdPackageVersion>
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />

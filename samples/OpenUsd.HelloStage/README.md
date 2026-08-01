@@ -61,7 +61,7 @@ To test repository-built packages instead, use one property for the matching pre
 
 ```xml
 <PropertyGroup>
-  <OpenUsdPackageVersion>0.2.0-alpha</OpenUsdPackageVersion>
+  <OpenUsdPackageVersion>0.3.0-alpha</OpenUsdPackageVersion>
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />
