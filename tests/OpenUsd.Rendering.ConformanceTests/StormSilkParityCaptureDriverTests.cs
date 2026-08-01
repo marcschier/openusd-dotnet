@@ -887,6 +887,19 @@ public sealed class StormSilkParityCaptureDriverTests
                     "of nudging it.",
                 RecommendedMinimumAdjustedIou: 0.92),
             new ParityScene(
+                "points-asymmetric",
+                Path.Combine(assetRoot, "parity-points-asymmetric.usda"),
+                "UsdGeomPoints reaches hdSilk as point-list topology.",
+                ColorComparisonReady: false,
+                GateEnabled: true,
+                GateReason:
+                    "1.000000 correct adjusted IoU against a 0.436893 worst " +
+                    "perturbation, a 0.563107 margin. The scene authors constant " +
+                    "width 0.01 because Storm's default point width is world-space " +
+                    "and intentionally covers most of the frame; at this measured " +
+                    "width both Storm and hdSilk rasterize one pixel per point.",
+                RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
                 "cards-draw-mode",
                 Path.Combine(assetRoot, "parity-cards-draw-mode.usda"),
                 "UsdGeomModelAPI cards proxy geometry travels as an ordinary mesh Rprim.",

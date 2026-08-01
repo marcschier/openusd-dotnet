@@ -548,9 +548,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             var inputAssembly = new PipelineInputAssemblyStateCreateInfo
             {
                 SType = StructureType.PipelineInputAssemblyStateCreateInfo,
-                Topology = topologyKind == SilkTopologyKind.LineList
-                    ? PrimitiveTopology.LineList
-                    : PrimitiveTopology.TriangleList
+                Topology = topologyKind switch
+                {
+                    SilkTopologyKind.LineList => PrimitiveTopology.LineList,
+                    SilkTopologyKind.PointList => PrimitiveTopology.PointList,
+                    _ => PrimitiveTopology.TriangleList
+                }
             };
             var viewportState = new PipelineViewportStateCreateInfo
             {

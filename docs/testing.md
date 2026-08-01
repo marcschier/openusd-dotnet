@@ -824,6 +824,22 @@ Matching by construction is what made that possible. Because none of the three
 backends has a line width state to get wrong, there was no constant left to
 tune, and the agreement is exact rather than approximate.
 
+### Points: default width is world-space; one-pixel points are gated
+
+`UsdGeomPoints` was absent from `SUPPORTED_RPRIM_TYPES`, so UsdImaging skipped
+points exactly as it once skipped draw-mode basis curves. Measuring Storm first
+showed an important constraint: with no authored widths, Storm treats the default
+point width as world-space and `parity-points-asymmetric.usda` covered 14589
+pixels, while a GPU point-list implementation covered 109. The admitted scene
+therefore authors constant `widths = [0.01]`; at that width Storm, D3D12 WARP,
+and Vulkan SwiftShader all cover exactly **109** pixels.
+
+The gated result is adjusted IoU **1.000000** against a 0.436893 worst
+perturbation, a **0.563107** margin. Deliberately removing `points` from the
+hdSilk supported Rprim list made the scene draw nothing: correct fell to
+0.000000, the weakest margin was 0.000000, and the gate failed before the change
+was reverted.
+
 ### Draw modes: cards, bounds, and origin are gated
 
 `parity-cards-draw-mode.usda` gates the mesh half. Two things about it are

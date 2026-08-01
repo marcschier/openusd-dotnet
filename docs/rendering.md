@@ -647,13 +647,13 @@ non-zero Metal stage draws, and rejects every `STAGE_DRAW_BLOCKED` diagnostic. A
 switching, package, shader, CTest, and test results. Platform execution remains unverified until that workflow has run
 successfully on the corresponding hosted runner.
 
-The fallback walking skeleton is a real Hydra renderer plugin, `hdSilk`. Hydra creates mesh Rprims, drives dirty-bit
-`Sync` calls, triangulates topology, captures canonical `displayColor`, and executes a render pass that captures
-camera/frame state. The plugin serializes native-owned little-endian pages containing `FRAME`, dirty `MESH_UPSERT`,
-and `MESH_REMOVE` commands; a matrix-mode `FRAME` contains the exact 32 double values supplied by the caller. Page ABI
-v2 made each mesh path authoritative and added the collision-checked 64-bit path hash, explicit Hydra prim ID,
-topology kind/revision, triangle count, and one authored USD face index per emitted triangle. Dirty topology rebuilds
-the `primitiveParams` mapping and increments its revision; property-only updates preserve it.
+The fallback walking skeleton is a real Hydra renderer plugin, `hdSilk`. Hydra creates mesh, basis-curves, and points
+Rprims, drives dirty-bit `Sync` calls, triangulates mesh topology, captures canonical `displayColor`, and executes a
+render pass that captures camera/frame state. The plugin serializes native-owned little-endian pages containing `FRAME`,
+dirty `MESH_UPSERT`, and `MESH_REMOVE` commands; a matrix-mode `FRAME` contains the exact 32 double values supplied by
+the caller. Page ABI v2 made each path authoritative and added the collision-checked 64-bit path hash, explicit Hydra
+prim ID, topology kind/revision, primitive count, and one authored USD subprim index per emitted primitive. Dirty mesh
+topology rebuilds the `primitiveParams` mapping and increments its revision; property-only updates preserve it.
 
 Page ABI v3 turns the previously reserved instance fields into real identity. A prim with no instancer publishes
 exactly one record with `instance_id` and `instance_index` both zero. A point-instanced prototype publishes one
@@ -687,6 +687,10 @@ hdSilk publishes a de-indexed triangle list for that mesh so every non-constant 
 one element per emitted vertex. If a primvar cannot be resolved exactly, the attribute is omitted and
 the managed consumer keeps its existing fallback.
 
+Constant, vertex, varying, uniform, and face-varying mesh primvars are therefore covered by the
+native resolver. Varying primvars must have one value per point after Hydra resolution. Remaining
+gaps are not hidden behind guessed indexing: unsupported or length-mismatched values are omitted.
+
 Authored normals are the first attribute to use it, and they close a real gap. Before v4 the renderer
 recomputed area-weighted vertex normals from topology because the page could not carry them, so authored
 normals were silently discarded. hdSilk now publishes them when it can resolve them directly onto emitted
@@ -694,13 +698,20 @@ vertices; when it cannot, it publishes none and the renderer computes them exact
 this delegate guessing at a re-indexing it cannot verify. Both paths still normalise and reject a degenerate
 normal, so an authored zero or non-finite value never reaches the GPU.
 
+Points use the same command stream with additive `POINT_LIST` topology. The measured Storm rule is:
+without authored widths, `UsdGeomPoints` uses a world-space default width that can cover most of a
+parity frame; with constant width `0.01` in `parity-points-asymmetric.usda`, Storm, D3D12 WARP, and
+Vulkan SwiftShader all rasterize exactly one pixel per point. hdSilk currently supports that measured
+one-pixel point-list subset and does not implement wide point splats.
+
 Other mesh state is deliberately narrower. hdSilk now removes invisible Rprims
 from retained state and republishes them when visibility becomes inherited again.
 Purpose is filtered by the `UsdImagingGLRenderParams` render-purpose flags rather
 than carried on the page. The managed D3D12, Vulkan, and Metal mesh pipelines all
-use less-equal depth with depth writes and no back-face culling, so authored
-`doubleSided`/cull style and draw modes are not represented yet. Camera clipping
-travels through the view/projection matrices; arbitrary clip planes do not.
+use less-equal depth with depth writes. Authored `doubleSided` and cull style are
+represented for mesh topology; line and point batches are always unculled because
+they carry no facing. Camera clipping travels through the view/projection matrices;
+arbitrary clip planes do not.
 
 hdSilk registers `extComputation` as a supported Sprim type. Without that Sprim, Hydra never creates the computation
 that UsdSkel depends on, and pulling computed primvars for a skinned mesh faults. Skinned points are therefore read
@@ -710,9 +721,9 @@ deformed positions can never be indexed against a stale point array.
 Serialization isolates failures per prim. A record whose points, indices, or triangle mapping do not validate is
 skipped with a warning and counted by a rejected-mesh counter instead of aborting the page, so one malformed prim in
 a production asset cannot blank an entire frame. Indices are 32-bit end to end across the wire, retained managed
-state, and the D3D12, Vulkan, and Metal backends; the previous 65,536-vertex ceiling is gone. hdSilk still supports
-only mesh Rprims, and its surface shading remains an absolute-normal debug visualization tinted by `displayColor`
-until the material and lighting parity slices land.
+state, and the D3D12, Vulkan, and Metal backends; the previous 65,536-vertex ceiling is gone. hdSilk surface shading
+remains an absolute-normal debug visualization tinted by `displayColor` until the material and lighting parity slices
+land.
 
 Managed `SilkMeshData` owns defensive immutable copies indexed by authoritative path and explicit prim ID; hashes are
 path-derived secondary indexes and different paths with the same hash are rejected. It computes one deterministic 64-bit

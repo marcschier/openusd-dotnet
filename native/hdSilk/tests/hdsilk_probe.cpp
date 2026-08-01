@@ -382,11 +382,14 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     attributes.push_back(std::move(parsed));
                 }
                 const uint32_t indicesPerPrimitive =
-                    topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ? 2u : 3u;
+                    topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST
+                        ? 3u
+                        : (topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ? 2u : 1u);
                 sizesValid = sizesValid &&
                     expectedSize == byteSize &&
                     (topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ||
-                     topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST) &&
+                     topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ||
+                     topologyKind == OPENUSD_SILK_TOPOLOGY_POINT_LIST) &&
                     static_cast<uint64_t>(triangleCount) *
                         indicesPerPrimitive == indexCount &&
                     doubleSided <= 1 &&
@@ -417,7 +420,8 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                         stableHash == ComputeStableHash(path) &&
                         primId >= 0 &&
                         (topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ||
-                         topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST) &&
+                         topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ||
+                         topologyKind == OPENUSD_SILK_TOPOLOGY_POINT_LIST) &&
                         topologyRevision != 0;
                     result.instance_fields_zero &=
                         instanceId == 0 && instanceIndex == 0;

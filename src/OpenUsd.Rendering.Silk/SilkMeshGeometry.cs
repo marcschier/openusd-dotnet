@@ -34,6 +34,7 @@ internal static class SilkMeshGeometryBuilder
         {
             SilkTopologyKind.TriangleList => 3,
             SilkTopologyKind.LineList => 2,
+            SilkTopologyKind.PointList => 1,
             _ => throw InvalidMesh(mesh, "topology kind is unsupported")
         };
         if (meshIndices.Length % indicesPerPrimitive != 0)

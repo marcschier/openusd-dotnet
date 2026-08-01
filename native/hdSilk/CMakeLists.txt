@@ -13,6 +13,8 @@ set(OPENUSD_HDSILK_SOURCES
     src/material.cpp
     src/mesh.h
     src/mesh.cpp
+    src/points.h
+    src/points.cpp
     src/renderDelegate.h
     src/renderDelegate.cpp
     src/rendererPlugin.h

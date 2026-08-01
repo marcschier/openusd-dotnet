@@ -674,10 +674,12 @@ public sealed partial class MetalSilkGraphicsDevice
                                         materialBindings);
                                 }
                                 encoder.DrawIndexedPrimitives(
-                                    currentPipeline?.Descriptor.TopologyKind ==
-                                        SilkTopologyKind.LineList
-                                            ? MTLPrimitiveType.Line
-                                            : MTLPrimitiveType.Triangle,
+                                    currentPipeline?.Descriptor.TopologyKind switch
+                                    {
+                                        SilkTopologyKind.LineList => MTLPrimitiveType.Line,
+                                        SilkTopologyKind.PointList => MTLPrimitiveType.Point,
+                                        _ => MTLPrimitiveType.Triangle
+                                    },
                                     command.IndexCount,
                                     MTLIndexType.UInt32,
                                     indexBuffer.Buffer,

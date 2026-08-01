@@ -1,14 +1,13 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-#ifndef HDSILK_BASIS_CURVES_H
-#define HDSILK_BASIS_CURVES_H
+#ifndef HDSILK_POINTS_H
+#define HDSILK_POINTS_H
 
 #include "pxr/pxr.h"
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/vt/array.h"
-#include "pxr/imaging/hd/basisCurves.h"
-#include "pxr/imaging/hd/basisCurvesTopology.h"
+#include "pxr/imaging/hd/points.h"
 
 #include "sceneState.h"
 
@@ -19,16 +18,11 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 struct HdSilkMeshRecord;
 
-/// HdSilkBasisCurves supports the linear/segmented curves emitted by
-/// UsdImagingGLDrawModeAdapter for origin and bounds draw modes. It publishes
-/// each segment through the existing mesh scene-state path as line-list topology
-/// so the page ABI stays unchanged while matching Storm's measured one-pixel
-/// line rasterization.
-class HdSilkBasisCurves final : public HdBasisCurves
+class HdSilkPoints final : public HdPoints
 {
 public:
-    explicit HdSilkBasisCurves(SdfPath const& id);
-    ~HdSilkBasisCurves() override = default;
+    explicit HdSilkPoints(SdfPath const& id);
+    ~HdSilkPoints() override = default;
 
     HdDirtyBits GetInitialDirtyBitsMask() const override;
 
@@ -47,17 +41,13 @@ private:
         HdSceneDelegate* sceneDelegate,
         HdSilkMeshRecord record);
 
-    HdBasisCurvesTopology _topology;
     GfMatrix4d _transform;
     VtVec3fArray _points;
-    float _width = 1.0f;
     GfVec3f _displayColor{0.7f};
-    uint64_t _topologyRevision = 0;
-    bool _topologySupported = false;
-    bool _widthSupported = true;
+    uint64_t _topologyRevision = 1;
 
-    HdSilkBasisCurves(const HdSilkBasisCurves&) = delete;
-    HdSilkBasisCurves& operator=(const HdSilkBasisCurves&) = delete;
+    HdSilkPoints(const HdSilkPoints&) = delete;
+    HdSilkPoints& operator=(const HdSilkPoints&) = delete;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

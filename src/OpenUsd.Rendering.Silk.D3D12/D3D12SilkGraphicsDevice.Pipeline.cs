@@ -291,9 +291,12 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 InputLayout = new InputLayoutDesc(
                     elements,
                     checked((uint)descriptor.VertexLayout.Attributes.Count)),
-                PrimitiveTopologyType = descriptor.TopologyKind == SilkTopologyKind.LineList
-                    ? PrimitiveTopologyType.Line
-                    : PrimitiveTopologyType.Triangle,
+                PrimitiveTopologyType = descriptor.TopologyKind switch
+                {
+                    SilkTopologyKind.LineList => PrimitiveTopologyType.Line,
+                    SilkTopologyKind.PointList => PrimitiveTopologyType.Point,
+                    _ => PrimitiveTopologyType.Triangle
+                },
                 NumRenderTargets = 1,
                 DSVFormat = Format.FormatD32Float,
                 SampleDesc = new SampleDesc(1, 0)

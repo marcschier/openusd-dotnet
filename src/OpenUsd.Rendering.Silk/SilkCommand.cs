@@ -167,6 +167,7 @@ public readonly ref struct SilkMeshUpsertCommand
         {
             SilkTopologyKind.TriangleList => 3,
             SilkTopologyKind.LineList => 2,
+            SilkTopologyKind.PointList => 1,
             _ => throw new InvalidDataException("The mesh topology kind is unsupported.")
         };
         if ((long)_triangleCount * indicesPerPrimitive != _indexCount)
@@ -983,7 +984,10 @@ public enum SilkTopologyKind : uint
     TriangleList = 1,
 
     /// <summary>Two indices and one authored segment mapping per line.</summary>
-    LineList = 2
+    LineList = 2,
+
+    /// <summary>One index and one authored point mapping per point.</summary>
+    PointList = 3
 }
 
 internal static class SilkWireFormat
