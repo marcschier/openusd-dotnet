@@ -1,0 +1,50 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 1
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    # UsdImaging replaces this component's geometry with card proxy geometry,
+    # inserted as an ordinary mesh Rprim, which hdSilk already renders.
+    #
+    # The inner mesh is deliberately a triangle occupying well under half the
+    # model extent, while the cards are the extent's box faces. Viewed down -Z
+    # the front face projects to the full extent rectangle, so applying the draw
+    # mode changes coverage substantially. An earlier version of this scene used
+    # an inner quad matching the extent exactly and measured identically whether
+    # or not the draw mode applied -- it could not have failed.
+    # The extent is deliberately off-centre in both axes and strongly non-square.
+    # A card is an axis-aligned rectangle, so a centred near-square one is almost
+    # invariant under mirroring and transposition -- the first version of this
+    # scene measured a weakest perturbation margin of 0.012661 and could not be
+    # gated on shape at all, even though the correct score was exactly 1.000000.
+    def Xform "Card" (
+        prepend apiSchemas = ["GeomModelAPI"]
+        kind = "component"
+    )
+    {
+        token model:drawMode = "cards"
+        bool model:applyDrawMode = 1
+        token model:cardGeometry = "box"
+        float3[] extentsHint = [(-0.86, -0.14, -0.30), (0.34, 0.63, 0.30)]
+
+        def Mesh "Inner"
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            point3f[] points = [
+                (-0.78, -0.08, 0), (-0.20, -0.08, 0), (-0.78, 0.34, 0)
+            ]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            color3f[] primvars:displayColor = [(0.80, 0.35, 0.55)]
+            uniform token primvars:displayColor:interpolation = "constant"
+        }
+    }
+}

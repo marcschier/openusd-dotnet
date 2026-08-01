@@ -577,6 +577,7 @@ sides for llvmpipe, WARP, and SwiftShader variation.
 | `depth-overlap-multiprim` | 1.000000 | 0.718102 | 0.815667 | 0.737040 | 0.432669 | 0.184333 | yes, threshold 0.92 |
 | `material-normals-uv` | 1.000000 | 0.310060 | 0.253340 | 0.557888 | 0.216277 | 0.442112 | yes, threshold 0.92 |
 | `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | yes, threshold 0.92 |
+| `cards-draw-mode` | 1.000000 | 0.250000 | 0.418182 | 0.730337 | 0.431193 | 0.269663 | yes, threshold 0.92 |
 
 Storm and hdSilk agree **exactly** on coverage for every curated scene: raw IoU
 1.000000 with identical coverage counts. All four scenes are gated at 0.92,
@@ -646,6 +647,34 @@ and already measured.
 Worth stating plainly: every currently gated scene declares `doubleSided = 1`,
 so the existing suite could never have found this. It took a scene written
 specifically to discriminate on the attribute.
+
+### Draw modes: cards already work, origin and bounds do not
+
+`UsdImagingGLDrawModeAdapter` inserts the `cards` draw mode as an ordinary
+**mesh** Rprim and `origin`/`bounds` as **basisCurves**. hdSilk declares only
+`mesh` in `SUPPORTED_RPRIM_TYPES`, so UsdImaging warns and skips the latter two
+entirely. Measured on the same model:
+
+| `model:drawMode` | Storm | hdSilk |
+| --- | ---: | ---: |
+| `cards` | 3773 | 3773 |
+| `bounds` | 276 | **0** |
+
+So cards was already at exact parity and had simply never been tested, while
+origin and bounds render nothing at all in hdSilk. The curves are
+`HdBasisCurvesTopology(linear, bezier, segmented)` -- independent line segments
+with widths -- so supporting them does not need a new page ABI command, RHI
+topology or pipeline: each segment tessellates into a two-triangle ribbon
+emitted as an ordinary mesh record.
+
+`parity-cards-draw-mode.usda` gates the half that works. Two things about it are
+deliberate. Its inner mesh is a small triangle rather than a quad matching the
+model extent, because the first version used a matching quad and measured
+identically whether or not the draw mode applied -- it could not have failed.
+And its extent is off-centre and strongly non-square, because a card is an
+axis-aligned rectangle: a centred near-square one measured a weakest
+perturbation margin of 0.012661, far below the 0.18 the harness requires, even
+though its correct score was exactly 1.000000.
 
 `material-normals-uv` was the last scene admitted. Once exact agreement removed
 the projection error, its remaining weakness was its own silhouette: a vertical

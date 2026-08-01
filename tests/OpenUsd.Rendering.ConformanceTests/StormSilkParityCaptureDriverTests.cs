@@ -601,7 +601,20 @@ public sealed class StormSilkParityCaptureDriverTests
                     "resize it, so a wrong instance transform collapses the score instead " +
                     "of nudging it.",
                 RecommendedMinimumAdjustedIou: 0.92),
-
+            new ParityScene(
+                "cards-draw-mode",
+                Path.Combine(assetRoot, "parity-cards-draw-mode.usda"),
+                "UsdGeomModelAPI cards proxy geometry travels as an ordinary mesh Rprim.",
+                ColorComparisonReady: false,
+                GateEnabled: true,
+                GateReason:
+                    "1.000000 correct adjusted IoU against a 0.730337 worst perturbation, " +
+                    "a 0.269663 margin. Cards proxy geometry reaches hdSilk as an ordinary " +
+                    "mesh, so this was already at parity and had simply never been tested. " +
+                    "The extent is off-centre and strongly non-square on purpose: a card is " +
+                    "an axis-aligned rectangle, and a centred near-square one measured a " +
+                    "0.012661 margin because mirroring barely changed it.",
+                RecommendedMinimumAdjustedIou: 0.92),
         ];
         // parity-single-sided-winding.usda is authored and measured but not
         // registered yet. Storm draws nothing for it and hdSilk draws it in full,
@@ -688,6 +701,7 @@ public sealed class StormSilkParityCaptureDriverTests
             "test-assets\\parity\\parity-material-normals-uv.usda",
             "test-assets\\parity\\parity-point-instancer-cluster.usda",
             "test-assets\\parity\\parity-single-sided-winding.usda",
+            "test-assets\\parity\\parity-cards-draw-mode.usda",
             "docs\\testing.md",
         ];
         var files = new List<object>();
