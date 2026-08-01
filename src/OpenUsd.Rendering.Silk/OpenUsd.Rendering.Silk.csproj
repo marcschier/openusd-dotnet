@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\OpenUsd.Interop\OpenUsd.Interop.csproj" />
     <ProjectReference Include="..\OpenUsd.Rendering\OpenUsd.Rendering.csproj" />
   </ItemGroup>
 

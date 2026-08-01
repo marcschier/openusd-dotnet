@@ -397,9 +397,11 @@ Backends differ in what they must keep alive, and the difference is deliberate:
   so the slot binding is used directly as the index within its own table, still validated against the
   layout.
 
-The checked mesh shader does not sample yet, so what conformance proves today is that binding a real
-texture and sampler is accepted end to end and leaves the draw byte-identical, and that the three
-rejection cases above throw. Sampling correctness arrives with the UsdPreviewSurface permutations.
+The checked mesh shader samples the declared UsdPreviewSurface map permutations. hdSilk decodes resolved
+texture assets through OpenUSD Hio, uploads one cached RGBA8 texture per asset/colour-space/parameter
+identity, and reuses backend samplers keyed by wrap/filter state. Texture upload is recorded before the
+rendering scope so all draw paths can bind every declared sampler/texture slot without relying on backend
+defaults; dirty material updates clear the retained texture cache rather than reusing stale assets.
 
 D3D12 binds the checked pick shaders through one generation-tagged RGBA8/D32 PSO. `SceneParameters`
 uses root CBV b0 and the mesh token base uses four 32-bit root constants at b1, so a draw does not

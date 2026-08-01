@@ -585,6 +585,7 @@ camera-shift perturbation before it can use the 0.92 threshold.
 | `clip-plane-asymmetric` | 1.000000 | 0.675442 | 0.195327 | 0.358933 | 0.563869 | 0.324558 | yes, threshold 0.92 |
 | `depth-overlap-multiprim` | 1.000000 | 0.718102 | 0.815667 | 0.737040 | 0.432669 | 0.184333 | yes, threshold 0.92 |
 | `material-normals-uv` | 1.000000 | 0.310060 | 0.253340 | 0.557888 | 0.216277 | 0.442112 | yes, threshold 0.92 |
+| `materials-textures` | 1.000000 | 0.781397 | 0.503618 | 0.422400 | 0.434662 | 0.218603 | yes, threshold 0.92 |
 | `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | yes, threshold 0.92 |
 | `cards-draw-mode` | 1.000000 | 0.250000 | 0.418182 | 0.730337 | 0.431193 | 0.269663 | yes, threshold 0.92 |
 | `single-sided-winding` | 1.000000 | 0.000000 | 0.000000 | 0.450163 | 0.060213 | 0.549837 | yes, threshold 0.92 |
@@ -601,9 +602,13 @@ captures -- while staying at least 0.18 clear of the nearest perturbation.
 
 Colour is now measured on every scene and reported as `maxChannelDelta` and
 `meanChannelDelta` over the agreed coverage, but it only **gates** a scene that
-binds a real `UsdPreviewSurface`. Today that is `material-normals-uv`, measured
-at 10 maximum and 3.793 mean after the eye-space position interpolant replaced
-the constant eye vector, gated at 16 and 8.
+binds a real `UsdPreviewSurface` and has measured deltas within the shaded
+threshold. `material-normals-uv` measures 10 maximum and 3.793 mean after the
+eye-space position interpolant replaced the constant eye vector, gated at 16 and
+8. `materials-textures` exercises real texture decode and GPU binding with an
+asymmetric sRGB gradient texture; it gates colour at the same 16/8 threshold and
+currently measures 13 maximum and 4.476 mean on D3D12 WARP, 13 maximum and 4.466
+mean on Vulkan SwiftShader.
 
 | Shading | max delta | mean delta |
 | --- | ---: | ---: |

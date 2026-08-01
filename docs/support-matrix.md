@@ -110,6 +110,9 @@ and package-only execution are in [Packaging](packaging.md).
 
 The Viewer permits only the platform combinations above. Renderer-neutral code must not depend on a
 concrete RHI, and concrete backends must not absorb Hydra translation or Viewer policy.
+hdSilk now supports texture-backed `UsdPreviewSurface` map binding on all three RHIs by decoding
+resolved assets through OpenUSD Hio and uploading cached sampled RGBA8 textures. UDIM expansion and
+colour-delta parity with Storm remain outside the current support claim.
 
 ## Backend capabilities
 

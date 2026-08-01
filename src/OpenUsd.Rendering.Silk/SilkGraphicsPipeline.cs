@@ -571,14 +571,26 @@ public enum SilkVertexSemantic
     Position,
 
     /// <summary>Object-space normal.</summary>
-    Normal
+    Normal,
+
+    /// <summary>Texture coordinate.</summary>
+    TexCoord,
+
+    /// <summary>Object-space tangent and bitangent sign.</summary>
+    Tangent
 }
 
 /// <summary>Vertex element formats.</summary>
 public enum SilkVertexFormat
 {
     /// <summary>Three contiguous 32-bit floating-point values.</summary>
-    Float3
+    Float3 = 0,
+
+    /// <summary>Two contiguous 32-bit floating-point values.</summary>
+    Float2 = 1,
+
+    /// <summary>Four contiguous 32-bit floating-point values.</summary>
+    Float4 = 2
 }
 
 /// <summary>Describes one vertex attribute.</summary>
@@ -601,28 +613,53 @@ public readonly record struct SilkVertexLayoutDescriptor(
             new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3)
         ]);
 
+    /// <summary>Gets the checked POSITION/NORMAL/TEXCOORD layout.</summary>
+    internal static SilkVertexLayoutDescriptor PositionNormalTexCoord => new(
+        32,
+        [
+            new(SilkVertexSemantic.Position, 0, 0, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2)
+        ]);
+
+    /// <summary>Gets the checked POSITION/NORMAL/TEXCOORD/TANGENT layout.</summary>
+    internal static SilkVertexLayoutDescriptor PositionNormalTexCoordTangent => new(
+        48,
+        [
+            new(SilkVertexSemantic.Position, 0, 0, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.Tangent, 3, 32, SilkVertexFormat.Float4)
+        ]);
+
     /// <summary>Validates the checked mesh vertex layout.</summary>
     public void Validate()
     {
         ArgumentNullException.ThrowIfNull(Attributes);
-        if (Stride != 24 || Attributes.Count != 2 ||
-            Attributes[0] !=
-                new SilkVertexAttributeDescriptor(
-                    SilkVertexSemantic.Position,
-                    0,
-                    0,
-                    SilkVertexFormat.Float3) ||
-            Attributes[1] !=
-                new SilkVertexAttributeDescriptor(
-                    SilkVertexSemantic.Normal,
-                    1,
-                    12,
-                    SilkVertexFormat.Float3))
+        if (!Matches(PositionNormal) &&
+            !Matches(PositionNormalTexCoord) &&
+            !Matches(PositionNormalTexCoordTangent))
         {
             throw new ArgumentException(
-                "The checked mesh shader requires float3 POSITION at 0 and float3 NORMAL at 12.",
+                "The checked mesh shader requires a known position/normal layout, optionally with UV and tangent.",
                 nameof(Attributes));
         }
+    }
+
+    private bool Matches(SilkVertexLayoutDescriptor expected)
+    {
+        if (Stride != expected.Stride || Attributes.Count != expected.Attributes.Count)
+        {
+            return false;
+        }
+        for (int index = 0; index < Attributes.Count; index++)
+        {
+            if (Attributes[index] != expected.Attributes[index])
+            {
+                return false;
+            }
+        }
+        return true;
     }
 }
 

@@ -901,6 +901,7 @@ OpenUsd.Rendering.Silk.SilkRenderingDescriptor.SilkRenderingDescriptor() -> void
 OpenUsd.Rendering.Silk.SilkRenderingDescriptor.SilkRenderingDescriptor(OpenUsd.Rendering.Silk.ISilkGraphicsTexture! ColorAttachment, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! DepthAttachment) -> void
 OpenUsd.Rendering.Silk.SilkSamplerAddressMode
 OpenUsd.Rendering.Silk.SilkSamplerAddressMode.ClampToEdge = 0 -> OpenUsd.Rendering.Silk.SilkSamplerAddressMode
+OpenUsd.Rendering.Silk.SilkSamplerAddressMode.MirrorRepeat = 2 -> OpenUsd.Rendering.Silk.SilkSamplerAddressMode
 OpenUsd.Rendering.Silk.SilkSamplerAddressMode.Repeat = 1 -> OpenUsd.Rendering.Silk.SilkSamplerAddressMode
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.AddressU.get -> OpenUsd.Rendering.Silk.SilkSamplerAddressMode
@@ -1346,7 +1347,9 @@ OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.Semantic.init -> void
 OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.SilkVertexAttributeDescriptor() -> void
 OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.SilkVertexAttributeDescriptor(OpenUsd.Rendering.Silk.SilkVertexSemantic Semantic, uint Location, uint Offset, OpenUsd.Rendering.Silk.SilkVertexFormat Format) -> void
 OpenUsd.Rendering.Silk.SilkVertexFormat
+OpenUsd.Rendering.Silk.SilkVertexFormat.Float2 = 1 -> OpenUsd.Rendering.Silk.SilkVertexFormat
 OpenUsd.Rendering.Silk.SilkVertexFormat.Float3 = 0 -> OpenUsd.Rendering.Silk.SilkVertexFormat
+OpenUsd.Rendering.Silk.SilkVertexFormat.Float4 = 2 -> OpenUsd.Rendering.Silk.SilkVertexFormat
 OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor
 OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.Attributes.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor>!
 OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.Attributes.init -> void
@@ -1360,6 +1363,8 @@ OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.Validate() -> void
 OpenUsd.Rendering.Silk.SilkVertexSemantic
 OpenUsd.Rendering.Silk.SilkVertexSemantic.Normal = 1 -> OpenUsd.Rendering.Silk.SilkVertexSemantic
 OpenUsd.Rendering.Silk.SilkVertexSemantic.Position = 0 -> OpenUsd.Rendering.Silk.SilkVertexSemantic
+OpenUsd.Rendering.Silk.SilkVertexSemantic.Tangent = 3 -> OpenUsd.Rendering.Silk.SilkVertexSemantic
+OpenUsd.Rendering.Silk.SilkVertexSemantic.TexCoord = 2 -> OpenUsd.Rendering.Silk.SilkVertexSemantic
 OpenUsd.Rendering.Silk.SilkViewport
 OpenUsd.Rendering.Silk.SilkViewport.Deconstruct(out float X, out float Y, out float Width, out float Height, out float MinDepth, out float MaxDepth) -> void
 OpenUsd.Rendering.Silk.SilkViewport.Equals(OpenUsd.Rendering.Silk.SilkViewport other) -> bool

@@ -4,7 +4,12 @@ using System.Buffers.Binary;
 
 namespace OpenUsd.Rendering.Silk;
 
-internal sealed record SilkMeshGeometry(float[] Vertices, uint[] Indices)
+internal sealed record SilkMeshGeometry(
+    float[] Vertices,
+    uint[] Indices,
+    SilkVertexLayoutDescriptor VertexLayout,
+    string UvPrimvar,
+    bool HasTangents)
 {
     internal uint IndexCount => checked((uint)Indices.Length);
 }
@@ -13,7 +18,10 @@ internal static class SilkMeshGeometryBuilder
 {
     private const double NormalEpsilonSquared = 1e-30;
 
-    internal static SilkMeshGeometry Build(SilkMeshData mesh)
+    internal static SilkMeshGeometry Build(
+        SilkMeshData mesh,
+        string uvPrimvar = "",
+        bool requireTangents = false)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         ReadOnlySpan<float> points = mesh.Points.Span;
@@ -86,6 +94,24 @@ internal static class SilkMeshGeometryBuilder
             }
         }
 
+        SilkVertexAttributeData? uvAttribute = string.IsNullOrEmpty(uvPrimvar)
+            ? null
+            : mesh.FindTexCoord(uvPrimvar);
+        bool hasUv = uvAttribute is not null;
+        bool hasTangents = hasUv && requireTangents;
+        double[] tangents = hasTangents ? new double[checked(pointCount * 3)] : [];
+
+        if (hasTangents && mesh.TopologyKind == SilkTopologyKind.TriangleList)
+        {
+            for (int triangle = 0; triangle < meshIndices.Length; triangle += 3)
+            {
+                int a = checked((int)indices[triangle]);
+                int b = checked((int)indices[triangle + 1]);
+                int c = checked((int)indices[triangle + 2]);
+                AccumulateTangent(mesh, points, uvAttribute!, tangents, a, b, c);
+            }
+        }
+
         // Authored normals win when the delegate resolved them onto emitted
         // vertices; otherwise they are area-weighted from topology as before.
         // Both paths still normalise and reject a degenerate normal, so an
@@ -93,11 +119,12 @@ internal static class SilkMeshGeometryBuilder
         ReadOnlySpan<float> authored = mesh.AuthoredNormals.Span;
         bool useAuthored = authored.Length == points.Length;
 
-        float[] vertices = new float[checked(pointCount * 6)];
+        int strideFloats = hasTangents ? 12 : hasUv ? 8 : 6;
+        float[] vertices = new float[checked(pointCount * strideFloats)];
         for (int point = 0; point < pointCount; point++)
         {
             int source = point * 3;
-            int destination = point * 6;
+            int destination = point * strideFloats;
             vertices[destination] = points[source];
             vertices[destination + 1] = points[source + 1];
             vertices[destination + 2] = points[source + 2];
@@ -108,17 +135,97 @@ internal static class SilkMeshGeometryBuilder
             double lengthSquared = (nx * nx) + (ny * ny) + (nz * nz);
             if (!double.IsFinite(lengthSquared) || lengthSquared <= NormalEpsilonSquared)
             {
-                vertices[destination + 5] = 1f;
-                continue;
+                nx = 0;
+                ny = 0;
+                nz = 1;
+                lengthSquared = 1;
             }
 
             double inverseLength = 1.0 / Math.Sqrt(lengthSquared);
-            vertices[destination + 3] = checked((float)(nx * inverseLength));
-            vertices[destination + 4] = checked((float)(ny * inverseLength));
-            vertices[destination + 5] = checked((float)(nz * inverseLength));
+            float normalX = checked((float)(nx * inverseLength));
+            float normalY = checked((float)(ny * inverseLength));
+            float normalZ = checked((float)(nz * inverseLength));
+            vertices[destination + 3] = normalX;
+            vertices[destination + 4] = normalY;
+            vertices[destination + 5] = normalZ;
+            if (hasUv)
+            {
+                vertices[destination + 6] = uvAttribute!.GetComponent(point, 0);
+                vertices[destination + 7] = uvAttribute.ComponentCount > 1
+                    ? uvAttribute.GetComponent(point, 1)
+                    : 0;
+            }
+            if (hasTangents)
+            {
+                int tangentSource = point * 3;
+                double tx = tangents[tangentSource];
+                double ty = tangents[tangentSource + 1];
+                double tz = tangents[tangentSource + 2];
+                double tangentLengthSquared = (tx * tx) + (ty * ty) + (tz * tz);
+                if (!double.IsFinite(tangentLengthSquared) ||
+                    tangentLengthSquared <= NormalEpsilonSquared)
+                {
+                    tx = 1;
+                    ty = 0;
+                    tz = 0;
+                    tangentLengthSquared = 1;
+                }
+                double inverseTangentLength = 1.0 / Math.Sqrt(tangentLengthSquared);
+                vertices[destination + 8] = checked((float)(tx * inverseTangentLength));
+                vertices[destination + 9] = checked((float)(ty * inverseTangentLength));
+                vertices[destination + 10] = checked((float)(tz * inverseTangentLength));
+                vertices[destination + 11] = 1;
+            }
         }
 
-        return new SilkMeshGeometry(vertices, indices);
+        SilkVertexLayoutDescriptor layout = hasTangents
+            ? SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent
+            : hasUv
+                ? SilkVertexLayoutDescriptor.PositionNormalTexCoord
+                : SilkVertexLayoutDescriptor.PositionNormal;
+        return new SilkMeshGeometry(vertices, indices, layout, hasUv ? uvPrimvar : "", hasTangents);
+    }
+
+    private static void AccumulateTangent(
+        SilkMeshData mesh,
+        ReadOnlySpan<float> points,
+        SilkVertexAttributeData uv,
+        double[] tangents,
+        int a,
+        int b,
+        int c)
+    {
+        int pa = a * 3;
+        int pb = b * 3;
+        int pc = c * 3;
+        double edge1X = points[pb] - points[pa];
+        double edge1Y = points[pb + 1] - points[pa + 1];
+        double edge1Z = points[pb + 2] - points[pa + 2];
+        double edge2X = points[pc] - points[pa];
+        double edge2Y = points[pc + 1] - points[pa + 1];
+        double edge2Z = points[pc + 2] - points[pa + 2];
+        double du1 = uv.GetComponent(b, 0) - uv.GetComponent(a, 0);
+        double dv1 = (uv.ComponentCount > 1 ? uv.GetComponent(b, 1) : 0) -
+            (uv.ComponentCount > 1 ? uv.GetComponent(a, 1) : 0);
+        double du2 = uv.GetComponent(c, 0) - uv.GetComponent(a, 0);
+        double dv2 = (uv.ComponentCount > 1 ? uv.GetComponent(c, 1) : 0) -
+            (uv.ComponentCount > 1 ? uv.GetComponent(a, 1) : 0);
+        double determinant = (du1 * dv2) - (du2 * dv1);
+        if (!double.IsFinite(determinant) || Math.Abs(determinant) <= 1e-12)
+        {
+            return;
+        }
+        double r = 1.0 / determinant;
+        double tx = ((edge1X * dv2) - (edge2X * dv1)) * r;
+        double ty = ((edge1Y * dv2) - (edge2Y * dv1)) * r;
+        double tz = ((edge1Z * dv2) - (edge2Z * dv1)) * r;
+        if (!double.IsFinite(tx) || !double.IsFinite(ty) || !double.IsFinite(tz))
+        {
+            throw InvalidMesh(mesh, "computed tangent is not finite");
+        }
+        Accumulate(tangents, pa, tx, ty, tz);
+        Accumulate(tangents, pb, tx, ty, tz);
+        Accumulate(tangents, pc, tx, ty, tz);
     }
 
     private static int ValidateIndex(

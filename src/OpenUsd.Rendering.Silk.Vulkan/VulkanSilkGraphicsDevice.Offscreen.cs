@@ -1881,6 +1881,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         {
             SilkSamplerAddressMode.ClampToEdge => SamplerAddressMode.ClampToEdge,
             SilkSamplerAddressMode.Repeat => SamplerAddressMode.Repeat,
+            SilkSamplerAddressMode.MirrorRepeat => SamplerAddressMode.MirroredRepeat,
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
 }

@@ -163,7 +163,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         ? RootParameterType.TypeCbv
                         : RootParameterType.TypeSrv,
                     shaderVisibility: ShaderVisibility.All,
-                    descriptor: new RootDescriptor(slot.Binding, slot.Set));
+                    descriptor: new RootDescriptor(ToD3D12ShaderRegister(slot), slot.Set));
                 continue;
             }
             ranges[index] = new DescriptorRange(
@@ -171,7 +171,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     ? DescriptorRangeType.Srv
                     : DescriptorRangeType.Sampler,
                 1,
-                slot.Binding,
+                ToD3D12ShaderRegister(slot),
                 slot.Set);
             parameters[index + 1] = new RootParameter(
                 RootParameterType.TypeDescriptorTable,
@@ -214,6 +214,19 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         }
     }
 
+    private static uint ToD3D12ShaderRegister(SilkBindingSlot slot)
+    {
+        if (slot.Kind == SilkBindingKind.Sampler)
+        {
+            return 0;
+        }
+        if (slot.Kind == SilkBindingKind.SampledTexture && slot.Binding >= 2)
+        {
+            return slot.Binding - 2;
+        }
+        return slot.Binding;
+    }
+
     private void CreatePipelineState(
         SilkGraphicsPipelineDescriptor descriptor,
         D3D12SilkGraphicsShaderProgram program,
@@ -224,29 +237,36 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         byte[] fragmentCode = program.Fragment.Descriptor.Code.ToArray();
         byte[] position = "POSITION\0"u8.ToArray();
         byte[] normal = "NORMAL\0"u8.ToArray();
+        byte[] texCoord = "TEXCOORD\0"u8.ToArray();
+        byte[] tangent = "TANGENT\0"u8.ToArray();
         ID3D12PipelineState* nativePipeline = null;
         fixed (byte* vertexPointer = vertexCode)
         fixed (byte* fragmentPointer = fragmentCode)
         fixed (byte* positionPointer = position)
         fixed (byte* normalPointer = normal)
+        fixed (byte* texCoordPointer = texCoord)
+        fixed (byte* tangentPointer = tangent)
         {
-            InputElementDesc* elements = stackalloc InputElementDesc[2];
-            elements[0] = new InputElementDesc(
-                positionPointer,
-                0,
-                Format.FormatR32G32B32Float,
-                0,
-                0,
-                InputClassification.PerVertexData,
-                0);
-            elements[1] = new InputElementDesc(
-                normalPointer,
-                0,
-                Format.FormatR32G32B32Float,
-                0,
-                12,
-                InputClassification.PerVertexData,
-                0);
+            InputElementDesc* elements =
+                stackalloc InputElementDesc[descriptor.VertexLayout.Attributes.Count];
+            for (int index = 0; index < descriptor.VertexLayout.Attributes.Count; index++)
+            {
+                SilkVertexAttributeDescriptor attribute =
+                    descriptor.VertexLayout.Attributes[index];
+                elements[index] = new InputElementDesc(
+                    GetSemanticName(
+                        attribute.Semantic,
+                        positionPointer,
+                        normalPointer,
+                        texCoordPointer,
+                        tangentPointer),
+                    0,
+                    GetFormat(attribute.Format),
+                    0,
+                    attribute.Offset,
+                    InputClassification.PerVertexData,
+                    0);
+            }
             var pipelineDescription = new GraphicsPipelineStateDesc
             {
                 PRootSignature = rootSignature,
@@ -268,7 +288,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     DepthFunc = ComparisonFunc.LessEqual,
                     StencilEnable = false
                 },
-                InputLayout = new InputLayoutDesc(elements, 2),
+                InputLayout = new InputLayoutDesc(
+                    elements,
+                    checked((uint)descriptor.VertexLayout.Attributes.Count)),
                 PrimitiveTopologyType = descriptor.TopologyKind == SilkTopologyKind.LineList
                     ? PrimitiveTopologyType.Line
                     : PrimitiveTopologyType.Triangle,
@@ -308,6 +330,30 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             SilkCullMode.None => CullMode.None,
             SilkCullMode.Back => CullMode.Back,
             _ => throw new ArgumentOutOfRangeException(nameof(cullMode))
+        };
+
+    private static byte* GetSemanticName(
+        SilkVertexSemantic semantic,
+        byte* position,
+        byte* normal,
+        byte* texCoord,
+        byte* tangent) =>
+        semantic switch
+        {
+            SilkVertexSemantic.Position => position,
+            SilkVertexSemantic.Normal => normal,
+            SilkVertexSemantic.TexCoord => texCoord,
+            SilkVertexSemantic.Tangent => tangent,
+            _ => throw new ArgumentOutOfRangeException(nameof(semantic))
+        };
+
+    private static Format GetFormat(SilkVertexFormat format) =>
+        format switch
+        {
+            SilkVertexFormat.Float2 => Format.FormatR32G32Float,
+            SilkVertexFormat.Float3 => Format.FormatR32G32B32Float,
+            SilkVertexFormat.Float4 => Format.FormatR32G32B32A32Float,
+            _ => throw new ArgumentOutOfRangeException(nameof(format))
         };
 }
 
