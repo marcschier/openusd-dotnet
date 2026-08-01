@@ -129,7 +129,8 @@ if [[ "$platform" == "x11" ]]; then
       LD_LIBRARY_PATH="$repo_root/native/install/shim/linux-x64/lib:$repo_root/native/install/linux-x64/lib:${LD_LIBRARY_PATH:-}" \
         "$installed_probe" \
         "$repo_root/native/install/linux-x64/plugin/usd" \
-        "$repo_root/test-assets/minimal.usda" 2>&1 | tee "$probe_log"
+        "$repo_root/test-assets/minimal.usda" \
+        "$repo_root/native/install/shim/linux-x64/lib" 2>&1 | tee "$probe_log"
       probe_exit=${PIPESTATUS[0]}
       set -e
     else
