@@ -103,7 +103,7 @@ links, regular duplicate copies, unversioned or arbitrary SONAMEs, absolute
 link targets, and extra `.so.*` entries fail packing. The nupkg records links using Unix ZIP
 symlink metadata and link-target payloads; its Linux build target rehydrates
 those links after NuGet extraction. They are never flattened into resources.
-Packing validates the source header as ABI v7, requires the ABI-query, v2/v3 frame,
+Packing validates the source header as ABI v8, requires the ABI-query, v2/v3 frame,
 pick, packed-selection, navigation-input, and framebuffer-capture exports, and parses
 `readelf --dynamic --wide` output for
 the Storm child, Hydra, and hdSilk.

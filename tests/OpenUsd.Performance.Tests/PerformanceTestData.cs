@@ -113,6 +113,46 @@ internal static class PerformanceTestData
         return bytes;
     }
 
+    internal static byte[] CreateMeshInstanceReferenceCommand(
+        string pathValue = "/World/PerformanceMesh",
+        int primId = 42,
+        int instanceId = 7,
+        int instanceIndex = 1,
+        double x = 1)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(primId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(instanceId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(instanceIndex);
+        byte[] path = Encoding.UTF8.GetBytes(pathValue);
+        int size = checked(224 + path.Length);
+        var bytes = new byte[size];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(path));
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), primId);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(20), instanceId);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(24), instanceIndex);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(28),
+            (uint)SilkTopologyKind.TriangleList);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(44),
+            (uint)SilkMeshCullStyle.BackUnlessDoubleSided);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), (uint)path.Length);
+        for (int component = 0; component < 4; component++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(64 + (component * sizeof(float))),
+                1);
+        }
+        WriteIdentityMatrix(bytes.AsSpan(80, 16 * sizeof(double)));
+        BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(80 + (12 * sizeof(double))), x);
+        path.CopyTo(bytes, 224);
+        return bytes;
+    }
+
     internal static byte[] Concat(params byte[][] commands)
     {
         int length = 0;

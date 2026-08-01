@@ -209,12 +209,13 @@ commit and artifact set.
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 7 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 8 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 Instance identity has dedicated coverage. One case serializes a point-instanced scene and
 requires one record per resolved instance, each with the shared prototype path, its own
 zero-based `instance_index`, a stable non-zero `instance_id`, and its own resolved transform.
+ABI 8 also requires only instance zero to carry prototype geometry; later records are lightweight.
 Another replaces a single mesh and requires that only the affected `(path, instance_index)`
 identities are retired, so a shrinking instancer emits exactly one removal per dropped instance.
 

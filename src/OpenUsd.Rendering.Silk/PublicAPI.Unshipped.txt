@@ -97,7 +97,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 7 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkPickTokenEncoding.ByteSize = 4 -> int
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MaximumWidth = 16 -> float
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MinimumWidth = 1 -> float

@@ -89,12 +89,12 @@ public sealed class SilkSceneState
                         Frame.Update(commands.Current.AsFrame());
                         break;
                     case SilkCommandType.MeshUpsert:
-                        SilkMeshData mesh = SilkMeshData.CopyFrom(
-                            commands.Current.AsMeshUpsert());
+                        SilkMeshData mesh = CopyMeshFrom(commands.Current.AsMeshUpsert());
                         if (UpsertMesh(mesh) is { } replacedId)
                         {
                             (removals ??= []).Add(replacedId);
                         }
+
                         (upserts ??= []).Add(mesh.Id);
                         break;
                     case SilkCommandType.MeshRemove:
@@ -130,6 +130,22 @@ public sealed class SilkSceneState
         return new SilkSceneDelta(
             upserts?.ToArray() ?? [],
             removals?.ToArray() ?? []);
+    }
+
+    private SilkMeshData CopyMeshFrom(SilkMeshUpsertCommand command)
+    {
+        if (!command.IsInstanceReference)
+        {
+            return SilkMeshData.CopyFrom(command);
+        }
+
+        if (!_meshesByPath.TryGetValue((command.Path, 0), out SilkMeshData? prototype))
+        {
+            throw new InvalidDataException(
+                $"hdSilk instance '{command.Path}' index {command.InstanceIndex} " +
+                "arrived before its prototype geometry.");
+        }
+        return SilkMeshData.CopyInstanceFrom(command, prototype);
     }
 
     /// <summary>
@@ -802,6 +818,12 @@ public sealed class SilkMeshData
 
     internal static SilkMeshData CopyFrom(SilkMeshUpsertCommand command)
     {
+        if (command.IsInstanceReference)
+        {
+            throw new InvalidDataException(
+                "A lightweight mesh instance requires prototype geometry.");
+        }
+
         var points = new float[command.PointCount * 3];
         for (int point = 0; point < command.PointCount; point++)
         {
@@ -907,6 +929,62 @@ public sealed class SilkMeshData
             authoredNormals,
             command.MaterialPath,
             attributes);
+    }
+
+    internal static SilkMeshData CopyInstanceFrom(
+        SilkMeshUpsertCommand command,
+        SilkMeshData prototype)
+    {
+        ArgumentNullException.ThrowIfNull(prototype);
+        if (!command.IsInstanceReference)
+        {
+            throw new ArgumentException(
+                "The mesh command is not a lightweight instance reference.",
+                nameof(command));
+        }
+        if (!string.Equals(command.Path, prototype.Path, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "A lightweight mesh instance must reference its prototype path.");
+        }
+        if (command.TopologyKind != prototype.TopologyKind ||
+            command.TopologyRevision != prototype.TopologyRevision)
+        {
+            throw new InvalidDataException(
+                "A lightweight mesh instance does not match its prototype topology.");
+        }
+
+        var color = new float[4];
+        for (int i = 0; i < color.Length; i++)
+        {
+            color[i] = command.GetDisplayColor(i);
+        }
+
+        var transform = new double[16];
+        for (int i = 0; i < transform.Length; i++)
+        {
+            transform[i] = command.GetTransformElement(i);
+        }
+
+        return new SilkMeshData(
+            command.PrimId,
+            command.Path,
+            command.StableHash,
+            command.InstanceId,
+            command.InstanceIndex,
+            prototype.TopologyKind,
+            prototype.TopologyRevision,
+            prototype.Points.ToArray(),
+            prototype.Indices.ToArray(),
+            prototype.TriangleSubprims.ToArray(),
+            color,
+            transform,
+            prototype.TopologyFingerprint,
+            command.DoubleSided,
+            command.CullStyle,
+            prototype.AuthoredNormals.ToArray(),
+            prototype.MaterialPath,
+            [.. prototype.Attributes]);
     }
 }
 

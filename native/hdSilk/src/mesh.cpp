@@ -793,10 +793,9 @@ HdSilkMesh::_BuildInstanceRecords(
         return records;
     }
 
-    // hdSilk has no instancing wire ABI of its own: each resolved instance is
-    // flattened into its own record so backend-neutral consumers keep drawing
-    // plain triangle lists. instance_index makes the identities distinct while
-    // the prototype path stays authoritative.
+    // ABI v8 carries prototype geometry once. Instance zero remains the full
+    // prototype record; later records retain only per-instance identity and
+    // transform and let consumers reuse instance zero's geometry and material.
     HdInstancer* instancer =
         sceneDelegate->GetRenderIndex().GetInstancer(instancerId);
     if (instancer == nullptr)
@@ -828,6 +827,14 @@ HdSilkMesh::_BuildInstanceRecords(
         HdSilkFlattenMatrix(
             _transform * instanceTransforms[index],
             instanceRecord.transform);
+        if (index != 0)
+        {
+            instanceRecord.points.clear();
+            instanceRecord.indices.clear();
+            instanceRecord.triangleSubprims.clear();
+            instanceRecord.materialPath.clear();
+            instanceRecord.attributes.clear();
+        }
         records.push_back(std::move(instanceRecord));
     }
     return records;

@@ -659,7 +659,6 @@ public sealed class SilkMeshRenderer :
             }
             batch.Add(mesh);
         }
-        bool instancingSupported = _device.Backend != SilkGraphicsBackend.Vulkan;
         foreach (KeyValuePair<BatchKey, List<SilkMeshGpuResource>> batch in batches)
         {
             SilkMeshGpuResource first = batch.Value[0];
@@ -667,7 +666,7 @@ public sealed class SilkMeshRenderer :
             // instance storage buffer per unique geometry, which for a scene of
             // mostly distinct meshes is a pure allocation regression. The
             // per-mesh uniform path already carries the single transform.
-            if (!instancingSupported || batch.Value.Count < 2)
+            if (batch.Value.Count < 2)
             {
                 commands.SetGraphicsPipeline(GetPipeline(batch.Key.CullMode, batch.Key.TopologyKind));
                 commands.SetVertexBuffer(first.VertexBuffer);

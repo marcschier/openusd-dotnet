@@ -98,6 +98,29 @@ public sealed class SilkMeshCommandEncoderContractTests
                 string.Join(", ", offenders));
     }
 
+    [Test]
+    public async Task StaleMeshUpsertEncoderGuardRejectsRealDriftMarkers()
+    {
+        await Assert.That(ContainsStaleHeaderLiteral("path.CopyTo(bytes, 216);"))
+            .IsTrue();
+        await Assert.That(ContainsStaleHeaderLiteral("var bytes = new byte[216 + path.Length];"))
+            .IsTrue();
+        await Assert.That(ContainsStaleHeaderLiteral(
+                "BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(200), hash);"))
+            .IsTrue();
+    }
+
+    [Test]
+    public async Task StaleMeshUpsertEncoderGuardAllowsCurrentMaterialOffsets()
+    {
+        await Assert.That(ContainsStaleHeaderLiteral(
+                "BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(208), hash);"))
+            .IsFalse();
+        await Assert.That(ContainsStaleHeaderLiteral(
+                "BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(216), length);"))
+            .IsFalse();
+    }
+
     private static bool ContainsStaleHeaderLiteral(string text)
     {
         // The current 224-byte header ends with the material hash at 208, the

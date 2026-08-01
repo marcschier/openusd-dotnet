@@ -62,8 +62,8 @@ internal static partial class Program
                 upserts < 1 ||
                 sceneResources.Meshes.Count != upserts ||
                 scene.MeshesByPath.Values.Any(
-                    mesh => mesh.InstanceId != 0 ||
-                        mesh.InstanceIndex != 0 ||
+                    mesh => mesh.InstanceIndex < 0 ||
+                        (mesh.InstanceId == 0 && mesh.InstanceIndex != 0) ||
                         mesh.TopologyRevision == 0 ||
                         mesh.TriangleCount != mesh.Indices.Length / 3) ||
                 !ValidatePickIdentityTable(scene))

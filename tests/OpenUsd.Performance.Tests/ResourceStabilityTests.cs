@@ -107,6 +107,37 @@ public sealed class ResourceStabilityTests
     }
 
     [Test]
+    public async Task PointInstancePagesCarryPrototypeGeometryOnce()
+    {
+        const int instanceCount = 64;
+        byte[] prototype = PerformanceTestData.CreateMeshCommand(triangleCount: 128);
+        byte[][] commands = new byte[instanceCount][];
+        commands[0] = prototype;
+        for (int index = 1; index < commands.Length; index++)
+        {
+            commands[index] = PerformanceTestData.CreateMeshInstanceReferenceCommand(
+                instanceIndex: index,
+                x: index * 0.01);
+        }
+        byte[] page = PerformanceTestData.Concat(commands);
+        int duplicatedGeometryBytes = prototype.Length * instanceCount;
+
+        var scene = new SilkSceneState();
+        var device = new CountingGraphicsDevice();
+        var resources = new SilkSceneGpuResources(device);
+        SilkSceneDelta delta = scene.Apply(page, (uint)commands.Length, revision: 1);
+        resources.Apply(scene, delta);
+
+        await Assert.That(page.Length).IsLessThan(duplicatedGeometryBytes / 2);
+        await Assert.That(delta.MeshUpserts).IsEqualTo(instanceCount);
+        await Assert.That(resources.Statistics.MeshCount).IsEqualTo(instanceCount);
+        await Assert.That(resources.Statistics.GeometryBuilds).IsEqualTo(1UL);
+
+        resources.Dispose();
+        device.Dispose();
+    }
+
+    [Test]
     public async Task ManagedPageCounterReturnsToBaseline()
     {
         SilkCounterSnapshot baseline = ReadSilkCounters();

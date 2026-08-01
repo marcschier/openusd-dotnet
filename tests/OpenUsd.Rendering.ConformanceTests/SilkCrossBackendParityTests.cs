@@ -150,8 +150,8 @@ public sealed class SilkCrossBackendParityTests
 
     /// <summary>
     /// Shared point-instanced prototypes should preserve image coverage across backends.
-    /// D3D12 uses one hardware-instanced draw; Vulkan remains on the proven per-instance
-    /// path until its storage-buffer instancing path matches D3D12 under SwiftShader.
+    /// D3D12 and Vulkan both use one hardware-instanced draw; the Vulkan assertion
+    /// catches descriptor or instance-index regressions under SwiftShader.
     /// </summary>
     [Test]
     public async Task BackendsAgreeOnPointInstancedPrototypes()
@@ -167,7 +167,7 @@ public sealed class SilkCrossBackendParityTests
             VulkanSilkGraphicsDevice.Create());
 
         await Assert.That(direct3DDraws).IsEqualTo(1);
-        await Assert.That(vulkanDraws).IsEqualTo(3);
+        await Assert.That(vulkanDraws).IsEqualTo(1);
 
         ParityComparisonResult result = ParityImageComparer.Compare(
             direct3D,
@@ -233,7 +233,23 @@ public sealed class SilkCrossBackendParityTests
             [0, 0, 1, 1]);
         BinaryPrimitives.WriteInt32LittleEndian(command.AsSpan(20), 7);
         BinaryPrimitives.WriteInt32LittleEndian(command.AsSpan(24), instanceIndex);
-        return command;
+        if (instanceIndex == 0)
+        {
+            return command;
+        }
+
+        int pathLength = BinaryPrimitives.ReadInt32LittleEndian(command.AsSpan(48));
+        var lightweight = new byte[224 + pathLength];
+        command.AsSpan(0, 224).CopyTo(lightweight);
+        BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(4), (uint)lightweight.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(52), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(56), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(60), 0);
+        BinaryPrimitives.WriteUInt64LittleEndian(lightweight.AsSpan(208), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(216), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(220), 0);
+        command.AsSpan(224, pathLength).CopyTo(lightweight.AsSpan(224));
+        return lightweight;
     }
 
     private static (float[] Points, uint[] Indices) CreateGrid(int resolution)
