@@ -577,6 +577,7 @@ camera-shift perturbation before it can use the 0.92 threshold.
 | `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | yes, threshold 0.92 |
 | `cards-draw-mode` | 1.000000 | 0.250000 | 0.418182 | 0.730337 | 0.431193 | 0.269663 | yes, threshold 0.92 |
 | `bounds-draw-mode` | 1.000000 | 0.094421 | 0.231884 | 0.047847 | 0.243309 | 0.756691 | yes, threshold 0.92 |
+| `origin-draw-mode` | 1.000000 | 0.000000 | 0.229167 | 0.046083 | 0.175000 | 0.770833 | yes, threshold 0.92 |
 
 Storm and hdSilk agree **exactly** on coverage for every curated scene: raw IoU
 1.000000 with identical coverage counts. All gated scenes use a 0.92 threshold,
@@ -674,7 +675,7 @@ Correct is 875 against 875, adjusted IoU 1.000000, weakest margin **0.549837**
 by deliberately forcing `GetCullMode` to `None` and confirming the gate went
 red, then reverting.
 
-### Draw modes: cards already work, origin and bounds do not
+### Draw modes: cards already worked; origin and bounds are now gated
 
 `UsdImagingGLDrawModeAdapter` inserts the `cards` draw mode as an ordinary
 **mesh** Rprim and `origin`/`bounds` as **basisCurves**. hdSilk declares only
@@ -689,7 +690,10 @@ entirely. Measured on the same model:
 So cards was already at exact parity and had simply never been tested, while
 origin and bounds rendered nothing at all in hdSilk before line topology landed. The curves are
 `HdBasisCurvesTopology(linear, bezier, segmented)` -- independent line segments
-with widths.
+with widths. `parity-origin-draw-mode.usda` now closes the remaining draw-mode
+parity gap: its translated, non-square component puts the compact origin axes
+off centre so the one-pixel line shape discriminates under the standard
+perturbations.
 
 #### Ribbon tessellation was tried and measured, and it cannot work
 
@@ -734,17 +738,20 @@ field, so this is **not** a page ABI change.
 
 Thin one-pixel lines are the worst case for coverage IoU, since a single pixel
 of rasterization difference is a large fraction of a thin shape, so whether the
-scene could be gated at all was left as an open measurement rather than an
-assumption. It was then measured, and the concern did not materialise: Storm,
-D3D12 WARP and Vulkan SwiftShader all produce **exactly 251** covered pixels,
-adjusted IoU 1.000000, against a 0.243309 worst perturbation -- a 0.756691
-margin. `parity-bounds-draw-mode.usda` is gated at 0.92.
+scenes could be gated at all was left as an open measurement rather than an
+assumption. It was then measured, and the concern did not materialise. For
+`parity-bounds-draw-mode.usda`, Storm, D3D12 WARP and Vulkan SwiftShader all
+produce **exactly 251** covered pixels, adjusted IoU 1.000000, against a
+0.243309 worst perturbation -- a 0.756691 margin. For
+`parity-origin-draw-mode.usda`, all three produce **exactly 116** covered
+pixels, adjusted IoU 1.000000, against a 0.229167 worst perturbation -- a
+0.770833 margin. Both scenes are gated at 0.92.
 
 Matching by construction is what made that possible. Because none of the three
 backends has a line width state to get wrong, there was no constant left to
 tune, and the agreement is exact rather than approximate.
 
-### Draw modes: cards and bounds are both gated
+### Draw modes: cards, bounds, and origin are gated
 
 `parity-cards-draw-mode.usda` gates the mesh half. Two things about it are
 deliberate. Its inner mesh is a small triangle rather than a quad matching the
