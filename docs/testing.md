@@ -622,31 +622,58 @@ Their colour deltas sit near 88 and are recorded as evidence, not gated. Making
 them colour-gateable means binding materials to them, which is a scene change
 rather than a renderer change.
 
-### A measured gap: authored double-sidedness
+### A measured gap, now closed: authored double-sidedness
 
-`test-assets/parity/parity-single-sided-winding.usda` is authored and measured
-but deliberately **not registered** in the harness yet. It is a pennant wound so
-the camera sees its back face, with `doubleSided = 0`.
+`test-assets/parity/parity-single-sided-winding.usda` began as a pennant wound so
+the camera sees its back face, with `doubleSided = 0`. It measured:
 
 | `doubleSided` | Storm coverage | hdSilk coverage |
 | ---: | ---: | ---: |
 | `0` | **0** | 2279 |
 | `1` | 2279 | 2279 |
 
-Same geometry, same winding, one attribute changed. Storm culls the back faces
-of a single-sided prim and hdSilk does not, because hdSilk's mesh pipeline is
-created with no cull mode and the page ABI carries no per-mesh sidedness.
+Same geometry, same winding, one attribute changed. Storm culled the back faces
+of a single-sided prim and hdSilk did not, because hdSilk's mesh pipeline was
+created with no cull mode and the page ABI carried no per-mesh sidedness.
 Setting `cullStyle` on `UsdImagingGLRenderParams` does not change this: the
 prim's own cull style wins, so the global render parameter is not the lever.
 
-Registering the scene today would fail the driver's requirement that a reference
-capture contain coverage, so it stays out of `CreateScenes` until hdSilk honours
-authored sidedness -- at which point it is the acceptance test, already written
-and already measured.
-
-Worth stating plainly: every currently gated scene declares `doubleSided = 1`,
-so the existing suite could never have found this. It took a scene written
+Worth stating plainly: every scene gated before this declared `doubleSided = 1`,
+so the existing suite could never have found the gap. It took a scene written
 specifically to discriminate on the attribute.
+
+hdSilk now carries resolved double-sidedness and cull style per mesh over page
+ABI 6 and selects a back-face cull pipeline for single-sided meshes, so the
+scene is registered and gated.
+
+#### Why the scene has two prims
+
+The first attempt at registering it gated the culled pennant **alone**. Storm
+and hdSilk then both produced zero coverage and scored a perfect 1.000000 --
+which is also what any bug that made hdSilk draw nothing at all would score, for
+any reason whatsoever. Every geometric perturbation of an empty image is also
+empty, so all four perturbations scored 1.000000 too, and the harness could not
+discriminate. Registering it in that form required switching **off** both of the
+harness's non-vacuity safeguards, the positive-coverage requirement and the
+perturbation-discrimination requirement. That is a gate that cannot fail, which
+is the exact defect this document keeps recording.
+
+The scene now pairs two prims that differ in **one attribute only**. Both are
+wound back-facing; the banner is `doubleSided = 1` and must be drawn, the
+pennant is `doubleSided = 0` and must be culled. That makes all three failure
+modes visible to the standard safeguards, with no opt-outs:
+
+| Failure mode | How the gate catches it |
+| --- | --- |
+| Culling regresses | Pennant coverage returns; measured Storm 875 vs hdSilk 3076, adjusted IoU **0.284460**, gate red |
+| Culling is too aggressive | Double-sided banner disappears, tripping the positive-coverage requirement |
+| Renderer draws nothing | Same as above |
+| Geometry drifts | Banner is asymmetric in both axes; perturbations measure 0.000000, 0.000000, 0.450163 and 0.060213 |
+
+Correct is 875 against 875, adjusted IoU 1.000000, weakest margin **0.549837**
+-- the second widest of any scene. The broken-culling number above was produced
+by deliberately forcing `GetCullMode` to `None` and confirming the gate went
+red, then reverting.
 
 ### Draw modes: cards already work, origin and bounds do not
 

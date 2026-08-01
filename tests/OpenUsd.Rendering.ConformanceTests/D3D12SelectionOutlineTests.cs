@@ -1,8 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using System.Buffers.Binary;
 using System.Runtime.Versioning;
-using System.Text;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
 
@@ -241,87 +239,17 @@ public sealed class D3D12SelectionOutlineTests
         float top,
         float right,
         float bottom,
-        float depth)
-    {
-        float[] points =
-        [
-            left, top, depth,
-            right, top, depth,
-            right, bottom, depth,
-            left, bottom, depth
-        ];
-        uint[] indices = [0, 1, 2, 0, 2, 3];
-        byte[] path = Encoding.UTF8.GetBytes(pathValue);
-        int triangleCount = indices.Length / 3;
-        int size = 216 +
-            path.Length +
-            (points.Length * sizeof(float)) +
-            (indices.Length * sizeof(uint)) +
-            (triangleCount * sizeof(uint));
-        var bytes = new byte[size];
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes,
-            (uint)SilkCommandType.MeshUpsert);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(4),
-            checked((uint)size));
-        BinaryPrimitives.WriteUInt64LittleEndian(
-            bytes.AsSpan(8),
-            ComputeStableHash(pathValue));
-        BinaryPrimitives.WriteInt32LittleEndian(
-            bytes.AsSpan(16),
-            checked((int)id));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(28),
-            (uint)SilkTopologyKind.TriangleList);
-        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(40),
-            checked((uint)path.Length));
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44), 4);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(48),
-            checked((uint)indices.Length));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(52),
-            checked((uint)triangleCount));
-        for (int channel = 0; channel < 4; channel++)
-        {
-            BinaryPrimitives.WriteSingleLittleEndian(
-                bytes.AsSpan(56 + (channel * sizeof(float))),
-                1);
-        }
-        double[] transform = SilkMeshRendererConformance.Identity();
-        for (int index = 0; index < transform.Length; index++)
-        {
-            BinaryPrimitives.WriteDoubleLittleEndian(
-                bytes.AsSpan(72 + (index * sizeof(double))),
-                transform[index]);
-        }
-        path.CopyTo(bytes, 216);
-        int pointsOffset = 216 + path.Length;
-        for (int index = 0; index < points.Length; index++)
-        {
-            BinaryPrimitives.WriteSingleLittleEndian(
-                bytes.AsSpan(pointsOffset + (index * sizeof(float))),
-                points[index]);
-        }
-        int indicesOffset = pointsOffset + (points.Length * sizeof(float));
-        for (int index = 0; index < indices.Length; index++)
-        {
-            BinaryPrimitives.WriteUInt32LittleEndian(
-                bytes.AsSpan(indicesOffset + (index * sizeof(uint))),
-                indices[index]);
-        }
-        int subprimOffset = indicesOffset + (indices.Length * sizeof(uint));
-        for (int triangle = 0; triangle < triangleCount; triangle++)
-        {
-            BinaryPrimitives.WriteUInt32LittleEndian(
-                bytes.AsSpan(subprimOffset + (triangle * sizeof(uint))),
-                checked((uint)triangle));
-        }
-        return bytes;
-    }
+        float depth) =>
+        SilkMeshRendererConformance.CreateMeshCommand(
+            id,
+            pathValue,
+            [
+                left, top, depth,
+                right, top, depth,
+                right, bottom, depth,
+                left, bottom, depth
+            ],
+            [0, 1, 2, 0, 2, 3]);
 
     private static byte[] ReadPixels(ISilkGraphicsTexture texture)
     {
@@ -405,14 +333,4 @@ public sealed class D3D12SelectionOutlineTests
         left[offset + 2] == right[offset + 2] &&
         left[offset + 3] == right[offset + 3];
 
-    private static ulong ComputeStableHash(string path)
-    {
-        ulong hash = 14695981039346656037;
-        foreach (byte value in Encoding.UTF8.GetBytes(path))
-        {
-            hash ^= value;
-            hash *= 1099511628211;
-        }
-        return hash;
-    }
 }

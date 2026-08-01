@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 5u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 6u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 4u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -54,16 +54,18 @@ extern "C" {
 ///       24    4 int32    instance_index
 ///       28    4 uint32   topology_kind
 ///       32    8 uint64   topology_revision
-///       40    4 uint32   path_byte_count
-///       44    4 uint32   point_count
-///       48    4 uint32   index_count
-///       52    4 uint32   triangle_count
-///       56   16 float    display_color[4]
-///       72  128 double   transform[16] (row-major)
-///      200    8 uint64   material_binding_hash
-///      208    4 uint32   material_path_byte_count
-///      212    4 uint32   attribute_count
-///      216    * uint8    path[path_byte_count] (UTF-8, no NUL)
+///       40    4 uint32   double_sided (0 or 1)
+///       44    4 uint32   cull_style (OPENUSD_SILK_CULL_STYLE_*)
+///       48    4 uint32   path_byte_count
+///       52    4 uint32   point_count
+///       56    4 uint32   index_count
+///       60    4 uint32   triangle_count
+///       64   16 float    display_color[4]
+///       80  128 double   transform[16] (row-major)
+///      208    8 uint64   material_binding_hash
+///      216    4 uint32   material_path_byte_count
+///      220    4 uint32   attribute_count
+///      224    * uint8    path[path_byte_count] (UTF-8, no NUL)
 ///        *    * float    points[point_count * 3]
 ///        *    * uint32   indices[index_count] (triangle list)
 ///        *    * uint32   triangle_subprims[triangle_count]
@@ -106,6 +108,10 @@ extern "C" {
 /// bytes, and is zero with an empty path when the mesh has no material binding.
 /// It is an index only: material_path stays authoritative, exactly as prim path
 /// does for mesh identity.
+///
+/// ABI v6 adds double_sided and cull_style. They are the resolved Hydra mesh
+/// render state; consumers use them to match Storm's authored single-sided
+/// culling while keeping double-sided meshes uncullled.
 ///
 /// All offsets are from the command header's first byte. stable_id_hash is
 /// 64-bit FNV-1a over the exact path bytes and is an index only: path is the
@@ -190,6 +196,13 @@ extern "C" {
 #define OPENUSD_SILK_COMMAND_MATERIAL_UPSERT 4u
 #define OPENUSD_SILK_COMMAND_MATERIAL_REMOVE 5u
 #define OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST 1u
+
+#define OPENUSD_SILK_CULL_STYLE_DONT_CARE 0u
+#define OPENUSD_SILK_CULL_STYLE_NOTHING 1u
+#define OPENUSD_SILK_CULL_STYLE_BACK 2u
+#define OPENUSD_SILK_CULL_STYLE_FRONT 3u
+#define OPENUSD_SILK_CULL_STYLE_BACK_UNLESS_DOUBLE_SIDED 4u
+#define OPENUSD_SILK_CULL_STYLE_FRONT_UNLESS_DOUBLE_SIDED 5u
 
 /// Surface models the material table can describe. UNSUPPORTED is published
 /// rather than omitted so an unsupported graph is diagnosable.

@@ -250,7 +250,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     &pipelineLayout),
                 "vkCreatePipelineLayout");
             renderPass = CreateTriangleRenderPass();
-            pipeline = CreateTrianglePipeline(program, pipelineLayout, renderPass);
+            pipeline = CreateTrianglePipeline(descriptor, program, pipelineLayout, renderPass);
             programLease = program.AcquireLease();
             success = true;
             return new VulkanSilkGraphicsPipeline(
@@ -354,6 +354,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     }
 
     private Pipeline CreateTrianglePipeline(
+        SilkGraphicsPipelineDescriptor descriptor,
         VulkanSilkGraphicsShaderProgram program,
         PipelineLayout layout,
         RenderPass renderPass)
@@ -420,7 +421,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             {
                 SType = StructureType.PipelineRasterizationStateCreateInfo,
                 PolygonMode = PolygonMode.Fill,
-                CullMode = CullModeFlags.None,
+                CullMode = ToVulkanCullMode(descriptor.CullMode),
                 FrontFace = FrontFace.CounterClockwise,
                 LineWidth = 1
             };
@@ -491,6 +492,14 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             return pipeline;
         }
     }
+
+    private static CullModeFlags ToVulkanCullMode(SilkCullMode cullMode) =>
+        cullMode switch
+        {
+            SilkCullMode.None => CullModeFlags.None,
+            SilkCullMode.Back => CullModeFlags.BackBit,
+            _ => throw new ArgumentOutOfRangeException(nameof(cullMode))
+        };
 }
 
 internal sealed class VulkanSilkGraphicsShaderModule(

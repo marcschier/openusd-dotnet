@@ -354,7 +354,9 @@ public sealed class SilkMeshData
         uint[] indices,
         int[] triangleSubprims,
         float[] displayColor,
-        double[] transform)
+        double[] transform,
+        bool doubleSided = true,
+        SilkMeshCullStyle cullStyle = SilkMeshCullStyle.BackUnlessDoubleSided)
     {
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(points);
@@ -362,6 +364,10 @@ public sealed class SilkMeshData
         ArgumentNullException.ThrowIfNull(triangleSubprims);
         ArgumentNullException.ThrowIfNull(displayColor);
         ArgumentNullException.ThrowIfNull(transform);
+        if (!Enum.IsDefined(cullStyle))
+        {
+            throw new ArgumentOutOfRangeException(nameof(cullStyle));
+        }
         PrimId = primId;
         Path = path;
         StableHash = stableHash;
@@ -369,6 +375,8 @@ public sealed class SilkMeshData
         InstanceIndex = instanceIndex;
         TopologyKind = topologyKind;
         TopologyRevision = topologyRevision;
+        DoubleSided = doubleSided;
+        CullStyle = cullStyle;
         _points = (float[])points.Clone();
         _indices = (uint[])indices.Clone();
         _triangleSubprims = (int[])triangleSubprims.Clone();
@@ -393,6 +401,8 @@ public sealed class SilkMeshData
         int[] triangleSubprims,
         float[] displayColor,
         double[] transform,
+        bool doubleSided,
+        SilkMeshCullStyle cullStyle,
         ulong topologyFingerprint)
     {
         PrimId = primId;
@@ -402,6 +412,8 @@ public sealed class SilkMeshData
         InstanceIndex = instanceIndex;
         TopologyKind = topologyKind;
         TopologyRevision = topologyRevision;
+        DoubleSided = doubleSided;
+        CullStyle = cullStyle;
         _points = points;
         _indices = indices;
         _triangleSubprims = triangleSubprims;
@@ -424,6 +436,8 @@ public sealed class SilkMeshData
         float[] displayColor,
         double[] transform,
         ulong topologyFingerprint,
+        bool doubleSided,
+        SilkMeshCullStyle cullStyle,
         float[] authoredNormals,
         string materialPath)
         : this(
@@ -439,6 +453,8 @@ public sealed class SilkMeshData
             triangleSubprims,
             displayColor,
             transform,
+            doubleSided,
+            cullStyle,
             topologyFingerprint)
     {
         _authoredNormals = authoredNormals;
@@ -459,6 +475,8 @@ public sealed class SilkMeshData
         float[] displayColor,
         double[] transform,
         ulong topologyFingerprint,
+        bool doubleSided,
+        SilkMeshCullStyle cullStyle,
         float[] authoredNormals,
         string materialPath,
         SilkVertexAttributeData[] attributes)
@@ -476,6 +494,8 @@ public sealed class SilkMeshData
             displayColor,
             transform,
             topologyFingerprint,
+            doubleSided,
+            cullStyle,
             authoredNormals,
             materialPath)
     {
@@ -589,6 +609,12 @@ public sealed class SilkMeshData
 
     /// <summary>Gets the topology-only mesh revision.</summary>
     public ulong TopologyRevision { get; }
+
+    /// <summary>Gets whether Hydra resolved the mesh as double-sided.</summary>
+    public bool DoubleSided { get; }
+
+    /// <summary>Gets Hydra's resolved cull style for this mesh.</summary>
+    public SilkMeshCullStyle CullStyle { get; }
 
     /// <summary>Gets a deterministic defensive 64-bit topology fingerprint.</summary>
     /// <remarks>
@@ -718,6 +744,8 @@ public sealed class SilkMeshData
             color,
             transform,
             fingerprint.Value,
+            command.DoubleSided,
+            command.CullStyle,
             authoredNormals,
             command.MaterialPath,
             attributes);

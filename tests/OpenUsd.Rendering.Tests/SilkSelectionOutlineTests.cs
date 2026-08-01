@@ -423,7 +423,7 @@ public sealed class SilkSelectionOutlineTests
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
-        int size = 216 +
+        int size = 224 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -445,24 +445,30 @@ public sealed class SilkSelectionOutlineTests
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(40),
+            1);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(44),
+            (uint)SilkMeshCullStyle.BackUnlessDoubleSided);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(48),
             (uint)path.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44), 3);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), 3);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), 3);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56), 3);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(60), 1);
         for (int index = 0; index < 4; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
-                bytes.AsSpan(56 + (index * sizeof(float))),
+                bytes.AsSpan(64 + (index * sizeof(float))),
                 1);
         }
         for (int index = 0; index < 16; index++)
         {
             BinaryPrimitives.WriteDoubleLittleEndian(
-                bytes.AsSpan(72 + (index * sizeof(double))),
+                bytes.AsSpan(80 + (index * sizeof(double))),
                 index % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 216);
-        int pointOffset = 216 + path.Length;
+        path.CopyTo(bytes, 224);
+        int pointOffset = 224 + path.Length;
         for (int index = 0; index < points.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

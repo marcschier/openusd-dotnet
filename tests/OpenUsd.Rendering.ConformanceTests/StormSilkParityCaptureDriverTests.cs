@@ -615,14 +615,26 @@ public sealed class StormSilkParityCaptureDriverTests
                     "an axis-aligned rectangle, and a centred near-square one measured a " +
                     "0.012661 margin because mirroring barely changed it.",
                 RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
+                "single-sided-winding",
+                Path.Combine(assetRoot, "parity-single-sided-winding.usda"),
+                "Back-facing single-sided pennant proves authored double-sidedness is honoured.",
+                ColorComparisonReady: false,
+                GateEnabled: true,
+                GateReason:
+                    "1.000000 correct adjusted IoU. The scene pairs the back-facing " +
+                    "single-sided pennant, which both renderers must cull, with a " +
+                    "front-facing double-sided banner in a different region, which both " +
+                    "must draw. That pairing is what makes the gate non-vacuous: an " +
+                    "empty-versus-empty scene scores 1.000000 no matter why hdSilk drew " +
+                    "nothing, and every perturbation of it also scores 1.000000, so it " +
+                    "could not discriminate. With the banner present, failing to cull " +
+                    "adds the pennant's coverage and collapses the score, drawing nothing " +
+                    "at all fails the positive-coverage requirement, and the perturbations " +
+                    "move real coverage.",
+                RecommendedMinimumAdjustedIou: 0.92),
         ];
-        // parity-single-sided-winding.usda is authored and measured but not
-        // registered yet. Storm draws nothing for it and hdSilk draws it in full,
-        // so registering it would fail the driver's requirement that a reference
-        // capture contain coverage. It becomes the acceptance test the moment
-        // hdSilk honours authored double-sidedness; see mesh-parity-cull-style.
-        //
-        // parity-bounds-draw-mode.usda is likewise authored and measured but not
+        // parity-bounds-draw-mode.usda is authored and measured but not
         // registered. hdSilk skips basisCurves entirely today, so it would score
         // zero against Storm's 251 pixels. It becomes the acceptance test for
         // hdsilk-basis-curves. parity-curve-width-probe.usda is a diagnostic and

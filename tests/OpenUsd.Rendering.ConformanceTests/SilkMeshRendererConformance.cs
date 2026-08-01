@@ -246,13 +246,14 @@ internal static class SilkMeshRendererConformance
         string pathValue,
         float[] points,
         uint[] indices,
-        double x,
-        double y,
-        float[] color)
+        double x = 0,
+        double y = 0,
+        float[]? color = null,
+        ulong topologyRevision = 1)
     {
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         int triangleCount = indices.Length / 3;
-        int size = 216 +
+        int size = 224 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -267,16 +268,21 @@ internal static class SilkMeshRendererConformance
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(28),
             (uint)SilkTopologyKind.TriangleList);
-        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), (uint)path.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44), (uint)(points.Length / 3));
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), (uint)indices.Length);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), topologyRevision);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), 1);
         BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(52),
+            bytes.AsSpan(44),
+            (uint)SilkMeshCullStyle.BackUnlessDoubleSided);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), (uint)path.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), (uint)(points.Length / 3));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56), (uint)indices.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(60),
             checked((uint)triangleCount));
+        float[] meshColor = color ?? [1, 1, 1, 1];
         for (int i = 0; i < 4; i++)
         {
-            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(56 + (i * 4)), color[i]);
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(64 + (i * 4)), meshColor[i]);
         }
         double[] transform = Identity();
         transform[12] = x;
@@ -284,11 +290,12 @@ internal static class SilkMeshRendererConformance
         for (int i = 0; i < 16; i++)
         {
             BinaryPrimitives.WriteDoubleLittleEndian(
-                bytes.AsSpan(72 + (i * 8)),
+                bytes.AsSpan(80 + (i * 8)),
                 transform[i]);
         }
-        path.CopyTo(bytes, 216);
-        int pointsOffset = 216 + path.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(220), 0);
+        path.CopyTo(bytes, 224);
+        int pointsOffset = 224 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

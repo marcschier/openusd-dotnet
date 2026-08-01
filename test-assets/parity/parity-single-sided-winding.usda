@@ -8,33 +8,68 @@
     upAxis = "Y"
 )
 
+# A controlled experiment in authored double-sidedness. Both prims are wound so
+# the camera sees their back face, and the ONLY attribute that differs between
+# them is `doubleSided`. Storm culls the single-sided one and draws the
+# double-sided one; hdSilk must do the same.
+#
+# The pairing is what makes this gate non-vacuous, and it is deliberate. An
+# earlier version registered the culled pennant alone, so Storm and hdSilk both
+# produced zero coverage and scored a perfect 1.000000 -- as would any bug that
+# made hdSilk draw nothing at all, for any reason. Every geometric perturbation
+# of an empty image is also empty, so all four scored 1.000000 too and the
+# harness could not discriminate. Registering it required switching off both of
+# the harness's non-vacuity safeguards, which is a gate that cannot fail.
+#
+# With the banner present all three failure modes are caught by the gate itself:
+#   - failing to cull single-sided back faces adds the pennant's coverage, which
+#     is roughly three times the banner's, and collapses the score;
+#   - culling too aggressively removes the double-sided banner and trips the
+#     positive-coverage requirement;
+#   - the banner is asymmetric in both axes, so the perturbations move real
+#     coverage and the discrimination check applies normally.
 def Xform "World"
 {
-    # Single sided, and wound so the camera sees the back face. Both renderers
-    # currently rasterize with culling disabled -- Storm because openusd_hydra
-    # states CULL_STYLE_NOTHING, hdSilk because its mesh pipeline uses no cull
-    # mode -- so this silhouette must appear in full. If either side starts
-    # culling back faces without the other, this scene's coverage collapses and
-    # the parity gate fails, which is the point of it.
-    def Mesh "BackFacingPennant"
+    # doubleSided = 1, so back-facing or not, this must be drawn.
+    def Mesh "DoubleSidedBanner"
     {
-        uniform bool doubleSided = 0
+        uniform bool doubleSided = 1
         uniform token subdivisionScheme = "none"
         point3f[] points = [
-            (-0.68, -0.58, 0.06), (-0.48, -0.58, 0.06), (-0.48, 0.64, 0.06),
-            (-0.68, 0.64, 0.06), (0.70, 0.36, 0.06), (-0.48, 0.12, 0.06)
+            (-0.84, 0.10, 0.06), (-0.16, 0.24, 0.06), (-0.78, 0.74, 0.06)
         ]
-        int[] faceVertexCounts = [3, 3, 3]
-        # Reversed relative to parity-material-normals-uv, so the visible side
-        # is the back face.
-        int[] faceVertexIndices = [2, 1, 0, 3, 2, 0, 4, 5, 2]
+        int[] faceVertexCounts = [3]
+        # Reversed, so the camera sees the back face. Double-sidedness, not
+        # winding, is what must keep this visible.
+        int[] faceVertexIndices = [2, 1, 0]
         normal3f[] normals = [
-            (0, 0, -1), (0, 0, -1), (0, 0, -1),
             (0, 0, -1), (0, 0, -1), (0, 0, -1)
         ] (
             interpolation = "vertex"
         )
         color3f[] primvars:displayColor = [(0.30, 0.55, 0.85)]
+        uniform token primvars:displayColor:interpolation = "constant"
+    }
+
+    # doubleSided = 0 and wound back-facing, so this must be culled entirely.
+    # It is deliberately much larger than the banner: if culling regresses, the
+    # coverage it adds dominates and the score collapses rather than drifting.
+    def Mesh "SingleSidedPennant"
+    {
+        uniform bool doubleSided = 0
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (0.02, -0.72, 0.06), (0.86, -0.68, 0.06),
+            (0.80, 0.10, 0.06), (0.10, -0.10, 0.06)
+        ]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [2, 1, 0, 3, 2, 0]
+        normal3f[] normals = [
+            (0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 0, -1)
+        ] (
+            interpolation = "vertex"
+        )
+        color3f[] primvars:displayColor = [(0.85, 0.45, 0.30)]
         uniform token primvars:displayColor:interpolation = "constant"
     }
 }

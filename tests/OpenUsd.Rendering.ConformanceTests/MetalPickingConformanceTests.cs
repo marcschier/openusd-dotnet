@@ -1,8 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using System.Buffers.Binary;
 using System.Runtime.Versioning;
-using System.Text;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.Metal;
 
@@ -96,7 +94,7 @@ public sealed class MetalPickingConformanceTests
             SilkMeshRendererConformance.CreateFrameCommand(
                 size,
                 size,
-                Identity()),
+                SilkMeshRendererConformance.Identity()),
             CreateTriangle(
                 1,
                 "/Far",
@@ -214,7 +212,7 @@ public sealed class MetalPickingConformanceTests
             SilkMeshRendererConformance.CreateFrameCommand(
                 width,
                 height,
-                Identity()),
+                SilkMeshRendererConformance.Identity()),
             CreateTriangle(
                 1,
                 "/Triangle",
@@ -324,7 +322,7 @@ public sealed class MetalPickingConformanceTests
         float z,
         float[] xy,
         float[] color) =>
-        CreateMesh(
+        SilkMeshRendererConformance.CreateMeshCommand(
             id,
             path,
             [
@@ -333,7 +331,7 @@ public sealed class MetalPickingConformanceTests
                 xy[4], xy[5], z
             ],
             [0, 1, 2],
-            color);
+            color: color);
 
     private static byte[] CreateQuad(
         ulong id,
@@ -344,7 +342,7 @@ public sealed class MetalPickingConformanceTests
         float right,
         float bottom,
         float[] color) =>
-        CreateMesh(
+        SilkMeshRendererConformance.CreateMeshCommand(
             id,
             path,
             [
@@ -354,88 +352,7 @@ public sealed class MetalPickingConformanceTests
                 left, bottom, z
             ],
             [0, 1, 2, 0, 2, 3],
-            color);
-
-    private static byte[] CreateMesh(
-        ulong id,
-        string pathValue,
-        float[] points,
-        uint[] indices,
-        float[] color)
-    {
-        byte[] path = Encoding.UTF8.GetBytes(pathValue);
-        int triangleCount = indices.Length / 3;
-        int size = 216 +
-            path.Length +
-            (points.Length * sizeof(float)) +
-            (indices.Length * sizeof(uint)) +
-            (triangleCount * sizeof(uint));
-        var bytes = new byte[size];
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes,
-            (uint)SilkCommandType.MeshUpsert);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(4),
-            checked((uint)size));
-        BinaryPrimitives.WriteUInt64LittleEndian(
-            bytes.AsSpan(8),
-            ComputeStableHash(pathValue));
-        BinaryPrimitives.WriteInt32LittleEndian(
-            bytes.AsSpan(16),
-            checked((int)id));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(28),
-            (uint)SilkTopologyKind.TriangleList);
-        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(40),
-            checked((uint)path.Length));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(44),
-            checked((uint)(points.Length / 3)));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(48),
-            checked((uint)indices.Length));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(52),
-            checked((uint)triangleCount));
-        for (int index = 0; index < color.Length; index++)
-        {
-            BinaryPrimitives.WriteSingleLittleEndian(
-                bytes.AsSpan(56 + (index * sizeof(float))),
-                color[index]);
-        }
-        double[] transform = Identity();
-        for (int index = 0; index < transform.Length; index++)
-        {
-            BinaryPrimitives.WriteDoubleLittleEndian(
-                bytes.AsSpan(72 + (index * sizeof(double))),
-                transform[index]);
-        }
-        path.CopyTo(bytes, 216);
-        int pointsOffset = 216 + path.Length;
-        for (int index = 0; index < points.Length; index++)
-        {
-            BinaryPrimitives.WriteSingleLittleEndian(
-                bytes.AsSpan(pointsOffset + (index * sizeof(float))),
-                points[index]);
-        }
-        int indicesOffset = pointsOffset + (points.Length * sizeof(float));
-        for (int index = 0; index < indices.Length; index++)
-        {
-            BinaryPrimitives.WriteUInt32LittleEndian(
-                bytes.AsSpan(indicesOffset + (index * sizeof(uint))),
-                indices[index]);
-        }
-        int subprimsOffset = indicesOffset + (indices.Length * sizeof(uint));
-        for (int triangle = 0; triangle < triangleCount; triangle++)
-        {
-            BinaryPrimitives.WriteUInt32LittleEndian(
-                bytes.AsSpan(subprimsOffset + (triangle * sizeof(uint))),
-                checked((uint)triangle));
-        }
-        return bytes;
-    }
+            color: color);
 
     private static byte[] ReadPixels(ISilkGraphicsTexture texture)
     {
@@ -443,25 +360,6 @@ public sealed class MetalPickingConformanceTests
         texture.ReadbackForTesting(pixels);
         return pixels;
     }
-
-    private static ulong ComputeStableHash(string path)
-    {
-        ulong hash = 14695981039346656037;
-        foreach (byte value in Encoding.UTF8.GetBytes(path))
-        {
-            hash ^= value;
-            hash *= 1099511628211;
-        }
-        return hash;
-    }
-
-    private static double[] Identity() =>
-    [
-        1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, 1, 0,
-        0, 0, 0, 1
-    ];
 
     private static async Task AssertHit(RenderPickResult result, string path)
     {

@@ -19,9 +19,9 @@ PXR_NAMESPACE_OPEN_SCOPE
 namespace
 {
 // The fixed MESH_UPSERT payload, excluding the 8-byte command header: through
-// transform (192) plus the ABI v4 material binding hash, material path byte
+// transform (200) plus the ABI v4 material binding hash, material path byte
 // count and attribute count.
-constexpr size_t MeshFixedPayloadSize = 208;
+constexpr size_t MeshFixedPayloadSize = 216;
 
 // semantic, component_count, interpolation, name_byte_count, element_count.
 constexpr size_t MeshAttributeFixedSize = 20;
@@ -203,6 +203,14 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         throw std::invalid_argument(
             "An hdSilk mesh topology revision must be non-zero.");
     }
+    if (record.doubleSided > 1)
+    {
+        throw std::invalid_argument("An hdSilk mesh double-sided flag must be 0 or 1.");
+    }
+    if (record.cullStyle > 5)
+    {
+        throw std::invalid_argument("An hdSilk mesh cull style is unknown.");
+    }
     if ((record.points.size() % 3) != 0)
     {
         throw std::invalid_argument(
@@ -318,6 +326,8 @@ void AppendMeshUpsert(std::vector<uint8_t>& buffer, const HdSilkMeshRecord& reco
     AppendI32(payload, record.instanceIndex);
     AppendU32(payload, record.topologyKind);
     AppendU64(payload, record.topologyRevision);
+    AppendU32(payload, record.doubleSided);
+    AppendU32(payload, record.cullStyle);
     AppendU32(payload, counts.pathByteCount);
     AppendU32(payload, counts.pointCount);
     AppendU32(payload, counts.indexCount);

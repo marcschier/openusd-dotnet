@@ -2,7 +2,6 @@
 
 using System.Buffers.Binary;
 using System.Runtime.Versioning;
-using System.Text;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.Metal;
 
@@ -299,88 +298,18 @@ public sealed class MetalSelectionOutlineConformanceTests
         float left,
         float top,
         float right,
-        float bottom)
-    {
-        byte[] path = Encoding.UTF8.GetBytes(pathValue);
-        float[] points =
-        [
-            left, top, z,
-            right, top, z,
-            right, bottom, z,
-            left, bottom, z
-        ];
-        uint[] indices = [0, 1, 2, 0, 2, 3];
-        int size = 216 +
-            path.Length +
-            (points.Length * sizeof(float)) +
-            (indices.Length * sizeof(uint)) +
-            (2 * sizeof(uint));
-        var bytes = new byte[size];
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes,
-            (uint)SilkCommandType.MeshUpsert);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(4),
-            checked((uint)size));
-        BinaryPrimitives.WriteUInt64LittleEndian(
-            bytes.AsSpan(8),
-            ComputeStableHash(pathValue));
-        BinaryPrimitives.WriteInt32LittleEndian(
-            bytes.AsSpan(16),
-            checked((int)id));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(28),
-            (uint)SilkTopologyKind.TriangleList);
-        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(40),
-            checked((uint)path.Length));
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44), 4);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), 6);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), 2);
-        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(56), 0.1f);
-        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(60), 0.7f);
-        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(64), 0.2f);
-        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(68), 1);
-        for (int index = 0; index < 16; index++)
-        {
-            BinaryPrimitives.WriteDoubleLittleEndian(
-                bytes.AsSpan(72 + (index * sizeof(double))),
-                index % 5 == 0 ? 1 : 0);
-        }
-        path.CopyTo(bytes, 216);
-        int pointsOffset = 216 + path.Length;
-        for (int index = 0; index < points.Length; index++)
-        {
-            BinaryPrimitives.WriteSingleLittleEndian(
-                bytes.AsSpan(pointsOffset + (index * sizeof(float))),
-                points[index]);
-        }
-        int indicesOffset = pointsOffset + (points.Length * sizeof(float));
-        for (int index = 0; index < indices.Length; index++)
-        {
-            BinaryPrimitives.WriteUInt32LittleEndian(
-                bytes.AsSpan(indicesOffset + (index * sizeof(uint))),
-                indices[index]);
-        }
-        int subprimsOffset = indicesOffset + (indices.Length * sizeof(uint));
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(subprimsOffset), 0);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(subprimsOffset + sizeof(uint)),
-            1);
-        return bytes;
-    }
-
-    private static ulong ComputeStableHash(string path)
-    {
-        ulong hash = 14695981039346656037;
-        foreach (byte value in Encoding.UTF8.GetBytes(path))
-        {
-            hash ^= value;
-            hash *= 1099511628211;
-        }
-        return hash;
-    }
+        float bottom) =>
+        SilkMeshRendererConformance.CreateMeshCommand(
+            id,
+            pathValue,
+            [
+                left, top, z,
+                right, top, z,
+                right, bottom, z,
+                left, bottom, z
+            ],
+            [0, 1, 2, 0, 2, 3],
+            color: [0.1f, 0.7f, 0.2f, 1]);
 
     private static void RequirePinnedMetalLibrary()
     {

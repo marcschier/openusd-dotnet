@@ -333,6 +333,8 @@ HdSilkMesh::GetInitialDirtyBitsMask() const
         | HdChangeTracker::InitRepr
         | HdChangeTracker::DirtyPoints
         | HdChangeTracker::DirtyTopology
+        | HdChangeTracker::DirtyDoubleSided
+        | HdChangeTracker::DirtyCullStyle
         | HdChangeTracker::DirtyTransform
         | HdChangeTracker::DirtyVisibility
         | HdChangeTracker::DirtyMaterialId
@@ -389,6 +391,9 @@ HdSilkMesh::Sync(
     const bool transformDirty = HdChangeTracker::IsTransformDirty(*dirtyBits, id);
     const bool materialDirty =
         (*dirtyBits & HdChangeTracker::DirtyMaterialId) != 0;
+    const bool cullDirty =
+        (*dirtyBits & (HdChangeTracker::DirtyDoubleSided |
+                      HdChangeTracker::DirtyCullStyle)) != 0;
     if (materialDirty)
     {
         // Hydra resolves the binding for us; the path is the only identity the
@@ -555,12 +560,14 @@ HdSilkMesh::Sync(
 
     if (topologyRefreshed || pointsDirty || transformDirty || visibilityDirty ||
         displayColorDirty || normalsDirty || primvarsDirty || instancerDirty ||
-        materialDirty)
+        materialDirty || cullDirty)
     {
         HdSilkMeshRecord record;
         record.path = id.GetString();
         record.primId = GetPrimId();
         record.topologyRevision = _topologyRevision;
+        record.doubleSided = IsDoubleSided(sceneDelegate) ? 1u : 0u;
+        record.cullStyle = static_cast<uint32_t>(GetCullStyle(sceneDelegate));
         record.materialPath = GetMaterialId().GetString();
         HdSilkFlattenMatrix(_transform, record.transform);
         record.displayColor[0] = _displayColor[0];

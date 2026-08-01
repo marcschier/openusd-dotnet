@@ -257,7 +257,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 RasterizerState = new RasterizerDesc
                 {
                     FillMode = FillMode.Solid,
-                    CullMode = CullMode.None,
+                    CullMode = ToD3D12CullMode(descriptor.CullMode),
+                    FrontCounterClockwise = true,
                     DepthClipEnable = true
                 },
                 DepthStencilState = new DepthStencilDesc
@@ -298,6 +299,14 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         };
         return blend;
     }
+
+    private static CullMode ToD3D12CullMode(SilkCullMode cullMode) =>
+        cullMode switch
+        {
+            SilkCullMode.None => CullMode.None,
+            SilkCullMode.Back => CullMode.Back,
+            _ => throw new ArgumentOutOfRangeException(nameof(cullMode))
+        };
 }
 
 [SupportedOSPlatform("windows")]

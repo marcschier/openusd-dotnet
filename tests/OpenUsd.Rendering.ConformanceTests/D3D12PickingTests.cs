@@ -2,10 +2,8 @@
 
 #pragma warning disable CA1859 // These tests intentionally exercise the public RHI contracts.
 
-using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using System.Text;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
 
@@ -113,13 +111,13 @@ public sealed class D3D12PickingTests
                 size,
                 size,
                 SilkMeshRendererConformance.Identity()),
-            CreateMeshCommand(
+            SilkMeshRendererConformance.CreateMeshCommand(
                 1,
                 "/Near",
                 FullTriangle(0.2f),
                 [0, 1, 2],
                 topologyRevision: 1),
-            CreateMeshCommand(
+            SilkMeshRendererConformance.CreateMeshCommand(
                 2,
                 "/Far",
                 FullTriangle(0.8f),
@@ -713,7 +711,7 @@ public sealed class D3D12PickingTests
                 width,
                 height,
                 SilkMeshRendererConformance.Identity()),
-            CreateMeshCommand(
+            SilkMeshRendererConformance.CreateMeshCommand(
                 1,
                 "/Triangle",
                 [
@@ -722,7 +720,7 @@ public sealed class D3D12PickingTests
                      0.6f, -0.6f, 0.2f
                 ],
                 [0, 1, 2],
-                topologyRevision));
+                topologyRevision: topologyRevision));
 
     private static float[] FullTriangle(float depth) =>
     [
@@ -738,7 +736,7 @@ public sealed class D3D12PickingTests
         float top,
         float right,
         float bottom) =>
-        CreateMeshCommand(
+        SilkMeshRendererConformance.CreateMeshCommand(
             id,
             path,
             [
@@ -750,99 +748,6 @@ public sealed class D3D12PickingTests
             [0, 1, 2, 0, 2, 3],
             topologyRevision: 1);
 
-    private static byte[] CreateMeshCommand(
-        ulong id,
-        string pathValue,
-        float[] points,
-        uint[] indices,
-        ulong topologyRevision)
-    {
-        byte[] path = Encoding.UTF8.GetBytes(pathValue);
-        int triangleCount = indices.Length / 3;
-        int size = 216 +
-            path.Length +
-            (points.Length * sizeof(float)) +
-            (indices.Length * sizeof(uint)) +
-            (triangleCount * sizeof(uint));
-        var bytes = new byte[size];
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes,
-            (uint)SilkCommandType.MeshUpsert);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(4),
-            checked((uint)size));
-        BinaryPrimitives.WriteUInt64LittleEndian(
-            bytes.AsSpan(8),
-            ComputeStableHash(pathValue));
-        BinaryPrimitives.WriteInt32LittleEndian(
-            bytes.AsSpan(16),
-            checked((int)id));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(28),
-            (uint)SilkTopologyKind.TriangleList);
-        BinaryPrimitives.WriteUInt64LittleEndian(
-            bytes.AsSpan(32),
-            topologyRevision);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(40),
-            checked((uint)path.Length));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(44),
-            checked((uint)(points.Length / 3)));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(48),
-            checked((uint)indices.Length));
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(52),
-            checked((uint)triangleCount));
-        for (int channel = 0; channel < 4; channel++)
-        {
-            BinaryPrimitives.WriteSingleLittleEndian(
-                bytes.AsSpan(56 + (channel * sizeof(float))),
-                1);
-        }
-        double[] transform = SilkMeshRendererConformance.Identity();
-        for (int index = 0; index < transform.Length; index++)
-        {
-            BinaryPrimitives.WriteDoubleLittleEndian(
-                bytes.AsSpan(72 + (index * sizeof(double))),
-                transform[index]);
-        }
-        path.CopyTo(bytes, 216);
-        int pointsOffset = 216 + path.Length;
-        for (int index = 0; index < points.Length; index++)
-        {
-            BinaryPrimitives.WriteSingleLittleEndian(
-                bytes.AsSpan(pointsOffset + (index * sizeof(float))),
-                points[index]);
-        }
-        int indicesOffset = pointsOffset + (points.Length * sizeof(float));
-        for (int index = 0; index < indices.Length; index++)
-        {
-            BinaryPrimitives.WriteUInt32LittleEndian(
-                bytes.AsSpan(indicesOffset + (index * sizeof(uint))),
-                indices[index]);
-        }
-        int subprimOffset = indicesOffset + (indices.Length * sizeof(uint));
-        for (int triangle = 0; triangle < triangleCount; triangle++)
-        {
-            BinaryPrimitives.WriteUInt32LittleEndian(
-                bytes.AsSpan(subprimOffset + (triangle * sizeof(uint))),
-                checked((uint)triangle));
-        }
-        return bytes;
-    }
-
-    private static ulong ComputeStableHash(string path)
-    {
-        ulong hash = 14695981039346656037;
-        foreach (byte value in Encoding.UTF8.GetBytes(path))
-        {
-            hash ^= value;
-            hash *= 1099511628211;
-        }
-        return hash;
-    }
 
     [SupportedOSPlatform("windows")]
     private sealed class PickingPresentationRenderer : ISilkPresentationRenderer, IDisposable

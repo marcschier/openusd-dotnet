@@ -50,7 +50,7 @@ struct ParsedAttribute
     float firstValue = 0.0F;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 4);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 5);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 6);
 
 openusd_render_camera AutomaticCamera()
 {
@@ -284,25 +284,29 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             int32_t instanceIndex = -1;
             uint32_t topologyKind = 0;
             uint64_t topologyRevision = 0;
+            uint32_t doubleSided = 0;
+            uint32_t cullStyle = 0;
             uint32_t pathSize = 0;
             uint32_t pointCount = 0;
             uint32_t indexCount = 0;
             uint32_t triangleCount = 0;
             uint32_t materialPathSize = 0;
             uint32_t attributeCount = 0;
-            constexpr size_t pathOffset = 216;
+            constexpr size_t pathOffset = 224;
             if (ReadValue(data, size, offset + 8, &stableHash) &&
                 ReadValue(data, size, offset + 16, &primId) &&
                 ReadValue(data, size, offset + 20, &instanceId) &&
                 ReadValue(data, size, offset + 24, &instanceIndex) &&
                 ReadValue(data, size, offset + 28, &topologyKind) &&
                 ReadValue(data, size, offset + 32, &topologyRevision) &&
-                ReadValue(data, size, offset + 40, &pathSize) &&
-                ReadValue(data, size, offset + 44, &pointCount) &&
-                ReadValue(data, size, offset + 48, &indexCount) &&
-                ReadValue(data, size, offset + 52, &triangleCount) &&
-                ReadValue(data, size, offset + 208, &materialPathSize) &&
-                ReadValue(data, size, offset + 212, &attributeCount))
+                ReadValue(data, size, offset + 40, &doubleSided) &&
+                ReadValue(data, size, offset + 44, &cullStyle) &&
+                ReadValue(data, size, offset + 48, &pathSize) &&
+                ReadValue(data, size, offset + 52, &pointCount) &&
+                ReadValue(data, size, offset + 56, &indexCount) &&
+                ReadValue(data, size, offset + 60, &triangleCount) &&
+                ReadValue(data, size, offset + 216, &materialPathSize) &&
+                ReadValue(data, size, offset + 220, &attributeCount))
             {
                 size_t pointBytes = 0;
                 size_t indexBytes = 0;
@@ -369,7 +373,9 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 }
                 sizesValid = sizesValid &&
                     expectedSize == byteSize &&
-                    static_cast<uint64_t>(triangleCount) * 3 == indexCount;
+                    static_cast<uint64_t>(triangleCount) * 3 == indexCount &&
+                    doubleSided <= 1 &&
+                    cullStyle <= OPENUSD_SILK_CULL_STYLE_FRONT_UNLESS_DOUBLE_SIDED;
                 if (!sizesValid)
                 {
                     result.mesh_identity_valid = false;

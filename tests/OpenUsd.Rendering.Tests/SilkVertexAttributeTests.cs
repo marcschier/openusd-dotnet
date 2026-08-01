@@ -109,7 +109,7 @@ public sealed class SilkVertexAttributeTests
             }
         }
 
-        byte[] bytes = new byte[216 + variable.Count];
+        byte[] bytes = new byte[224 + variable.Count];
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(0, 4), (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4, 4), (uint)bytes.Length);
@@ -119,19 +119,23 @@ public sealed class SilkVertexAttributeTests
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(28, 4), (uint)SilkTopologyKind.TriangleList);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32, 8), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40, 4), (uint)path.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44, 4), pointCount);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48, 4), 3);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52, 4), 1);
-        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(68, 4), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40, 4), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(44, 4),
+            (uint)SilkMeshCullStyle.BackUnlessDoubleSided);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48, 4), (uint)path.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52, 4), pointCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56, 4), 3);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(60, 4), 1);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(76, 4), 1);
         for (int i = 0; i < 16; i++)
         {
             BinaryPrimitives.WriteDoubleLittleEndian(
-                bytes.AsSpan(72 + (i * 8), 8), i % 5 == 0 ? 1 : 0);
+                bytes.AsSpan(80 + (i * 8), 8), i % 5 == 0 ? 1 : 0);
         }
         BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(212, 4), (uint)attributes.Length);
-        variable.CopyTo(bytes, 216);
+            bytes.AsSpan(220, 4), (uint)attributes.Length);
+        variable.CopyTo(bytes, 224);
         return bytes;
     }
 }
