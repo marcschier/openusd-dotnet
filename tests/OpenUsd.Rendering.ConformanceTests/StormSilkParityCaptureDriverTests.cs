@@ -644,6 +644,17 @@ public sealed class StormSilkParityCaptureDriverTests
                     "a 0.756691 margin. hdSilk emits the draw-mode basisCurves as line " +
                     "topology, matching Storm's 251 one-pixel line coverage exactly.",
                 RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
+                "origin-draw-mode",
+                Path.Combine(assetRoot, "parity-origin-draw-mode.usda"),
+                "UsdImaging draw-mode origin axes reach hdSilk as linear segmented basis curves.",
+                ColorComparisonReady: false,
+                GateEnabled: true,
+                GateReason:
+                    "1.000000 correct adjusted IoU against a 0.229167 worst perturbation, " +
+                    "a 0.770833 margin. hdSilk emits the draw-mode basisCurves as line " +
+                    "topology, matching Storm's 116 one-pixel origin-axis pixels exactly.",
+                RecommendedMinimumAdjustedIou: 0.92),
         ];
         // parity-curve-width-probe.usda is a diagnostic and is never gated: it
         // proved that Storm rasterizes linear basis curves as 1-pixel
@@ -734,6 +745,7 @@ public sealed class StormSilkParityCaptureDriverTests
             "test-assets\\parity\\parity-single-sided-winding.usda",
             "test-assets\\parity\\parity-cards-draw-mode.usda",
             "test-assets\\parity\\parity-bounds-draw-mode.usda",
+            "test-assets\\parity\\parity-origin-draw-mode.usda",
             "docs\\testing.md",
         ];
         var files = new List<object>();

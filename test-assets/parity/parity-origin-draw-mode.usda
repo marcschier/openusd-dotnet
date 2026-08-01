@@ -1,0 +1,48 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 1
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    # UsdImaging replaces this component's geometry with three model-space axis
+    # lines meeting at the model origin, inserted as a basisCurves Rprim with
+    # linear bezier segmented topology. hdSilk emits those segments as line-list
+    # topology, matching Storm's one-pixel screen-space line rasterization.
+    #
+    # The component is translated so the shared origin of the three lines is not
+    # centred in the frame. The extent is strongly non-square so the visible X
+    # and Y axes have different projected lengths, and it is asymmetric about the
+    # model origin so mirroring, transposition, or a camera shift moves real
+    # coverage. The inner triangle is far from the proxy axes, so applying the
+    # draw mode changes coverage substantially instead of masking failures.
+    def Xform "Origin" (
+        prepend apiSchemas = ["GeomModelAPI"]
+        kind = "component"
+    )
+    {
+        token model:drawMode = "origin"
+        bool model:applyDrawMode = 1
+        float3 xformOp:translate = (-0.31, 0.18, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        float3[] extentsHint = [(-0.14, -0.62, -0.26), (0.88, 0.21, 0.34)]
+
+        def Mesh "Inner"
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            point3f[] points = [
+                (0.42, -0.50, 0), (0.78, -0.50, 0), (0.42, -0.20, 0)
+            ]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            color3f[] primvars:displayColor = [(0.35, 0.70, 0.95)]
+            uniform token primvars:displayColor:interpolation = "constant"
+        }
+    }
+}
