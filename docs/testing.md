@@ -525,18 +525,18 @@ driver or an installed GPU driver. The parity capture evidence also records the 
 OpenGL path, SHA-256, renderer, version, and current WGL handles beside the scene metrics.
 
 `eng/run-parity-capture.ps1` defaults to `-StormGl Auto`. In that mode the script removes any stale
-test-host `opengl32.dll` override, preflights the system WGL implementation, selects twelve scenes, and
-gates the eleven with measured thresholds when the driver can create a Storm-usable context. If the
+test-host `opengl32.dll` override, preflights the system WGL implementation, selects thirteen scenes, and
+gates them with measured thresholds when the driver can create a Storm-usable context. If the
 system driver is unavailable, Auto falls back to Mesa with a warning that the selected set has changed to
-nine scenes, eight of them gated. Hosted CI passes `-StormGl Mesa` explicitly so the result is
+ten scenes. Hosted CI passes `-StormGl Mesa` explicitly so the result is
 deterministic and runner-safe. Both modes publish the scene count and excluded scene names, and the test
 host asserts the expected count so the parity subset cannot shrink silently.
 
-The Mesa WGL parity run gates the eight scenes whose Storm reference is stable across Mesa llvmpipe,
+The Mesa WGL parity run gates the ten scenes whose Storm reference is stable across Mesa llvmpipe,
 D3D12 WARP, and Vulkan SwiftShader: `orientation-asymmetric`, `clip-plane-asymmetric`,
 `depth-overlap-multiprim`, `material-normals-uv`, `materials-textures`, `point-instancer-cluster`,
-`points-asymmetric`, and `cards-draw-mode`. The three excluded scenes remain valuable GPU-driver
-conformance probes, but Mesa llvmpipe exposed
+`points-asymmetric`, `cards-draw-mode`, `time-varying-transform-primvar`, and `skinned-pennant`.
+The three excluded scenes remain valuable GPU-driver conformance probes, but Mesa llvmpipe exposed
 Storm implementation differences rather than hdSilk regressions:
 
 - `single-sided-winding`: Mesa Storm covered 2,201 pixels in the single-sided pennant region while
@@ -551,7 +551,7 @@ Storm implementation differences rather than hdSilk regressions:
 
 The WGL gate writes `parity-capture-mesa-wgl-exclusions.json`/`.txt` so the subset is explicit in CI
 artifacts. If a future Mesa/OpenUSD update makes those scenes agree with the real-GPU measurements,
-remove the exclusion and restore all twelve scenes to the WGL parity subset.
+remove the exclusion and restore all thirteen scenes to the WGL parity subset.
 
 Those three scenes gate only when `-StormGl Auto` finds a conformant system driver. Hosted CI has no
 such driver today, so authored double-sidedness and the two basis-curves line-topology draw-mode probes
@@ -623,18 +623,21 @@ SwiftShader. Each gated scene must keep at least 0.18 adjusted-IoU separation
 between the correct capture and the closest vertical, horizontal, transpose, or
 camera-shift perturbation before it can use the 0.92 threshold.
 
-| Scene | Correct | Vertical flip | Horizontal mirror | Transpose | Shifted camera | Margin | Gate |
+| Scene | Correct | Vertical | Horizontal | Transpose | Shift | Margin | Gate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `orientation-asymmetric` | 1.000000 | 0.592750 | 0.360720 | 0.563545 | 0.193474 | 0.407250 | yes, threshold 0.92 |
-| `clip-plane-asymmetric` | 1.000000 | 0.675442 | 0.195327 | 0.358933 | 0.563869 | 0.324558 | yes, threshold 0.92 |
-| `depth-overlap-multiprim` | 1.000000 | 0.718102 | 0.815667 | 0.737040 | 0.432669 | 0.184333 | yes, threshold 0.92 |
-| `material-normals-uv` | 1.000000 | 0.310060 | 0.253340 | 0.557888 | 0.216277 | 0.442112 | yes, threshold 0.92 |
-| `materials-textures` | 1.000000 | 0.781397 | 0.503618 | 0.422400 | 0.434662 | 0.218603 | yes, threshold 0.92 |
-| `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | yes, threshold 0.92 |
-| `cards-draw-mode` | 1.000000 | 0.250000 | 0.418182 | 0.730337 | 0.431193 | 0.269663 | yes, threshold 0.92 |
-| `single-sided-winding` | 1.000000 | 0.000000 | 0.000000 | 0.450163 | 0.060213 | 0.549837 | yes, threshold 0.92 |
-| `bounds-draw-mode` | 1.000000 | 0.094421 | 0.231884 | 0.047847 | 0.243309 | 0.756691 | yes, threshold 0.92 |
-| `origin-draw-mode` | 1.000000 | 0.000000 | 0.229167 | 0.046083 | 0.175000 | 0.770833 | yes, threshold 0.92 |
+| `orientation-asymmetric` | 1.000000 | 0.592750 | 0.360720 | 0.563545 | 0.193474 | 0.407250 | 0.92 |
+| `clip-plane-asymmetric` | 1.000000 | 0.675442 | 0.195327 | 0.358933 | 0.563869 | 0.324558 | 0.92 |
+| `depth-overlap-multiprim` | 1.000000 | 0.718102 | 0.815667 | 0.737040 | 0.432669 | 0.184333 | 0.92 |
+| `material-normals-uv` | 1.000000 | 0.310060 | 0.253340 | 0.557888 | 0.216277 | 0.442112 | 0.92 |
+| `materials-textures` | 1.000000 | 0.781397 | 0.503618 | 0.422400 | 0.434662 | 0.218603 | 0.92 |
+| `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | 0.92 |
+| `points-asymmetric` | 1.000000 | 0.277778 | 0.436893 | 0.071066 | 0.274112 | 0.563107 | 0.92 |
+| `cards-draw-mode` | 1.000000 | 0.250000 | 0.418182 | 0.730337 | 0.431193 | 0.269663 | 0.92 |
+| `single-sided-winding` | 1.000000 | 0.000000 | 0.000000 | 0.450163 | 0.060213 | 0.549837 | 0.92 |
+| `bounds-draw-mode` | 1.000000 | 0.094421 | 0.231884 | 0.047847 | 0.243309 | 0.756691 | 0.92 |
+| `origin-draw-mode` | 1.000000 | 0.000000 | 0.229167 | 0.046083 | 0.175000 | 0.770833 | 0.92 |
+| `time-varying-transform-primvar` | 1.000000 | 0.287766 | 0.401624 | 0.317643 | 0.193264 | 0.598376 | 0.92 |
+| `skinned-pennant` | 1.000000 | 0.725652 | 0.000000 | 0.121114 | 0.077607 | 0.274348 | 0.92 |
 
 Storm and hdSilk agree **exactly** on coverage for every curated scene: raw IoU
 1.000000 with identical coverage counts. All gated scenes use a 0.92 threshold,
@@ -881,6 +884,23 @@ Excluded for this gate: general Catmull-Clark limit evaluation, Loop surfaces,
 bilinear refinement, creases/corners/holes beyond what the coarse mesh already
 expresses, and subdivision-aware interpolation of non-constant primvars.
 
+### UsdSkel: Storm deforms through Hydra CPU ExtComputation
+
+`test-assets/parity/parity-skinned-pennant.usda` was added only after measuring
+Storm. The scene authors an off-centre, strongly non-square pennant under a
+two-joint `UsdSkel` rig and captures at timeCode 2, where the tip joint is
+rotated from its timeCode 1 rest pose. Storm and hdSilk agree exactly because
+hdSilk still consumes Hydra's CPU ExtComputation `points` output for skinned
+meshes. Correct adjusted IoU is **1.000000** with 2606 covered pixels on Storm,
+D3D12 WARP, and Vulkan SwiftShader.
+
+The perturbation evidence is deliberately non-vacuous: vertical flip 0.725652,
+horizontal mirror 0.000000, transpose 0.121114, shifted camera 0.077607, and the
+wrong-time probe 0.534601. The weakest required margin is therefore **0.274348**.
+Capturing the undeformed timeCode 1 pose was the deliberate red proof for this
+gate; it failed the 0.92 threshold before the registration stayed at timeCode 2.
+GPU skinning remains a measured gap rather than a claimed feature.
+
 ### Draw modes: cards, bounds, and origin are gated
 
 `parity-cards-draw-mode.usda` gates the mesh half. Two things about it are
@@ -1000,7 +1020,9 @@ when hdSilk leaves debug normal shading. `point-instancer-cluster` proves
 prototype expansion and per-instance transforms. `time-varying-transform-primvar`
 is registered and gated at timeCode 2; its wrong-time probe compares the time 2
 Storm reference with a time 1 hdSilk capture and scores 0.045334 adjusted IoU,
-so a missed time sample is not silently equivalent. For every scene the
+so a missed time sample is not silently equivalent. `skinned-pennant` does the
+same for `UsdSkel`; its time 2 deformed pose gates exactly while the time 1
+capture scores 0.534601. For every scene the
 perturbation evidence reports the correct Storm-vs-hdSilk adjusted IoU, vertical
 flip, horizontal mirror, transposed-axis, and shifted-camera values plus the
 weakest discrimination margin; scenes below the required margin are rejected

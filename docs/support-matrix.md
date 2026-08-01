@@ -150,7 +150,7 @@ See [Rendering](rendering.md) for request binding, stale results, GPU passes, an
 | Points | Implemented subset and parity-gated | `UsdGeomPoints` emits point-list topology |
 | Mesh primvar interpolation | Implemented resolver | Constant, vertex, varying, uniform, and face-varying |
 | Time-varying values | Implemented and parity-gated | Transforms and primvars sample at capture time |
-| UsdSkel deformation | CPU-computed subset | Hydra ExtComputation points are consumed; no GPU skinning |
+| UsdSkel deformation | CPU subset, parity-gated | CPU ExtComputation points; `skinned-pennant`; no GPU skinning |
 | Blend shapes | Data/API surface only | Rendering subset scoped but not implemented |
 | Display styles / draw modes | Partial | Cards/bounds/origin gated; wire/shaded-wire are not |
 | Subdivision surfaces | Measured, ungated | Storm is coarse-like; hdSilk scores 0.931015, not exact parity |

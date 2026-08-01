@@ -1012,6 +1012,21 @@ public sealed class StormSilkParityCaptureDriverTests
                     "interior fill. It remains ungated until that divergence is " +
                     "eliminated.",
                 RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
+                "skinned-pennant",
+                Path.Combine(assetRoot, "parity-skinned-pennant.usda"),
+                "UsdSkel joint animation deforms an off-centre asymmetric pennant at timeCode 2.",
+                ColorComparisonReady: false,
+                GateEnabled: true,
+                GateReason:
+                    "1.000000 correct adjusted IoU at timeCode 2 against a 0.725652 " +
+                    "worst geometric perturbation, a 0.274348 margin. The wrong-time " +
+                    "probe scores 0.534601, so the scene proves Storm actually samples " +
+                    "a deformed UsdSkel pose rather than the rest pose.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                TimeCode = 2,
+            },
         ];
         // parity-curve-width-probe.usda is a diagnostic and is never gated: it
         // proved that Storm rasterizes linear basis curves as 1-pixel
