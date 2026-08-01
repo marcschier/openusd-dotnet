@@ -41,7 +41,8 @@ internal static class PerformanceTestData
         int primId = 42,
         int triangleCount = 1,
         float color = 0.7f,
-        string materialPath = "")
+        string materialPath = "",
+        double x = 0)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(primId);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(triangleCount);
@@ -82,6 +83,7 @@ internal static class PerformanceTestData
                 component == 3 ? 1 : color);
         }
         WriteIdentityMatrix(bytes.AsSpan(80, 16 * sizeof(double)));
+        BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(80 + (12 * sizeof(double))), x);
         path.CopyTo(bytes, 224);
 
         int pointsOffset = 224 + path.Length;

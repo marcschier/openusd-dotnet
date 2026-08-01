@@ -172,6 +172,54 @@ public sealed class ResourceStabilityTests
     }
 
     [Test]
+    public async Task IndependentValueUpdatesAvoidFullSceneGeometryPayload()
+    {
+        const int meshCount = 32;
+        byte[][] initialCommands = new byte[meshCount][];
+        for (int index = 0; index < initialCommands.Length; index++)
+        {
+            initialCommands[index] = PerformanceTestData.CreateMeshCommand(
+                pathValue: $"/World/AnimatedMesh{index}",
+                primId: 200 + index,
+                triangleCount: 128,
+                x: index * 1.25);
+        }
+
+        byte[] fullScenePage = PerformanceTestData.Concat(initialCommands);
+        var scene = new SilkSceneState();
+        var device = new CountingGraphicsDevice();
+        var resources = new SilkSceneGpuResources(device);
+        SilkSceneDelta initialDelta = scene.Apply(
+            fullScenePage,
+            (uint)initialCommands.Length,
+            revision: 1);
+        resources.Apply(scene, initialDelta);
+        SilkSceneGpuStatistics initialStatistics = resources.Statistics;
+
+        byte[] valueOnlyPage = PerformanceTestData.CreateMeshCommand(
+            pathValue: "/World/AnimatedMesh17",
+            primId: 217,
+            triangleCount: 128,
+            color: 0.25f,
+            x: 99);
+        SilkSceneDelta delta = scene.Apply(valueOnlyPage, commandCount: 1, revision: 2);
+        resources.Apply(scene, delta);
+
+        await Assert.That(valueOnlyPage.Length).IsLessThan(fullScenePage.Length / 16);
+        await Assert.That(delta.MeshUpserts).IsEqualTo(1);
+        await Assert.That(resources.Statistics.MeshCount).IsEqualTo(meshCount);
+        await Assert.That(resources.Statistics.GeometryBuilds)
+            .IsEqualTo(initialStatistics.GeometryBuilds);
+        await Assert.That(resources.Statistics.VertexUploads)
+            .IsEqualTo(initialStatistics.VertexUploads);
+        await Assert.That(resources.Statistics.IndexUploads)
+            .IsEqualTo(initialStatistics.IndexUploads);
+
+        resources.Dispose();
+        device.Dispose();
+    }
+
+    [Test]
     public async Task RendererOrdersDrawsByPipelineAndMaterialToReduceBindingChurn()
     {
         var commands = new byte[8][];

@@ -525,17 +525,18 @@ driver or an installed GPU driver. The parity capture evidence also records the 
 OpenGL path, SHA-256, renderer, version, and current WGL handles beside the scene metrics.
 
 `eng/run-parity-capture.ps1` defaults to `-StormGl Auto`. In that mode the script removes any stale
-test-host `opengl32.dll` override, preflights the system WGL implementation, and gates all nine scenes
-when the driver can create a Storm-usable context. If the system driver is unavailable, Auto falls back
-to Mesa with a warning that the gate has changed to six scenes. Hosted CI passes `-StormGl Mesa`
-explicitly so the result is deterministic and runner-safe. Both modes publish the gated scene count and
-excluded scene names, and the test host asserts the expected count so the parity subset cannot shrink
-silently.
+test-host `opengl32.dll` override, preflights the system WGL implementation, selects twelve scenes, and
+gates the eleven with measured thresholds when the driver can create a Storm-usable context. If the
+system driver is unavailable, Auto falls back to Mesa with a warning that the selected set has changed to
+nine scenes, eight of them gated. Hosted CI passes `-StormGl Mesa` explicitly so the result is
+deterministic and runner-safe. Both modes publish the scene count and excluded scene names, and the test
+host asserts the expected count so the parity subset cannot shrink silently.
 
-The Mesa WGL parity run gates the six scenes whose Storm reference is stable across Mesa llvmpipe,
+The Mesa WGL parity run gates the eight scenes whose Storm reference is stable across Mesa llvmpipe,
 D3D12 WARP, and Vulkan SwiftShader: `orientation-asymmetric`, `clip-plane-asymmetric`,
-`depth-overlap-multiprim`, `material-normals-uv`, `point-instancer-cluster`, and `cards-draw-mode`.
-The three excluded scenes remain valuable GPU-driver conformance probes, but Mesa llvmpipe exposed
+`depth-overlap-multiprim`, `material-normals-uv`, `materials-textures`, `point-instancer-cluster`,
+`points-asymmetric`, and `cards-draw-mode`. The three excluded scenes remain valuable GPU-driver
+conformance probes, but Mesa llvmpipe exposed
 Storm implementation differences rather than hdSilk regressions:
 
 - `single-sided-winding`: Mesa Storm covered 2,201 pixels in the single-sided pennant region while
@@ -550,7 +551,7 @@ Storm implementation differences rather than hdSilk regressions:
 
 The WGL gate writes `parity-capture-mesa-wgl-exclusions.json`/`.txt` so the subset is explicit in CI
 artifacts. If a future Mesa/OpenUSD update makes those scenes agree with the real-GPU measurements,
-remove the exclusion and restore all nine scenes to the WGL parity subset.
+remove the exclusion and restore all twelve scenes to the WGL parity subset.
 
 Those three scenes gate only when `-StormGl Auto` finds a conformant system driver. Hosted CI has no
 such driver today, so authored double-sidedness and the two basis-curves line-topology draw-mode probes
@@ -952,7 +953,10 @@ asymmetric in both axes. `depth-overlap-multiprim` exercises multiple retained
 draws, depth, and per-prim transforms. `material-normals-uv` carries a bound
 PreviewSurface plus authored normals and UVs so colour comparison can be enabled
 when hdSilk leaves debug normal shading. `point-instancer-cluster` proves
-prototype expansion and per-instance transforms. For every scene the
+prototype expansion and per-instance transforms. `time-varying-transform-primvar`
+is registered and gated at timeCode 2; its wrong-time probe compares the time 2
+Storm reference with a time 1 hdSilk capture and scores 0.045334 adjusted IoU,
+so a missed time sample is not silently equivalent. For every scene the
 perturbation evidence reports the correct Storm-vs-hdSilk adjusted IoU, vertical
 flip, horizontal mirror, transposed-axis, and shifted-camera values plus the
 weakest discrimination margin; scenes below the required margin are rejected

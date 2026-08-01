@@ -718,6 +718,24 @@ that UsdSkel depends on, and pulling computed primvars for a skinned mesh faults
 from computed primvars whenever a mesh declares them, and points are refreshed whenever topology refreshes, so
 deformed positions can never be indexed against a stale point array.
 
+Animation support is currently value-sampled through Hydra at the requested time code, not through an hdSilk-side
+timeline cache. Time-varying transforms and resolved primvars can dirty and republish only the affected Rprim: the
+retained managed resource path reuses existing vertex and index buffers when topology is unchanged, and the performance
+gate proves a single value update in a 32-mesh scene uploads less than one sixteenth of the full scene payload and
+performs zero extra geometry builds. The parity scene `parity-time-varying-transform-primvar.usda` is registered and
+gated at timeCode 2: Storm, D3D12 WARP, and Vulkan SwiftShader agree at 1.000000 adjusted IoU, the worst perturbation is
+0.401624, and the wrong-time probe scores 0.045334.
+
+The UsdSkel facade is present on the data side: native code exposes `UsdSkelRoot`, `UsdSkelSkeleton`,
+`UsdSkelAnimation`, `UsdSkelBindingAPI`, joints, bind/rest transforms, blend-shape targets, joint indices/weights, and
+validation helpers. Rendering still consumes only the Hydra-computed points produced by the CPU ExtComputation path
+above. hdSilk does not yet upload joints, weights, or blend-shape deltas to GPU buffers, and no shader path evaluates
+skinning. The supported blend-shape scope for the next rendering slice is therefore deliberately limited to OpenUSD
+blend-shape targets resolved through a bound `UsdSkelAnimation`, linear weights, point-position offsets, and normal
+offsets only; in-betweens, arbitrary primvar deltas, tangent deltas, and mixed CPU/GPU deformation are out of scope.
+Replacing the CPU ExtComputation pull with GPU compute remains a separate ABI/shader design task because it must define
+the wire format for joint palettes, influence streams, blend-shape ranges, barriers, and backend-equivalent dispatch.
+
 Serialization isolates failures per prim. A record whose points, indices, or triangle mapping do not validate is
 skipped with a warning and counted by a rejected-mesh counter instead of aborting the page, so one malformed prim in
 a production asset cannot blank an entire frame. Indices are 32-bit end to end across the wire, retained managed

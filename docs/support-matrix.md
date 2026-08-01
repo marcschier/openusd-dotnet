@@ -149,6 +149,9 @@ See [Rendering](rendering.md) for request binding, stale results, GPU passes, an
 | Basis curves | Implemented subset and parity-gated | Linear segmented curves emit one-pixel line lists |
 | Points | Implemented subset and parity-gated | `UsdGeomPoints` emits point-list topology |
 | Mesh primvar interpolation | Implemented resolver | Constant, vertex, varying, uniform, and face-varying |
+| Time-varying values | Implemented and parity-gated | Transforms and primvars sample at capture time |
+| UsdSkel deformation | CPU-computed subset | Hydra ExtComputation points are consumed; no GPU skinning |
+| Blend shapes | Data/API surface only | Rendering subset scoped but not implemented |
 | Display styles / draw modes | Partial | Cards, bounds, and origin are gated; wire/shaded-wire are not |
 | Subdivision surfaces | Not implemented | Coarse topology only; no subdivision refinement |
 

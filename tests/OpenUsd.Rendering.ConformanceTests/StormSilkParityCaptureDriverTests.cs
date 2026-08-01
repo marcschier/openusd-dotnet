@@ -236,15 +236,38 @@ public sealed class StormSilkParityCaptureDriverTests
                 scene,
                 baseline.Storm,
                 shiftedCapture.SilkCaptures[0].Image);
+            ParityComparisonResult? wrongTimeResult = null;
+            if (scene.TimeCode != TimeCode)
+            {
+                ParityCaptureInput wrongTime = input with { TimeCode = TimeCode };
+                ParityCaptureSet wrongTimeCapture = await ParityCaptureDriver.CaptureAsync(
+                    wrongTime,
+                    StormGlContextFactory.CreateForCurrentPlatform(),
+                    backends).ConfigureAwait(false);
+                wrongTimeResult = ComparePerturbation(
+                    input,
+                    scene,
+                    baseline.Storm,
+                    wrongTimeCapture.SilkCaptures[0].Image);
+            }
+
             double weakestMargin = new[]
             {
                 Margin(correct, vertical),
                 Margin(correct, horizontal),
                 Margin(correct, transposed),
                 Margin(correct, shiftedResult),
+                wrongTimeResult is null ? double.PositiveInfinity : Margin(correct, wrongTimeResult),
             }.Min();
 
-            string summary = FormatPerturbation(scene, correct, vertical, horizontal, transposed, shiftedResult);
+            string summary = FormatPerturbation(
+                scene,
+                correct,
+                vertical,
+                horizontal,
+                transposed,
+                shiftedResult,
+                wrongTimeResult);
             evidence.Add(summary);
             Console.WriteLine(summary);
             if (!correct.Passed || correct.ReferenceCoveragePixels == 0 || correct.CandidateCoveragePixels == 0)
@@ -276,6 +299,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     failures.Add($"{scene.Name} shifted camera passed the measured threshold.");
                 }
 
+                if (wrongTimeResult is not null && wrongTimeResult.Passed)
+                {
+                    failures.Add($"{scene.Name} wrong time code passed the measured threshold.");
+                }
+
                 if (weakestMargin < MinimumDiscriminationMargin)
                 {
                     failures.Add(
@@ -299,12 +327,15 @@ public sealed class StormSilkParityCaptureDriverTests
                 horizontalMirror = ToEvidence(horizontal),
                 transposedAxes = ToEvidence(transposed),
                 shiftedCamera = ToEvidence(shiftedResult),
+                wrongTimeCode = wrongTimeResult is null ? null : ToEvidence(wrongTimeResult),
                 margins = new
                 {
                     verticalFlip = Margin(correct, vertical),
                     horizontalMirror = Margin(correct, horizontal),
                     transposedAxes = Margin(correct, transposed),
                     shiftedCamera = Margin(correct, shiftedResult),
+                    wrongTimeCode =
+                        wrongTimeResult is null ? (double?)null : Margin(correct, wrongTimeResult),
                     weakest = weakestMargin,
                 },
                 recommendation = new
@@ -627,7 +658,7 @@ public sealed class StormSilkParityCaptureDriverTests
             scene.StagePath,
             Width,
             Height,
-            TimeCode,
+            scene.TimeCode,
             new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, scene.ClipPlanes),
             new SilkColor(0, 0, 0, 1),
             headlight);
@@ -953,6 +984,21 @@ public sealed class StormSilkParityCaptureDriverTests
                     "a 0.770833 margin. hdSilk emits the draw-mode basisCurves as line " +
                     "topology, matching Storm's 116 one-pixel origin-axis pixels exactly.",
                 RecommendedMinimumAdjustedIou: 0.92),
+            new ParityScene(
+                "time-varying-transform-primvar",
+                Path.Combine(assetRoot, "parity-time-varying-transform-primvar.usda"),
+                "Animated transform and displayColor are sampled at timeCode 2.",
+                ColorComparisonReady: false,
+                GateEnabled: true,
+                GateReason:
+                    "1.000000 correct adjusted IoU at timeCode 2 against a 0.401624 " +
+                    "worst geometric perturbation, a 0.598376 margin. The wrong-time " +
+                    "probe compares Storm timeCode 2 with hdSilk timeCode 1 and scores " +
+                    "0.045334, so a missed time sample is red rather than silently equivalent.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                TimeCode = 2,
+            },
         ];
         // parity-curve-width-probe.usda is a diagnostic and is never gated: it
         // proved that Storm rasterizes linear basis curves as 1-pixel
@@ -1274,23 +1320,28 @@ public sealed class StormSilkParityCaptureDriverTests
         ParityComparisonResult vertical,
         ParityComparisonResult horizontal,
         ParityComparisonResult transposed,
-        ParityComparisonResult shifted) =>
+        ParityComparisonResult shifted,
+        ParityComparisonResult? wrongTime) =>
         string.Format(
             CultureInfo.InvariantCulture,
             "Scene {0}; correct={1:F6}; vertical={2:F6}; horizontal={3:F6}; transpose={4:F6}; " +
-            "shift={5:F6}; weakestMargin={6:F6}; threshold={7:F6}; gated={8}",
+            "shift={5:F6}; wrongTime={6}; weakestMargin={7:F6}; threshold={8:F6}; gated={9}",
             scene.Name,
             correct.AdjustedCoverageIntersectionOverUnion,
             vertical.AdjustedCoverageIntersectionOverUnion,
             horizontal.AdjustedCoverageIntersectionOverUnion,
             transposed.AdjustedCoverageIntersectionOverUnion,
             shifted.AdjustedCoverageIntersectionOverUnion,
+            wrongTime is null
+                ? "n/a"
+                : wrongTime.AdjustedCoverageIntersectionOverUnion.ToString("F6", CultureInfo.InvariantCulture),
             new[]
             {
                 Margin(correct, vertical),
                 Margin(correct, horizontal),
                 Margin(correct, transposed),
                 Margin(correct, shifted),
+                wrongTime is null ? double.PositiveInfinity : Margin(correct, wrongTime),
             }.Min(),
             scene.RecommendedMinimumAdjustedIou,
             scene.GateEnabled);
@@ -1308,5 +1359,7 @@ public sealed class StormSilkParityCaptureDriverTests
         double RecommendedMinimumAdjustedIou)
     {
         public IReadOnlyList<Vector4> ClipPlanes { get; init; } = [];
+
+        public double TimeCode { get; init; } = StormSilkParityCaptureDriverTests.TimeCode;
     }
 }

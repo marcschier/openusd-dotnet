@@ -1,0 +1,54 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 2
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    # Captured at timeCode 2. At timeCode 1 the pennant is far to the left and
+    # the displayColor is red; a missed time sample leaves visibly wrong
+    # coverage and colour evidence instead of producing an accidental pass.
+    def Xform "AnimatedOffset"
+    {
+        double3 xformOp:translate.timeSamples = {
+            1: (-0.62, -0.28, 0),
+            2: (0.30, 0.16, 0)
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Mesh "Pennant"
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            point3f[] points = [
+                (-0.62, -0.36, 0.04), (0.28, -0.22, 0.04),
+                (0.16, 0.42, 0.04), (-0.50, 0.24, 0.04)
+            ]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            color3f[] primvars:displayColor.timeSamples = {
+                1: [(0.85, 0.20, 0.18)],
+                2: [(0.16, 0.68, 0.92)]
+            }
+            uniform token primvars:displayColor:interpolation = "constant"
+        }
+    }
+
+    def Mesh "Anchor"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (-0.88, 0.46, 0.05), (-0.54, 0.52, 0.05), (-0.82, 0.74, 0.05)
+        ]
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        color3f[] primvars:displayColor = [(0.95, 0.80, 0.20)]
+        uniform token primvars:displayColor:interpolation = "constant"
+    }
+}
