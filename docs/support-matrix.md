@@ -152,8 +152,13 @@ See [Rendering](rendering.md) for request binding, stale results, GPU passes, an
 | Time-varying values | Implemented and parity-gated | Transforms and primvars sample at capture time |
 | UsdSkel deformation | CPU-computed subset | Hydra ExtComputation points are consumed; no GPU skinning |
 | Blend shapes | Data/API surface only | Rendering subset scoped but not implemented |
-| Display styles / draw modes | Partial | Cards, bounds, and origin are gated; wire/shaded-wire are not |
-| Subdivision surfaces | Not implemented | Coarse topology only; no subdivision refinement |
+| Display styles / draw modes | Partial | Cards/bounds/origin gated; wire/shaded-wire are not |
+| Subdivision surfaces | Measured, ungated | Storm is coarse-like; hdSilk scores 0.931015, not exact parity |
+
+At the parity harness complexity, Storm renders the Catmull-Clark probe as a
+coarse/control-cage-like surface rather than full refinement. An eager
+OpenSubdiv refinement experiment moved hdSilk away from Storm, so subdivision
+remains measured but ungated until the remaining divergence is eliminated.
 
 ## Data and authoring features
 

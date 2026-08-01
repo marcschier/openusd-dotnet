@@ -999,6 +999,19 @@ public sealed class StormSilkParityCaptureDriverTests
             {
                 TimeCode = 2,
             },
+            new ParityScene(
+                "subdivision-catmull-clark",
+                Path.Combine(assetRoot, "parity-subdivision-catmull-clark.usda"),
+                "Catmull-Clark probe records Storm's harness-complexity subdivision behaviour.",
+                ColorComparisonReady: false,
+                GateEnabled: false,
+                GateReason:
+                    "Storm at the parity harness complexity renders this Catmull-Clark " +
+                    "scene near hdSilk's coarse topology but not exactly: 0.931015 " +
+                    "adjusted IoU, with disagreement split between silhouette and " +
+                    "interior fill. It remains ungated until that divergence is " +
+                    "eliminated.",
+                RecommendedMinimumAdjustedIou: 0.92),
         ];
         // parity-curve-width-probe.usda is a diagnostic and is never gated: it
         // proved that Storm rasterizes linear basis curves as 1-pixel
@@ -1019,6 +1032,7 @@ public sealed class StormSilkParityCaptureDriverTests
             "single-sided-winding",
             "bounds-draw-mode",
             "origin-draw-mode",
+            "subdivision-catmull-clark",
         };
 
     private static IReadOnlyList<object> CreateMesaWglSceneExclusionEvidence()

@@ -841,6 +841,46 @@ hdSilk supported Rprim list made the scene draw nothing: correct fell to
 0.000000, the weakest margin was 0.000000, and the gate failed before the change
 was reverted.
 
+### Subdivision: Storm's default complexity is measured before refinement
+
+`parity-subdivision-catmull-clark.usda` exists because subdivision is the same
+kind of trap as curve widths: assuming what Storm "should" draw is not enough.
+The scene is an off-centre, strongly non-square all-quad frustum with
+`uniform token subdivisionScheme = "catmullClark"` plus a lower-right anchor
+that makes vertical flips and camera shifts fail. Its diagnostic companion,
+`parity-subdivision-control-cage.usda`, uses identical authored geometry with
+`subdivisionScheme = "none"` so the subdivided stage can be compared against its
+control cage.
+
+Measurement came first. At the harness's default Storm complexity, Storm does
+not produce full Catmull-Clark refinement; its output is closest to hdSilk's
+coarse control-cage path. The Catmull-Clark scene covered **5192** pixels in
+Storm and **5190** in hdSilk. Their adjusted IoU is **0.931015** against a
+**0.695708** worst perturbation, but this is an ungated known divergence rather
+than an agreement claim. A forced `0.99` diagnostic run dumped the captures and
+showed **247** Storm-only and **240** hdSilk-only pixels; roughly **294** of the
+487 differing pixels were near silhouette edges and **193** were interior fill,
+so the mismatch is not only a one-pixel edge-rasterization nudge. The control
+cage is deliberately not gated; it measured only **0.910543** against hdSilk,
+while Storm covered **5824** pixels, proving the authored `catmullClark` scene is
+not an empty or invariant duplicate of its control.
+
+An OpenSubdiv uniform-refinement experiment was then used as the required
+"break it" proof. Enabling one Catmull-Clark refinement level in hdSilk reduced
+the same frustum candidate to **2273** pixels and the adjusted IoU to
+**0.533246**, so implementing eager subdivision at this complexity would have
+diverged from Storm rather than converged. The experiment was reverted, and the
+scene remains `GateEnabled: false`: hdSilk keeps subdivision schemes on the
+coarse path until the harness deliberately raises complexity/refine level or the
+remaining 0.931015-vs-1.000000 divergence is eliminated. Mesa llvmpipe refines
+or rasterizes this scene differently at the same harness settings and scored
+0.120809, so the scene joins the Windows Mesa exclusion list rather than
+weakening or falsely gating a backend-specific divergence.
+
+Excluded for this gate: general Catmull-Clark limit evaluation, Loop surfaces,
+bilinear refinement, creases/corners/holes beyond what the coarse mesh already
+expresses, and subdivision-aware interpolation of non-constant primvars.
+
 ### Draw modes: cards, bounds, and origin are gated
 
 `parity-cards-draw-mode.usda` gates the mesh half. Two things about it are
@@ -860,6 +900,10 @@ a triangle on its top half only, so mass sits in the upper right against an
 empty lower right. A vertical flip now costs 0.689940 and the margin is
 0.442112. The scene keeps its bound PreviewSurface, authored vertex normals and
 UVs, so it still proves what it exists to prove.
+
+Display styles remain partial. Cards, bounds, origin draw modes, points, and
+one-pixel line topology have measured parity; wireframe, shaded-wire, and
+related display styles are not implemented or gated in hdSilk yet.
 
 ### Three shipped defects the harness found
 

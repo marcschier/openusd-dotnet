@@ -56,6 +56,13 @@ managed-side, while the property inspector queries only the selected prim. A mis
 but does not disable hierarchy or layer inspection. Up to ten normalized recent paths are stored under
 `LocalApplicationData/OpenUsd/Viewer`; missing entries are removed when the list is loaded.
 
+Storm subdivision is intentionally measured at the harness complexity before hdSilk attempts any refinement. The current
+ungated `catmullClark` frustum plus asymmetric anchor shows that Storm's default-complexity output is closest to
+hdSilk's coarse topology but still not exact: adjusted IoU is 0.931015, not 1.000000. A uniform OpenSubdiv refinement
+experiment moved hdSilk much farther from Storm, so hdSilk therefore keeps subdivision schemes on the coarse path for
+now. Full Catmull-Clark, Loop, bilinear, creases, and subdivision primvar refinement remain outside the current support
+claim.
+
 `openusd_storm_child` owns the child HWND/XID/NSView and one dedicated render thread. Native views are created and
 destroyed only on their UI/creator thread; wrong-thread creation, resize, and destruction are rejected without changing
 ownership. Windows and Linux create OpenGL 4.6/4.5 compatibility contexts for WGL/GLX on the render thread. On macOS,
