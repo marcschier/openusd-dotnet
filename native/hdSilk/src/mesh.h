@@ -15,6 +15,8 @@
 #include "pxr/base/vt/array.h"
 #include "pxr/imaging/hd/mesh.h"
 #include "pxr/imaging/hd/meshTopology.h"
+#include "pxr/usd/usd/stage.h"
+#include "pxr/usd/usd/timeCode.h"
 
 #include "sceneState.h"
 
@@ -24,6 +26,12 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 struct HdSilkMeshRecord;
+
+/// Makes the currently rendered USD stage/time visible to Rprim Sync so
+/// hdSilk can evaluate supported UsdSkel deformation directly instead of
+/// consuming Hydra's CPU ExtComputation output for points.
+void HdSilkBeginUsdSkelEvaluation(UsdStageRefPtr const& stage, UsdTimeCode time);
+void HdSilkEndUsdSkelEvaluation() noexcept;
 
 /// HdSilkMesh is the only supported Rprim type in this walking skeleton. Its
 /// Sync() pulls topology, points, and transform from the scene delegate

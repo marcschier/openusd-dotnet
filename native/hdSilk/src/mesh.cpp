@@ -20,7 +20,12 @@
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hd/types.h"
 #include "pxr/imaging/hd/tokens.h"
+#include "pxr/usd/usdGeom/mesh.h"
 #include "pxr/usd/usdGeom/tokens.h"
+#include "pxr/usd/usdSkel/cache.h"
+#include "pxr/usd/usdSkel/root.h"
+#include "pxr/usd/usdSkel/skeletonQuery.h"
+#include "pxr/usd/usdSkel/skinningQuery.h"
 
 #include <algorithm>
 #include <limits>
@@ -32,6 +37,9 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 namespace
 {
+thread_local UsdStageRefPtr _skelEvaluationStage;
+thread_local UsdTimeCode _skelEvaluationTime = UsdTimeCode::Default();
+
 /// Points reach Hydra as float or double arrays depending on the authored
 /// type. Returns false when the value holds neither, leaving the previous
 /// points untouched.
@@ -318,6 +326,113 @@ bool ExpandUniformElements(
     }
     return true;
 }
+
+UsdSkelRoot FindSkelRoot(UsdPrim prim)
+{
+    for (UsdPrim current = prim; current; current = current.GetParent())
+    {
+        UsdSkelRoot root(current);
+        if (root)
+        {
+            return root;
+        }
+    }
+    return UsdSkelRoot();
+}
+
+bool TryComputeUsdSkelPoints(SdfPath const& id, VtVec3fArray* points)
+{
+    if (!_skelEvaluationStage || points == nullptr)
+    {
+        return false;
+    }
+
+    const UsdPrim prim = _skelEvaluationStage->GetPrimAtPath(id);
+    if (!prim)
+    {
+        return false;
+    }
+    UsdGeomMesh mesh(prim);
+    if (!mesh)
+    {
+        return false;
+    }
+    VtVec3fArray authoredPoints;
+    if (!mesh.GetPointsAttr().Get(&authoredPoints, _skelEvaluationTime) ||
+        authoredPoints.empty())
+    {
+        return false;
+    }
+
+    UsdSkelRoot root = FindSkelRoot(prim);
+    if (!root)
+    {
+        return false;
+    }
+
+    UsdSkelCache cache;
+    if (!cache.Populate(root, UsdPrimDefaultPredicate))
+    {
+        return false;
+    }
+
+    std::vector<UsdSkelBinding> bindings;
+    if (!cache.ComputeSkelBindings(root, &bindings, UsdPrimDefaultPredicate))
+    {
+        return false;
+    }
+
+    for (const UsdSkelBinding& binding : bindings)
+    {
+        const UsdSkelSkeletonQuery skeletonQuery =
+            cache.GetSkelQuery(binding.GetSkeleton());
+        if (!skeletonQuery)
+        {
+            continue;
+        }
+        VtMatrix4dArray skinningTransforms;
+        if (!skeletonQuery.ComputeSkinningTransforms(
+                &skinningTransforms,
+                _skelEvaluationTime))
+        {
+            continue;
+        }
+        for (const UsdSkelSkinningQuery& skinningQuery :
+             binding.GetSkinningTargets())
+        {
+            if (!skinningQuery ||
+                skinningQuery.GetPrim().GetPath() != id ||
+                skinningQuery.HasBlendShapes())
+            {
+                continue;
+            }
+            VtVec3fArray skinnedPoints = authoredPoints;
+            if (skinningQuery.ComputeSkinnedPoints(
+                    skinningTransforms,
+                    &skinnedPoints,
+                    _skelEvaluationTime))
+            {
+                *points = std::move(skinnedPoints);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+}
+
+void
+HdSilkBeginUsdSkelEvaluation(UsdStageRefPtr const& stage, UsdTimeCode time)
+{
+    _skelEvaluationStage = stage;
+    _skelEvaluationTime = time;
+}
+
+void
+HdSilkEndUsdSkelEvaluation() noexcept
+{
+    _skelEvaluationStage.Reset();
+    _skelEvaluationTime = UsdTimeCode::Default();
 }
 
 HdSilkMesh::HdSilkMesh(SdfPath const& id)
@@ -463,26 +578,35 @@ HdSilkMesh::Sync(
         _transform = sceneDelegate->GetTransform(id);
     }
 
-    // Skinned and otherwise procedurally deformed meshes publish "points" as
-    // an ExtComputation output rather than an authored primvar, so a plain
-    // Get() returns nothing and would leave the point array empty while the
-    // topology is fully triangulated. Pull computed primvars first and let an
-    // authored value win only when no computation supplied one.
+    // Skinned meshes are evaluated directly from UsdSkel bindings when that
+    // subset is supported. Other procedurally deformed meshes still publish
+    // "points" as an ExtComputation output rather than an authored primvar, so
+    // a plain Get() returns nothing and would leave the point array empty while
+    // the topology is fully triangulated. Pull computed primvars only as a
+    // fallback and let an authored value win only when no computation supplied
+    // one.
     bool pointsResolved = false;
-    HdExtComputationPrimvarDescriptorVector dirtyComputedPrimvars;
-    for (size_t interpolation = 0;
-         interpolation < HdInterpolationCount;
-         ++interpolation)
+    if (pointsDirty || topologyRefreshed)
     {
-        const HdExtComputationPrimvarDescriptorVector computedPrimvars =
-            sceneDelegate->GetExtComputationPrimvarDescriptors(
-                id,
-                static_cast<HdInterpolation>(interpolation));
-        for (HdExtComputationPrimvarDescriptor const& primvar : computedPrimvars)
+        pointsResolved = TryComputeUsdSkelPoints(id, &_points);
+    }
+    HdExtComputationPrimvarDescriptorVector dirtyComputedPrimvars;
+    if (!pointsResolved)
+    {
+        for (size_t interpolation = 0;
+             interpolation < HdInterpolationCount;
+             ++interpolation)
         {
-            if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, primvar.name))
+            const HdExtComputationPrimvarDescriptorVector computedPrimvars =
+                sceneDelegate->GetExtComputationPrimvarDescriptors(
+                    id,
+                    static_cast<HdInterpolation>(interpolation));
+            for (HdExtComputationPrimvarDescriptor const& primvar : computedPrimvars)
             {
-                dirtyComputedPrimvars.emplace_back(primvar);
+                if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, primvar.name))
+                {
+                    dirtyComputedPrimvars.emplace_back(primvar);
+                }
             }
         }
     }
