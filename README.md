@@ -13,9 +13,18 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Current distribution:** public source repository, version `0.3.0-alpha`, and pre-1.0 APIs.
-> Packages are built and exercised through local feeds and CI, but this project does not currently
-> advertise a public NuGet or GitHub Packages installation path.
+> **Current distribution:** public source repository and published packages, version `0.4.0-alpha`,
+> with pre-1.0 APIs. Managed and runtime packages are on
+> [NuGet.org](https://www.nuget.org/packages/OpenUsd) and on GitHub Packages; package identities and
+> public APIs may still change before 1.0.
+
+```shell
+dotnet add package OpenUsd --version 0.4.0-alpha
+dotnet add package OpenUsd.Runtime.Core.win-x64 --version 0.4.0-alpha
+```
+
+Keep every `OpenUsd*` package at the same version, and add the matching
+`OpenUsd.Runtime.Imaging.<rid>` package for rendering. See [Packaging](docs/packaging.md).
 
 ## ✨ Highlights
 
@@ -27,6 +36,11 @@ paths.
 - **Ordered shared-stage access** through `UsdStageScheduler`, change notifications, and retained
   render sources for live editing.
 - **Renderer-neutral viewer state** for camera, time, selection, picking, diagnostics, and failover.
+- **A managed Hydra renderer** over D3D12, Vulkan, and Metal covering materials, textures, `UsdLux`
+  lighting, point instancing, curves, points, draw modes, clip planes, `UsdSkel` skinning, and
+  time-varying values.
+- **Measured parity with Storm** on 19 hard-gated curated scenes at exactly `1.000000` adjusted IoU,
+  with every uncovered feature named rather than implied.
 - **Cross-platform packaging gates** for `win-x64`, `linux-x64`, and `osx-arm64`.
 - **NativeAOT and trimming analyzers** across production libraries targeting .NET 8, 9, and 10.
 
@@ -96,8 +110,8 @@ See [Architecture](docs/architecture.md) and [Rendering](docs/rendering.md).
 
 ## 📦 Package matrix
 
-All package IDs below are buildable from this repository. They are not currently published to a
-public package feed.
+All package IDs below are published to NuGet.org and GitHub Packages, and are buildable from this
+repository.
 
 | Package | TFM | Purpose |
 | --- | --- | --- |
@@ -135,9 +149,14 @@ The package prefix in the runtime columns is `OpenUsd.Runtime.`.
 
 | RID | Core package | Imaging package | Viewer choices | Evidence |
 | --- | --- | --- | --- | --- |
-| `win-x64` | `Core.win-x64` | `Imaging.win-x64` | Storm, D3D12, Vulkan | Native, package, render gates |
-| `linux-x64` | `Core.linux-x64` | `Imaging.linux-x64` | Storm, Vulkan | Native, package, render gates |
-| `osx-arm64` | `Core.osx-arm64` | `Imaging.osx-arm64` | Storm, Metal | Hosted end-to-end proof still pending |
+| `win-x64` | `Core.win-x64` | `Imaging.win-x64` | Storm, D3D12, Vulkan | Native, package, 19 gated parity scenes |
+| `linux-x64` | `Core.linux-x64` | `Imaging.linux-x64` | Storm, Vulkan | Native, package, Storm child render gate |
+| `osx-arm64` | `Core.osx-arm64` | `Imaging.osx-arm64` | Storm, Metal | Native, package, Metal probe |
+
+Curated parity runs on Windows against D3D12 WARP and Vulkan SwiftShader. Two Vulkan composition
+proofs are narrowed on hosted runners and need GPU-equipped self-hosted hardware: hosted Windows has
+no system Vulkan ICD and SwiftShader cannot export to a D3D11 shared handle, and the hosted Linux
+compositor reports no supported image handles.
 
 See [Support matrix](docs/support-matrix.md) for the distinction between implemented source,
 workflow-defined gates, and hosted execution evidence.
@@ -165,7 +184,9 @@ The renderer-neutral capability declarations are:
 | Selection display | Storm highlight | Visible outline | Visible outline | Visible outline |
 
 An em dash means the capability is not advertised by the current renderer-neutral descriptor, not
-that the underlying graphics API can never provide it.
+that the underlying graphics API can never provide it. The `Shadows` row states that the Storm
+descriptor advertises the capability; it does not mean shadows are rendered in every configuration,
+and the offscreen parity harness is measured not to produce them at all.
 
 ## 🧩 Feature matrix
 
@@ -183,12 +204,63 @@ that the underlying graphics API can never provide it.
 | `UsdSkel` | Root, skeleton, animation, binding, joints, transforms, influences | Focused facade |
 | Shared-stage authoring | Scheduler, change feed, retained render source, bounded sample queue | Implemented |
 | Viewer | Hierarchy, properties, layers, timeline, cameras, switching, diagnostics | Implemented |
+| Viewer diagnostics | Backend API/device, compute, descriptor indexing, software device, frame counters | Implemented |
 | Primitive picking | Storm and hdSilk backend paths with stale-result handling | Implemented |
 | Face picking | hdSilk preserves authored triangle/subprim identity | Implemented on Silk |
 | Edge and point picking | Valid requests report unsupported | Not supported |
 | Selection outlines | Visible-only hdSilk outline; Storm uses its native highlight | Implemented |
 | X-ray selection | Explicitly rejected by the current outline contract | Not supported |
 | NativeAOT | Compile gates on all RIDs; package-only execution gates per RID | Alpha-gated |
+
+### hdSilk rendering features
+
+These are the managed renderer's Hydra-fed features. "Parity-gated" means a curated scene is
+compared against Storm and must match exactly; see the section below for what that does and does
+not claim.
+
+| Area | Coverage | Status |
+| --- | --- | --- |
+| Mesh topology and transforms | Triangulated meshes, authored normals, UVs, display colour | Parity-gated |
+| Primvar interpolation | Constant, vertex, varying, uniform, face-varying | Implemented; constant/vertex gated |
+| `UsdPreviewSurface` | All 14 inputs, both specular and metallic workflows | Implemented; specular workflow gated |
+| Textures | Image decode, GPU cache, `UsdUVTexture` wrap and colour space | Implemented; `repeat`+`sRGB` gated |
+| MaterialX | `ND_standard_surface_surfaceshader` projected onto PreviewSurface | Implemented subset; projection gated |
+| `UsdLux` lighting | Distant, sphere, and untextured dome ambient with exposure | Parity-gated |
+| Shadows | Transport exists; Storm produces no offscreen reference to gate against | Measured, ungated |
+| Image-based lighting | Dome textures and IBL | Not implemented |
+| Point instancing | Prototype-plus-instance wire format, hardware instanced draws | Parity-gated |
+| Basis curves | Linear curves as line topology | Implemented subset; gated |
+| Points | `UsdGeomPoints` as point-list topology | Parity-gated |
+| Draw modes | Cards, bounds, and origin | Parity-gated |
+| Cull style | `doubleSided` and authored cull style | Implemented; `doubleSided` gated |
+| Clip planes | Eye-space clip planes through the camera API | Parity-gated |
+| Time-varying values | Transforms and primvars resample without a full scene rebuild | Parity-gated |
+| `UsdSkel` skinning | CPU evaluation in hdSilk sync | Parity-gated |
+| Blend shapes | Direct skinning skips them; Hydra computed points remain a fallback | Not supported |
+| Subdivision | Storm renders the control cage at harness complexity | Measured, ungated |
+| Draw batching | Sorted and batched by pipeline and material | Implemented |
+| Volumes, path tracing, arbitrary MaterialX graphs | — | Out of scope for 1.0 |
+
+## 🔬 What "parity with Storm" means here
+
+Storm is the reference renderer. A parity harness renders the same USD stage through Storm and
+through hdSilk and compares coverage and colour, and the claim this project makes is deliberately
+narrow:
+
+- **22 curated scenes are registered; 19 are hard gates** at exactly `1.000000` adjusted IoU, on
+  **D3D12 WARP and Vulkan SwiftShader** in ordinary CI. A gate is only accepted with a perturbation
+  margin of at least `0.18`, so a scene that would score well by symmetry alone cannot qualify.
+- **Metal is not covered by the curated set.** It is validated by a single macOS native pipeline
+  probe. Do not read three-backend scene parity into the backend table above.
+- **Three scenes are measured and deliberately left ungated**, because Storm in the offscreen
+  harness renders the subdivision control cage, renders MaterialX black, and does not cast shadows
+  at all. Those are recorded limits, not hidden failures.
+- Several shipped features are reachable but **not** proven by a gate — non-diffuse texture slots,
+  most `UsdPreviewSurface` inputs, metallic shading, and animated materials among them.
+
+[Support matrix](docs/support-matrix.md) carries the full feature-to-scene table naming every
+uncovered feature, and [Testing](docs/testing.md) records every rejected hypothesis and measured
+divergence.
 
 ## 🗺️ Repository map
 
@@ -292,9 +364,14 @@ tests and documentation. See [Contributing](CONTRIBUTING.md).
 
 ## Status
 
-OpenUsd is a substantial public `0.3.0-alpha` source baseline, not a stable release. Data, rendering,
-Viewer, package, NativeAOT, shader, and performance gates exist, but public API and package identities
-may change before 1.0. Workflow badges above are the authoritative status for the default branch.
+OpenUsd is a substantial public `0.4.0-alpha` baseline, published to NuGet.org, but not a stable
+release. Data, rendering, Viewer, package, NativeAOT, shader, parity, and performance gates exist,
+and this README states what they do and do not prove. Public API and package identities may change
+before 1.0. Workflow badges above are the authoritative status for the default branch.
+
+Before 1.0 the remaining work is code signing and notarization credentials for signed Viewer
+distributions, GPU-equipped self-hosted runners for the two Vulkan composition gates, and closing
+the measured divergences recorded in [Testing](docs/testing.md).
 
 [ci]: https://github.com/marcschier/openusd-dotnet/actions/workflows/ci.yml
 [ci-badge]: https://github.com/marcschier/openusd-dotnet/actions/workflows/ci.yml/badge.svg?branch=main
@@ -309,4 +386,4 @@ may change before 1.0. Workflow badges above are the authoritative status for th
 [license]: LICENSE
 [license-badge]: https://img.shields.io/badge/license-MIT-blue.svg
 [status]: #status
-[status-badge]: https://img.shields.io/badge/status-0.1.0--alpha%20%7C%20public-orange
+[status-badge]: https://img.shields.io/badge/status-0.4.0--alpha%20%7C%20public-orange

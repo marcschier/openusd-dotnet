@@ -811,28 +811,29 @@ $inlineLinkPattern = (
 $referenceDefinitionPattern = (
     '^\s{0,3}\[[^\]]+\]:\s*' +
     '(?<destination><[^>]+>|(?:\\.|[^\s])+)')
-$unsupportedPublicationPatterns = @(
-    '(?i)https?://(?:www\.)?nuget\.org/packages/OpenUsd(?:[./?#]|$)',
-    (
-        '(?i)\b(?:OpenUsd(?:\.[A-Za-z0-9_.-]+)?\s+)?packages?\s+' +
-        '(?:is|are)\s+(?:(?:already\s+)?available\b|' +
-        'publicly\s+(?:published|released)\b)'
-    ),
-    (
-        '(?i)\b(?:available|published|released)\s+' +
-        '(?:on|to|through|from)\s+NuGet(?:\.org)?\b'
-    ),
-    (
-        '(?i)\bOpenUsd(?:\.[A-Za-z0-9_.-]+)?\s+(?:is|are)\s+' +
-        '(?:publicly\s+)?available\s+as\s+(?:a\s+)?NuGet\s+package\b'
-    ),
-    '(?i)\bdotnet\s+add\s+(?:\S+\s+)*package\s+OpenUsd(?:[.A-Za-z0-9_-]*)\b',
-    '(?i)\bdotnet\s+package\s+add\s+OpenUsd(?:[.A-Za-z0-9_-]*)\b',
-    '(?i)\bInstall-Package\s+OpenUsd(?:[.A-Za-z0-9_-]*)\b',
-    (
-        '(?i)\binstall\s+(?:the\s+)?OpenUsd(?:[.A-Za-z0-9_-]*)\s+' +
-        'package\s+from\s+NuGet(?:\.org)?\b'
-    )
+$repositoryPackageVersion = $null
+try
+{
+    $versionJsonPath = Join-Path $PSScriptRoot '..' 'version.json'
+    $repositoryPackageVersion =
+        (Get-Content -LiteralPath $versionJsonPath -Raw | ConvertFrom-Json).version
+}
+catch
+{
+    throw "version.json could not be read, so documented package versions cannot be checked: $_"
+}
+if ([string]::IsNullOrWhiteSpace($repositoryPackageVersion))
+{
+    throw 'version.json declares no version, so documented package versions cannot be checked.'
+}
+
+# Packages are published to NuGet.org, so documentation may tell readers to install them. What it
+# must not do is advertise a version that this repository does not build: a reader following a stale
+# instruction gets a version whose docs, ABI and runtime assets do not match. Both an explicit
+# --version argument and the OpenUsdPackageVersion property used by the samples are checked.
+$documentedPackageVersionPatterns = @(
+    '(?i)\bdotnet\s+add\s+package\s+OpenUsd[.A-Za-z0-9_-]*\s+--version\s+(?<version>\S+)',
+    '(?i)<OpenUsdPackageVersion>(?<version>[^<]+)</OpenUsdPackageVersion>'
 )
 
 foreach ($markdownPath in $markdownFiles)
@@ -910,29 +911,23 @@ foreach ($markdownPath in $markdownFiles)
                     'build first and use eng/run-managed-tests.ps1.')
         }
 
-        foreach ($pattern in $unsupportedPublicationPatterns)
+        foreach ($pattern in $documentedPackageVersionPatterns)
         {
-            $publicationMatch = [System.Text.RegularExpressions.Regex]::Match(
+            $versionMatch = [System.Text.RegularExpressions.Regex]::Match(
                 $line,
                 $pattern)
-            if ($publicationMatch.Success)
+            if ($versionMatch.Success)
             {
-                $previousLine = if ($index -gt 0) { $lines[$index - 1] } else { '' }
-                $prefix = (
-                    $previousLine + ' ' +
-                    $line.Substring(0, $publicationMatch.Index))
-                if ($prefix -match
-                    '(?i)\b(?:not|never|no|avoid|unless|without)\b[^.!?;:]{0,120}$')
+                $documentedVersion = $versionMatch.Groups['version'].Value.Trim()
+                if ($documentedVersion -ne $repositoryPackageVersion)
                 {
-                    continue
+                    Add-DocumentationFailure `
+                        -Path $markdownPath `
+                        -Line ($index + 1) `
+                        -Message (
+                            "Documented OpenUsd package version '$documentedVersion' does not " +
+                            "match version.json ('$repositoryPackageVersion').")
                 }
-
-                Add-DocumentationFailure `
-                    -Path $markdownPath `
-                    -Line ($index + 1) `
-                    -Message (
-                        'Unsupported public package-publication claim or ' +
-                        'installation instruction.')
                 break
             }
         }

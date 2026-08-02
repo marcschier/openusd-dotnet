@@ -57,11 +57,11 @@ This repository uses:
 <ProjectReference Include="..\..\src\OpenUsd\OpenUsd.csproj" />
 ```
 
-To test repository-built packages instead, use one property for the matching pre-alpha versions:
+To consume the published packages instead, use one property for the matching version:
 
 ```xml
 <PropertyGroup>
-  <OpenUsdPackageVersion>0.3.0-alpha</OpenUsdPackageVersion>
+  <OpenUsdPackageVersion>0.4.0-alpha</OpenUsdPackageVersion>
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />
@@ -70,8 +70,9 @@ To test repository-built packages instead, use one property for the matching pre
 </ItemGroup>
 ```
 
-The packages are not published to NuGet.org. Build them into a local feed and configure source mapping
-as described by [Pack](../../docs/packaging.md#pack) and the
+The packages are published to NuGet.org, so no feed configuration is required. To test
+repository-built packages before they are published, build them into a local feed and configure
+source mapping as described by [Pack](../../docs/packaging.md#pack) and the
 [package-only execution gate](../../docs/packaging.md#package-only-execution-gate). Use the Core package
 for the target RID and keep every OpenUsd package at the same version. The Core package copies native
 libraries and `usd/**` resources to the application output. Program startup registers

@@ -1,7 +1,8 @@
 # Getting started
 
-This guide covers the supported source workflow for the private `0.3.0-alpha` repository. It does not
-assume that OpenUsd packages are available from a public feed.
+This guide covers the supported source workflow for the public `0.4.0-alpha` repository. Managed
+packages are published to NuGet.org, but the source workflow below does not depend on them; see
+[Packaging](packaging.md) for consuming the published packages instead.
 
 ## 1. Choose the workflow
 

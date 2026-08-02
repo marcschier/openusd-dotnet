@@ -1,7 +1,7 @@
 # Support matrix
 
-This matrix describes the implementation and declared repository gates for the private
-`0.3.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every private
+This matrix describes the implementation and declared repository gates for the public
+`0.4.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
 workflow is currently green.
 
 ## Status terms
@@ -14,19 +14,19 @@ workflow is currently green.
 | Pending hosted proof | Source/contracts exist, but current docs still mark hosted execution pending |
 | Not supported | The current API rejects or does not expose the capability |
 
-Workflow badges in the [root README](../README.md) provide the current run status for repository
-members.
+Workflow badges in the [root README](../README.md) provide the current run status for the default
+branch.
 
 ## Distribution and stability
 
 | Item | Current state |
 | --- | --- |
-| Version | `0.3.0-alpha` |
-| Repository visibility | Private |
+| Version | `0.4.0-alpha` |
+| Repository visibility | Public |
 | API compatibility | Pre-1.0; public APIs may change |
 | Package identity stability | Pre-1.0; IDs may change |
-| Public NuGet feed | Not advertised |
-| Public GitHub Packages feed | Not advertised |
+| Public NuGet feed | Published to NuGet.org via OIDC trusted publishing |
+| Public GitHub Packages feed | Published alongside each GitHub release |
 | Source build | Supported |
 | CI/local-feed package build | Implemented |
 | Default managed build includes native OpenUSD | No |
