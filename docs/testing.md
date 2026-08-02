@@ -512,6 +512,38 @@ root build/version/package inputs, rendering workflow, and engineering scripts w
 build/install/download outputs. Viewer evidence is finalized only after the GL render pump reports
 shutdown completion and fresh post-teardown renderer fault and resource diagnostics are read.
 
+## OPC UA live-authoring final acceptance
+
+The external Pump is not part of this repository, and `OpenUsd.LiveAuthoring` is source-only sample code
+rather than one of the published NuGet packages. "Against release-candidate packages" therefore means:
+an isolated consumer resolves the shipped OpenUSD package set from a local RC feed, while the
+live-authoring boundary is vendored or project-referenced as source. A run that force-packs
+`OpenUsd.LiveAuthoring` is useful only as a spike/back-compatibility probe; it is not evidence that a
+stable `OpenUsd.LiveAuthoring` NuGet package exists.
+
+Use complementary checks for final acceptance:
+
+```powershell
+dotnet run --project tests\OpenUsd.LiveAuthoring.Tests\OpenUsd.LiveAuthoring.Tests.csproj `
+    -f net10.0 -c Release --no-launch-profile
+dotnet run --project tests\OpenUsd.Package.Tests\OpenUsd.Package.Tests.csproj `
+    -f net10.0 -c Release --no-launch-profile -- `
+    --treenode-filter '/*/*/RuntimePackageTests/PackageOnlyPumpSpikeAppliesOrderedExternalBatches'
+pwsh eng\run-viewer.ps1 -Rid win-x64 -RendererSwitchSoak -SwitchCount 6 -SwitchSoakSeconds 90
+pwsh eng\run-viewer.ps1 -Rid win-x64 -SharedStageSoak -SoakSeconds 90 -ReusePublishedOutput
+```
+
+The live-authoring tests deliberately run red-path assertions as part of the green test process: gap,
+reorder, capacity-overflow, missing-coalescing, and missed-source-sequence checks must all throw before
+the test can pass. The Viewer switch soak proves visible native Storm plus managed hdSilk updates and
+state-preserving backend switches. The shared-stage soak is the bounded-memory evidence shape; its pass
+line must include advancing edit/read/frame/sync/resource counters and `resourcesReleased=True`.
+
+What this does not prove locally is a real OPC UA client's reconnect, resubscribe, namespace, and
+quality-code policy. Those remain Pump-owned behaviours outside this repository. It also does not prove
+Storm on machines without a real GL context; use the existing native child and platform smoke scripts for
+those hosts.
+
 ## Render gate capability limits
 
 Two render proofs still need graphics capabilities that a hosted GitHub runner does not have. Both are
