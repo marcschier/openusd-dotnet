@@ -1063,17 +1063,38 @@ internal static class OffscreenRhiConformance
         return buffer;
     }
 
+    /// <summary>
+    /// Byte size of the shader's frame constants block, mirroring
+    /// <c>FrameParameters</c> in <c>eng/shaders/sources/mesh.slang</c>.
+    /// </summary>
+    /// <remarks>
+    /// This was 208 bytes until page ABI 9 added per-frame lighting, which moved
+    /// <c>eyeToWorld</c> to offset 480. A 208-byte buffer therefore read out of
+    /// bounds. D3D12 and Vulkan on Windows returned values that happened to
+    /// render correctly; SwiftShader on Linux returned zeros, so the triangle
+    /// came back unlit and only the Linux leg of CI failed.
+    /// </remarks>
+    private const int FrameConstantsByteSize = 544;
+
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
-            208,
+            FrameConstantsByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-        var values = new byte[208];
+        var values = new byte[FrameConstantsByteSize];
         Span<float> floats = MemoryMarshal.Cast<byte, float>(values.AsSpan());
+        // clipToEye at 0 and eyeToWorld at 480 must both be identity. The light
+        // block stays zero on purpose: the shader treats that as "no scene
+        // lighting" and falls back to the deterministic headlight carried in the
+        // surface constants, which is what these RHI cases are asserting.
         floats[0] = 1;
         floats[5] = 1;
         floats[10] = 1;
         floats[15] = 1;
+        floats[120] = 1;
+        floats[125] = 1;
+        floats[130] = 1;
+        floats[135] = 1;
         buffer.Write(values);
         return buffer;
     }

@@ -1227,17 +1227,31 @@ internal static class Program
         return buffer;
     }
 
+    /// <summary>
+    /// Byte size of the shader's frame constants block, mirroring
+    /// <c>FrameParameters</c> in <c>eng/shaders/sources/mesh.slang</c>. It was
+    /// 208 bytes until page ABI 9 added per-frame lighting and moved
+    /// <c>eyeToWorld</c> to offset 480, so a 208-byte buffer read out of bounds.
+    /// </summary>
+    private const int FrameConstantsByteSize = 544;
+
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
-            208,
+            FrameConstantsByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-        var values = new byte[208];
+        var values = new byte[FrameConstantsByteSize];
         Span<float> floats = MemoryMarshal.Cast<byte, float>(values.AsSpan());
+        // clipToEye at 0 and eyeToWorld at 480 must both be identity; the zero
+        // light block makes the shader fall back to the deterministic headlight.
         floats[0] = 1;
         floats[5] = 1;
         floats[10] = 1;
         floats[15] = 1;
+        floats[120] = 1;
+        floats[125] = 1;
+        floats[130] = 1;
+        floats[135] = 1;
         buffer.Write(values);
         return buffer;
     }
