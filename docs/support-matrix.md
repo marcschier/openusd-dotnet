@@ -110,6 +110,11 @@ and package-only execution are in [Packaging](packaging.md).
 
 The Viewer permits only the platform combinations above. Renderer-neutral code must not depend on a
 concrete RHI, and concrete backends must not absorb Hydra translation or Viewer policy.
+The Viewer diagnostics tab now reports the active compositor/API/device, compute availability,
+descriptor-indexed texture-table availability when the backend exposes it, software-device status,
+draw counts, retained hdSilk command counts, uniform uploads, and cumulative retained-scene upload
+bytes. ABI/package mismatches are presented as stale-runtime-package errors with remediation guidance
+instead of raw initialization exceptions.
 hdSilk now supports texture-backed `UsdPreviewSurface` map binding on all three RHIs by decoding
 resolved assets through OpenUSD Hio and uploading cached sampled RGBA8 textures. UDIM expansion and
 colour-delta parity with Storm remain outside the current support claim.

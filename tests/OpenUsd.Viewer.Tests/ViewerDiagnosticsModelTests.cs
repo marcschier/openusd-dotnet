@@ -110,6 +110,77 @@ public sealed class ViewerDiagnosticsModelTests
     }
 
     [Test]
+    public async Task FormattingIncludesBackendFeatureAvailability()
+    {
+        var formatter = new ViewerDiagnosticsFormatter(
+            new ViewerPathRedactor(sourceTreePath: null, userProfilePath: null));
+        var snapshot = new ViewerDiagnosticsSnapshot(
+            DateTimeOffset.UtcNow,
+            "hdSilk / Direct3D 12",
+            new ViewerBackendRuntimeIdentity(
+                "Win32",
+                "hdSilk Direct3D 12",
+                "D3D12 Adapter",
+                SupportsCompute: true,
+                SupportsDescriptorIndexedTextureTables: true,
+                IsSoftware: false),
+            "None",
+            TimeSpan.FromMilliseconds(2),
+            null,
+            4,
+            12,
+            0,
+            7,
+            default,
+            [],
+            []);
+
+        string text = formatter.Format(snapshot, includePaths: false);
+
+        await Assert.That(text).Contains("Device compute: True");
+        await Assert.That(text).Contains("Descriptor-indexed textures: True");
+        await Assert.That(text).Contains("Software device: False");
+    }
+
+    [Test]
+    public async Task PackageMismatchErrorsIncludeActionableRuntimeAdvice()
+    {
+        var exception = new InvalidOperationException(
+            "Storm renderer ABI mismatch: managed=6, native=5.");
+
+        string formatted = ViewerPackageErrorFormatter.Format(exception);
+
+        await Assert.That(formatted).Contains("managed=6, native=5");
+        await Assert.That(formatted).Contains("Restore or publish matching OpenUsd runtime packages");
+    }
+
+    [Test]
+    public async Task SilkFrameDiagnosticsFormatUploadCounters()
+    {
+        ViewerDiagnosticEntry[] entries = ViewerSilkFrameDiagnosticEntryFactory.From(
+            new ViewerSilkFrameDiagnosticsSnapshot(
+                OpenUsd.Rendering.RenderBackendKind.D3D12,
+                CommandCount: 9,
+                DrawCount: 4,
+                UniformUploads: 3,
+                new OpenUsd.Rendering.Silk.SilkSceneGpuStatistics(
+                    MeshCount: 2,
+                    GeometryBuilds: 5,
+                    VertexUploads: 6,
+                    IndexUploads: 7,
+                    UniformUploads: 8,
+                    BufferAllocationBytes: 1024,
+                    BufferWriteBytes: 2048,
+                    TextureUploadBytes: 4096)),
+            DateTimeOffset.UtcNow);
+
+        await Assert.That(entries.Length).IsEqualTo(1);
+        await Assert.That(entries[0].Code).IsEqualTo("VIEWER_SILK_FRAME_STATS");
+        await Assert.That(entries[0].Message).Contains("commands=9");
+        await Assert.That(entries[0].Message).Contains("textureUploadBytes=4096");
+    }
+
+    [Test]
     public async Task CadenceSamplesAtIntervalOrWhenStateChanges()
     {
         var cadence = new ViewerDiagnosticsCadence(TimeSpan.FromSeconds(1));

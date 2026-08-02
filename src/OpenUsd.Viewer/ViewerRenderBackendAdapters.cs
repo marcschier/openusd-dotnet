@@ -43,6 +43,11 @@ internal interface IViewerSelectionOutlineDiagnosticsSource
     SilkSelectionOutlineDiagnostics? SelectionOutlineDiagnostics { get; }
 }
 
+internal interface IViewerFrameDiagnosticsSource
+{
+    ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics { get; }
+}
+
 internal sealed class ViewerBackendInitializationException : Exception
 {
     internal ViewerBackendInitializationException(
@@ -136,6 +141,14 @@ internal sealed class ViewerRenderBackendRegistry
                 .SelectionOutlineDiagnostics;
         }
     }
+
+    internal ViewerSilkFrameDiagnosticsSnapshot? CaptureFrameDiagnostics()
+    {
+        lock (_gate)
+        {
+            return (_active as IViewerFrameDiagnosticsSource)?.FrameDiagnostics;
+        }
+    }
 }
 
 internal sealed class ViewerRenderBackendFactory : IRenderBackendFactory
@@ -164,7 +177,8 @@ internal sealed class ViewerRenderBackend :
     IRenderBackendActivationControl,
     IRenderPickingBackend,
     IViewerRenderedPickStateSource,
-    IViewerSelectionOutlineDiagnosticsSource
+    IViewerSelectionOutlineDiagnosticsSource,
+    IViewerFrameDiagnosticsSource
 {
     private readonly object _disposeGate = new();
     private readonly IViewerRenderBackendHost _host;
@@ -197,6 +211,9 @@ internal sealed class ViewerRenderBackend :
     public SilkSelectionOutlineDiagnostics? SelectionOutlineDiagnostics =>
         (_session as IViewerSelectionOutlineDiagnosticsSource)?
             .SelectionOutlineDiagnostics;
+
+    public ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics =>
+        (_session as IViewerFrameDiagnosticsSource)?.FrameDiagnostics;
 
     public ValueTask<RenderBackendProbeResult> ProbeAsync(
         CancellationToken cancellationToken = default)
