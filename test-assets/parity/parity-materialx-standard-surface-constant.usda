@@ -81,15 +81,15 @@ def Xform "World"
         )
         {
             string config:mtlx:version = "1.38"
-            token outputs:surface.connect = </World/Looks/MtlxMat/StandardSurface.outputs:surface>
-            token outputs:mtlx:surface.connect = </World/Looks/MtlxMat/StandardSurface.outputs:surface>
+            token outputs:surface.connect = </World/Looks/MtlxMat/StandardSurface.outputs:out>
+            token outputs:mtlx:surface.connect = </World/Looks/MtlxMat/StandardSurface.outputs:out>
             def Shader "StandardSurface"
             {
                 uniform token info:id = "ND_standard_surface_surfaceshader"
                 color3f inputs:base_color = (0.90, 0.28, 0.08)
                 float inputs:specular_roughness = 0.72
                 float inputs:metalness = 0.0
-                token outputs:surface
+                token outputs:out
             }
         }
     }

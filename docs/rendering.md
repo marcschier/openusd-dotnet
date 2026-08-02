@@ -493,9 +493,10 @@ UsdLux lights, hdSilk publishes a measured subset to frame constants instead of 
 80-byte scene/instance block. The parity harness also records that clearing Storm's fallback headlight
 for the direct-light scenes without replacement makes Storm draw no lit coverage; the Storm path now
 switches per render between the fallback headlight and an explicit scene-light vector. A doubled-intensity
-probe proves Storm responds to authored DistantLight intensity. The direct-light parity scenes now gate
-after replacing glossy calibration shapes with matte, off-centre, non-square silhouettes; the previous
-max-only residual was localized to the authored specular highlight, not to the π/exposure transport.
+probe proves Storm responds to authored DistantLight intensity. The direct-light transport scenes gate
+with matte, off-centre, non-square silhouettes, and `light-distant-specular` separately gates a glossy
+`UsdPreviewSurface` lobe under the same authored DistantLight so the previous max-only specular residual
+is measured rather than hidden by the matte transport isolation.
 
 The hdSilk subset is intentionally narrow: `UsdLuxDistantLight` and `UsdLuxSphereLight` travel as
 direct lights with colour, intensity, exposure, diffuse/specular multipliers, radius, and world
