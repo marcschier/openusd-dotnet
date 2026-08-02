@@ -134,19 +134,20 @@ timings:
 The suite requires .NET SDK 10.0.301 but no native OpenUSD installation. Results include
 BenchmarkDotNet Markdown, CSV, and full JSON reports under the selected artifact directory.
 
-The curated Storm/hdSilk parity capture remains the render gate for the 19 scene set. In addition to
+The curated Storm/hdSilk parity capture remains the render gate for the 21 scene set. In addition to
 the adjusted-IoU floor, each captured hdSilk backend must stay under per-scene deterministic resource
 thresholds recorded in [Performance](performance.md#object-and-resource-churn). Thresholds are measured
 counter values plus modest headroom, not shared global ceilings. These gates prefer counters over
 frame-time budgets because hosted runners have noisy CPU/GPU scheduling; the counters catch the resource
 regressions the renderer controls without becoming flaky.
 
-Sixteen scenes are gated at adjusted IoU `1.000000`; three are measured but ungated:
+Eighteen scenes are gated at adjusted IoU `1.000000`; three are measured but ungated:
 MaterialX standard-surface, Catmull-Clark subdivision, and `light-distant-shadow`. The shadow scene
 matches the direct-lit image (`maxChannelDiff=3`, `meanChannelDiff=0.161`) but the paired
 shadow-disabled stage is byte-identical in Storm, proving this offscreen harness does not render that
-authored shadow yet. `-StormGl Mesa` gates 15 scenes and continues to exclude four Mesa/llvmpipe
-Storm divergences.
+authored shadow yet. `-StormGl Mesa` runs 17 of the 21 registered scenes and continues to exclude four
+Mesa/llvmpipe Storm divergences: `single-sided-winding`, `bounds-draw-mode`, `origin-draw-mode`, and
+`subdivision-catmull-clark`.
 
 Workflow and native-input contracts are also executable without a platform build:
 
@@ -277,6 +278,11 @@ match under the geometry tolerance. Both are software rasterizers, which keeps t
 deterministic on any host. A companion case renders the same scene with one mesh displaced and
 requires the comparison to fail, so the gate cannot pass vacuously. This is what catches a
 backend-only regression such as an index format or vertex layout that only one RHI got right.
+
+The 21-scene Storm/hdSilk parity claim rests on the D3D12 WARP and Vulkan SwiftShader captures run by
+`eng/run-parity-capture.ps1`. Metal does not run that curated set today. The hosted macOS evidence is a
+native/Metal pipeline probe for one offscreen stage, so Metal can be described as pipeline-validated
+rather than scene-matrix parity-gated.
 
 ## Windows native Storm child
 
@@ -541,19 +547,17 @@ driver or an installed GPU driver. The parity capture evidence also records the 
 OpenGL path, SHA-256, renderer, version, and current WGL handles beside the scene metrics.
 
 `eng/run-parity-capture.ps1` defaults to `-StormGl Auto`. In that mode the script removes any stale
-test-host `opengl32.dll` override, preflights the system WGL implementation, selects seventeen scenes, and
-gates the scenes whose measured thresholds are enabled. If the
-system driver is unavailable, Auto falls back to Mesa with a warning that the selected set has changed to
-thirteen scenes. Hosted CI passes `-StormGl Mesa` explicitly so the result is
-deterministic and runner-safe. Both modes publish the scene count and excluded scene names, and the test
-host asserts the expected count so the parity subset cannot shrink silently.
+test-host `opengl32.dll` override, preflights the system WGL implementation, selects all 21 registered scenes, and
+gates the scenes whose measured thresholds are enabled. If the system driver is unavailable, Auto falls back to Mesa
+with a warning that the selected set has changed to 17 scenes. Hosted CI passes `-StormGl Mesa` explicitly so the
+result is deterministic and runner-safe. Both modes publish the scene count and excluded scene names, and the test host
+asserts the expected count so the parity subset cannot shrink silently.
 
-The Mesa WGL parity run selects the thirteen scenes whose Storm reference is stable across Mesa llvmpipe,
-D3D12 WARP, and Vulkan SwiftShader: `orientation-asymmetric`, `clip-plane-asymmetric`,
-`depth-overlap-multiprim`, `material-normals-uv`, `materials-textures`, `light-dome-ambient`,
-`point-instancer-cluster`, `points-asymmetric`, `cards-draw-mode`, `time-varying-transform-primvar`,
-and `skinned-pennant`. The four excluded scenes remain valuable GPU-driver conformance probes, but Mesa llvmpipe exposed
-Storm implementation differences rather than hdSilk regressions:
+The Mesa WGL parity run selects every registered scene except the four whose Storm reference is not stable across
+Mesa llvmpipe, conformant-driver Storm, D3D12 WARP, and Vulkan SwiftShader. The selected set still includes the
+deliberately ungated MaterialX and shadow diagnostics; it does not convert them into support claims. The four excluded
+scenes remain valuable GPU-driver conformance probes, but Mesa llvmpipe exposed Storm implementation differences rather
+than hdSilk regressions:
 
 - `single-sided-winding`: Mesa Storm covered 2,201 pixels in the single-sided pennant region while
   hdSilk covered the expected 875-pixel double-sided banner, with no overlap (`adjustedIoU=0.000000`).
@@ -569,12 +573,11 @@ Storm implementation differences rather than hdSilk regressions:
 
 The WGL gate writes `parity-capture-mesa-wgl-exclusions.json`/`.txt` so the subset is explicit in CI
 artifacts. If a future Mesa/OpenUSD update makes those scenes agree with the real-GPU measurements,
-remove the exclusion and restore all seventeen scenes to the WGL parity subset.
+remove the exclusion and restore all 21 registered scenes to the WGL parity subset.
 
 Those four scenes are selected only when `-StormGl Auto` finds a conformant system driver. Hosted CI has no
 such driver today, so authored double-sidedness and the two basis-curves line-topology draw-mode probes
-are not covered by hosted WGL CI; they need the same class of self-hosted GPU-equipped Windows runner as
-the Vulkan composition gates below.
+are not covered by hosted WGL CI; they need a self-hosted GPU-equipped Windows runner or a Mesa/OpenUSD fix.
 
 This proves the Storm WGL render path, shared-stage scheduling, teardown, and diagnostics on a
 reproducible software OpenGL implementation. It is not a Windows GPU driver-conformance proof:

@@ -850,9 +850,11 @@ distinct IDs, so the final ID set legitimately differs from the initialized one.
 identity the renderer and pick table already resolve by. Scripts reject artifacts whose source or
 executable identity no longer matches the current build.
 
-The first stable release targets production viewport parity for meshes and subdivision, points and curves, instancing
-and skinning, cameras, lights, shadows, animation, textures, USD Preview Surface, and a documented MaterialX subset.
-Volumes, path tracing, proprietary shaders, and third-party Hydra render plugins are out of scope.
+The first stable release parity claim is limited to the curated Storm/hdSilk scene matrix documented in
+[Support matrix](support-matrix.md#hdsilk-storm-parity-sign-off): D3D12 WARP and Vulkan SwiftShader gate the
+accepted scenes at `1.000000` adjusted IoU, while Metal is pipeline-validated but does not yet run that matrix.
+Subdivision, shadows, arbitrary MaterialX graphs, volumes, path tracing, proprietary shaders, and third-party Hydra
+render plugins are out of scope.
 
 Automatic fallback covers capability and initialization failures plus device-loss conditions reported cleanly by the
 graphics API. It cannot recover from a native driver crash that terminates the process.

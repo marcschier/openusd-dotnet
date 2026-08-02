@@ -116,14 +116,15 @@ colour-delta parity with Storm remain outside the current support claim.
 It also supports a documented MaterialX projection rather than arbitrary MaterialX code generation:
 `ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
 driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are
-reported with `TF_WARN` diagnostics that name the material input and node id. Storm currently renders the authored
-MaterialX standard-surface parity mesh as black in this harness, so the scene is recorded but not gated.
+reported with `TF_WARN` diagnostics that name the material input and node id. That source support is broader than the
+Storm parity evidence: the only gated MaterialX-adjacent scene is a hand-authored PreviewSurface equivalent of constant
+base colour, roughness, and zero metalness. Storm currently renders the authored MaterialX standard-surface parity mesh
+as black in this harness, so the scene is recorded but not gated.
 The staged runtime includes `usdMtlx`, MaterialX DLLs, `MaterialXGenGlsl`, and the standard libraries, and the
 asset uses the MaterialX `out` terminal; with `UsdImagingGLEngine` scene materials enabled, Storm still covers only
 the 347-pixel PreviewSurface anchor against hdSilk's 4314-pixel MaterialX mesh. Where the two overlap, the colour
-delta remains only 3, so the divergence is capability rather than shading. The projection arithmetic is now verified
-by a gated hand-authored `UsdPreviewSurface` equivalent at adjusted IoU 1.000000, but the authored MaterialX scene
-remains an honest recorded Storm offscreen-harness gap.
+delta remains only 3, so the divergence is capability rather than shading. MaterialX image, normal, emission,
+non-zero metalness, and arithmetic-node parity remain uncovered by a Storm-gated scene.
 
 ## Backend capabilities
 
@@ -151,20 +152,72 @@ Selection rendering is related but separate from the capability enum:
 
 See [Rendering](rendering.md) for request binding, stale results, GPU passes, and lifecycle detail.
 
-## hdSilk geometry parity
+## hdSilk Storm parity sign-off
 
-| Feature | Status | Detail |
-| --- | --- | --- |
-| Mesh triangle topology | Implemented and parity-gated | Asymmetric mesh scenes gate at 1.000000 adjusted IoU |
-| Hardware point-instancer prototypes | Implemented and parity-gated | ABI 8 carries prototype geometry once |
-| Basis curves | Implemented subset and parity-gated | Linear segmented curves emit one-pixel line lists |
-| Points | Implemented subset and parity-gated | `UsdGeomPoints` emits point-list topology |
-| Mesh primvar interpolation | Implemented resolver | Constant, vertex, varying, uniform, and face-varying |
-| Time-varying values | Implemented and parity-gated | Transforms and primvars sample at capture time |
-| UsdSkel deformation | CPU subset, parity-gated | Direct UsdSkel CPU evaluation; `skinned-pennant`; no GPU skinning |
-| Blend shapes | Data/API surface plus fallback | Direct skinning skips them; Hydra computed points remain fallback |
-| Display styles / draw modes | Partial | Cards/bounds/origin gated; wire/shaded-wire are not |
-| Subdivision surfaces | Measured, ungated | Storm is coarse-like; hdSilk scores 0.931015, not exact parity |
+The 1.0 rendering-parity claim is intentionally narrower than "everything hdSilk can parse".
+`eng/run-parity-capture.ps1` registers 21 curated scenes. Eighteen are hard gates at
+`1.000000` adjusted IoU on D3D12 WARP and Vulkan SwiftShader in ordinary CI; three are
+measured but deliberately ungated. Hosted Mesa/llvmpipe Storm runs only 17 registered scenes,
+excluding `single-sided-winding`, `bounds-draw-mode`, `origin-draw-mode`, and
+`subdivision-catmull-clark` because Mesa Storm differs from conformant-driver Storm. Metal
+does not run this curated set today; it is validated by the macOS native/Metal pipeline probe
+only, not by the parity-capture matrix below.
+
+### Feature-to-scene matrix
+
+| Feature | Gated parity scene |
+| --- | --- |
+| Asymmetric mesh orientation/projection | `orientation-asymmetric` |
+| Clip plane supplied by the parity harness | `clip-plane-asymmetric` |
+| Depth, overlapping prims, retained draw order | `depth-overlap-multiprim` |
+| Authored normals and UV primvars | `material-normals-uv` |
+| Constant/display-colour primvars | Multiple mesh scenes |
+| PreviewSurface diffuse and roughness constants | `material-normals-uv`, `light-dome-ambient`, direct-light scenes |
+| PreviewSurface specular workflow | `light-distant-specular` |
+| PreviewSurface texture-backed diffuse colour | `materials-textures` |
+| Texture wrap modes | `materials-textures` |
+| Texture colour spaces | `materials-textures` |
+| Texture scale, bias, and fallback | None |
+| Texture slots beyond diffuse | None |
+| Metallic workflow with non-zero `metallic` | None |
+| MaterialX standard-surface authored graph | None |
+| MaterialX projection arithmetic/equivalent constants | `materialx-standard-surface-preview-equivalent` |
+| Distant light direct transport | `light-distant-exposure` |
+| Distant light glossy specular | `light-distant-specular` |
+| Sphere light direct transport | `light-sphere-point` |
+| Dome light ambient | `light-dome-ambient` |
+| Shadows | None |
+| Point instancing | `point-instancer-cluster` |
+| Points | `points-asymmetric` |
+| Basis curves / draw-mode generated lines | `bounds-draw-mode`, `origin-draw-mode` |
+| Draw modes | `cards-draw-mode`, `bounds-draw-mode`, `origin-draw-mode` |
+| Double-sided/culling | `single-sided-winding` |
+| Time-varying transform/display colour | `time-varying-transform-primvar` |
+| UsdSkel CPU skinning | `skinned-pennant` |
+| Subdivision surfaces | None |
+
+Uncovered or deliberately ungated features:
+
+- `depth-overlap-multiprim` has the thinnest accepted perturbation margin at 0.184333.
+- Varying, uniform, and face-varying primvar interpolation modes have no parity scene.
+- Other primvar names beyond constant `displayColor` and vertex `st`/normals are not gated.
+- Metallic workflow with non-zero `metallic` is not gated.
+- Texture `repeat` and `sRGB` are gated; `clamp`, `mirror`, `useMetadata`, `raw`, and linear/auto are not.
+- Texture scale, bias, and fallback are authored as identity or not exercised; removing them would still pass.
+- Emissive, specular, metallic, roughness, normal, opacity, and occlusion texture slots have no parity scene.
+- `emissiveColor`, `clearcoat`, `clearcoatRoughness`, `opacity`, `opacityThreshold`, `ior`, normal maps,
+  `displacement`, and `occlusion` are not gated.
+- `materialx-standard-surface-constant` is registered but ungated because Storm renders it black in this harness.
+- MaterialX images, normal maps, emission, non-zero metalness, and arithmetic chains have no Storm parity gate.
+- Sphere-light glossy specular, soft shadows, shaping, dome textures, and image-based lighting are not gated.
+- `light-distant-shadow` is registered but ungated; Storm is byte-identical with shadows disabled.
+- Multiple point-instancer prototypes/proto-index variation and instanced shadows are not gated.
+- Wide point splats, authored curve widths/ribbons, wire draw mode, and shaded-wire draw mode are not gated.
+- Authored `cullStyle` tokens have no parity scene.
+- Animated materials, textures, lights, and topology have no parity scene.
+- GPU skinning and blend shapes are not gated.
+- `subdivision-catmull-clark` is measured at 0.931015 and remains ungated. Full Catmull-Clark/Loop/bilinear
+  subdivision, creases, and subdivision primvar refinement are not part of the 1.0 parity claim.
 
 At the parity harness complexity, Storm renders the Catmull-Clark probe as a
 coarse/control-cage-like surface rather than full refinement. An eager
@@ -176,7 +229,7 @@ remains measured but ungated until the remaining divergence is eliminated.
 | Feature | Status | Detail |
 | --- | --- | --- |
 | Deterministic headlight | Implemented and parity-gated | Used when no authored UsdLux light is present |
-| `UsdLuxDistantLight` | Implemented subset and parity-gated | Matte direct-light scene gates; margin 0.609274 |
+| `UsdLuxDistantLight` | Implemented subset and parity-gated | Matte and glossy scenes gate; margin 0.609274 |
 | `UsdLuxSphereLight` | Implemented subset and parity-gated | Matte point-attenuation scene gates; margin 0.542752 |
 | `UsdLuxDomeLight` | Ambient-only and parity-gated | Untextured dome ambient is gated; image IBL is not implemented |
 | Shadows | Measured, ungated | `shadow:enable` is diagnostic-only; Storm matched with shadows disabled |
@@ -278,7 +331,10 @@ here.
 - Edge/point picking and x-ray selection are not supported.
 - The Viewer is an inspector and focused editor, not a `usdview` clone or full DCC.
 - Only `win-x64`, `linux-x64`, and `osx-arm64` runtime packages exist today.
-- Current project docs still mark the hosted macOS end-to-end render proof as pending.
+- The curated Storm/hdSilk parity matrix is gated on D3D12 WARP and Vulkan SwiftShader only; Metal has a
+  single-stage native pipeline probe, not 21-scene parity coverage.
+- Volumes, path tracing, proprietary shaders, arbitrary MaterialX graphs, and third-party Hydra render
+  delegates are excluded from the 1.0 support claim.
 
 Use [Troubleshooting](troubleshooting.md) to diagnose native loading, plugin discovery, platform,
 NativeAOT, and evidence failures without weakening these support boundaries.
