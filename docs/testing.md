@@ -144,9 +144,16 @@ regressions the renderer controls without becoming flaky.
 Sixteen scenes are gated at adjusted IoU `1.000000`; three are measured but ungated:
 MaterialX standard-surface, Catmull-Clark subdivision, and `light-distant-shadow`. The shadow scene
 matches the direct-lit image (`maxChannelDiff=3`, `meanChannelDiff=0.161`) but the paired
-shadow-disabled stage is byte-identical in Storm, proving this offscreen harness does not render that
-authored shadow yet. `-StormGl Mesa` gates 15 scenes and continues to exclude four Mesa/llvmpipe
-Storm divergences.
+shadow-disabled stage is byte-identical in Storm (`disabledAdjustedIoU=1.000000`, unchanged Storm
+hash `E0713BDEA4E1D9B817A367160F13B3B23D6A06DCC6AC04858D985B8497024B03`). A diagnostic native
+experiment enabled `GlfSimpleLight::SetHasShadow(true)`, allocated a `GlfSimpleShadowArray` at
+1024x1024, set both legacy and scene-index `HdxShadowTask` switches, and supplied explicit
+light-space matrices; the capture stayed byte-identical. The direct-light parity path must keep using
+`UsdImagingGLEngine::SetLightingState` with `enableSceneLights=false`, because switching to
+`enableSceneLights=true` made the doubled-intensity probe fail (`ChangedStorm=false`). The current
+offscreen harness therefore bypasses Storm's authored UsdLux shadow-producing path: shadows are a
+recorded capability limit rather than a reference for hdSilk. `-StormGl Mesa` gates 15 scenes and
+continues to exclude four Mesa/llvmpipe Storm divergences.
 
 Workflow and native-input contracts are also executable without a platform build:
 
