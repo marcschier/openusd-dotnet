@@ -154,26 +154,40 @@ public sealed class SilkMeshRendererTests
         int secondUniformUploads = resources.UpdateUniforms(scene.Frame);
         int steadyUploads = resources.UpdateUniforms(scene.Frame);
 
-        // Warm the frame-only steady path before measuring. Everything above
-        // applies a page containing a mesh, so the loop below is the first
-        // caller of the frame-only shape and would otherwise charge any
-        // one-time initialisation to the steady-state measurement. Every other
-        // allocation assertion in this repository warms up the same way; this
-        // one did not, and it failed on a hosted Linux runner while passing
-        // locally. The gate is unchanged: after the warm-up all 1000
-        // iterations must still allocate nothing, which was proven by
-        // injecting an allocation into the loop and watching it go red.
-        SilkSceneDelta warmDelta = scene.Apply(frame, 1, 99);
-        resources.Apply(scene, warmDelta);
-        _ = resources.UpdateUniforms(scene.Frame);
+        // Run the measured loop once as a warm-up and assert on the second pass.
+        //
+        // Everything above applies a page containing a mesh, so this loop is the
+        // first caller of the frame-only shape, and .NET promotes methods to
+        // tier 1 only after they have been called enough times. A single warm
+        // iteration was not enough: this assertion still failed intermittently
+        // on hosted Ubuntu while passing on Windows. Running the identical
+        // 1000-iteration pass twice makes the second one warm by construction,
+        // covering one-time initialisation and JIT tiering alike.
+        //
+        // The gate is not weakened. Any allocation that happens per iteration
+        // still occurs during the measured pass and still fails, which was
+        // proven by injecting an eight-byte allocation into the loop body and
+        // watching it go red. Only genuinely one-time costs are excluded, which
+        // is what "steady frame" means.
+        static void RunSteadyFrames(
+            SilkSceneState scene,
+            SilkSceneGpuResources resources,
+            byte[] frame,
+            ulong firstRevision)
+        {
+            for (int i = 0; i < 1000; i++)
+            {
+                SilkSceneDelta steadyDelta =
+                    scene.Apply(frame, 1, checked(firstRevision + (ulong)i));
+                resources.Apply(scene, steadyDelta);
+                _ = resources.UpdateUniforms(scene.Frame);
+            }
+        }
+
+        RunSteadyFrames(scene, resources, frame, 100);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++)
-        {
-            SilkSceneDelta steadyDelta = scene.Apply(frame, 1, checked((ulong)(100 + i)));
-            resources.Apply(scene, steadyDelta);
-            _ = resources.UpdateUniforms(scene.Frame);
-        }
+        RunSteadyFrames(scene, resources, frame, 1_100);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         await Assert.That(second).IsSameReferenceAs(first);
