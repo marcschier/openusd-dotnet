@@ -153,6 +153,20 @@ public sealed class SilkMeshRendererTests
         SilkMeshGpuResource second = resources.Meshes[7];
         int secondUniformUploads = resources.UpdateUniforms(scene.Frame);
         int steadyUploads = resources.UpdateUniforms(scene.Frame);
+
+        // Warm the frame-only steady path before measuring. Everything above
+        // applies a page containing a mesh, so the loop below is the first
+        // caller of the frame-only shape and would otherwise charge any
+        // one-time initialisation to the steady-state measurement. Every other
+        // allocation assertion in this repository warms up the same way; this
+        // one did not, and it failed on a hosted Linux runner while passing
+        // locally. The gate is unchanged: after the warm-up all 1000
+        // iterations must still allocate nothing, which was proven by
+        // injecting an allocation into the loop and watching it go red.
+        SilkSceneDelta warmDelta = scene.Apply(frame, 1, 99);
+        resources.Apply(scene, warmDelta);
+        _ = resources.UpdateUniforms(scene.Frame);
+
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 1000; i++)
         {
