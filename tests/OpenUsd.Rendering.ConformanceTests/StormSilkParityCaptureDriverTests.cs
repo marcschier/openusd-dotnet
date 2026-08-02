@@ -984,6 +984,29 @@ public sealed class StormSilkParityCaptureDriverTests
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_028, 948, 262_144)),
             },
             new ParityScene(
+                "material-metallic-workflow",
+                Path.Combine(assetRoot, "parity-material-metallic-workflow.usda"),
+                "PreviewSurface metallic workflow lights a metallic prim beside a dielectric one.",
+                ColorComparisonReady: false,
+                GateEnabled: true,
+                GateReason:
+                    "Coverage gates at 1.000000 adjusted IoU against a 0.493349 worst perturbation " +
+                    "(0.506651 margin). This does NOT prove the metallic workflow: coverage is " +
+                    "identical for any shading, and colour is deliberately not gated here. Colour " +
+                    "measures max 25 / mean 14.112 against a 10-16 max calibration on the other " +
+                    "material scenes, and the captures show Storm rendering the metal near black " +
+                    "(3,5,4) where hdSilk renders dim gold (15..25,13..20,7..10) - consistent with " +
+                    "hdSilk's residual (1 - metallic) diffuse surviving where Storm suppresses it. " +
+                    "An ambient-attenuation fix was implemented, measured to change nothing because " +
+                    "this scene has no ambient, and reverted. The metallic shading path therefore " +
+                    "remains unproven; see material-metallic-color.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                UseSceneLights = true,
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_396, 1_236, 0)),
+            },
+            new ParityScene(
                 "materialx-standard-surface-constant",
                 Path.Combine(assetRoot, "parity-materialx-standard-surface-constant.usda"),
                 "MaterialX standard_surface uses constant base_color, roughness, and metalness inputs.",
@@ -1412,6 +1435,7 @@ public sealed class StormSilkParityCaptureDriverTests
             "test-assets\\parity\\parity-light-distant-specular.usda",
             "test-assets\\parity\\parity-light-sphere-point.usda",
             "test-assets\\parity\\parity-light-dome-ambient.usda",
+            "test-assets\\parity\\parity-material-metallic-workflow.usda",
             "test-assets\\parity\\parity-materialx-standard-surface-constant.usda",
             "test-assets\\parity\\parity-materialx-standard-surface-preview-equivalent.usda",
             "docs\\performance.md",

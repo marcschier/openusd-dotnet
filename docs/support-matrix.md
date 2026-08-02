@@ -189,7 +189,7 @@ only, not by the parity-capture matrix below.
 | Texture colour spaces | `materials-textures` |
 | Texture scale, bias, and fallback | None |
 | Texture slots beyond diffuse | None |
-| Metallic workflow with non-zero `metallic` | None |
+| Metallic workflow with non-zero `metallic` | `material-metallic-workflow` (coverage only, shading unproven) |
 | MaterialX standard-surface authored graph | None |
 | MaterialX projection arithmetic/equivalent constants | `materialx-standard-surface-preview-equivalent` |
 | Distant light direct transport | `light-distant-exposure` |
@@ -211,7 +211,11 @@ Uncovered or deliberately ungated features:
 - `depth-overlap-multiprim` has the thinnest accepted perturbation margin at 0.184333.
 - Varying, uniform, and face-varying primvar interpolation modes have no parity scene.
 - Other primvar names beyond constant `displayColor` and vertex `st`/normals are not gated.
-- Metallic workflow with non-zero `metallic` is not gated.
+- Metallic workflow with non-zero `metallic` now has a scene, but only its coverage is gated. Colour
+  measures max 25 / mean 14.112 against a 10-16 max calibration on the other material scenes: Storm
+  renders the metal near black `(3,5,4)` where hdSilk renders dim gold `(15..25,13..20,7..10)`,
+  consistent with hdSilk's residual `(1 - metallic)` diffuse surviving where Storm suppresses it.
+  The metallic shading path is therefore reachable and still unproven.
 - Texture `repeat` and `sRGB` are gated; `clamp`, `mirror`, `useMetadata`, `raw`, and linear/auto are not.
 - Texture scale, bias, and fallback are authored as identity or not exercised; removing them would still pass.
 - Emissive, specular, metallic, roughness, normal, opacity, and occlusion texture slots have no parity scene.

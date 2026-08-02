@@ -1,0 +1,96 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 1
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def DistantLight "MetalKey"
+    {
+        color3f inputs:color = (1.0, 0.94, 0.86)
+        float inputs:intensity = 1.4
+        float inputs:exposure = 0.25
+    }
+
+    def Mesh "MetallicHook" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/Metal>
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (-0.94, -0.68, 0.06),
+            (-0.30, -0.68, 0.06),
+            (-0.30,  0.24, 0.06),
+            ( 0.36,  0.24, 0.06),
+            ( 0.36,  0.58, 0.06),
+            (-0.94,  0.58, 0.06)
+        ]
+        int[] faceVertexCounts = [3, 3, 3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 5, 5, 2, 4, 2, 3, 4]
+        normal3f[] normals = [
+            (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0),
+            (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0)
+        ] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Mesh "DielectricPennant" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/Dielectric>
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            ( 0.82, -0.24, 0.06),
+            ( 0.20, -0.52, 0.06),
+            ( 0.68, -0.86, 0.06)
+        ]
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        normal3f[] normals = [
+            (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0)
+        ] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Scope "Looks"
+    {
+        def Material "Metal"
+        {
+            token outputs:surface.connect = </World/Looks/Metal/PreviewSurface.outputs:surface>
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.86, 0.62, 0.28)
+                float inputs:metallic = 0.95
+                float inputs:roughness = 0.28
+                int inputs:useSpecularWorkflow = 0
+                token outputs:surface
+            }
+        }
+
+        def Material "Dielectric"
+        {
+            token outputs:surface.connect = </World/Looks/Dielectric/PreviewSurface.outputs:surface>
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.86, 0.62, 0.28)
+                float inputs:metallic = 0.0
+                float inputs:roughness = 0.28
+                int inputs:useSpecularWorkflow = 0
+                token outputs:surface
+            }
+        }
+    }
+}
