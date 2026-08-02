@@ -165,13 +165,19 @@ See [Rendering](rendering.md) for request binding, stale results, GPU passes, an
 ## hdSilk Storm parity sign-off
 
 The 1.0 rendering-parity claim is intentionally narrower than "everything hdSilk can parse".
-`eng/run-parity-capture.ps1` registers 21 curated scenes. Eighteen are hard gates at
-`1.000000` adjusted IoU on D3D12 WARP and Vulkan SwiftShader in ordinary CI; three are
-measured but deliberately ungated. Hosted Mesa/llvmpipe Storm runs only 17 registered scenes,
+`eng/run-parity-capture.ps1` registers 22 curated scenes. Nineteen are hard gates at
+`1.000000` adjusted IoU against D3D12 WARP and Vulkan SwiftShader; three are
+measured but deliberately ungated. Hosted Mesa/llvmpipe Storm runs only 18 registered scenes,
 excluding `single-sided-winding`, `bounds-draw-mode`, `origin-draw-mode`, and
 `subdivision-catmull-clark` because Mesa Storm differs from conformant-driver Storm. Metal
 does not run this curated set today; it is validated by the macOS native/Metal pipeline probe
 only, not by the parity-capture matrix below.
+
+The harness is driven by the `render` workflow, **not** by ordinary CI, so a green `ci` badge does
+not mean parity ran. The full 19-gate matrix passes on Windows with a conformant GPU driver. Hosted
+Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fails at
+`vkCreateInstance: ErrorIncompatibleDriver` because the runner has no usable Vulkan ICD; that is the
+`render-unblock-vulkan` limitation and needs a GPU-equipped self-hosted runner.
 
 ### Feature-to-scene matrix
 
@@ -356,7 +362,7 @@ here.
 - The Viewer is an inspector and focused editor, not a `usdview` clone or full DCC.
 - Only `win-x64`, `linux-x64`, and `osx-arm64` runtime packages exist today.
 - The curated Storm/hdSilk parity matrix is gated on D3D12 WARP and Vulkan SwiftShader only; Metal has a
-  single-stage native pipeline probe, not 21-scene parity coverage.
+  single-stage native pipeline probe, not 22-scene parity coverage.
 - Volumes, path tracing, proprietary shaders, arbitrary MaterialX graphs, and third-party Hydra render
   delegates are excluded from the 1.0 support claim.
 

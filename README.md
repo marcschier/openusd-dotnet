@@ -247,8 +247,8 @@ Storm is the reference renderer. A parity harness renders the same USD stage thr
 through hdSilk and compares coverage and colour, and the claim this project makes is deliberately
 narrow:
 
-- **22 curated scenes are registered; 19 are hard gates** at exactly `1.000000` adjusted IoU, on
-  **D3D12 WARP and Vulkan SwiftShader** in ordinary CI. A gate is only accepted with a perturbation
+- **22 curated scenes are registered; 19 are hard gates** at exactly `1.000000` adjusted IoU against
+  **D3D12 WARP and Vulkan SwiftShader**. A gate is only accepted with a perturbation
   margin of at least `0.18`, so a scene that would score well by symmetry alone cannot qualify.
 - **Metal is not covered by the curated set.** It is validated by a single macOS native pipeline
   probe. Do not read three-backend scene parity into the backend table above.
@@ -257,6 +257,19 @@ narrow:
   at all. Those are recorded limits, not hidden failures.
 - Several shipped features are reachable but **not** proven by a gate — non-diffuse texture slots,
   most `UsdPreviewSurface` inputs, metallic shading, and animated materials among them.
+
+**Where it runs matters as much as the number.** The parity harness is driven by the `render`
+workflow, *not* by ordinary CI, so a green `ci` badge does not mean parity ran. Today:
+
+| Environment | Backends | State |
+| --- | --- | --- |
+| Windows with a conformant GPU driver | D3D12 WARP, Vulkan SwiftShader | All 19 gates pass |
+| Hosted Linux (`render`) | Vulkan SwiftShader | Runs and passes |
+| Hosted Windows (`render`, Mesa Storm) | — | Currently fails at `vkCreateInstance: ErrorIncompatibleDriver` |
+
+Hosted Windows has no usable Vulkan ICD, which is the `render-unblock-vulkan` limitation described
+in [Testing](docs/testing.md) and needs a GPU-equipped self-hosted runner. Until then the full
+Windows matrix is reproduced on a developer machine, and hosted Linux is the automated gate.
 
 [Support matrix](docs/support-matrix.md) carries the full feature-to-scene table naming every
 uncovered feature, and [Testing](docs/testing.md) records every rejected hypothesis and measured

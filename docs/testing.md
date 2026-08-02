@@ -134,7 +134,7 @@ timings:
 The suite requires .NET SDK 10.0.301 but no native OpenUSD installation. Results include
 BenchmarkDotNet Markdown, CSV, and full JSON reports under the selected artifact directory.
 
-The curated Storm/hdSilk parity capture remains the render gate for the 21 scene set. In addition to
+The curated Storm/hdSilk parity capture remains the render gate for the 22 scene set. In addition to
 the adjusted-IoU floor, each captured hdSilk backend must stay under per-scene deterministic resource
 thresholds recorded in [Performance](performance.md#object-and-resource-churn). Thresholds are measured
 counter values plus modest headroom, not shared global ceilings. These gates prefer counters over
@@ -143,7 +143,7 @@ regressions the renderer controls without becoming flaky.
 
 ## Storm offscreen harness capability limits
 
-Eighteen scenes are gated at adjusted IoU `1.000000`; three are measured but ungated:
+Nineteen scenes are gated at adjusted IoU `1.000000`; three are measured but ungated:
 MaterialX standard-surface, Catmull-Clark subdivision, and `light-distant-shadow`. The shadow scene
 matches the direct-lit image (`maxChannelDiff=3`, `meanChannelDiff=0.161`) but the paired
 shadow-disabled stage is byte-identical in Storm (`disabledAdjustedIoU=1.000000`, unchanged Storm
@@ -166,7 +166,7 @@ doubled-intensity sensitivity probe fail with `ChangedStorm=false`.
 
 Shadows are therefore a recorded Storm offscreen-harness capability limit, not a reference hdSilk
 can be built against -- the third such limit alongside subdivision, where Storm renders the control
-cage, and MaterialX, where Storm renders black. `-StormGl Mesa` runs 17 of the 21 registered scenes
+cage, and MaterialX, where Storm renders black. `-StormGl Mesa` runs 18 of the 22 registered scenes
 and continues to exclude four Mesa/llvmpipe Storm divergences: `single-sided-winding`,
 `bounds-draw-mode`, `origin-draw-mode`, and `subdivision-catmull-clark`.
 
@@ -300,7 +300,7 @@ deterministic on any host. A companion case renders the same scene with one mesh
 requires the comparison to fail, so the gate cannot pass vacuously. This is what catches a
 backend-only regression such as an index format or vertex layout that only one RHI got right.
 
-The 21-scene Storm/hdSilk parity claim rests on the D3D12 WARP and Vulkan SwiftShader captures run by
+The 22-scene Storm/hdSilk parity claim rests on the D3D12 WARP and Vulkan SwiftShader captures run by
 `eng/run-parity-capture.ps1`. Metal does not run that curated set today. The hosted macOS evidence is a
 native/Metal pipeline probe for one offscreen stage, so Metal can be described as pipeline-validated
 rather than scene-matrix parity-gated.
@@ -600,9 +600,9 @@ driver or an installed GPU driver. The parity capture evidence also records the 
 OpenGL path, SHA-256, renderer, version, and current WGL handles beside the scene metrics.
 
 `eng/run-parity-capture.ps1` defaults to `-StormGl Auto`. In that mode the script removes any stale
-test-host `opengl32.dll` override, preflights the system WGL implementation, selects all 21 registered scenes, and
+test-host `opengl32.dll` override, preflights the system WGL implementation, selects all 22 registered scenes, and
 gates the scenes whose measured thresholds are enabled. If the system driver is unavailable, Auto falls back to Mesa
-with a warning that the selected set has changed to 17 scenes. Hosted CI passes `-StormGl Mesa` explicitly so the
+with a warning that the selected set has changed to 18 scenes. Hosted CI passes `-StormGl Mesa` explicitly so the
 result is deterministic and runner-safe. Both modes publish the scene count and excluded scene names, and the test host
 asserts the expected count so the parity subset cannot shrink silently.
 
@@ -626,7 +626,7 @@ than hdSilk regressions:
 
 The WGL gate writes `parity-capture-mesa-wgl-exclusions.json`/`.txt` so the subset is explicit in CI
 artifacts. If a future Mesa/OpenUSD update makes those scenes agree with the real-GPU measurements,
-remove the exclusion and restore all 21 registered scenes to the WGL parity subset.
+remove the exclusion and restore all 22 registered scenes to the WGL parity subset.
 
 Those four scenes are selected only when `-StormGl Auto` finds a conformant system driver. Hosted CI has no
 such driver today, so authored double-sidedness and the two basis-curves line-topology draw-mode probes
