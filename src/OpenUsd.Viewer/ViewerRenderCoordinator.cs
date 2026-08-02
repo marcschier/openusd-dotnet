@@ -68,6 +68,9 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
     internal SilkSelectionOutlineDiagnostics? SelectionOutlineDiagnostics =>
         _backendRegistry.CaptureSelectionOutline();
 
+    internal ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics =>
+        _backendRegistry.CaptureFrameDiagnostics();
+
     internal int GetCandidateSelectionCount(RenderBackendKind kind) =>
         _manager.GetCandidateSelectionCount(kind);
 

@@ -267,7 +267,8 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         catch (Exception exception)
         {
-            string status = $"Renderer initialization failed: {exception.Message}";
+            string status =
+                $"Renderer initialization failed: {ViewerPackageErrorFormatter.Format(exception)}";
             RendererStatus.Text = status;
             ShowError(status);
         }
@@ -1927,7 +1928,8 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             ViewerStartupOptions.WriteStatus($"Renderer frame failed: {exception.Message}");
             await Dispatcher.UIThread.InvokeAsync(() =>
-                RendererStatus.Text = $"Renderer frame failed: {exception.Message}");
+                RendererStatus.Text =
+                    $"Renderer frame failed: {ViewerPackageErrorFormatter.Format(exception)}");
         }
     }
 
@@ -1963,6 +1965,11 @@ public sealed partial class MainWindow : Window, IDisposable
             frameResult?.Diagnostics.Entries.Count > 0
                 ? frameResult.Diagnostics
                 : coordinator.LatestDiagnostics;
+        ViewerDiagnosticEntry[] diagnosticEntries =
+        [
+            .. ViewerDiagnosticEntryFactory.From(diagnostics, timestamp),
+            .. ViewerSilkFrameDiagnosticEntryFactory.From(coordinator.FrameDiagnostics, timestamp)
+        ];
         ViewerBackendRuntimeIdentity runtimeIdentity =
             active is null || _backendHost is null
                 ? ViewerBackendRuntimeIdentity.Unknown
@@ -1979,7 +1986,7 @@ public sealed partial class MainWindow : Window, IDisposable
             coordinator.RetiredCleanupCount,
             frameResult?.Frame?.StateRevision ?? coordinator.CurrentState.Revision,
             ViewerResourceCounters.Capture(),
-            ViewerDiagnosticEntryFactory.From(diagnostics, timestamp)));
+            diagnosticEntries));
         _latestDiagnostics = _diagnostics.Snapshot();
         if (Dispatcher.UIThread.CheckAccess())
         {
@@ -2460,7 +2467,8 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         catch (Exception exception)
         {
-            ShowError($"Could not open '{stagePath}': {exception.Message}");
+            ShowError(
+                $"Could not open '{stagePath}': {ViewerPackageErrorFormatter.Format(exception)}");
         }
     }
 

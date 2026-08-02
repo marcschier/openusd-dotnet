@@ -22,10 +22,27 @@ internal sealed record ViewerDiagnosticEntry(
 internal sealed record ViewerBackendRuntimeIdentity(
     string Compositor,
     string Api,
-    string DeviceName) : IUsdDetachedResult
+    string DeviceName,
+    bool? SupportsCompute = null,
+    bool? SupportsDescriptorIndexedTextureTables = null,
+    bool? IsSoftware = null) : IUsdDetachedResult
 {
     internal static ViewerBackendRuntimeIdentity Unknown { get; } =
         new("Unknown", "Unknown", "Unknown");
+}
+
+internal readonly record struct ViewerSilkFrameDiagnosticsSnapshot(
+    RenderBackendKind Kind,
+    uint CommandCount,
+    int DrawCount,
+    int UniformUploads,
+    SilkSceneGpuStatistics GpuStatistics)
+{
+    internal bool IsEmpty =>
+        CommandCount == 0 &&
+        DrawCount == 0 &&
+        UniformUploads == 0 &&
+        GpuStatistics == default;
 }
 
 internal readonly record struct ViewerResourceCounters(
@@ -375,6 +392,18 @@ internal sealed class ViewerDiagnosticsFormatter(ViewerPathRedactor redactor)
         Append(builder, "Compositor", snapshot.RuntimeIdentity.Compositor);
         Append(builder, "API", snapshot.RuntimeIdentity.Api);
         Append(builder, "Device", snapshot.RuntimeIdentity.DeviceName);
+        Append(
+            builder,
+            "Device compute",
+            FormatOptionalBoolean(snapshot.RuntimeIdentity.SupportsCompute));
+        Append(
+            builder,
+            "Descriptor-indexed textures",
+            FormatOptionalBoolean(snapshot.RuntimeIdentity.SupportsDescriptorIndexedTextureTables));
+        Append(
+            builder,
+            "Software device",
+            FormatOptionalBoolean(snapshot.RuntimeIdentity.IsSoftware));
         Append(builder, "Fallback/recovery", snapshot.RecoveryReason);
         Append(builder, "State revision", snapshot.StateRevision.ToString(CultureInfo.InvariantCulture));
         Append(builder, "Frame CPU", FormatDuration(snapshot.FrameDuration));
@@ -433,6 +462,9 @@ internal sealed class ViewerDiagnosticsFormatter(ViewerPathRedactor redactor)
             CultureInfo.InvariantCulture,
             $"{duration.TotalMilliseconds:F3} ms");
 
+    private static string FormatOptionalBoolean(bool? value) =>
+        value is { } present ? present.ToString() : "Unknown";
+
     private static void AppendResources(
         StringBuilder builder,
         ViewerResourceCounters resources)
@@ -458,6 +490,45 @@ internal sealed class ViewerDiagnosticsFormatter(ViewerPathRedactor redactor)
             "GPU resources",
             $"scenes={resources.GpuScenes}; meshes={resources.GpuMeshes}");
     }
+
+}
+
+internal static class ViewerPackageErrorFormatter
+{
+    private const string PackageFirstAdvice =
+        "The loaded native runtime package does not match the managed Viewer. " +
+        "Restore or publish matching OpenUsd runtime packages, clear stale build output, " +
+        "and restart the Viewer.";
+
+    internal static string Format(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        string message = exception.Message;
+        return IsPackageMismatch(message)
+            ? $"{message} {PackageFirstAdvice}"
+            : message;
+    }
+
+    internal static string Format(string message, Exception? exception)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        if (exception is null)
+        {
+            return message;
+        }
+
+        string exceptionMessage = exception.Message;
+        return IsPackageMismatch(exceptionMessage)
+            ? $"{message} {PackageFirstAdvice}"
+            : message;
+    }
+
+    private static bool IsPackageMismatch(string message) =>
+        message.Contains("ABI mismatch", StringComparison.OrdinalIgnoreCase) ||
+        message.Contains("Unsupported hdSilk page ABI", StringComparison.OrdinalIgnoreCase) ||
+        (message.Contains("Native ABI", StringComparison.OrdinalIgnoreCase) &&
+         (message.Contains("incompatible", StringComparison.OrdinalIgnoreCase) ||
+          message.Contains("missing required capabilities", StringComparison.OrdinalIgnoreCase)));
 }
 
 internal static class ViewerDiagnosticEntryFactory
@@ -479,6 +550,36 @@ internal static class ViewerDiagnosticEntryFactory
                 diagnostic.Code,
                 diagnostic.Message);
         }
+
         return entries;
+    }
+}
+
+internal static class ViewerSilkFrameDiagnosticEntryFactory
+{
+    internal static ViewerDiagnosticEntry[] From(
+        ViewerSilkFrameDiagnosticsSnapshot? snapshot,
+        DateTimeOffset timestamp)
+    {
+        if (snapshot is not { IsEmpty: false } diagnostics)
+        {
+            return [];
+        }
+
+        SilkSceneGpuStatistics statistics = diagnostics.GpuStatistics;
+        return
+        [
+            new ViewerDiagnosticEntry(
+                timestamp,
+                diagnostics.Kind.ToString(),
+                "VIEWER_SILK_FRAME_STATS",
+                $"commands={diagnostics.CommandCount}; draws={diagnostics.DrawCount}; " +
+                $"uniformUploads={diagnostics.UniformUploads}; " +
+                $"meshes={statistics.MeshCount}; geometryBuilds={statistics.GeometryBuilds}; " +
+                $"vertexUploads={statistics.VertexUploads}; indexUploads={statistics.IndexUploads}; " +
+                $"bufferAllocationBytes={statistics.BufferAllocationBytes}; " +
+                $"bufferWriteBytes={statistics.BufferWriteBytes}; " +
+                $"textureUploadBytes={statistics.TextureUploadBytes}")
+        ];
     }
 }

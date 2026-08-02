@@ -336,8 +336,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 ? "VIEWER_METAL_HDSILK_READY"
                 : "VIEWER_SILK_READY";
             string diagnosticMessage = kind == RenderBackendKind.Metal
-                ? $"Metal hdSilk composition initialized on {resources.DeviceName}."
-                : $"{kind} initialized on {resources.DeviceName}.";
+                ? $"Metal hdSilk composition initialized on {resources.Capabilities.DeviceName}."
+                : $"{kind} initialized on {resources.Capabilities.DeviceName}.";
             SetRuntimeIdentity(
                 kind,
                 kind switch
@@ -347,7 +347,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                     RenderBackendKind.Metal => "hdSilk Metal",
                     _ => kind.ToString()
                 },
-                resources.DeviceName);
+                resources.Capabilities);
             return new CompositionHostedBackendSession(
                 viewportHost,
                 control,
@@ -356,7 +356,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 Diagnostics(
                     kind,
                     diagnosticCode,
-                    diagnosticMessage));
+                    diagnosticMessage,
+                    capabilities: resources.Capabilities));
         }
         catch (OperationCanceledException)
         {
@@ -397,7 +398,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 meshRenderer,
                 device,
                 renderer,
-                device.Capabilities.DeviceName);
+                device.Capabilities);
         }
         catch
         {
@@ -425,7 +426,11 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 meshRenderer: null,
                 device: null,
                 renderer,
-                "Vulkan composition device");
+                new SilkGraphicsCapabilities(
+                    "Vulkan composition device",
+                    "Vulkan",
+                    SupportsCompute: true,
+                    IsSoftware: false));
         }
         catch
         {
@@ -454,7 +459,14 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 meshRenderer: null,
                 device: null,
                 renderer,
-                "Metal IOSurface hdSilk composition");
+                new SilkGraphicsCapabilities(
+                    "Metal IOSurface hdSilk composition",
+                    "Metal",
+                    SupportsCompute: true,
+                    IsSoftware: false)
+                {
+                    SupportsDescriptorIndexedTextureTables = true
+                });
         }
         catch
         {
@@ -495,6 +507,20 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 Program.GetConfiguredShellMode(),
                 api,
                 deviceName));
+
+    private void SetRuntimeIdentity(
+        RenderBackendKind kind,
+        string api,
+        SilkGraphicsCapabilities? capabilities = null) =>
+        Volatile.Write(
+            ref _runtimeIdentities[(int)kind],
+            new ViewerBackendRuntimeIdentity(
+                Program.GetConfiguredShellMode(),
+                api,
+                capabilities?.DeviceName ?? "Unknown",
+                capabilities?.SupportsCompute,
+                capabilities?.SupportsDescriptorIndexedTextureTables,
+                capabilities?.IsSoftware));
 
     private static bool IsSupportedPlatform(RenderBackendKind kind) =>
         kind switch
@@ -537,7 +563,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                     RenderDiagnosticSeverity.Error,
                     RenderBackendDiagnosticCategory.Initialization,
                     code,
-                    message,
+                    ViewerPackageErrorFormatter.Format(message, exception),
                     probeFailure: null,
                     initializationFailure: failure,
                     exception?.GetType().FullName,
@@ -553,7 +579,8 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         RenderBackendDiagnosticCategory category =
             RenderBackendDiagnosticCategory.Initialization,
         RenderDiagnosticSeverity severity = RenderDiagnosticSeverity.Information,
-        RenderBackendProbeFailureKind? probeFailure = null) =>
+        RenderBackendProbeFailureKind? probeFailure = null,
+        SilkGraphicsCapabilities? capabilities = null) =>
         new(
         [
             new RenderBackendDiagnostic(
@@ -561,12 +588,21 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 severity,
                 category,
                 code,
-                message,
+                capabilities is null
+                    ? message
+                    : FormatCapabilityMessage(message, capabilities.Value),
                 probeFailure,
                 initializationFailure: null,
                 exceptionType: null,
                 exceptionMessage: null)
         ]);
+
+    private static string FormatCapabilityMessage(
+        string message,
+        SilkGraphicsCapabilities capabilities) =>
+        $"{message} capabilities: compute={capabilities.SupportsCompute}; " +
+        $"descriptorIndexedTextures={capabilities.SupportsDescriptorIndexedTextureTables}; " +
+        $"software={capabilities.IsSoftware}; api={capabilities.ApiVersion}.";
 }
 
 internal sealed class StormHostedBackendSession(
@@ -923,7 +959,8 @@ internal sealed class CompositionHostedBackendSession(
     IViewerRenderBackendSession,
     IRenderPickingBackend,
     IViewerRenderedPickStateSource,
-    IViewerSelectionOutlineDiagnosticsSource
+    IViewerSelectionOutlineDiagnosticsSource,
+    IViewerFrameDiagnosticsSource
 {
     private StageRenderState _state = initialState;
     private ViewerRenderedPickState? _lastRenderedPickState;
@@ -938,6 +975,19 @@ internal sealed class CompositionHostedBackendSession(
 
     public SilkSelectionOutlineDiagnostics? SelectionOutlineDiagnostics =>
         resources.Renderer.SelectionOutlineDiagnostics;
+
+    public ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics =>
+        resources.Renderer.LastCommandCount == 0 &&
+        resources.Renderer.LastDrawCount == 0 &&
+        resources.Renderer.LastUniformUploads == 0 &&
+        resources.Renderer.LastGpuStatistics == default
+            ? null
+            : new ViewerSilkFrameDiagnosticsSnapshot(
+                resources.Renderer.Kind,
+                resources.Renderer.LastCommandCount,
+                resources.Renderer.LastDrawCount,
+                resources.Renderer.LastUniformUploads,
+                resources.Renderer.LastGpuStatistics);
 
     public async ValueTask ActivateAsync(CancellationToken cancellationToken)
     {
@@ -1073,9 +1123,15 @@ internal interface ISilkStagePresentationRenderer :
 {
     RenderBackendKind Kind { get; }
 
+    uint LastCommandCount => 0;
+
     int LastDrawCount { get; }
 
+    int LastUniformUploads => 0;
+
     int LastTriangleCount => 0;
+
+    SilkSceneGpuStatistics LastGpuStatistics => default;
 
     ulong LastSceneRevision => 0;
 
@@ -1142,13 +1198,22 @@ internal sealed class D3D12StagePresentationRenderer(
 {
     private StageRenderState _state = initialState;
     private ViewerRenderedPickState? _lastRenderedPickState;
+    private SilkSceneGpuStatistics _lastGpuStatistics;
+    private uint _lastCommandCount;
     private int _lastDrawCount;
+    private int _lastUniformUploads;
     private ulong _lastSceneRevision;
     private ulong _lastStateRevision;
 
     public RenderBackendKind Kind => RenderBackendKind.D3D12;
 
+    public uint LastCommandCount => Volatile.Read(ref _lastCommandCount);
+
     public int LastDrawCount => Volatile.Read(ref _lastDrawCount);
+
+    public int LastUniformUploads => Volatile.Read(ref _lastUniformUploads);
+
+    public SilkSceneGpuStatistics LastGpuStatistics => _lastGpuStatistics;
 
     public ulong LastSceneRevision => Volatile.Read(ref _lastSceneRevision);
 
@@ -1182,7 +1247,10 @@ internal sealed class D3D12StagePresentationRenderer(
             colorTarget,
             depthTarget,
             SilkPickFrameBinding.FromState(state, sceneRevision: null));
+        Volatile.Write(ref _lastCommandCount, page.CommandCount);
         Volatile.Write(ref _lastDrawCount, result.DrawCount);
+        Volatile.Write(ref _lastUniformUploads, result.UniformUploads);
+        _lastGpuStatistics = result.Statistics;
         Volatile.Write(ref _lastSceneRevision, page.Revision);
         Volatile.Write(ref _lastStateRevision, state.Revision);
         ViewerRenderedPickStateStore.PublishNewest(
@@ -1215,13 +1283,22 @@ internal sealed class VulkanStagePresentationRenderer(
     private SilkMeshRenderer? _currentRenderer;
     private StageRenderState _state = initialState;
     private ViewerRenderedPickState? _lastRenderedPickState;
+    private SilkSceneGpuStatistics _lastGpuStatistics;
+    private uint _lastCommandCount;
     private int _lastDrawCount;
+    private int _lastUniformUploads;
     private ulong _lastSceneRevision;
     private ulong _lastStateRevision;
 
     public RenderBackendKind Kind => RenderBackendKind.Vulkan;
 
+    public uint LastCommandCount => Volatile.Read(ref _lastCommandCount);
+
     public int LastDrawCount => Volatile.Read(ref _lastDrawCount);
+
+    public int LastUniformUploads => Volatile.Read(ref _lastUniformUploads);
+
+    public SilkSceneGpuStatistics LastGpuStatistics => _lastGpuStatistics;
 
     public ulong LastSceneRevision => Volatile.Read(ref _lastSceneRevision);
 
@@ -1252,7 +1329,10 @@ internal sealed class VulkanStagePresentationRenderer(
             context.ColorTarget,
             context.DepthTarget,
             SilkPickFrameBinding.FromState(state, sceneRevision: null));
+        Volatile.Write(ref _lastCommandCount, page.CommandCount);
         Volatile.Write(ref _lastDrawCount, result.DrawCount);
+        Volatile.Write(ref _lastUniformUploads, result.UniformUploads);
+        _lastGpuStatistics = result.Statistics;
         Volatile.Write(ref _lastSceneRevision, page.Revision);
         Volatile.Write(ref _lastStateRevision, state.Revision);
         ViewerRenderedPickStateStore.PublishNewest(
@@ -1282,7 +1362,10 @@ internal sealed class MetalStagePresentationRenderer(
     private SilkMeshRenderer? _currentRenderer;
     private StageRenderState _state = initialState;
     private ViewerRenderedPickState? _lastRenderedPickState;
+    private SilkSceneGpuStatistics _lastGpuStatistics;
+    private uint _lastCommandCount;
     private int _lastDrawCount;
+    private int _lastUniformUploads;
     private int _lastTriangleCount;
     private ulong _lastSceneRevision;
     private ulong _lastStateRevision;
@@ -1290,9 +1373,15 @@ internal sealed class MetalStagePresentationRenderer(
 
     public RenderBackendKind Kind => RenderBackendKind.Metal;
 
+    public uint LastCommandCount => Volatile.Read(ref _lastCommandCount);
+
     public int LastDrawCount => Volatile.Read(ref _lastDrawCount);
 
+    public int LastUniformUploads => Volatile.Read(ref _lastUniformUploads);
+
     public int LastTriangleCount => Volatile.Read(ref _lastTriangleCount);
+
+    public SilkSceneGpuStatistics LastGpuStatistics => _lastGpuStatistics;
 
     public ulong LastSceneRevision => Volatile.Read(ref _lastSceneRevision);
 
@@ -1324,10 +1413,13 @@ internal sealed class MetalStagePresentationRenderer(
             context.ColorTarget,
             context.DepthTarget,
             SilkPickFrameBinding.FromState(state, sceneRevision: null));
+        Volatile.Write(ref _lastCommandCount, page.CommandCount);
         int triangles = checked((int)context.Renderer.GpuResources.Meshes.Values.Sum(
             mesh => (long)mesh.IndexCount / 3));
         Volatile.Write(ref _lastDrawCount, result.DrawCount);
+        Volatile.Write(ref _lastUniformUploads, result.UniformUploads);
         Volatile.Write(ref _lastTriangleCount, triangles);
+        _lastGpuStatistics = result.Statistics;
         Volatile.Write(ref _lastSceneRevision, page.Revision);
         Volatile.Write(ref _lastStateRevision, state.Revision);
         ViewerRenderedPickStateStore.PublishNewest(
@@ -1404,7 +1496,7 @@ internal sealed class SilkCompositionResources(
     SilkMeshRenderer? meshRenderer,
     IDisposable? device,
     ISilkStagePresentationRenderer renderer,
-    string deviceName) : IDisposable
+    SilkGraphicsCapabilities capabilities) : IDisposable
 {
     private IDisposable? _device = device;
     private SilkMeshRenderer? _meshRenderer = meshRenderer;
@@ -1415,7 +1507,7 @@ internal sealed class SilkCompositionResources(
 
     internal ISilkStagePresentationRenderer Renderer { get; } = renderer;
 
-    internal string DeviceName { get; } = deviceName;
+    internal SilkGraphicsCapabilities Capabilities { get; } = capabilities;
 
     public void Dispose()
     {
