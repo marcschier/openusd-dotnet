@@ -209,7 +209,6 @@ jobs:
       contents: read
       actions: read
       packages: write
-      id-token: write   # required: OIDC token for NuGet trusted publishing
     steps:
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
@@ -245,25 +244,26 @@ jobs:
             --source https://nuget.pkg.github.com/marcschier/index.json `
             --no-symbols `
             --skip-duplicate
-      # nuget.org is a one-way door: a pushed version can be unlisted but never
-      # replaced. Publishing uses NuGet trusted publishing (OIDC), not a long-lived
-      # key, so NUGET_API_KEY is deliberately absent. An earlier version of this
-      # step guarded on `if: env.NUGET_API_KEY != ''`, which meant it silently
-      # skipped on every release and read as a failed promotion. The login is done
-      # immediately before the push so the short-lived token is fresh, and
-      # --skip-duplicate keeps a re-run of a partially failed push idempotent.
-      - name: NuGet login (OIDC trusted publishing)
-        id: login
-        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
-        with:
-          user: ${{ secrets.NUGET_USER }}
-      - name: Push to nuget.org
-        shell: pwsh
-        run: |
-          dotnet nuget push 'artifacts/nupkg/*.nupkg' `
-            --api-key '${{ steps.login.outputs.NUGET_API_KEY }}' `
-            --source https://api.nuget.org/v3/index.json `
-            --skip-duplicate
+      # nuget.org promotion is deliberately NOT done here. The trusted-publishing
+      # policy on nuget.org is bound to a specific workflow filename, and it names
+      # nuget.yml. Attempting the OIDC exchange from release.yml fails with
+      # "Workflow mismatch for policy 'OpenUsd': expected 'nuget.yml', actual
+      # 'release.yml'" (HTTP 401), which shipped as a failed publish job on the
+      # 0.4.0-alpha release even though every package had already reached the
+      # GitHub feed successfully.
+      #
+      # An earlier version of this job pushed to nuget.org from here on the
+      # assumption that the policy would accept any workflow in the repository.
+      # It does not, and binding the policy to one workflow is the safer
+      # arrangement: only that one file can mint a nuget.org token.
+      #
+      # nuget.org is also a one-way door, so promotion stays a separate,
+      # deliberate step. After this job completes, promote with:
+      #
+      #   gh workflow run nuget.yml -f version=<version>
+      #
+      # nuget.yml pulls the exact packages from the GitHub feed, so it promotes
+      # what was actually published rather than rebuilding.
       - name: Upload the published packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
