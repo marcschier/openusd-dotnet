@@ -169,7 +169,7 @@ public sealed class SilkMeshRendererTests
         // proven by injecting an eight-byte allocation into the loop body and
         // watching it go red. Only genuinely one-time costs are excluded, which
         // is what "steady frame" means.
-        static void RunSteadyFrames(
+        static void runSteadyFrames(
             SilkSceneState scene,
             SilkSceneGpuResources resources,
             byte[] frame,
@@ -184,10 +184,10 @@ public sealed class SilkMeshRendererTests
             }
         }
 
-        RunSteadyFrames(scene, resources, frame, 100);
+        runSteadyFrames(scene, resources, frame, 100);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        RunSteadyFrames(scene, resources, frame, 1_100);
+        runSteadyFrames(scene, resources, frame, 1_100);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         await Assert.That(second).IsSameReferenceAs(first);
