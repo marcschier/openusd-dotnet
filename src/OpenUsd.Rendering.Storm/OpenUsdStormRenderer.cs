@@ -74,7 +74,8 @@ public sealed class OpenUsdStormRenderer : IDisposable
         double timeCode = 0,
         CameraState camera = default,
         ulong revision = 0,
-        ulong? sceneRevision = null)
+        ulong? sceneRevision = null,
+        bool useSceneLights = false)
     {
         lock (_gate)
         {
@@ -88,7 +89,8 @@ public sealed class OpenUsdStormRenderer : IDisposable
                 timeCode,
                 camera,
                 revision,
-                sceneRevision);
+                sceneRevision,
+                useSceneLights);
             _lastFrame = new StormFrameBinding(
                 width,
                 height,

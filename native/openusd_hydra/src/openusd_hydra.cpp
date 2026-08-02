@@ -38,6 +38,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -118,6 +119,129 @@ GlfSimpleLightVector MakeStormHeadlightLights()
     return GlfSimpleLightVector{light};
 }
 
+float ReadFloatAttribute(const UsdPrim& prim, const char* name, double time_code, float fallback)
+{
+    UsdAttribute attribute = prim.GetAttribute(TfToken(name));
+    if (!attribute)
+    {
+        return fallback;
+    }
+    float value = fallback;
+    if (attribute.Get(&value, UsdTimeCode(time_code)))
+    {
+        return value;
+    }
+    double double_value = static_cast<double>(fallback);
+    return attribute.Get(&double_value, UsdTimeCode(time_code))
+        ? static_cast<float>(double_value)
+        : fallback;
+}
+
+GfVec3f ReadVec3fAttribute(
+    const UsdPrim& prim,
+    const char* name,
+    double time_code,
+    const GfVec3f& fallback)
+{
+    UsdAttribute attribute = prim.GetAttribute(TfToken(name));
+    GfVec3f value = fallback;
+    return attribute && attribute.Get(&value, UsdTimeCode(time_code)) ? value : fallback;
+}
+
+GfMatrix4d ReadTransformAttribute(const UsdPrim& prim, double time_code)
+{
+    GfMatrix4d transform(1.0);
+    UsdAttribute attribute = prim.GetAttribute(TfToken("xformOp:transform"));
+    if (attribute)
+    {
+        attribute.Get(&transform, UsdTimeCode(time_code));
+    }
+    return transform;
+}
+
+GfVec4f MakeRadiance(const UsdPrim& prim, double time_code)
+{
+    const GfVec3f color = ReadVec3fAttribute(
+        prim,
+        "inputs:color",
+        time_code,
+        GfVec3f(1.0f, 1.0f, 1.0f));
+    const float intensity = ReadFloatAttribute(prim, "inputs:intensity", time_code, 1.0f);
+    const float exposure = ReadFloatAttribute(prim, "inputs:exposure", time_code, 0.0f);
+    const float scale = intensity * std::pow(2.0f, exposure);
+    return GfVec4f(color[0] * scale, color[1] * scale, color[2] * scale, 1.0f);
+}
+
+struct StormSceneLighting
+{
+    GlfSimpleLightVector lights;
+    GfVec4f ambient{0.0f, 0.0f, 0.0f, 1.0f};
+};
+
+StormSceneLighting MakeStormSceneLighting(const UsdStageRefPtr& stage, double time_code)
+{
+    StormSceneLighting lighting;
+    if (!stage)
+    {
+        return lighting;
+    }
+    for (const UsdPrim& prim : stage->Traverse())
+    {
+        if (!prim)
+        {
+            continue;
+        }
+        const TfToken typeName = prim.GetTypeName();
+        if (typeName != TfToken("DistantLight") &&
+            typeName != TfToken("SphereLight") &&
+            typeName != TfToken("DomeLight"))
+        {
+            continue;
+        }
+
+        GlfSimpleLight light;
+        const GfVec4f radiance = MakeRadiance(prim, time_code);
+        light.SetID(prim.GetPath());
+        light.SetDiffuse(radiance);
+        light.SetSpecular(radiance);
+        light.SetAmbient(GfVec4f(0.0f, 0.0f, 0.0f, 1.0f));
+        light.SetHasIntensity(true);
+        light.SetHasShadow(false);
+        if (typeName == TfToken("DistantLight"))
+        {
+            const GfVec3d direction =
+                ReadTransformAttribute(prim, time_code).TransformDir(GfVec3d(0.0, 0.0, 1.0));
+            light.SetPosition(GfVec4f(
+                static_cast<float>(direction[0]),
+                static_cast<float>(direction[1]),
+                static_cast<float>(direction[2]),
+                0.0f));
+            light.SetAttenuation(GfVec3f(1.0f, 0.0f, 0.0f));
+        }
+        else if (typeName == TfToken("SphereLight"))
+        {
+            const GfVec3d position = ReadTransformAttribute(prim, time_code).ExtractTranslation();
+            light.SetPosition(GfVec4f(
+                static_cast<float>(position[0]),
+                static_cast<float>(position[1]),
+                static_cast<float>(position[2]),
+                1.0f));
+            light.SetAttenuation(GfVec3f(0.0f, 0.0f, 1.0f));
+        }
+        else
+        {
+            lighting.ambient = GfVec4f(
+                lighting.ambient[0] + radiance[0],
+                lighting.ambient[1] + radiance[1],
+                lighting.ambient[2] + radiance[2],
+                1.0f);
+            continue;
+        }
+        lighting.lights.push_back(light);
+    }
+    return lighting;
+}
+
 GlfSimpleMaterial MakeStormFallbackMaterial()
 {
     GlfSimpleMaterial material;
@@ -127,22 +251,6 @@ GlfSimpleMaterial MakeStormFallbackMaterial()
     material.SetEmission(GfVec4f(0.0f, 0.0f, 0.0f, 1.0f));
     material.SetShininess(32.0);
     return material;
-}
-
-bool HasSupportedSceneLights(const UsdStageRefPtr& stage)
-{
-    if (!stage)
-    {
-        return false;
-    }
-    for (const UsdPrim& prim : stage->Traverse())
-    {
-        if (prim && prim.HasAPI<UsdLuxLightAPI>())
-        {
-            return true;
-        }
-    }
-    return false;
 }
 
 void UpdatePeak(std::atomic_size_t& peak, size_t value) noexcept
@@ -925,8 +1033,11 @@ openusd_status openusd_storm_render_v2(
         WriteError(error, "A valid renderer, viewport size, and convergence output are required.");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
+    constexpr uint32_t kValidRenderFlags =
+        OPENUSD_STORM_RENDER_HAS_SCENE_REVISION |
+        OPENUSD_STORM_RENDER_USE_SCENE_LIGHTS;
     if (!std::isfinite(time_code) ||
-        (revision_flags & ~OPENUSD_STORM_RENDER_HAS_SCENE_REVISION) != 0)
+        (revision_flags & ~kValidRenderFlags) != 0)
     {
         WriteError(error, "The render time or revision flags are invalid.");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
@@ -967,20 +1078,33 @@ openusd_status openusd_storm_render_v2(
                 GfVec4d(0.0, 0.0, width, height));
             renderer->engine->SetPresentationOutput(
                 HgiTokens->OpenGL, VtValue(framebuffer));
-            const bool hasSupportedSceneLights = HasSupportedSceneLights(renderer->stage);
-            renderer->engine->SetLightingState(
-                MakeStormHeadlightLights(),
-                MakeStormFallbackMaterial(),
-                GfVec4f(
-                    kStormHeadlight.ambient,
-                    kStormHeadlight.ambient,
-                    kStormHeadlight.ambient,
-                    1.0f));
+            const bool useSceneLights =
+                (revision_flags & OPENUSD_STORM_RENDER_USE_SCENE_LIGHTS) != 0;
+            if (useSceneLights)
+            {
+                const StormSceneLighting lighting =
+                    MakeStormSceneLighting(renderer->stage, time_code);
+                renderer->engine->SetLightingState(
+                    lighting.lights,
+                    MakeStormFallbackMaterial(),
+                    lighting.ambient);
+            }
+            else
+            {
+                renderer->engine->SetLightingState(
+                    MakeStormHeadlightLights(),
+                    MakeStormFallbackMaterial(),
+                    GfVec4f(
+                        kStormHeadlight.ambient,
+                        kStormHeadlight.ambient,
+                        kStormHeadlight.ambient,
+                        1.0f));
+            }
             UsdImagingGLRenderParams parameters;
             parameters.frame = UsdTimeCode(time_code);
             parameters.showRender = true;
             parameters.enableLighting = true;
-            parameters.enableSceneLights = hasSupportedSceneLights;
+            parameters.enableSceneLights = false;
             parameters.enableSceneMaterials = true;
             parameters.highlight = true;
             parameters.clearColor = GfVec4f(0.055f, 0.055f, 0.055f, 1.0f);

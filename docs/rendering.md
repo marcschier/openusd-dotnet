@@ -464,8 +464,10 @@ and `native/openusd_hydra/src/openusd_hydra.cpp`, and managed consumers read it 
 camera space, linear RGB colour `(1, 1, 1)`, intensity `1`, and ambient `0`. When a stage does contain
 UsdLux lights, hdSilk publishes a measured subset to frame constants instead of widening the pinned
 80-byte scene/instance block. The parity harness also records that clearing Storm's fallback headlight
-for the direct-light scenes currently makes Storm draw no lit coverage, so direct-light colour parity
-remains measurement-only rather than gated.
+for the direct-light scenes without replacement makes Storm draw no lit coverage; the Storm path now
+switches per render between the fallback headlight and an explicit scene-light vector. A doubled-intensity
+probe proves Storm responds to authored DistantLight intensity, but direct-light colour parity remains
+measurement-only until the remaining localized residuals are measured and gated.
 
 The hdSilk subset is intentionally narrow: `UsdLuxDistantLight` and `UsdLuxSphereLight` travel as
 direct lights with colour, intensity, exposure, diffuse/specular multipliers, radius, and world

@@ -73,6 +73,24 @@ public sealed class StormSilkParityCaptureDriverTests
                 first.Storm,
                 second.Storm,
                 out ParityComparisonResult? stormDeterminism);
+            StormLightSensitivityEvidence? lightSensitivity = null;
+            if (scene.SceneLightSensitivityStagePath is not null)
+            {
+                ParityCaptureSet sensitivity = await ParityCaptureDriver.CaptureAsync(
+                    input with { StagePath = scene.SceneLightSensitivityStagePath },
+                    StormGlContextFactory.CreateForCurrentPlatform(),
+                    Array.Empty<SilkParityBackend>()).ConfigureAwait(false);
+                lightSensitivity = new StormLightSensitivityEvidence(
+                    scene.SceneLightSensitivityStagePath,
+                    Hash(sensitivity.Storm),
+                    !first.Storm.Rgba.Span.SequenceEqual(sensitivity.Storm.Rgba.Span));
+                evidence.Add(
+                    $"{scene.Name} scene-light sensitivity doubledIntensityChangedStorm=" +
+                    $"{lightSensitivity.ChangedStorm} doubledHash={lightSensitivity.DoubledIntensityHash}");
+                await Assert.That(lightSensitivity.ChangedStorm)
+                    .IsTrue()
+                    .Because($"{scene.Name} must prove Storm responds to authored scene-light intensity.");
+            }
             if (!stormDeterministic)
             {
                 WriteCapture(scene.Name, "storm-first", first.Storm);
@@ -157,6 +175,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 stormFirstHash = Hash(first.Storm),
                 stormSecondHash = Hash(second.Storm),
                 stormOpenGl = first.OpenGlEvidence,
+                sceneLightSensitivity = lightSensitivity,
                 deterministic = first.Storm.Rgba.Span.SequenceEqual(second.Storm.Rgba.Span),
                 stageIdentity = CreateStageIdentity(scene),
                 cameraIdentity = CreateCameraIdentity(input),
@@ -667,7 +686,8 @@ public sealed class StormSilkParityCaptureDriverTests
             scene.TimeCode,
             new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, scene.ClipPlanes),
             new SilkColor(0, 0, 0, 1),
-            headlight);
+            headlight,
+            scene.UseSceneLights);
     }
 
     private static string ResolvePluginPath()
@@ -861,7 +881,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 692, 692, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_028, 1_028, 0)),
             },
             new ParityScene(
                 "clip-plane-asymmetric",
@@ -878,7 +898,7 @@ public sealed class StormSilkParityCaptureDriverTests
             {
                 ClipPlanes = [new Vector4(1, 0, 0, 0.12f)],
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 736, 736, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_072, 1_072, 0)),
             },
             new ParityScene(
                 "depth-overlap-multiprim",
@@ -894,7 +914,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(3, 3, 3, 3, 3, 3, 900, 900, 0)),
+                    ParityPerformanceBudget.FromMeasured(3, 3, 3, 3, 3, 3, 1_236, 1_236, 0)),
             },
             new ParityScene(
                 "material-normals-uv",
@@ -911,7 +931,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 676, 596, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_012, 932, 0)),
             },
             new ParityScene(
                 "materials-textures",
@@ -926,7 +946,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 692, 612, 262_144)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_028, 948, 262_144)),
             },
             new ParityScene(
                 "light-distant-exposure",
@@ -935,9 +955,16 @@ public sealed class StormSilkParityCaptureDriverTests
                 ColorComparisonReady: true,
                 GateEnabled: false,
                 GateReason:
-                    "Direct-light transport is measured, but Storm's capture path still renders " +
-                    "the fallback headlight here; current colour deltas are max 122 / mean 114.450.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                    "Storm scene-light sensitivity is proven, but the measured direct-light residual " +
+                    "still exceeds the colour gate at max 42 / mean 8.675.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                UseSceneLights = true,
+                SceneLightSensitivityStagePath =
+                    Path.Combine(assetRoot, "parity-light-distant-exposure-double.usda"),
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 988, 908, 0)),
+            },
             new ParityScene(
                 "light-sphere-point",
                 Path.Combine(assetRoot, "parity-light-sphere-point.usda"),
@@ -945,9 +972,14 @@ public sealed class StormSilkParityCaptureDriverTests
                 ColorComparisonReady: true,
                 GateEnabled: false,
                 GateReason:
-                    "Direct-light transport is measured, but Storm's capture path still renders " +
-                    "the fallback headlight here; current colour deltas are max 166 / mean 96.922.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                    "Storm scene-light sensitivity is proven, but the sphere attenuation/source " +
+                    "residual still exceeds the colour gate at max 36 / mean 2.878.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                UseSceneLights = true,
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 988, 908, 0)),
+            },
             new ParityScene(
                 "light-dome-ambient",
                 Path.Combine(assetRoot, "parity-light-dome-ambient.usda"),
@@ -958,7 +990,11 @@ public sealed class StormSilkParityCaptureDriverTests
                     "Untextured dome ambient fill gates against Storm's measured fallback: " +
                     "1.000000 adjusted IoU, 0.462455 perturbation margin, and colour " +
                     "deltas max 11 / mean 3.619.",
-                RecommendedMinimumAdjustedIou: 0.92),
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_012, 932, 0)),
+            },
             new ParityScene(
                 "point-instancer-cluster",
                 Path.Combine(assetRoot, "parity-point-instancer-cluster.usda"),
@@ -974,7 +1010,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 4, 1, 1, 1, 4, 740, 740, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 4, 1, 1, 1, 4, 1_076, 1_076, 0)),
             },
             new ParityScene(
                 "points-asymmetric",
@@ -991,7 +1027,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 3_496, 3_496, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 3_832, 3_832, 0)),
             },
             new ParityScene(
                 "cards-draw-mode",
@@ -1009,7 +1045,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_136, 1_136, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_472, 1_472, 0)),
             },
             new ParityScene(
                 "single-sided-winding",
@@ -1031,7 +1067,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 700, 700, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_036, 1_036, 0)),
             },
             new ParityScene(
                 "bounds-draw-mode",
@@ -1046,7 +1082,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_088, 1_088, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_424, 1_424, 0)),
             },
             new ParityScene(
                 "origin-draw-mode",
@@ -1061,7 +1097,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 584, 584, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 920, 920, 0)),
             },
             new ParityScene(
                 "time-varying-transform-primvar",
@@ -1078,7 +1114,7 @@ public sealed class StormSilkParityCaptureDriverTests
             {
                 TimeCode = 2,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 700, 700, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_036, 1_036, 0)),
             },
             new ParityScene(
                 "subdivision-catmull-clark",
@@ -1095,7 +1131,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 952, 952, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_288, 1_288, 0)),
             },
             new ParityScene(
                 "skinned-pennant",
@@ -1112,7 +1148,7 @@ public sealed class StormSilkParityCaptureDriverTests
             {
                 TimeCode = 2,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 608, 608, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 944, 944, 0)),
             },
         ];
         // parity-curve-width-probe.usda is a diagnostic and is never gated: it
@@ -1264,6 +1300,10 @@ public sealed class StormSilkParityCaptureDriverTests
             "test-assets\\parity\\parity-cards-draw-mode.usda",
             "test-assets\\parity\\parity-bounds-draw-mode.usda",
             "test-assets\\parity\\parity-origin-draw-mode.usda",
+            "test-assets\\parity\\parity-light-distant-exposure.usda",
+            "test-assets\\parity\\parity-light-distant-exposure-double.usda",
+            "test-assets\\parity\\parity-light-sphere-point.usda",
+            "test-assets\\parity\\parity-light-dome-ambient.usda",
             "docs\\performance.md",
             "docs\\testing.md",
         ];
@@ -1550,6 +1590,10 @@ public sealed class StormSilkParityCaptureDriverTests
 
         public double TimeCode { get; init; } = StormSilkParityCaptureDriverTests.TimeCode;
 
+        public bool UseSceneLights { get; init; }
+
+        public string? SceneLightSensitivityStagePath { get; init; }
+
         public required Dictionary<string, ParityPerformanceBudget> PerformanceBudgets { get; init; }
 
         public ParityPerformanceBudget GetPerformanceBudget(string backendName) =>
@@ -1558,6 +1602,11 @@ public sealed class StormSilkParityCaptureDriverTests
                 : throw new InvalidOperationException(
                     $"Scene '{Name}' has no performance budget for backend '{backendName}'.");
     }
+
+    private sealed record StormLightSensitivityEvidence(
+        string DoubledIntensityStagePath,
+        string DoubledIntensityHash,
+        bool ChangedStorm);
 
     private readonly record struct ParityPerformanceBudget(
         int MeasuredDrawCount,

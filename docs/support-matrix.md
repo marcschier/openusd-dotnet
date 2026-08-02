@@ -165,8 +165,8 @@ remains measured but ungated until the remaining divergence is eliminated.
 | Feature | Status | Detail |
 | --- | --- | --- |
 | Deterministic headlight | Implemented and parity-gated | Used when no authored UsdLux light is present |
-| `UsdLuxDistantLight` | Measurement-only | Transported; Storm direct-light capture still uses fallback |
-| `UsdLuxSphereLight` | Measurement-only | Transported; Storm capture and attenuation remain ungated |
+| `UsdLuxDistantLight` | Measurement-only | Transported; Storm scene-light sensitivity proven, colour residual ungated |
+| `UsdLuxSphereLight` | Measurement-only | Transported; scene-light sensitivity proven, attenuation residual ungated |
 | `UsdLuxDomeLight` | Ambient-only and parity-gated | Untextured dome ambient is gated; image IBL is not implemented |
 | Shadows and light linking | Not implemented | Shadow-enable is diagnostic-only; no instanced-shadow parity |
 

@@ -157,7 +157,7 @@ OpenUsd.Rendering.Storm.OpenUsdStormRenderer.BackendKind.get -> OpenUsd.Renderin
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Dispose() -> void
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Name.get -> string!
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Pick(OpenUsd.Rendering.RenderPickRequest request) -> OpenUsd.Rendering.RenderPickResult
-OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Render(int width, int height, uint framebuffer, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), ulong revision = 0, ulong? sceneRevision = null) -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Render(int width, int height, uint framebuffer, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), ulong revision = 0, ulong? sceneRevision = null, bool useSceneLights = false) -> bool
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.SetSelection(OpenUsd.Rendering.SelectionState! selection, System.Numerics.Vector4 color) -> void
 OpenUsd.Rendering.Storm.OpenUsdStormRuntime
 override OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.GetHashCode() -> int

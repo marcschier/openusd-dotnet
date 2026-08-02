@@ -90,8 +90,18 @@ public sealed class StormPickingSourceContractTests
         await Assert.That(hydraSource).Contains(
             "instances.emplace_back(path, item.instance_index)");
         await Assert.That(hydraSource).Contains("kStormHeadlight");
+        // Scene lighting is selected per render by an explicit flag, not by
+        // UsdImagingGLRenderParams.enableSceneLights: the shim always calls
+        // SetLightingState, choosing between stage-derived lights and the
+        // deterministic headlight. Pinning the real mechanism matters because
+        // an unconditional headlight override is exactly what silently kept
+        // Storm off the authored lights, making hdSilk look wrong by the
+        // authored light scale while coverage stayed at 1.000000.
         await Assert.That(hydraSource).Contains(
-            "parameters.enableSceneLights = HasSupportedSceneLights(renderer->stage)");
+            "OPENUSD_STORM_RENDER_USE_SCENE_LIGHTS");
+        await Assert.That(hydraSource).Contains(
+            "MakeStormSceneLighting(renderer->stage, time_code)");
+        await Assert.That(hydraSource).Contains("MakeStormHeadlightLights()");
         await Assert.That(hydraSource).Contains("parameters.enableSceneMaterials = true");
         await Assert.That(hydraSource).Contains("parameters.highlight = true");
         await Assert.That(hydraSource).Contains("parameters.enableLighting = true");

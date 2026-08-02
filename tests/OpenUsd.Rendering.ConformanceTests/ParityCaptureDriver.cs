@@ -13,7 +13,8 @@ internal sealed record ParityCaptureInput(
     double TimeCode,
     CameraState Camera,
     SilkColor ClearColor,
-    RenderHeadlight Headlight)
+    RenderHeadlight Headlight,
+    bool UseSceneLights)
 {
     internal uint BackgroundRgba => PackRgba(ClearColor);
 
@@ -117,7 +118,8 @@ internal static class ParityCaptureDriver
             input.Height,
             context.Framebuffer,
             input.TimeCode,
-            input.Camera);
+            input.Camera,
+            useSceneLights: input.UseSceneLights);
         context.Finish();
         return new StormParityCapture(
             NormalizeCapture(context.ReadTopDownRgba(), input.ClearColor),

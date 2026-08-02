@@ -16,6 +16,8 @@ public static unsafe partial class OpenUsdStormRuntime
     private const string LibraryName = "openusd_hydra";
     private const int ErrorBufferSize = 4096;
     private const uint ExpectedAbiVersion = 6;
+    private const uint RenderHasSceneRevision = 0x1u;
+    private const uint RenderUseSceneLights = 0x2u;
 
     /// <summary>Gets the native Storm renderer ABI version.</summary>
     public static uint AbiVersion => NativeMethods.GetAbiVersion();
@@ -99,7 +101,8 @@ public static unsafe partial class OpenUsdStormRuntime
         double timeCode,
         CameraState camera,
         ulong revision,
-        ulong? sceneRevision) =>
+        ulong? sceneRevision,
+        bool useSceneLights) =>
         Render<NativeRenderCall>(
             renderer,
             width,
@@ -108,7 +111,8 @@ public static unsafe partial class OpenUsdStormRuntime
             timeCode,
             camera,
             revision,
-            sceneRevision);
+            sceneRevision,
+            useSceneLights);
 
     internal static bool Render<TCall>(
         nint renderer,
@@ -118,11 +122,18 @@ public static unsafe partial class OpenUsdStormRuntime
         double timeCode,
         CameraState camera,
         ulong revision = 0,
-        ulong? sceneRevision = null)
+        ulong? sceneRevision = null,
+        bool useSceneLights = false)
         where TCall : struct, IRenderCall
     {
         var nativeCamera = new NativeRenderCamera(camera);
         Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        uint revisionFlags = sceneRevision.HasValue ? RenderHasSceneRevision : 0u;
+        if (useSceneLights)
+        {
+            revisionFlags |= RenderUseSceneLights;
+        }
+
         OpenUsdNativeStatus status = TCall.Invoke(
             renderer,
             width,
@@ -132,7 +143,7 @@ public static unsafe partial class OpenUsdStormRuntime
             in nativeCamera,
             revision,
             sceneRevision.GetValueOrDefault(),
-            sceneRevision.HasValue ? 1u : 0u,
+            revisionFlags,
             out int converged,
             errorBytes,
             out nuint errorRequired);

@@ -534,18 +534,18 @@ driver or an installed GPU driver. The parity capture evidence also records the 
 OpenGL path, SHA-256, renderer, version, and current WGL handles beside the scene metrics.
 
 `eng/run-parity-capture.ps1` defaults to `-StormGl Auto`. In that mode the script removes any stale
-test-host `opengl32.dll` override, preflights the system WGL implementation, selects thirteen scenes, and
-gates them with measured thresholds when the driver can create a Storm-usable context. If the
+test-host `opengl32.dll` override, preflights the system WGL implementation, selects seventeen scenes, and
+gates the scenes whose measured thresholds are enabled. If the
 system driver is unavailable, Auto falls back to Mesa with a warning that the selected set has changed to
-ten scenes. Hosted CI passes `-StormGl Mesa` explicitly so the result is
+thirteen scenes. Hosted CI passes `-StormGl Mesa` explicitly so the result is
 deterministic and runner-safe. Both modes publish the scene count and excluded scene names, and the test
 host asserts the expected count so the parity subset cannot shrink silently.
 
-The Mesa WGL parity run gates the ten scenes whose Storm reference is stable across Mesa llvmpipe,
+The Mesa WGL parity run selects the thirteen scenes whose Storm reference is stable across Mesa llvmpipe,
 D3D12 WARP, and Vulkan SwiftShader: `orientation-asymmetric`, `clip-plane-asymmetric`,
-`depth-overlap-multiprim`, `material-normals-uv`, `materials-textures`, `point-instancer-cluster`,
-`points-asymmetric`, `cards-draw-mode`, `time-varying-transform-primvar`, and `skinned-pennant`.
-The three excluded scenes remain valuable GPU-driver conformance probes, but Mesa llvmpipe exposed
+`depth-overlap-multiprim`, `material-normals-uv`, `materials-textures`, `light-dome-ambient`,
+`point-instancer-cluster`, `points-asymmetric`, `cards-draw-mode`, `time-varying-transform-primvar`,
+and `skinned-pennant`. The four excluded scenes remain valuable GPU-driver conformance probes, but Mesa llvmpipe exposed
 Storm implementation differences rather than hdSilk regressions:
 
 - `single-sided-winding`: Mesa Storm covered 2,201 pixels in the single-sided pennant region while
@@ -557,12 +557,14 @@ Storm implementation differences rather than hdSilk regressions:
 - `origin-draw-mode`: Mesa Storm covered 0 pixels for the draw-mode basis-curves origin proxy, while
   hdSilk covered the expected 116 one-pixel line pixels (`adjustedIoU=0.000000`). If gated, this
   would fail the reference positive-coverage assertion.
+- `subdivision-catmull-clark`: Mesa Storm's Catmull-Clark reference differs from the system-driver
+  Storm capture, so the deliberately ungated subdivision measurement remains Auto-only for now.
 
 The WGL gate writes `parity-capture-mesa-wgl-exclusions.json`/`.txt` so the subset is explicit in CI
 artifacts. If a future Mesa/OpenUSD update makes those scenes agree with the real-GPU measurements,
-remove the exclusion and restore all thirteen scenes to the WGL parity subset.
+remove the exclusion and restore all seventeen scenes to the WGL parity subset.
 
-Those three scenes gate only when `-StormGl Auto` finds a conformant system driver. Hosted CI has no
+Those four scenes are selected only when `-StormGl Auto` finds a conformant system driver. Hosted CI has no
 such driver today, so authored double-sidedness and the two basis-curves line-topology draw-mode probes
 are not covered by hosted WGL CI; they need the same class of self-hosted GPU-equipped Windows runner as
 the Vulkan composition gates below.
@@ -920,29 +922,33 @@ four structure-of-arrays tables. That made direct lights read the wrong slots.
 
 After fixing that packing, untextured dome ambient gates: adjusted IoU
 **1.000000**, worst perturbation **0.537545**, margin **0.462455**, and colour
-deltas **11 / 3.619** on both D3D12 WARP and Vulkan SwiftShader. Distant and
-sphere remain measurement-only. They now transport real direct-light data, but
-the Storm capture path still renders the deterministic fallback headlight for
-these direct-light scenes; deliberately removing that fallback made Storm
-coverage drop to zero.
+deltas **11 / 3.619** on Auto and **11 / 3.573** on Mesa for both D3D12 WARP
+and Vulkan SwiftShader. Distant and sphere remain measurement-only.
 
-The ratio measurement identifies that as the remaining cause for
-`light-distant-exposure`. Mean Storm/Silk channel ratios on non-background,
+The ratio measurement identified why the first direct-light captures were wrong:
+Storm was not using the authored light. `openusd_hydra.cpp` unconditionally called
+`UsdImagingGLEngine::SetLightingState` with the deterministic headlight, replacing
+the stage's `UsdLux` lights. Mean Storm/Silk channel ratios on non-background,
 non-clipped D3D12 and Vulkan pixels are **0.4225 / 0.5983 / 1.0347**. The
 authored light scale is `intensity * 2^exposure * color`, or
 `1.6 * 2^0.5 * (1.0, 0.72, 0.42)` = **2.2627 / 1.6292 / 0.9504**; its inverse is
 **0.4419 / 0.6138 / 1.0522**, matching the measured ratios within the saturated
 pixels. The direct-light delta is therefore not a π/exposure transport bug in
-hdSilk; Storm is comparing the white fallback headlight against hdSilk's authored
-warm light. Sphere has the same direct-light capture limitation plus an
-attenuation mismatch to measure separately: its current ratios are
-**1.3828 / 0.8339 / 0.6562**, while `glf/simpleLighting.glslfx` attenuates point
-lights as `1 / (constant + linear * d + quadratic * d * d)`.
+hdSilk; it was Storm's explicit white fallback headlight.
 
-Their current colour deltas therefore quantify the gap rather than define a
-gate: distant **122 / 114.450**, sphere **166 / 96.922** on both D3D12 WARP and
-Vulkan SwiftShader. Their weakest perturbation margins are **0.170558** and
-**0.137485**, so they also need stronger asymmetric scenes before gating.
+The parity driver now requests scene lighting per render for the direct-light
+scenes and keeps the fallback headlight for all existing scenes. The
+`light-distant-exposure` probe also captures a doubled-intensity stage and
+records `doubledIntensityChangedStorm=True`, proving Storm responds to authored
+light intensity. That reduces the direct-light gaps to measured residuals:
+Auto reports distant **42 / 8.675** and sphere **36 / 2.878** on both D3D12 WARP
+and Vulkan SwiftShader; Mesa reports distant **42 / 8.638** and sphere
+**36 / 2.841**. These are no longer uniform scale errors. They remain ungated
+because distant is just above the mean colour threshold and has a max residual
+in localized lit pixels, while sphere still needs the remaining source-radius or
+attenuation difference measured against `glf/simpleLighting.glslfx`.
+Their weakest perturbation margins are **0.170558** and **0.137485**, so they
+also need stronger asymmetric scenes before gating.
 
 The implementation carries direct DistantLight/SphereLight data and untextured
 DomeLight ambient through page ABI 9, but shadows, PCF, light linking, dome
