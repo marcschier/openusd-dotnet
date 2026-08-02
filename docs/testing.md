@@ -886,7 +886,12 @@ the same frustum candidate to **2273** pixels and the adjusted IoU to
 diverged from Storm rather than converged. The experiment was reverted, and the
 scene remains `GateEnabled: false`: hdSilk keeps subdivision schemes on the
 coarse path until the harness deliberately raises complexity/refine level or the
-remaining 0.931015-vs-1.000000 divergence is eliminated. Mesa llvmpipe refines
+remaining 0.931015-vs-1.000000 divergence is eliminated. The topology comparison
+showed hdSilk draws the `HdMeshUtil` face-local 0-2 split for every quad. A
+diagnostic run forcing the opposite 1-3 split worsened the adjusted IoU to
+**0.872473** with 719 differing pixels, so the residual is not a simple global
+diagonal mismatch; it is Storm's coarse all-quad handling differing from the
+triangle-list topology hdSilk publishes. Mesa llvmpipe refines
 or rasterizes this scene differently at the same harness settings and scored
 0.120809, so the scene joins the Windows Mesa exclusion list rather than
 weakening or falsely gating a backend-specific divergence.
@@ -895,22 +900,25 @@ Excluded for this gate: general Catmull-Clark limit evaluation, Loop surfaces,
 bilinear refinement, creases/corners/holes beyond what the coarse mesh already
 expresses, and subdivision-aware interpolation of non-constant primvars.
 
-### UsdSkel: Storm deforms through Hydra CPU ExtComputation
+### UsdSkel: direct CPU deformation remains exact
 
 `test-assets/parity/parity-skinned-pennant.usda` was added only after measuring
 Storm. The scene authors an off-centre, strongly non-square pennant under a
 two-joint `UsdSkel` rig and captures at timeCode 2, where the tip joint is
-rotated from its timeCode 1 rest pose. Storm and hdSilk agree exactly because
-hdSilk still consumes Hydra's CPU ExtComputation `points` output for skinned
-meshes. Correct adjusted IoU is **1.000000** with 2606 covered pixels on Storm,
-D3D12 WARP, and Vulkan SwiftShader.
+rotated from its timeCode 1 rest pose. Storm and hdSilk still agree exactly
+after hdSilk replaced the skinned-mesh ExtComputation `points` pull for the
+supported subset with direct `UsdSkelCache` CPU evaluation in the render path.
+Correct adjusted IoU is **1.000000** with 2606 covered pixels on Storm, D3D12
+WARP, and Vulkan SwiftShader.
 
 The perturbation evidence is deliberately non-vacuous: vertical flip 0.725652,
 horizontal mirror 0.000000, transpose 0.121114, shifted camera 0.077607, and the
 wrong-time probe 0.534601. The weakest required margin is therefore **0.274348**.
 Capturing the undeformed timeCode 1 pose was the deliberate red proof for this
 gate; it failed the 0.92 threshold before the registration stayed at timeCode 2.
-GPU skinning remains a measured gap rather than a claimed feature.
+Direct evaluation intentionally skips blend-shape meshes for this slice and
+falls back to Hydra computed points there. GPU compute skinning remains a
+measured gap rather than a claimed feature.
 
 ### UsdLux lighting scenes
 

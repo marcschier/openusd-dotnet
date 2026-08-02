@@ -5,6 +5,7 @@
 #include "openusd_renderer_stage_bridge.h"
 
 #include "renderDelegate.h"
+#include "mesh.h"
 
 #include "pxr/base/gf/frustum.h"
 #include "pxr/base/gf/matrix4d.h"
@@ -822,7 +823,17 @@ openusd_status openusd_silk_session_sync(
                     camera->clip_planes[plane][2],
                     camera->clip_planes[plane][3]);
             }
-            state->engine->Render(state->stage->GetPseudoRoot(), parameters);
+            HdSilkBeginUsdSkelEvaluation(state->stage, UsdTimeCode(time_code));
+            try
+            {
+                state->engine->Render(state->stage->GetPseudoRoot(), parameters);
+            }
+            catch (...)
+            {
+                HdSilkEndUsdSkelEvaluation();
+                throw;
+            }
+            HdSilkEndUsdSkelEvaluation();
             if (!mark.IsClean())
             {
                 WriteError(error, ConsumeErrors(mark));

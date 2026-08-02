@@ -1126,10 +1126,11 @@ public sealed class StormSilkParityCaptureDriverTests
                 GateEnabled: false,
                 GateReason:
                     "Storm at the parity harness complexity renders this Catmull-Clark " +
-                    "scene near hdSilk's coarse topology but not exactly: 0.931015 " +
-                    "adjusted IoU, with disagreement split between silhouette and " +
-                    "interior fill. It remains ungated until that divergence is " +
-                    "eliminated.",
+                    "scene near hdSilk's coarse HdMeshUtil topology but not exactly: " +
+                    "0.931015 adjusted IoU. hdSilk splits quads on the face-local " +
+                    "0-2 diagonal; forcing the opposite 1-3 split worsened the " +
+                    "score to 0.872473, so Storm's coarse all-quad handling is not " +
+                    "the same triangle topology. It remains ungated.",
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 PerformanceBudgets = CurrentBackendBudgets(

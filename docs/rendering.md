@@ -58,10 +58,13 @@ but does not disable hierarchy or layer inspection. Up to ten normalized recent 
 
 Storm subdivision is intentionally measured at the harness complexity before hdSilk attempts any refinement. The current
 ungated `catmullClark` frustum plus asymmetric anchor shows that Storm's default-complexity output is closest to
-hdSilk's coarse topology but still not exact: adjusted IoU is 0.931015, not 1.000000. A uniform OpenSubdiv refinement
-experiment moved hdSilk much farther from Storm, so hdSilk therefore keeps subdivision schemes on the coarse path for
-now. Full Catmull-Clark, Loop, bilinear, creases, and subdivision primvar refinement remain outside the current support
-claim.
+hdSilk's coarse topology but still not exact: adjusted IoU is 0.931015, not 1.000000. The concrete topology gap is
+quad handling, not subdivision refinement: hdSilk emits `HdMeshUtil` triangle-list topology with each authored quad
+split on its face-local 0-2 diagonal, while Storm's coarse all-quad path covers different interior pixels. Forcing
+the opposite 1-3 diagonal in hdSilk worsened the score to 0.872473, so this is not a single global diagonal flip. A
+uniform OpenSubdiv refinement experiment moved hdSilk much farther from Storm, so hdSilk therefore keeps subdivision
+schemes on the coarse path for now. Full Catmull-Clark, Loop, bilinear, creases, and subdivision primvar refinement
+remain outside the current support claim.
 
 `openusd_storm_child` owns the child HWND/XID/NSView and one dedicated render thread. Native views are created and
 destroyed only on their UI/creator thread; wrong-thread creation, resize, and destruction are rejected without changing
@@ -737,10 +740,13 @@ represented for mesh topology; line and point batches are always unculled becaus
 they carry no facing. Camera clipping travels through the view/projection matrices;
 arbitrary clip planes do not.
 
-hdSilk registers `extComputation` as a supported Sprim type. Without that Sprim, Hydra never creates the computation
-that UsdSkel depends on, and pulling computed primvars for a skinned mesh faults. Skinned points are therefore read
-from computed primvars whenever a mesh declares them, and points are refreshed whenever topology refreshes, so
-deformed positions can never be indexed against a stale point array.
+hdSilk still registers `extComputation` as a supported Sprim type so unsupported procedural deformations have a safe
+fallback, but the render path now evaluates the supported UsdSkel subset directly from the USD stage during Rprim sync.
+For a skinned `UsdGeomMesh`, hdSilk finds the containing `UsdSkelRoot`, resolves skeleton and skinning queries with
+`UsdSkelCache`, skips meshes with blend shapes for now, computes skinning transforms at the capture time, and publishes
+the resulting points before asking Hydra for computed primvars. The ExtComputation `points` pull remains only a fallback
+for unsupported or non-UsdSkel computed points, and topology refreshes still force a point refresh so deformed positions
+can never be indexed against a stale point array.
 
 Animation support is currently value-sampled through Hydra at the requested time code, not through an hdSilk-side
 timeline cache. Time-varying transforms and resolved primvars can dirty and republish only the affected Rprim: the
@@ -752,16 +758,16 @@ gated at timeCode 2: Storm, D3D12 WARP, and Vulkan SwiftShader agree at 1.000000
 
 The UsdSkel facade is present on the data side: native code exposes `UsdSkelRoot`, `UsdSkelSkeleton`,
 `UsdSkelAnimation`, `UsdSkelBindingAPI`, joints, bind/rest transforms, blend-shape targets, joint indices/weights, and
-validation helpers. Rendering still consumes only the Hydra-computed points produced by the CPU ExtComputation path
-above. hdSilk does not yet upload joints, weights, or blend-shape deltas to GPU buffers, and no shader path evaluates
+validation helpers. Rendering now uses that data path for classic linear, joint-weighted meshes without blend shapes;
+unsupported blend-shape sites deliberately fall back to Hydra's computed points instead of publishing guessed data.
+hdSilk does not yet upload joints, weights, or blend-shape deltas to GPU buffers. No shader or compute path evaluates
 skinning. The measured `parity-skinned-pennant.usda` scene confirms Storm does deform a skinned mesh at timeCode 2:
 Storm, D3D12 WARP, and Vulkan SwiftShader all cover 2606 pixels with adjusted IoU 1.000000, while the undeformed
 timeCode 1 capture scores 0.534601. The supported blend-shape scope for the next rendering slice is therefore
-deliberately limited to OpenUSD
-blend-shape targets resolved through a bound `UsdSkelAnimation`, linear weights, point-position offsets, and normal
-offsets only; in-betweens, arbitrary primvar deltas, tangent deltas, and mixed CPU/GPU deformation are out of scope.
-Replacing the CPU ExtComputation pull with GPU compute remains a separate ABI/shader design task because it must define
-the wire format for joint palettes, influence streams, blend-shape ranges, barriers, and backend-equivalent dispatch.
+deliberately limited to OpenUSD blend-shape targets resolved through a bound `UsdSkelAnimation`, linear weights,
+point-position offsets, and normal offsets only; in-betweens, arbitrary primvar deltas, tangent deltas, and GPU
+deformation are out of scope. GPU compute skinning remains a separate ABI/shader design task because it must define the
+wire format for joint palettes, influence streams, blend-shape ranges, barriers, and backend-equivalent dispatch.
 
 Serialization isolates failures per prim. A record whose points, indices, or triangle mapping do not validate is
 skipped with a warning and counted by a rejected-mesh counter instead of aborting the page, so one malformed prim in
