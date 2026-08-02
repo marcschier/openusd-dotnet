@@ -136,7 +136,7 @@ try
             -Project $testProject `
             -Framework net10.0 `
             -Configuration $Configuration `
-            -MinimumExpectedTests 12 `
+            -MinimumExpectedTests 18 `
             -TestArguments @('--results-directory', $testResults)
         if ($LASTEXITCODE -ne 0)
         {

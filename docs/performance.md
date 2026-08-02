@@ -21,6 +21,13 @@ The deterministic tests are pass/fail gates. `Dry` verifies that selected benchm
 it is not a timing measurement. `Short` produces informational measurements and JSON artifacts, but the
 script does not impose timing thresholds.
 
+Hosted runners are too noisy for frame-time thresholds tight enough to catch renderer regressions.
+OpenUsd therefore gates renderer performance with deterministic counters first: draw calls, retained
+mesh count, geometry builds, vertex/index/uniform uploads, retained buffer bytes, buffer-write bytes,
+texture-upload bytes, shader-module creations, and graphics-pipeline creations. These counters are
+stable across D3D12 WARP, Vulkan SwiftShader, and Metal because they measure the hdSilk submission and
+resource plan rather than wall-clock time.
+
 ## Run the repository performance workflow
 
 The workflow requires .NET SDK `10.0.301`.
@@ -117,6 +124,56 @@ Retain objects whose identity is part of the render contract:
 Current resource tests apply hundreds of frame-only or property-only updates and require stable buffer,
 geometry-build, pick-range, page, and GPU-resource counters. Topology changes may rebuild resources;
 frame or property changes should not pretend to be topology changes.
+
+The Storm/hdSilk curated-scene parity harness also records and gates the hdSilk resource plan per
+backend. The current D3D12 WARP and Vulkan SwiftShader measurements are identical for all 12 scenes, so
+the same per-scene thresholds are installed for both backends. Counts use measured + max(1, 25%) and
+byte counters use measured + max(256 bytes, 25%); zero texture uploads stay at zero. The headroom is for
+intentional scene evolution, not run-to-run noise.
+
+| Scene | Backends | Draw | Mesh | Geom | V/I/U uploads |
+| --- | --- | --- | --- | --- | --- |
+| orientation-asymmetric | D3D12/Vulkan | 1->2 | 1->2 | 1->2 | 1->2 / 1->2 / 1->2 |
+| clip-plane-asymmetric | D3D12/Vulkan | 2->3 | 2->3 | 2->3 | 2->3 / 2->3 / 2->3 |
+| depth-overlap-multiprim | D3D12/Vulkan | 3->4 | 3->4 | 3->4 | 3->4 / 3->4 / 3->4 |
+| material-normals-uv | D3D12/Vulkan | 1->2 | 1->2 | 1->2 | 1->2 / 1->2 / 1->2 |
+| materials-textures | D3D12/Vulkan | 1->2 | 1->2 | 1->2 | 1->2 / 1->2 / 1->2 |
+| point-instancer-cluster | D3D12/Vulkan | 1->2 | 4->5 | 1->2 | 1->2 / 1->2 / 4->5 |
+| points-asymmetric | D3D12/Vulkan | 1->2 | 1->2 | 1->2 | 1->2 / 1->2 / 1->2 |
+| cards-draw-mode | D3D12/Vulkan | 1->2 | 1->2 | 1->2 | 1->2 / 1->2 / 1->2 |
+| single-sided-winding | D3D12/Vulkan | 2->3 | 2->3 | 2->3 | 2->3 / 2->3 / 2->3 |
+| bounds-draw-mode | D3D12/Vulkan | 1->2 | 1->2 | 1->2 | 1->2 / 1->2 / 1->2 |
+| origin-draw-mode | D3D12/Vulkan | 1->2 | 1->2 | 1->2 | 1->2 / 1->2 / 1->2 |
+| time-varying-transform-primvar | D3D12/Vulkan | 2->3 | 2->3 | 2->3 | 2->3 / 2->3 / 2->3 |
+
+| Scene | Buffer allocation | Buffer writes | Texture uploads |
+| --- | --- | --- | --- |
+| orientation-asymmetric | 692->948 | 692->948 | 0->0 |
+| clip-plane-asymmetric | 736->992 | 736->992 | 0->0 |
+| depth-overlap-multiprim | 900->1156 | 900->1156 | 0->0 |
+| material-normals-uv | 676->932 | 596->852 | 0->0 |
+| materials-textures | 692->948 | 612->868 | 262144->327680 |
+| point-instancer-cluster | 740->996 | 740->996 | 0->0 |
+| points-asymmetric | 3496->4370 | 3496->4370 | 0->0 |
+| cards-draw-mode | 1136->1420 | 1136->1420 | 0->0 |
+| single-sided-winding | 700->956 | 700->956 | 0->0 |
+| bounds-draw-mode | 1088->1360 | 1088->1360 | 0->0 |
+| origin-draw-mode | 584->840 | 584->840 | 0->0 |
+| time-varying-transform-primvar | 700->956 | 700->956 | 0->0 |
+
+These thresholds fail common regressions such as per-prim shader permutations, full-scene geometry
+rebuilds, duplicated prototype payloads, or unexpected texture uploads. The numbers are not stopwatch
+budgets and do not vary with hosted-runner load. To prove the counter gate red, the
+`orientation-asymmetric` draw-count baseline was temporarily lowered from 1 to 0; parity capture failed
+with `Expected to be less than or equal to 0 ... but received 1`, then the baseline was restored.
+
+Cold-start shader performance is asserted separately: `OpenUsd.Performance.Tests` requires
+`SilkMeshRenderer` and `SilkGraphicsPipelineCache` to create shader modules only from checked embedded
+artifacts loaded through `SilkCheckedShaderAssets`. A deliberately introduced runtime descriptor with
+bytes `{ 3, 2, 23, 7 }` failed
+`ResourceStabilityTests/ColdStartLoadsOnlyCheckedShaderArtifacts` with
+`Expected to be true but found False`, proving the assertion trips if runtime compilation or ad-hoc
+shader bytes enter the cold path.
 
 Track object churn separately from managed bytes. Recreating native sessions, GPU buffers, command
 queues, or child windows may be expensive even when managed allocation counters look small.

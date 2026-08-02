@@ -254,6 +254,59 @@ public sealed class ResourceStabilityTests
     }
 
     [Test]
+    public async Task ColdStartLoadsOnlyCheckedShaderArtifacts()
+    {
+        byte[] pageData = PerformanceTestData.CreateMeshCommand(triangleCount: 2);
+        using OpenUsdSilkPage page = CreatePage(
+            SilkCommandParser.PageAbiVersion,
+            revision: 1,
+            pageData,
+            commandCount: 1);
+        var device = new CountingGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(64, 64));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(64, 64));
+
+        SilkMeshRenderResult result = renderer.ApplyAndRender(page, color, depth);
+
+        await Assert.That(result.DrawCount).IsEqualTo(1);
+        await Assert.That(device.CreatedShaderModuleCount).IsEqualTo(4);
+        await Assert.That(AllShaderModulesMatchCheckedArtifacts(
+                device,
+                SilkCheckedShaderAssets.LoadMeshVertex(SilkShaderBinaryFormat.SpirV),
+                SilkCheckedShaderAssets.LoadMeshFragment(SilkShaderBinaryFormat.SpirV)))
+            .IsTrue();
+        await Assert.That(device.CreatedPipelineCount).IsEqualTo(5);
+    }
+
+    [Test]
+    public async Task PipelineCachePermutationsLoadOnlyCheckedShaderArtifacts()
+    {
+        var device = new CountingGraphicsDevice();
+        using var cache = new SilkGraphicsPipelineCache(device, SilkShaderBinaryFormat.SpirV);
+        var permutation = new SilkShaderPermutationId(
+            SilkShaderFeatures.Uv |
+            SilkShaderFeatures.BaseColorMap |
+            SilkShaderFeatures.NormalMap);
+
+        using ISilkGraphicsPipeline pipeline = cache.GetOrCreateMeshPipeline(
+            permutation,
+            SilkVertexLayoutDescriptor.PositionNormal,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.D32Float);
+
+        await Assert.That(device.CreatedShaderModuleCount).IsEqualTo(2);
+        await Assert.That(AllShaderModulesMatchCheckedArtifacts(
+                device,
+                SilkCheckedShaderAssets.LoadMeshVertex(SilkShaderBinaryFormat.SpirV, permutation),
+                SilkCheckedShaderAssets.LoadMeshFragment(SilkShaderBinaryFormat.SpirV, permutation)))
+            .IsTrue();
+        await Assert.That(device.CreatedPipelineCount).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task ManagedPageCounterReturnsToBaseline()
     {
         SilkCounterSnapshot baseline = ReadSilkCounters();
@@ -367,4 +420,23 @@ public sealed class ResourceStabilityTests
         int GpuSceneResources,
         int GpuMeshes,
         int Pages);
+
+    private static bool AllShaderModulesMatchCheckedArtifacts(
+        CountingGraphicsDevice device,
+        params SilkShaderModuleDescriptor[] checkedArtifacts)
+    {
+        foreach (SilkShaderModuleDescriptor actual in device.ShaderModules)
+        {
+            if (!checkedArtifacts.Any(expected =>
+                    actual.Stage == expected.Stage &&
+                    actual.Format == expected.Format &&
+                    actual.EntryPoint == expected.EntryPoint &&
+                    actual.Code.Span.SequenceEqual(expected.Code.Span)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
