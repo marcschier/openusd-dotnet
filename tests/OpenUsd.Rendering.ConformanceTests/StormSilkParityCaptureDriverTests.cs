@@ -949,6 +949,22 @@ public sealed class StormSilkParityCaptureDriverTests
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_028, 948, 262_144)),
             },
             new ParityScene(
+                "materialx-standard-surface-constant",
+                Path.Combine(assetRoot, "parity-materialx-standard-surface-constant.usda"),
+                "MaterialX standard_surface uses constant base_color, roughness, and metalness inputs.",
+                ColorComparisonReady: true,
+                GateEnabled: false,
+                GateReason:
+                    "Storm renders only the PreviewSurface anchor in this harness while hdSilk shades " +
+                    "the MaterialX standard_surface subset, so this records the honest divergence: " +
+                    "0.071085 adjusted IoU, colour max 3 / mean 2.813. It stays ungated until " +
+                    "Storm MaterialX shading is available in the measured harness.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_468, 1_308, 0)),
+            },
+            new ParityScene(
                 "light-distant-exposure",
                 Path.Combine(assetRoot, "parity-light-distant-exposure.usda"),
                 "UsdLuxDistantLight colour, intensity, and exposure direct-light measurement.",
