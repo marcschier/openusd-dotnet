@@ -648,6 +648,8 @@ camera-shift perturbation before it can use the 0.92 threshold.
 | `depth-overlap-multiprim` | 1.000000 | 0.718102 | 0.815667 | 0.737040 | 0.432669 | 0.184333 | 0.92 |
 | `material-normals-uv` | 1.000000 | 0.310060 | 0.253340 | 0.557888 | 0.216277 | 0.442112 | 0.92 |
 | `materials-textures` | 1.000000 | 0.781397 | 0.503618 | 0.422400 | 0.434662 | 0.218603 | 0.92 |
+| MaterialX preview equivalent | 1.000000 | 0.310060 | 0.253340 | 0.557888 | 0.216277 | 0.442112 | 0.92 |
+| `light-distant-specular` | 1.000000 | 0.390726 | 0.331192 | 0.347444 | 0.209455 | 0.609274 | 0.92 |
 | `point-instancer-cluster` | 1.000000 | 0.089474 | 0.042808 | 0.126576 | 0.034647 | 0.873424 | 0.92 |
 | `points-asymmetric` | 1.000000 | 0.277778 | 0.436893 | 0.071066 | 0.274112 | 0.563107 | 0.92 |
 | `cards-draw-mode` | 1.000000 | 0.250000 | 0.418182 | 0.730337 | 0.431193 | 0.269663 | 0.92 |
@@ -963,13 +965,15 @@ interior highlight boxes, not on silhouettes: distant residuals >= 30 were at
 source was the authored glossy specular lobe, so the gate scenes now use matte
 PreviewSurface materials with `useSpecularWorkflow = 1` and zero `specularColor`.
 
-Worth stating plainly, because the scenes were changed rather than the code: the
-specular divergence under a direct light is **not fixed and is no longer
-covered**. Making the gate scenes matte isolates the light transport -- direction,
-intensity, exposure and falloff -- which is what these scenes exist to prove, but
-it also means nothing now measures a glossy lobe lit by a `UsdLux` light. The
-measured size of that gap is the 42 and 36 max deltas above, concentrated in a
-handful of interior pixels. It is tracked as `lighting-specular-direct`.
+The glossy specular gap is now covered separately. The BRDF path already matched
+Storm's `previewSurface.glslfx` headlight implementation, so the new
+`light-distant-specular` scene keeps the direct-light transport isolated while
+adding a glossy `useSpecularWorkflow = 1` lobe under a `UsdLuxDistantLight`. It
+gates with adjusted IoU **1.000000**, weakest perturbation **0.390726**, margin
+**0.609274**, and colour deltas **10 / 6.027**. A deliberate red proof replaced
+that asset with a centred square; the perturbation test failed both vertical and
+horizontal variants and reported weakest margin **0.000000**, then the asymmetric
+asset was restored.
 
 The redesigned direct-light silhouettes are off-centre and non-square. Distant
 now gates with adjusted IoU **1.000000**, weakest perturbation **0.390726**,
@@ -1106,8 +1110,16 @@ base-colour texture permutation at max 13 / mean 4.48 channel delta.
 `materialx-standard-surface-constant` is deliberately ungated evidence for the
 MaterialX subset: Storm renders only the PreviewSurface anchor in this harness,
 while hdSilk shades the MaterialX standard_surface mesh, producing 0.071085
-adjusted IoU with colour max 3 / mean 2.813. That records the gap rather than
-lowering the gate. `point-instancer-cluster` proves
+adjusted IoU with colour max 3 / mean 2.813. The staged runtime includes
+`usdMtlx`, `MaterialXCore`, `MaterialXGenGlsl`, and the standard libraries, and
+the scene now uses the MaterialX `out` terminal, but Storm still leaves the
+MaterialX mesh black through `UsdImagingGLEngine` with scene materials enabled.
+The honest fallback is `materialx-standard-surface-preview-equivalent`, a
+hand-authored `UsdPreviewSurface` using the same projected constant values; it
+gates at adjusted IoU **1.000000**, weakest perturbation **0.310060**, margin
+**0.442112**, and colour deltas **10 / 4.424**. A deliberate centred-square red
+proof failed with weakest margin **0.000000** before the asymmetric asset was
+restored. `point-instancer-cluster` proves
 prototype expansion and per-instance transforms. `time-varying-transform-primvar`
 is registered and gated at timeCode 2; its wrong-time probe compares the time 2
 Storm reference with a time 1 hdSilk capture and scores 0.045334 adjusted IoU,

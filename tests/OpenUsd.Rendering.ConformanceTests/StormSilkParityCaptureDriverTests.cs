@@ -1000,6 +1000,22 @@ public sealed class StormSilkParityCaptureDriverTests
                     ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_468, 1_308, 0)),
             },
             new ParityScene(
+                "materialx-standard-surface-preview-equivalent",
+                Path.Combine(assetRoot, "parity-materialx-standard-surface-preview-equivalent.usda"),
+                "UsdPreviewSurface equivalent of the registered MaterialX standard_surface constant projection.",
+                ColorComparisonReady: true,
+                GateEnabled: true,
+                GateReason:
+                    "The hand-authored PreviewSurface equivalent of the MaterialX constant projection gates " +
+                    "at 1.000000 adjusted IoU, 0.442112 perturbation margin, and colour deltas max 10 / " +
+                    "mean 4.424. This verifies the projection arithmetic while the authored MaterialX " +
+                    "scene remains an ungated Storm capability gap.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_012, 932, 0)),
+            },
+            new ParityScene(
                 "light-distant-exposure",
                 Path.Combine(assetRoot, "parity-light-distant-exposure.usda"),
                 "UsdLuxDistantLight colour, intensity, and exposure direct-light measurement.",
@@ -1014,6 +1030,22 @@ public sealed class StormSilkParityCaptureDriverTests
                 UseSceneLights = true,
                 SceneLightSensitivityStagePath =
                     Path.Combine(assetRoot, "parity-light-distant-exposure-double.usda"),
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_108, 1_028, 0)),
+            },
+            new ParityScene(
+                "light-distant-specular",
+                Path.Combine(assetRoot, "parity-light-distant-specular.usda"),
+                "UsdLuxDistantLight lights a glossy PreviewSurface specular lobe.",
+                ColorComparisonReady: true,
+                GateEnabled: true,
+                GateReason:
+                    "Glossy direct specular under a UsdLuxDistantLight gates at 1.000000 adjusted IoU, " +
+                    "0.609274 perturbation margin, and colour deltas max 10 / mean 6.027. This covers " +
+                    "the specular lobe that the matte direct-light transport scenes intentionally exclude.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_108, 1_028, 0)),
             },
@@ -1377,8 +1409,11 @@ public sealed class StormSilkParityCaptureDriverTests
             "test-assets\\parity\\parity-origin-draw-mode.usda",
             "test-assets\\parity\\parity-light-distant-exposure.usda",
             "test-assets\\parity\\parity-light-distant-exposure-double.usda",
+            "test-assets\\parity\\parity-light-distant-specular.usda",
             "test-assets\\parity\\parity-light-sphere-point.usda",
             "test-assets\\parity\\parity-light-dome-ambient.usda",
+            "test-assets\\parity\\parity-materialx-standard-surface-constant.usda",
+            "test-assets\\parity\\parity-materialx-standard-surface-preview-equivalent.usda",
             "docs\\performance.md",
             "docs\\testing.md",
         ];
