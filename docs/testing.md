@@ -920,10 +920,10 @@ The first run found exact coverage but very large colour deltas because hdSilk
 packed light constants as an array-of-structs while the shader reflection expects
 four structure-of-arrays tables. That made direct lights read the wrong slots.
 
-After fixing that packing, untextured dome ambient gates: adjusted IoU
-**1.000000**, worst perturbation **0.537545**, margin **0.462455**, and colour
-deltas **11 / 3.619** on Auto and **11 / 3.573** on Mesa for both D3D12 WARP
-and Vulkan SwiftShader. Distant and sphere remain measurement-only.
+After fixing that packing, all three direct-light captures are colour-ready. The
+untextured dome ambient gate has adjusted IoU **1.000000**, worst perturbation
+**0.537545**, margin **0.462455**, and colour deltas **11 / 3.619** on Auto and
+**11 / 3.573** on Mesa for both D3D12 WARP and Vulkan SwiftShader.
 
 The ratio measurement identified why the first direct-light captures were wrong:
 Storm was not using the authored light. `openusd_hydra.cpp` unconditionally called
@@ -940,15 +940,22 @@ The parity driver now requests scene lighting per render for the direct-light
 scenes and keeps the fallback headlight for all existing scenes. The
 `light-distant-exposure` probe also captures a doubled-intensity stage and
 records `doubledIntensityChangedStorm=True`, proving Storm responds to authored
-light intensity. That reduces the direct-light gaps to measured residuals:
-Auto reports distant **42 / 8.675** and sphere **36 / 2.878** on both D3D12 WARP
-and Vulkan SwiftShader; Mesa reports distant **42 / 8.638** and sphere
-**36 / 2.841**. These are no longer uniform scale errors. They remain ungated
-because distant is just above the mean colour threshold and has a max residual
-in localized lit pixels, while sphere still needs the remaining source-radius or
-attenuation difference measured against `glf/simpleLighting.glslfx`.
-Their weakest perturbation margins are **0.170558** and **0.137485**, so they
-also need stronger asymmetric scenes before gating.
+light intensity. The next measured gaps were max-only rather than mean-scale:
+Auto reported distant **42 / 8.675** and sphere **36 / 2.878** on both D3D12 WARP
+and Vulkan SwiftShader. Dumping the captures located the worst pixels in compact
+interior highlight boxes, not on silhouettes: distant residuals >= 30 were at
+`x=79..80, y=63..64`, and sphere residuals >= 30 were at `x=79, y=59..60`. The
+source was the authored glossy specular lobe, so the gate scenes now use matte
+PreviewSurface materials with `useSpecularWorkflow = 1` and zero `specularColor`.
+
+The redesigned direct-light silhouettes are off-centre and non-square. Distant
+now gates with adjusted IoU **1.000000**, weakest perturbation **0.390726**,
+margin **0.609274**, and colour deltas **4 / 1.095**. Sphere now gates with
+adjusted IoU **1.000000**, weakest perturbation **0.457248**, margin
+**0.542752**, and colour deltas **13 / 0.782**. A deliberate red proof halved
+hdSilk's scene-light exposure during capture: the distant gate failed at
+**127 / 126.087**, and the sphere gate failed at **128 / 75.214**, then the
+transport was restored.
 
 The implementation carries direct DistantLight/SphereLight data and untextured
 DomeLight ambient through page ABI 9, but shadows, PCF, light linking, dome

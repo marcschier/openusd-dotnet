@@ -953,32 +953,34 @@ public sealed class StormSilkParityCaptureDriverTests
                 Path.Combine(assetRoot, "parity-light-distant-exposure.usda"),
                 "UsdLuxDistantLight colour, intensity, and exposure direct-light measurement.",
                 ColorComparisonReady: true,
-                GateEnabled: false,
+                GateEnabled: true,
                 GateReason:
-                    "Storm scene-light sensitivity is proven, but the measured direct-light residual " +
-                    "still exceeds the colour gate at max 42 / mean 8.675.",
+                    "Matte off-centre hook gates direct distant light at 1.000000 adjusted IoU, " +
+                    "0.609274 perturbation margin, and colour deltas max 4 / mean 1.095. " +
+                    "The previous concentrated max 42 residual was the authored specular lobe.",
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 UseSceneLights = true,
                 SceneLightSensitivityStagePath =
                     Path.Combine(assetRoot, "parity-light-distant-exposure-double.usda"),
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 988, 908, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_108, 1_028, 0)),
             },
             new ParityScene(
                 "light-sphere-point",
                 Path.Combine(assetRoot, "parity-light-sphere-point.usda"),
                 "UsdLuxSphereLight direct-light transport and point-attenuation measurement.",
                 ColorComparisonReady: true,
-                GateEnabled: false,
+                GateEnabled: true,
                 GateReason:
-                    "Storm scene-light sensitivity is proven, but the sphere attenuation/source " +
-                    "residual still exceeds the colour gate at max 36 / mean 2.878.",
+                    "Matte off-centre boomerang gates point attenuation at 1.000000 adjusted IoU, " +
+                    "0.542752 perturbation margin, and colour deltas max 13 / mean 0.782. " +
+                    "The previous concentrated max 36 residual was the authored specular lobe.",
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 988, 908, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_108, 1_028, 0)),
             },
             new ParityScene(
                 "light-dome-ambient",
