@@ -165,8 +165,8 @@ remains measured but ungated until the remaining divergence is eliminated.
 | Feature | Status | Detail |
 | --- | --- | --- |
 | Deterministic headlight | Implemented and parity-gated | Used when no authored UsdLux light is present |
-| `UsdLuxDistantLight` | Measurement-only | Transported; Storm scene-light sensitivity proven, colour residual ungated |
-| `UsdLuxSphereLight` | Measurement-only | Transported; scene-light sensitivity proven, attenuation residual ungated |
+| `UsdLuxDistantLight` | Implemented subset and parity-gated | Matte direct-light scene gates; margin 0.609274 |
+| `UsdLuxSphereLight` | Implemented subset and parity-gated | Matte point-attenuation scene gates; margin 0.542752 |
 | `UsdLuxDomeLight` | Ambient-only and parity-gated | Untextured dome ambient is gated; image IBL is not implemented |
 | Shadows and light linking | Not implemented | Shadow-enable is diagnostic-only; no instanced-shadow parity |
 

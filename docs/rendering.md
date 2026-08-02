@@ -466,14 +466,16 @@ UsdLux lights, hdSilk publishes a measured subset to frame constants instead of 
 80-byte scene/instance block. The parity harness also records that clearing Storm's fallback headlight
 for the direct-light scenes without replacement makes Storm draw no lit coverage; the Storm path now
 switches per render between the fallback headlight and an explicit scene-light vector. A doubled-intensity
-probe proves Storm responds to authored DistantLight intensity, but direct-light colour parity remains
-measurement-only until the remaining localized residuals are measured and gated.
+probe proves Storm responds to authored DistantLight intensity. The direct-light parity scenes now gate
+after replacing glossy calibration shapes with matte, off-centre, non-square silhouettes; the previous
+max-only residual was localized to the authored specular highlight, not to the π/exposure transport.
 
 The hdSilk subset is intentionally narrow: `UsdLuxDistantLight` and `UsdLuxSphereLight` travel as
 direct lights with colour, intensity, exposure, diffuse/specular multipliers, radius, and world
 transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Shadow-enable is preserved as a
 diagnostic bit only. Shadow maps, PCF filtering, light linking, dome textures, image-based lighting,
-and instanced-shadow parity remain scoped out until they can be measured and gated honestly.
+and instanced-shadow parity remain scoped out until Storm's shadow and IBL paths can be measured and
+ported against `simpleLighting.glslfx`/`pcfShader.glslfx`.
 
 Storm ABI v6 implements nearest-hit primitive picking with the pinned OpenUSD v26.05
 `UsdImagingGLEngine::TestIntersection` convention. The versioned native request binds one physical

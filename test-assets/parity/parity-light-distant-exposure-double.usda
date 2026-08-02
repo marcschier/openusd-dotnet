@@ -16,7 +16,7 @@ def Xform "World"
         float inputs:intensity = 3.2
         float inputs:exposure = 0.5
     }
-    def Mesh "OffCentrePennant" (
+    def Mesh "OffsetHook" (
         prepend apiSchemas = ["MaterialBindingAPI"]
     )
     {
@@ -24,15 +24,22 @@ def Xform "World"
         uniform bool doubleSided = 1
         uniform token subdivisionScheme = "none"
         point3f[] points = [
-            (-0.88, -0.58, 0.08), (0.30, -0.45, 0.08),
-            (0.76, 0.18, 0.08), (-0.64, 0.64, 0.08),
-            (-0.82, -0.02, 0.08)
+            (-0.92, -0.74, 0.08),
+            (-0.34, -0.74, 0.08),
+            (-0.34,  0.18, 0.08),
+            ( 0.42,  0.18, 0.08),
+            ( 0.42,  0.50, 0.08),
+            (-0.92,  0.50, 0.08),
+            ( 0.78, -0.30, 0.08),
+            ( 0.22, -0.56, 0.08),
+            ( 0.64, -0.82, 0.08)
         ]
-        int[] faceVertexCounts = [3, 3, 3]
-        int[] faceVertexIndices = [0, 1, 4, 1, 2, 4, 2, 3, 4]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 5, 5, 2, 4, 2, 3, 4, 6, 7, 8]
         normal3f[] normals = [
-            (0.0, 0.0, 1.0), (0.18, 0.02, 0.98), (0.34, -0.14, 0.93),
-            (-0.08, 0.26, 0.96), (-0.16, -0.06, 0.99)
+            (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0),
+            (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0),
+            (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0)
         ] (
             interpolation = "vertex"
         )
@@ -47,7 +54,9 @@ def Xform "World"
             {
                 uniform token info:id = "UsdPreviewSurface"
                 color3f inputs:diffuseColor = (0.35, 0.62, 0.95)
-                float inputs:roughness = 0.78
+                float inputs:roughness = 1.0
+                color3f inputs:specularColor = (0.0, 0.0, 0.0)
+                int inputs:useSpecularWorkflow = 1
                 token outputs:surface
             }
         }

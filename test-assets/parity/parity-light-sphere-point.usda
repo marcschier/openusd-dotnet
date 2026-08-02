@@ -19,7 +19,7 @@ def Xform "World"
         matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (-0.15, 0.55, 1.0, 1) )
         uniform token[] xformOpOrder = ["xformOp:transform"]
     }
-    def Mesh "SlopedShard" (
+    def Mesh "OffsetBoomerang" (
         prepend apiSchemas = ["MaterialBindingAPI"]
     )
     {
@@ -27,15 +27,22 @@ def Xform "World"
         uniform bool doubleSided = 1
         uniform token subdivisionScheme = "none"
         point3f[] points = [
-            (-0.72, -0.66, 0.08), (0.66, -0.48, 0.08),
-            (0.82, 0.02, 0.08), (0.04, 0.72, 0.08),
-            (-0.62, 0.32, 0.08)
+            (-0.96, -0.68, 0.08),
+            (-0.38, -0.68, 0.08),
+            (-0.38,  0.24, 0.08),
+            ( 0.32,  0.24, 0.08),
+            ( 0.32,  0.58, 0.08),
+            (-0.96,  0.58, 0.08),
+            ( 0.82, -0.16, 0.08),
+            ( 0.20, -0.48, 0.08),
+            ( 0.68, -0.78, 0.08)
         ]
-        int[] faceVertexCounts = [3, 3, 3]
-        int[] faceVertexIndices = [0, 1, 4, 1, 2, 4, 2, 3, 4]
+        int[] faceVertexCounts = [3, 3, 3, 3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 5, 5, 2, 4, 2, 3, 4, 6, 7, 8]
         normal3f[] normals = [
-            (-0.28, -0.10, 0.95), (-0.02, -0.18, 0.98), (0.20, 0.08, 0.98),
-            (0.08, 0.38, 0.92), (-0.36, 0.12, 0.92)
+            (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0),
+            (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0),
+            (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0)
         ] (
             interpolation = "vertex"
         )
@@ -50,7 +57,9 @@ def Xform "World"
             {
                 uniform token info:id = "UsdPreviewSurface"
                 color3f inputs:diffuseColor = (0.88, 0.42, 0.22)
-                float inputs:roughness = 0.68
+                float inputs:roughness = 1.0
+                color3f inputs:specularColor = (0.0, 0.0, 0.0)
+                int inputs:useSpecularWorkflow = 1
                 token outputs:surface
             }
         }
