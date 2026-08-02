@@ -141,13 +141,34 @@ counter values plus modest headroom, not shared global ceilings. These gates pre
 frame-time budgets because hosted runners have noisy CPU/GPU scheduling; the counters catch the resource
 regressions the renderer controls without becoming flaky.
 
+## Storm offscreen harness capability limits
+
 Eighteen scenes are gated at adjusted IoU `1.000000`; three are measured but ungated:
 MaterialX standard-surface, Catmull-Clark subdivision, and `light-distant-shadow`. The shadow scene
 matches the direct-lit image (`maxChannelDiff=3`, `meanChannelDiff=0.161`) but the paired
-shadow-disabled stage is byte-identical in Storm, proving this offscreen harness does not render that
-authored shadow yet. `-StormGl Mesa` runs 17 of the 21 registered scenes and continues to exclude four
-Mesa/llvmpipe Storm divergences: `single-sided-winding`, `bounds-draw-mode`, `origin-draw-mode`, and
-`subdivision-catmull-clark`.
+shadow-disabled stage is byte-identical in Storm (`disabledAdjustedIoU=1.000000`, unchanged Storm
+hash `E0713BDEA4E1D9B817A367160F13B3B23D6A06DCC6AC04858D985B8497024B03`), proving this offscreen
+harness does not render that authored shadow at all.
+
+Storm was not simply left unconfigured. A diagnostic native experiment enabled
+`GlfSimpleLight::SetHasShadow(true)`, allocated a `GlfSimpleShadowArray` at 1024x1024, set both the
+legacy and scene-index `HdxShadowTask` switches, and supplied explicit light-space matrices. The
+capture stayed byte-identical through every one of them, so the limit is the offscreen configuration
+rather than a missing flag. The experiment was reverted; no native change ships from it.
+
+Two similarly-named switches are involved and must not be confused, because conflating them has
+already cost this project several debugging rounds. The `OPENUSD_STORM_RENDER_USE_SCENE_LIGHTS`
+render flag selects whether `SetLightingState` is given the authored scene lights or the
+deterministic headlight, and is what makes the gated `UsdLux` scenes work. Separately,
+`UsdImagingGLRenderParams::enableSceneLights` stays `false`, because setting it `true` lets
+UsdImaging's own light handling override the explicit `SetLightingState` and made the
+doubled-intensity sensitivity probe fail with `ChangedStorm=false`.
+
+Shadows are therefore a recorded Storm offscreen-harness capability limit, not a reference hdSilk
+can be built against -- the third such limit alongside subdivision, where Storm renders the control
+cage, and MaterialX, where Storm renders black. `-StormGl Mesa` runs 17 of the 21 registered scenes
+and continues to exclude four Mesa/llvmpipe Storm divergences: `single-sided-winding`,
+`bounds-draw-mode`, `origin-draw-mode`, and `subdivision-catmull-clark`.
 
 Workflow and native-input contracts are also executable without a platform build:
 

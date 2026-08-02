@@ -503,11 +503,16 @@ direct lights with colour, intensity, exposure, diffuse/specular multipliers, ra
 transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Shadow-enable is preserved as a
 diagnostic bit only. The measured `light-distant-shadow` parity scene confirms Storm's offscreen
 harness is byte-identical when the authored distant-light shadow is disabled
-(`disabledAdjustedIoU=1.000000`), so hdSilk does not gate shadow maps yet even though the direct-lit
-image itself matches at adjusted IoU `1.000000` with colour deltas max `3` / mean `0.161`. PCF
-filtering, light linking, dome textures, image-based lighting, and instanced-shadow parity remain
-scoped out until Storm's shadow and IBL paths can be ported against `simpleLighting.glslfx` and
-`pcfShader.glslfx`.
+(`disabledAdjustedIoU=1.000000`, Storm hash
+`E0713BDEA4E1D9B817A367160F13B3B23D6A06DCC6AC04858D985B8497024B03`), so hdSilk does not gate shadow
+maps yet even though the direct-lit image itself matches at adjusted IoU `1.000000` with colour deltas
+max `3` / mean `0.161`. A forced native setup with `GlfSimpleLight::SetHasShadow(true)`, a
+1024x1024 `GlfSimpleShadowArray`, both `HdxShadowTask` enable switches, and explicit light-space
+matrices still produced the same bytes. Switching the render params to `enableSceneLights=true` is not
+a valid escape hatch because Storm then stopped responding to the doubled-intensity sensitivity probe.
+PCF filtering, light linking, dome textures, image-based lighting, and instanced-shadow parity remain
+scoped out until Storm's shadow and IBL paths can be ported against a measured reference rather than
+the current offscreen `SetLightingState` path.
 
 Storm ABI v6 implements nearest-hit primitive picking with the pinned OpenUSD v26.05
 `UsdImagingGLEngine::TestIntersection` convention. The versioned native request binds one physical

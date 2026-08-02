@@ -146,6 +146,11 @@ capability is not advertised by that backend descriptor.
 | Device-loss detection | ✅ | ✅ | ✅ | ✅ |
 | Renderer-neutral picking | ✅ | ✅ | ✅ | ✅ |
 
+The `Shadows` row states that the Storm backend descriptor advertises the capability. It does not
+mean shadows are rendered in every configuration: the offscreen parity harness is measured not to
+produce them at all, so no shadow scene is gated. See
+[Testing](testing.md#storm-offscreen-harness-capability-limits).
+
 Selection rendering is related but separate from the capability enum:
 
 | Selection behavior | Storm | D3D12 | Vulkan | Metal |
@@ -237,8 +242,18 @@ remains measured but ungated until the remaining divergence is eliminated.
 | `UsdLuxDistantLight` | Implemented subset and parity-gated | Matte and glossy scenes gate; margin 0.609274 |
 | `UsdLuxSphereLight` | Implemented subset and parity-gated | Matte point-attenuation scene gates; margin 0.542752 |
 | `UsdLuxDomeLight` | Ambient-only and parity-gated | Untextured dome ambient is gated; image IBL is not implemented |
-| Shadows | Measured, ungated | `shadow:enable` is diagnostic-only; Storm matched with shadows disabled |
+| Shadows | Measured, ungated | Offscreen Storm shadows are not a reference |
 | Light linking | Not implemented | No linked-light filtering; no instanced-shadow parity |
+
+`light-distant-shadow` is the third measured Storm offscreen-harness limit, alongside subdivision and
+MaterialX. Storm's authored-shadow and shadow-disabled captures are byte-identical
+(`disabledAdjustedIoU=1.000000`, Storm hash
+`E0713BDEA4E1D9B817A367160F13B3B23D6A06DCC6AC04858D985B8497024B03`). Forcing the candidate shadow
+setup in the native shim (`GlfSimpleLight::SetHasShadow(true)`, a 1024x1024 `GlfSimpleShadowArray`,
+legacy and scene-index `HdxShadowTask` enablement, and explicit light-space matrices) did not change
+the capture. The alternate `enableSceneLights=true` path is not a usable reference either: it failed
+the existing doubled-intensity sensitivity probe, so the harness must keep the explicit
+`SetLightingState` path that bypasses Storm's shadow-producing UsdLux task flow.
 
 ## Data and authoring features
 
