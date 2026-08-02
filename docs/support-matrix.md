@@ -113,6 +113,16 @@ concrete RHI, and concrete backends must not absorb Hydra translation or Viewer 
 hdSilk now supports texture-backed `UsdPreviewSurface` map binding on all three RHIs by decoding
 resolved assets through OpenUSD Hio and uploading cached sampled RGBA8 textures. UDIM expansion and
 colour-delta parity with Storm remain outside the current support claim.
+It also supports a documented MaterialX projection rather than arbitrary MaterialX code generation:
+`ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
+driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are
+reported with `TF_WARN` diagnostics that name the material input and node id. Storm currently renders the authored
+MaterialX standard-surface parity mesh as black in this harness, so the scene is recorded but not gated.
+That has a consequence worth stating directly: because Storm draws nothing here, **the projection is not
+verified against any reference**. Storm covered 347 pixels against hdSilk's 4314, and where the two do
+overlap the colour delta is only 3, so the divergence is capability rather than shading. hdSilk rendering
+a MaterialX surface that Storm leaves black is arguably the better behaviour, but it is an approximation
+onto PreviewSurface parameters and nothing currently proves it correct.
 
 ## Backend capabilities
 

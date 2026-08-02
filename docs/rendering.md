@@ -140,6 +140,13 @@ entry or create exactly one new entry for a key. Cached pipelines are unbounded 
 the checked manifest to 17 fragment permutations and 3 vertex permutations, multiplied by the small set of supported
 formats and layouts, so size-based eviction would add churn without bounding a real risk.
 
+MaterialX support deliberately reuses this finite mesh family. The native hdSilk resolver maps the supported
+`ND_standard_surface_surfaceshader` subset onto the existing PreviewSurface parameter ids and map bits instead of
+introducing node-specific shader variants. The budget is therefore unchanged: 17 checked fragment permutations and 3
+checked vertex permutations, with a hard manifest ceiling of 32 fragment and 8 vertex variants. A general graph
+cross-product is out of scope; arithmetic-only MaterialX choices are folded to constants by the resolver, and image or
+normal-map inputs select the existing `basecolor` or `normal` map bits.
+
 The cache never compiles shaders. It creates shader modules only from embedded checked resources loaded through
 `SilkCheckedShaderAssets`. If an expected permutation resource is absent, loading throws an `InvalidDataException` that
 names the missing artifact; hdSilk does not silently drop map bits or substitute a less specialized shader because that
@@ -424,6 +431,23 @@ texture assets through OpenUSD Hio, uploads one cached RGBA8 texture per asset/c
 identity, and reuses backend samplers keyed by wrap/filter state. Texture upload is recorded before the
 rendering scope so all draw paths can bind every declared sampler/texture slot without relying on backend
 defaults; dirty material updates clear the retained texture cache rather than reusing stale assets.
+
+The documented MaterialX subset is intentionally a projection into that same data model:
+
+- `ND_standard_surface_surfaceshader` maps `base_color`, `emission_color`, `metalness`,
+  `specular_roughness`/`roughness`, and `normal` onto the existing diffuse, emissive, metallic, roughness, and normal
+  parameters.
+- Direct `ND_image_*` inputs can drive base colour and normal maps; `ND_normalmap` unwraps to its input image and uses
+  the existing tangent-space normal-map shader path. `ND_geompropvalue_vector2`, `ND_texcoord_vector2`, and
+  `UsdPrimvarReader_float2` select the UV primvar, defaulting to `st` when the graph has no explicit coordinate node.
+- Constant `ND_multiply_*`, `ND_add_*`, `ND_subtract_*`, `ND_clamp_*`, and `ND_mix_*` chains are folded on the CPU for
+  supported scalar/vector inputs. Per-pixel arithmetic, mixing two images, UV transform/place2d nodes, ramps, swizzles,
+  procedural noise, transmission, subsurface, coat/sheen, displacement, and UDIM expansion are excluded.
+
+Unsupported MaterialX terminals and unsupported upstream nodes are not approximated. hdSilk publishes an unsupported
+material record or leaves the individual input at its documented default and emits a `TF_WARN` naming the material,
+input, and node identifier, so the reason is visible in the OpenUSD diagnostic stream rather than hidden as a plausible
+render.
 
 D3D12 binds the checked pick shaders through one generation-tagged RGBA8/D32 PSO. `SceneParameters`
 uses root CBV b0 and the mesh token base uses four 32-bit root constants at b1, so a draw does not

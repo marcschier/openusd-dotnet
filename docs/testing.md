@@ -1094,7 +1094,13 @@ small. `orientation-asymmetric` is the orientation gate: its hook silhouette is
 asymmetric in both axes. `depth-overlap-multiprim` exercises multiple retained
 draws, depth, and per-prim transforms. `material-normals-uv` carries a bound
 PreviewSurface plus authored normals and UVs so colour comparison can be enabled
-when hdSilk leaves debug normal shading. `point-instancer-cluster` proves
+when hdSilk leaves debug normal shading. `materials-textures` gates the checked
+base-colour texture permutation at max 13 / mean 4.48 channel delta.
+`materialx-standard-surface-constant` is deliberately ungated evidence for the
+MaterialX subset: Storm renders only the PreviewSurface anchor in this harness,
+while hdSilk shades the MaterialX standard_surface mesh, producing 0.071085
+adjusted IoU with colour max 3 / mean 2.813. That records the gap rather than
+lowering the gate. `point-instancer-cluster` proves
 prototype expansion and per-instance transforms. `time-varying-transform-primvar`
 is registered and gated at timeCode 2; its wrong-time probe compares the time 2
 Storm reference with a time 1 hdSilk capture and scores 0.045334 adjusted IoU,

@@ -458,7 +458,7 @@ try
     # no matter how many scenes silently disappeared. Adding a parity scene
     # means incrementing this by one, and adding one that Storm cannot render
     # on Mesa llvmpipe also means naming it in $mesaExcludedScenes.
-    $totalParityScenes = 17
+    $totalParityScenes = 18
     $mesaExcludedScenes = @(
         'single-sided-winding',
         'bounds-draw-mode',
