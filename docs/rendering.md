@@ -500,9 +500,13 @@ max-only residual was localized to the authored specular highlight, not to the Ï
 The hdSilk subset is intentionally narrow: `UsdLuxDistantLight` and `UsdLuxSphereLight` travel as
 direct lights with colour, intensity, exposure, diffuse/specular multipliers, radius, and world
 transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Shadow-enable is preserved as a
-diagnostic bit only. Shadow maps, PCF filtering, light linking, dome textures, image-based lighting,
-and instanced-shadow parity remain scoped out until Storm's shadow and IBL paths can be measured and
-ported against `simpleLighting.glslfx`/`pcfShader.glslfx`.
+diagnostic bit only. The measured `light-distant-shadow` parity scene confirms Storm's offscreen
+harness is byte-identical when the authored distant-light shadow is disabled
+(`disabledAdjustedIoU=1.000000`), so hdSilk does not gate shadow maps yet even though the direct-lit
+image itself matches at adjusted IoU `1.000000` with colour deltas max `3` / mean `0.161`. PCF
+filtering, light linking, dome textures, image-based lighting, and instanced-shadow parity remain
+scoped out until Storm's shadow and IBL paths can be ported against `simpleLighting.glslfx` and
+`pcfShader.glslfx`.
 
 Storm ABI v6 implements nearest-hit primitive picking with the pinned OpenUSD v26.05
 `UsdImagingGLEngine::TestIntersection` convention. The versioned native request binds one physical

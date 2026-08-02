@@ -74,6 +74,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 second.Storm,
                 out ParityComparisonResult? stormDeterminism);
             StormLightSensitivityEvidence? lightSensitivity = null;
+            StormShadowSensitivityEvidence? shadowSensitivity = null;
             if (scene.SceneLightSensitivityStagePath is not null)
             {
                 ParityCaptureSet sensitivity = await ParityCaptureDriver.CaptureAsync(
@@ -90,6 +91,39 @@ public sealed class StormSilkParityCaptureDriverTests
                 await Assert.That(lightSensitivity.ChangedStorm)
                     .IsTrue()
                     .Because($"{scene.Name} must prove Storm responds to authored scene-light intensity.");
+            }
+            if (scene.ShadowDisabledStagePath is not null)
+            {
+                ParityCaptureSet disabled = await ParityCaptureDriver.CaptureAsync(
+                    input with { StagePath = scene.ShadowDisabledStagePath },
+                    StormGlContextFactory.CreateForCurrentPlatform(),
+                    Array.Empty<SilkParityBackend>()).ConfigureAwait(false);
+                ParityComparisonResult disabledResult = ParityImageComparer.Compare(
+                    first.Storm,
+                    disabled.Storm,
+                    input.BackgroundRgba,
+                    CreateTolerance(scene));
+                shadowSensitivity = new StormShadowSensitivityEvidence(
+                    scene.ShadowDisabledStagePath,
+                    Hash(disabled.Storm),
+                    !first.Storm.Rgba.Span.SequenceEqual(disabled.Storm.Rgba.Span),
+                    ToEvidence(disabledResult));
+                evidence.Add(
+                    $"{scene.Name} shadow-disabled sensitivity changedStorm=" +
+                    $"{shadowSensitivity.ChangedStorm} disabledHash={shadowSensitivity.DisabledHash} " +
+                    "disabledAdjustedIoU=" +
+                    disabledResult.AdjustedCoverageIntersectionOverUnion.ToString(
+                        "F6",
+                        CultureInfo.InvariantCulture));
+                if (scene.GateEnabled)
+                {
+                    await Assert.That(shadowSensitivity.ChangedStorm)
+                        .IsTrue()
+                        .Because($"{scene.Name} must prove Storm responds to disabling authored shadows.");
+                    await Assert.That(disabledResult.Passed)
+                        .IsFalse()
+                        .Because($"{scene.Name} must fail when authored shadows are disabled.");
+                }
             }
             if (!stormDeterministic)
             {
@@ -176,6 +210,7 @@ public sealed class StormSilkParityCaptureDriverTests
                 stormSecondHash = Hash(second.Storm),
                 stormOpenGl = first.OpenGlEvidence,
                 sceneLightSensitivity = lightSensitivity,
+                shadowSensitivity,
                 deterministic = first.Storm.Rgba.Span.SequenceEqual(second.Storm.Rgba.Span),
                 stageIdentity = CreateStageIdentity(scene),
                 cameraIdentity = CreateCameraIdentity(input),
@@ -1014,6 +1049,27 @@ public sealed class StormSilkParityCaptureDriverTests
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_012, 932, 0)),
             },
             new ParityScene(
+                "light-distant-shadow",
+                Path.Combine(assetRoot, "parity-light-distant-shadow.usda"),
+                "UsdLuxDistantLight authored shadowEnable with an offset receiver and blocker.",
+                ColorComparisonReady: true,
+                GateEnabled: false,
+                GateReason:
+                    "Storm and hdSilk agree on the direct-light image at 1.000000 " +
+                    "adjusted IoU, 0.339119 perturbation margin, and colour deltas " +
+                    "max 3 / mean 0.161, but the paired shadow-disabled stage is " +
+                    "byte-identical (disabledAdjustedIoU 1.000000). Storm's measured " +
+                    "offscreen harness therefore does not render this authored shadow, " +
+                    "so the scene records the exclusion and stays ungated.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                UseSceneLights = true,
+                ShadowDisabledStagePath =
+                    Path.Combine(assetRoot, "parity-light-distant-shadow-disabled.usda"),
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_444, 1_284, 0)),
+            },
+            new ParityScene(
                 "point-instancer-cluster",
                 Path.Combine(assetRoot, "parity-point-instancer-cluster.usda"),
                 "Asymmetric point-instanced placement proves expansion and transform handling.",
@@ -1613,6 +1669,8 @@ public sealed class StormSilkParityCaptureDriverTests
 
         public string? SceneLightSensitivityStagePath { get; init; }
 
+        public string? ShadowDisabledStagePath { get; init; }
+
         public required Dictionary<string, ParityPerformanceBudget> PerformanceBudgets { get; init; }
 
         public ParityPerformanceBudget GetPerformanceBudget(string backendName) =>
@@ -1626,6 +1684,12 @@ public sealed class StormSilkParityCaptureDriverTests
         string DoubledIntensityStagePath,
         string DoubledIntensityHash,
         bool ChangedStorm);
+
+    private sealed record StormShadowSensitivityEvidence(
+        string DisabledStagePath,
+        string DisabledHash,
+        bool ChangedStorm,
+        object Comparison);
 
     private readonly record struct ParityPerformanceBudget(
         int MeasuredDrawCount,

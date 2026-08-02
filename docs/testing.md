@@ -134,12 +134,19 @@ timings:
 The suite requires .NET SDK 10.0.301 but no native OpenUSD installation. Results include
 BenchmarkDotNet Markdown, CSV, and full JSON reports under the selected artifact directory.
 
-The curated Storm/hdSilk parity capture remains the render gate for the 12 scene set. In addition to
+The curated Storm/hdSilk parity capture remains the render gate for the 19 scene set. In addition to
 the adjusted-IoU floor, each captured hdSilk backend must stay under per-scene deterministic resource
 thresholds recorded in [Performance](performance.md#object-and-resource-churn). Thresholds are measured
 counter values plus modest headroom, not shared global ceilings. These gates prefer counters over
 frame-time budgets because hosted runners have noisy CPU/GPU scheduling; the counters catch the resource
 regressions the renderer controls without becoming flaky.
+
+Sixteen scenes are gated at adjusted IoU `1.000000`; three are measured but ungated:
+MaterialX standard-surface, Catmull-Clark subdivision, and `light-distant-shadow`. The shadow scene
+matches the direct-lit image (`maxChannelDiff=3`, `meanChannelDiff=0.161`) but the paired
+shadow-disabled stage is byte-identical in Storm, proving this offscreen harness does not render that
+authored shadow yet. `-StormGl Mesa` gates 15 scenes and continues to exclude four Mesa/llvmpipe
+Storm divergences.
 
 Workflow and native-input contracts are also executable without a platform build:
 
