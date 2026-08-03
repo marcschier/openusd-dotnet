@@ -113,7 +113,7 @@ const SdfValueTypeName& QuatfType()
     return SdfValueTypeNames->Quatf;
 }
 
-const SdfValueTypeName& TokenType()
+const SdfValueTypeName& PhysicsTokenType()
 {
     return SdfValueTypeNames->Token;
 }
@@ -707,7 +707,7 @@ openusd_status openusd_physics_set_token(
             const openusd_status status = GetPrim(stage, prim_path, &prim, error);
             if (status != OPENUSD_STATUS_OK) return status;
             return SetAttribute(
-                prim, TokenName(property, instance_name), TokenType(), TfToken(value), "physics token", error);
+                prim, TokenName(property, instance_name), PhysicsTokenType(), TfToken(value), "physics token", error);
         });
     });
 }
@@ -726,7 +726,8 @@ openusd_status openusd_physics_get_token(
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         // ABI_OUTPUT_INITIALIZATION
-        ResetAbiStringOutput(buffer, capacity);        ResetAbiOutput(required);
+        ResetAbiStringOutput(buffer, capacity);
+        ResetAbiOutput(required);
         if (required == nullptr ||
             (TokenNeedsInstance(property) && (instance_name == nullptr || instance_name[0] == '\0')))
         {
@@ -740,7 +741,7 @@ openusd_status openusd_physics_get_token(
             const openusd_status status = GetPrim(stage, prim_path, &prim, error);
             if (status != OPENUSD_STATUS_OK) return status;
             const openusd_status getStatus = GetAttribute(
-                prim, TokenName(property, instance_name), TokenType(), &token, "physics token", error);
+                prim, TokenName(property, instance_name), PhysicsTokenType(), &token, "physics token", error);
             if (getStatus != OPENUSD_STATUS_OK) return getStatus;
             return CopyString(token.GetString(), buffer, capacity, required);
         });
@@ -786,7 +787,8 @@ openusd_status openusd_physics_get_string(
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         // ABI_OUTPUT_INITIALIZATION
-        ResetAbiStringOutput(buffer, capacity);        ResetAbiOutput(required);
+        ResetAbiStringOutput(buffer, capacity);
+        ResetAbiOutput(required);
         if (property != OPENUSD_PHYSICS_STRING_COLLISION_GROUP_MERGE_GROUP_NAME || required == nullptr)
         {
             WriteError(error, "A valid physics string property and output are required.");

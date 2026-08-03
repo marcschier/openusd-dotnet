@@ -14,5 +14,5 @@ public static class OpenUsdNativeContract
     public const uint AbiVersion = 11;
 
     /// <summary>Gets the capabilities required by this managed contract.</summary>
-public const ulong RequiredCapabilities = 0x2FFF;
+    public const ulong RequiredCapabilities = 0x2FFF;
 }
