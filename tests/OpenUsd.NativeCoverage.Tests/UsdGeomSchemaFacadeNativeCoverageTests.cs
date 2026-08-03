@@ -53,7 +53,7 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
     [Test]
     public void ConcreteSchemaFacadesDefineTypedPrimsAndCanBeWrapped()
     {
-        string directory = NativeCoverageRuntime.CreateTempDirectory(nameof(ConcreteSchemaFacadesDefineTypedPrimsAndCanBeWrapped));
+        string directory = CreateDirectory(nameof(ConcreteSchemaFacadesDefineTypedPrimsAndCanBeWrapped));
         using UsdStage stage = CreateUsdGeomSchemaStage(directory, "geom-schema-concrete");
 
         UsdGeomSubset subset = stage.DefineSubset("/Subset");
@@ -61,7 +61,10 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
         RequireEqual(subset.Prim.TypeName, "GeomSubset", "Subset type");
         Require(UsdGeomSubset.TryWrap(subset.Prim, out UsdGeomSubset wrappedSubset), "Subset TryWrap failed.");
         RequireEqual(wrappedSubset.Path, subset.Path, "Wrapped subset path");
-        RequireEqual(UsdGeomSubset.Wrap(subset.Prim).Imageable.Prim.Path, subset.Path, "Wrapped subset imageable path");
+        RequireEqual(
+            UsdGeomSubset.Wrap(subset.Prim).Imageable.Prim.Path,
+            subset.Path,
+            "Wrapped subset imageable path");
 
         UsdGeomBasisCurves basisCurves = stage.DefineBasisCurves("/BasisCurves");
         RequireEqual(basisCurves.Prim.TypeName, "BasisCurves", "BasisCurves type");
@@ -144,7 +147,7 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
     [Test]
     public void CurveFacadesRoundTripBulkArraysAndTokens()
     {
-        string directory = NativeCoverageRuntime.CreateTempDirectory(nameof(CurveFacadesRoundTripBulkArraysAndTokens));
+        string directory = CreateDirectory(nameof(CurveFacadesRoundTripBulkArraysAndTokens));
         using UsdStage stage = CreateUsdGeomSchemaStage(directory, "geom-schema-curves");
 
         UsdGeomBasisCurves basisCurves = stage.DefineBasisCurves("/BasisCurves");
@@ -212,7 +215,7 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
     [Test]
     public void PointFacadesRoundTripBulkArraysTimeSamplesAndRelationship()
     {
-        string directory = NativeCoverageRuntime.CreateTempDirectory(nameof(PointFacadesRoundTripBulkArraysTimeSamplesAndRelationship));
+        string directory = CreateDirectory(nameof(PointFacadesRoundTripBulkArraysTimeSamplesAndRelationship));
         using UsdStage stage = CreateUsdGeomSchemaStage(directory, "geom-schema-points");
 
         UsdGeomPoints points = stage.DefinePoints("/Points");
@@ -258,7 +261,7 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
     [Test]
     public void PrimitiveSurfaceFacadesRoundTripScalarsAxesAndExtents()
     {
-        string directory = NativeCoverageRuntime.CreateTempDirectory(nameof(PrimitiveSurfaceFacadesRoundTripScalarsAxesAndExtents));
+        string directory = CreateDirectory(nameof(PrimitiveSurfaceFacadesRoundTripScalarsAxesAndExtents));
         using UsdStage stage = CreateUsdGeomSchemaStage(directory, "geom-schema-surfaces");
 
         UsdGeomCapsule capsule = stage.DefineCapsule("/Capsule");
@@ -319,7 +322,7 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
     [Test]
     public void SubsetAndTetMeshFacadesRoundTripBulkTopologyArraysAndTokens()
     {
-        string directory = NativeCoverageRuntime.CreateTempDirectory(nameof(SubsetAndTetMeshFacadesRoundTripBulkTopologyArraysAndTokens));
+        string directory = CreateDirectory(nameof(SubsetAndTetMeshFacadesRoundTripBulkTopologyArraysAndTokens));
         using UsdStage stage = CreateUsdGeomSchemaStage(directory, "geom-schema-subset-tet");
 
         UsdGeomSubset subset = stage.DefineSubset("/Subset");
@@ -347,11 +350,13 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
     [Test]
     public void PrimvarsApiRoundTripsMetadataArraysAndIndices()
     {
-        string directory = NativeCoverageRuntime.CreateTempDirectory(nameof(PrimvarsApiRoundTripsMetadataArraysAndIndices));
+        string directory = CreateDirectory(nameof(PrimvarsApiRoundTripsMetadataArraysAndIndices));
         using UsdStage stage = CreateUsdGeomSchemaStage(directory, "geom-schema-primvars");
         UsdPrim prim = stage.DefineMesh("/Mesh").Prim;
 
-        Require(UsdGeomPrimvarsAPI.TryWrap(prim, out UsdGeomPrimvarsAPI wrappedApi), "PrimvarsAPI TryWrap failed.");
+        Require(
+            UsdGeomPrimvarsAPI.TryWrap(prim, out UsdGeomPrimvarsAPI wrappedApi),
+            "PrimvarsAPI TryWrap failed.");
         RequireEqual(wrappedApi.Path, "/Mesh", "PrimvarsAPI path");
         UsdGeomPrimvarsAPI api = UsdGeomPrimvarsAPI.Wrap(prim);
         UsdGeomPrimvar displayColor = api.CreatePrimvar(
@@ -387,7 +392,7 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
     [Test]
     public void ModelApiRoundTripsModelMetadataAndExtentsHint()
     {
-        string directory = NativeCoverageRuntime.CreateTempDirectory(nameof(ModelApiRoundTripsModelMetadataAndExtentsHint));
+        string directory = CreateDirectory(nameof(ModelApiRoundTripsModelMetadataAndExtentsHint));
         string path = CreateUsdGeomSchemaModelComponentPath(directory);
         using UsdStage stage = UsdStage.Open(path);
         UsdPrim prim = stage.GetPrim("/Model");
@@ -410,7 +415,7 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
     [Test]
     public void SchemaFacadesRejectMismatchedMissingDefaultAndInvalidPaths()
     {
-        string directory = NativeCoverageRuntime.CreateTempDirectory(nameof(SchemaFacadesRejectMismatchedMissingDefaultAndInvalidPaths));
+        string directory = CreateDirectory(nameof(SchemaFacadesRejectMismatchedMissingDefaultAndInvalidPaths));
         using UsdStage stage = CreateUsdGeomSchemaStage(directory, "geom-schema-rejections");
         UsdPrim xform = stage.DefineXform("/PlainXform").Prim;
 
@@ -487,7 +492,7 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
     [Test]
     public void SchemaFacadesValidatePrimvarNamesEnumsAndExtentShape()
     {
-        string directory = NativeCoverageRuntime.CreateTempDirectory(nameof(SchemaFacadesValidatePrimvarNamesEnumsAndExtentShape));
+        string directory = CreateDirectory(nameof(SchemaFacadesValidatePrimvarNamesEnumsAndExtentShape));
         using UsdStage stage = CreateUsdGeomSchemaStage(directory, "geom-schema-validation");
         UsdPrim mesh = stage.DefineMesh("/Mesh").Prim;
         UsdGeomPrimvarsAPI api = new(mesh);
@@ -521,6 +526,9 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
             "invalid extent message");
     }
 
+    private static string CreateDirectory(string testName) =>
+        NativeCoverageRuntime.CreateTempDirectory(testName);
+
     private static UsdStage CreateUsdGeomSchemaStage(string directory, string name)
     {
         string path = Path.Combine(directory, name + ".usda");
@@ -543,6 +551,14 @@ public sealed class UsdGeomSchemaFacadeNativeCoverageTests
         if (!EqualityComparer<T>.Default.Equals(actual, expected))
         {
             throw new InvalidOperationException($"{label}: expected {expected}, got {actual}.");
+        }
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition)
+        {
+            throw new InvalidOperationException(message);
         }
     }
 
