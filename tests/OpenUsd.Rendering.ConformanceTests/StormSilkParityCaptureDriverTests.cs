@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
+using OpenUsd.Rendering.Silk.Metal;
 using OpenUsd.Rendering.Silk.Vulkan;
 using OpenUsd.Rendering.Storm;
 
@@ -23,6 +24,7 @@ public sealed class StormSilkParityCaptureDriverTests
     private const double MinimumDiscriminationMargin = 0.18;
     private const string D3D12WarpBackendName = "D3D12 WARP";
     private const string VulkanSwiftShaderBackendName = "Vulkan SwiftShader";
+    private const string MetalBackendName = "Metal";
 
     /// <summary>
     /// Largest single-channel difference tolerated on a scene that binds a real
@@ -833,7 +835,12 @@ public sealed class StormSilkParityCaptureDriverTests
             return [CreateVulkanBackend()];
         }
 
-        throw new PlatformNotSupportedException("The parity harness supports Windows WGL and Linux GLX.");
+        if (OperatingSystem.IsMacOS())
+        {
+            return [CreateMetalBackend()];
+        }
+
+        throw new PlatformNotSupportedException("The parity harness supports Windows WGL, Linux GLX, and macOS CGL.");
     }
 
     private static SilkParityBackend CreatePrimaryPerturbationBackend()
@@ -848,7 +855,12 @@ public sealed class StormSilkParityCaptureDriverTests
             return CreateVulkanBackend();
         }
 
-        throw new PlatformNotSupportedException("The parity harness supports Windows WGL and Linux GLX.");
+        if (OperatingSystem.IsMacOS())
+        {
+            return CreateMetalBackend();
+        }
+
+        throw new PlatformNotSupportedException("The parity harness supports Windows WGL, Linux GLX, and macOS CGL.");
     }
 
     [SupportedOSPlatform("windows")]
@@ -867,6 +879,10 @@ public sealed class StormSilkParityCaptureDriverTests
 
     private static SilkParityBackend CreateVulkanBackend() =>
         new(VulkanSwiftShaderBackendName, static () => VulkanSilkGraphicsDevice.Create());
+
+    [SupportedOSPlatform("macos")]
+    private static SilkParityBackend CreateMetalBackend() =>
+        new(MetalBackendName, static () => MetalSilkGraphicsDevice.Create());
 
     private static ParityTolerance CreateTolerance(ParityScene scene) =>
         ParityTolerance.Geometry with
@@ -987,19 +1003,13 @@ public sealed class StormSilkParityCaptureDriverTests
                 "material-metallic-workflow",
                 Path.Combine(assetRoot, "parity-material-metallic-workflow.usda"),
                 "PreviewSurface metallic workflow lights a metallic prim beside a dielectric one.",
-                ColorComparisonReady: false,
+                ColorComparisonReady: true,
                 GateEnabled: true,
                 GateReason:
-                    "Coverage gates at 1.000000 adjusted IoU against a 0.493349 worst perturbation " +
-                    "(0.506651 margin). This does NOT prove the metallic workflow: coverage is " +
-                    "identical for any shading, and colour is deliberately not gated here. Colour " +
-                    "measures max 25 / mean 14.112 against a 10-16 max calibration on the other " +
-                    "material scenes, and the captures show Storm rendering the metal near black " +
-                    "(3,5,4) where hdSilk renders dim gold (15..25,13..20,7..10) - consistent with " +
-                    "hdSilk's residual (1 - metallic) diffuse surviving where Storm suppresses it. " +
-                    "An ambient-attenuation fix was implemented, measured to change nothing because " +
-                    "this scene has no ambient, and reverted. The metallic shading path therefore " +
-                    "remains unproven; see material-metallic-color.",
+                    "Coverage and colour gate after splitting direct diffuse and specular irradiance: " +
+                    "Storm's PreviewSurface path applies the light's pi-scaled diffuse irradiance to " +
+                    "Lambert but not to direct specular. The all-pi path measured max 25 / mean 14.112; " +
+                    "removing only the specular pi reduces the metallic residual to max 8 / mean 4.558.",
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 UseSceneLights = true,
@@ -1709,6 +1719,7 @@ public sealed class StormSilkParityCaptureDriverTests
         {
             [D3D12WarpBackendName] = budget,
             [VulkanSwiftShaderBackendName] = budget,
+            [MetalBackendName] = budget,
         };
 
     private sealed record ParityScene(

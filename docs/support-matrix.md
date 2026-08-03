@@ -99,11 +99,17 @@ RIDs.
 The native toolchain and archive model are in [Native build](native-build.md). Runtime asset layout
 and package-only execution are in [Packaging](packaging.md).
 
+The locked viewer-standard native profile enables USD validation, Imaging, USD Imaging, Storm,
+MaterialX, OpenImageIO, OpenColorIO, oneTBB, OpenGL, Ptex, OpenVDB, Alembic, and Draco. Python,
+usdview, tests, examples, tutorials, tools, documentation, Embree, and RenderMan remain disabled.
+The Python exclusion is intentional for runtime architecture; build tooling may still use Python to
+run OpenUSD's pinned build script.
+
 ## Viewer renderers
 
 | Viewer kind | Hydra path | Concrete presentation/API | Supported host | Current role |
 | --- | --- | --- | --- | --- |
-| Storm | Hydra/Storm | WGL, GLX, or NSOpenGL host | Windows, Linux, macOS | Primary |
+| Storm | Hydra/Storm | WGL, GLX, or CGL host | Windows, Linux, macOS | Primary |
 | D3D12 | Hydra to hdSilk pages | Direct3D 12 | Windows | Fallback |
 | Vulkan | Hydra to hdSilk pages | Vulkan | Windows, Linux | Fallback |
 | Metal | Hydra to hdSilk pages | Metal | macOS | Fallback |
@@ -169,9 +175,13 @@ The 1.0 rendering-parity claim is intentionally narrower than "everything hdSilk
 `1.000000` adjusted IoU against D3D12 WARP and Vulkan SwiftShader; three are
 measured but deliberately ungated. Hosted Mesa/llvmpipe Storm runs only 18 registered scenes,
 excluding `single-sided-winding`, `bounds-draw-mode`, `origin-draw-mode`, and
-`subdivision-catmull-clark` because Mesa Storm differs from conformant-driver Storm. Metal
-does not run this curated set today; it is validated by the macOS native/Metal pipeline probe
-only, not by the parity-capture matrix below.
+`subdivision-catmull-clark` because Mesa Storm differs from conformant-driver Storm.
+The render workflow now wires the curated capture into the macOS arm64 job with a CGL Storm
+context and Metal hdSilk backend, asserting all 22 registered scenes unless a named exclusion is
+added. That macOS path is **pending hosted proof** until a workflow run records whether hosted
+macOS can create the required OpenGL context and which Metal scenes gate; it must not be counted
+as observed Storm parity yet. The previous macOS native/Metal single-stage probe remains the only
+completed hosted Metal evidence until that run exists.
 
 The harness is driven by the `render` workflow, **not** by ordinary CI, so a green `ci` badge does
 not mean parity ran. The full 19-gate matrix passes on Windows with a conformant GPU driver. Hosted

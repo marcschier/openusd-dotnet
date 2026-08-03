@@ -4,10 +4,9 @@ Use this guide to follow locked OpenUSD inputs through host-specific native inst
 archives, and the package and render consumers that reuse them.
 
 **On this page:** [Build and archive flow](#build-and-archive-flow) ·
-[Locked inputs](#locked-inputs) · [Local build](#local-build) ·
-[Archive consumers](#verified-archives-and-consumers) ·
-[macOS install names](#macos-install-name-policy) ·
-[Related documentation](#related-documentation)
+[Locked inputs](#locked-inputs) · [Cesium-native quarantine](#cesium-native-quarantine) ·
+[Local build](#local-build) · [Archive consumers](#verified-archives-and-consumers) ·
+[macOS install names](#macos-install-name-policy) · [Related documentation](#related-documentation)
 
 ## Build and archive flow
 
@@ -39,8 +38,60 @@ Windows command search, and Visual Studio versions newer than Boost's discovery 
 script hash is locked.
 
 The viewer-standard profile retains core USD, validation, Imaging, Hydra, Storm, MaterialX,
-OpenImageIO, and OpenColorIO. Python, usdview, examples, tutorials, Embree, Alembic, Draco, OpenVDB,
+OpenImageIO, OpenColorIO, Ptex, OpenVDB, Alembic, and Draco. Python remains deliberately disabled
+and is not a native runtime dependency. usdview, examples, tutorials, tools, documentation, Embree,
 and RenderMan are excluded.
+
+OpenVDB brings the locked Blosc compression dependency. The Windows monolithic profile also carries a
+verified compatibility patch that removes OpenUSD's upstream Draco/monolithic configure guard; the
+resulting install is still bound by native install metadata, CTest probes, NativeAOT probes, and
+package gates.
+
+## Cesium-native quarantine
+
+`eng/cesium.lock.json` is separate from `eng/openusd.lock.json` by design. The Cesium lock pins
+cesium-native v0.63.0 by commit and archive SHA-256, and it pins vcpkg manifest resolution to
+baseline `56bb2411609227288b70117ead2c47585ba07713`. `eng/fetch-cesium-native.ps1` verifies the
+source archive, verifies the upstream `vcpkg.json` and `vcpkg-configuration.json` hashes, checks out
+that exact vcpkg commit under `native/.cache`, and bootstraps the tool from the pinned tree. vcpkg
+then resolves the manifest from that baseline plus cesium-native's overlay ports/triplets, so the
+resolved port versions and port git-tree hashes are reproducible in `vcpkg-manifest-install.log`.
+
+The build is intentionally quarantined and does not feed the Core or Imaging packages.
+cesium-native brings a much larger native surface than the lean OpenUSD runtime, including curl,
+OpenSSL, Draco, KTX, SQLite, Blend2D, asmjit, s2geometry/abseil, spdlog, meshoptimizer, WebP,
+zstd, and other support libraries. Keeping it in `native/install/cesium/<rid>` prevents a user who
+only needs USD authoring or rendering from receiving the Cesium dependency set.
+
+Inspect the locked Cesium plan:
+
+```shell
+./eng/build-cesium-native.ps1 -Rid win-x64 -PlanOnly
+```
+
+Build and smoke-test the Windows install from an x64 developer shell:
+
+```shell
+./eng/build-cesium-native.ps1 -Rid win-x64
+```
+
+The install contains static libraries in `native/install/cesium/<rid>/lib`, expanded headers in
+`native/install/cesium/<rid>/include`, and generated third-party notices. These files are a
+build-time SDK for a later C ABI shim, not runtime assets. Packaging is deliberately deferred until
+that shim exists because the shipped artifact should be one linked shared library
+(`.dll`/`.so`/`.dylib`) that statically contains cesium-native, not hundreds of megabytes of `.lib`
+or `.a` files that consumers cannot load directly. Do not add `OpenUsd.Runtime.Cesium.<rid>`
+packages for the static libraries.
+
+The smoke probe is `native/cesium_probe`. It links against the installed `cesium-native` CMake
+package, parses an in-memory 3D Tiles `tileset.json` with `Cesium3DTilesReader::TilesetReader`, and
+fails unless the parsed asset version, top-level geometric error, and recursive tile count match the
+expected values. It is deliberately stronger than a load-only check.
+
+`cesium-native.yml` builds `win-x64`, `linux-x64`, and `osx-arm64`, runs the same probe, and records
+install/library byte counts for each RID. Local Windows verification measured `win-x64` at
+1,012,407,536 install bytes and 984,482,970 static-library bytes. Linux and macOS sizes must come
+from CI because they cannot be verified on the Windows workstation.
 
 ## Local build
 

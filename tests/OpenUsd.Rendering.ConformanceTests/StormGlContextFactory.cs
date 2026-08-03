@@ -5,7 +5,7 @@ namespace OpenUsd.Rendering.ConformanceTests;
 internal static class StormGlContextFactory
 {
     internal static bool IsCurrentPlatformSupported =>
-        OperatingSystem.IsWindows() || OperatingSystem.IsLinux();
+        OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS();
 
     internal static IStormGlContextFactory CreateForCurrentPlatform()
     {
@@ -19,7 +19,12 @@ internal static class StormGlContextFactory
             return new LinuxGlxStormContextFactory();
         }
 
+        if (OperatingSystem.IsMacOS())
+        {
+            return new MacosCglStormContextFactory();
+        }
+
         throw new PlatformNotSupportedException(
-            "Storm parity capture requires either the Windows WGL shim or the Linux GLX shim.");
+            "Storm parity capture requires the Windows WGL, Linux GLX, or macOS CGL shim.");
     }
 }

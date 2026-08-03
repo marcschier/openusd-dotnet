@@ -4,6 +4,7 @@ using System.Buffers.Binary;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Rendering.Tests;
@@ -101,14 +102,64 @@ public sealed class SilkGraphicsPipelineTests
 
         await Assert.That(reflection).IsEqualTo(
             new SilkSceneParametersReflection(true, 0, 64, 64, 16, 80));
-        await Assert.That(dxilVertex.Code.Length).IsEqualTo(6148);
-        await Assert.That(dxilFragment.Code.Length).IsEqualTo(8780);
-        await Assert.That(spirvVertex.Code.Length).IsEqualTo(2976);
-        await Assert.That(spirvFragment.Code.Length).IsEqualTo(11016);
+
+        // Sizes come from the manifest rather than being restated here. The
+        // manifest already records a size and a SHA-256 per artifact and is
+        // itself hash-verified, so hard-coding the numbers duplicated a derived
+        // fact and broke this test on every legitimate shader edit -- which
+        // teaches the reader to update the literal rather than ask why it
+        // moved. Comparing against the manifest still catches what matters: a
+        // loaded asset that disagrees with the payload it was built from.
+        await Assert.That(dxilVertex.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("mesh.vertex", "dxil"));
+        await Assert.That(dxilFragment.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("mesh.fragment", "dxil"));
+        await Assert.That(spirvVertex.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("mesh.vertex", "spv"));
+        await Assert.That(spirvFragment.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("mesh.fragment", "spv"));
         await Assert.That(dxilVertex.EntryPoint).IsEqualTo("vertexMain");
         await Assert.That(dxilFragment.EntryPoint).IsEqualTo("fragmentMain");
         await Assert.That(spirvVertex.EntryPoint).IsEqualTo("main");
         await Assert.That(spirvFragment.EntryPoint).IsEqualTo("main");
+    }
+
+    private static int ManifestArtifactSize(string program, string artifact)
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null &&
+            !File.Exists(Path.Combine(directory.FullName, "OpenUsd.slnx")))
+        {
+            directory = directory.Parent;
+        }
+        if (directory is null)
+        {
+            throw new InvalidOperationException("The repository root was not found.");
+        }
+
+        using JsonDocument manifest = JsonDocument.Parse(
+            File.ReadAllBytes(Path.Combine(
+                directory.FullName, "eng", "shaders", "checked", "manifest.json")));
+
+        foreach (JsonElement entry in manifest.RootElement.GetProperty("programs").EnumerateArray())
+        {
+            if (!string.Equals(
+                entry.GetProperty("name").GetString(),
+                program,
+                StringComparison.Ordinal))
+            {
+                continue;
+            }
+            return entry.GetProperty("artifacts")
+                .GetProperty(artifact)
+                .GetProperty("size")
+                .GetInt32();
+        }
+
+        // Fail loudly rather than returning a default that would make every
+        // comparison above trivially satisfiable.
+        throw new InvalidOperationException(
+            $"The checked shader manifest has no '{artifact}' artifact for '{program}'.");
     }
 
     [Test]

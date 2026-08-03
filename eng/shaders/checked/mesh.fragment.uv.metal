@@ -343,7 +343,7 @@ struct KernelContext_0
         }
         float3 lightDirection_0;
         float lightIntensity_1;
-        if(lightType_0 == 2.0f)
+        if(lightType_0 >= 2.0f)
         {
             float3 toLight_0 = (float4((&_S2->lightPositionType_0)->data_2[lightIndex_0]) ).xyz - _S25;
             float _S35 = max(dot(toLight_0, toLight_0), 0.00100000004749745f);
@@ -384,11 +384,12 @@ struct KernelContext_0
         {
             directSpecular_0 = _S41;
         }
-        float3 color_2 = color_1 + float3((_S7 * normalDotLight_0))  * (directDiffuse_0 * float3(diffuseScale_0)  + directSpecular_0 * float3(specularScale_0) ) * (lightColor_0 * float3(lightIntensity_1)  * _S16);
+        float3 _S43 = lightColor_0 * float3(lightIntensity_1) ;
+        float3 color_2 = color_1 + float3((_S7 * normalDotLight_0))  * (directDiffuse_0 * float3(diffuseScale_0)  * (_S43 * _S16) + directSpecular_0 * float3(specularScale_0)  * _S43);
         lightIndex_0 = lightIndex_0 + 1U;
         color_1 = color_2;
     }
-    pixelOutput_0 _S43 = { float4(color_1 + emissiveColor_0, opacity_0) };
-    return _S43;
+    pixelOutput_0 _S44 = { float4(color_1 + emissiveColor_0, opacity_0) };
+    return _S44;
 }
 

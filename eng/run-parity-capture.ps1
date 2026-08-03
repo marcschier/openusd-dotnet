@@ -2,8 +2,9 @@
 # Copyright (c) marcschier. Licensed under the MIT License.
 [CmdletBinding()]
 param(
-    [ValidateSet('win-x64', 'linux-x64')]
-    [string]$Rid = $(if ($IsWindows) { 'win-x64' } elseif ($IsLinux) { 'linux-x64' } else { '' }),
+    [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
+    [string]$Rid = $(
+        if ($IsWindows) { 'win-x64' } elseif ($IsLinux) { 'linux-x64' } elseif ($IsMacOS) { 'osx-arm64' } else { '' }),
 
     [ValidateNotNullOrEmpty()]
     [string]$Configuration = 'Release',
@@ -20,7 +21,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if ([string]::IsNullOrWhiteSpace($Rid))
 {
-    throw 'Parity capture is supported only on Windows and Linux.'
+    throw 'Parity capture is supported only on Windows, Linux, and macOS arm64.'
 }
 
 $installRoot = if ([string]::IsNullOrWhiteSpace($NativeInstallRoot))
@@ -432,6 +433,7 @@ if (-not $SkipBuild)
 
 $oldPath = $env:PATH
 $oldLdLibraryPath = $env:LD_LIBRARY_PATH
+$oldDyldLibraryPath = $env:DYLD_LIBRARY_PATH
 $oldPluginPath = $env:OPENUSD_PLUGIN_PATH
 $oldCaptureRequired = $env:OPENUSD_PARITY_CAPTURE_REQUIRED
 $oldMesaOpenGl = $env:OPENUSD_MESA_WGL_OPENGL32_PATH
@@ -450,6 +452,8 @@ try
         $libTarget + [System.IO.Path]::PathSeparator + $oldPath
     $env:LD_LIBRARY_PATH = $libTarget + [System.IO.Path]::PathSeparator +
         $binTarget + [System.IO.Path]::PathSeparator + $oldLdLibraryPath
+    $env:DYLD_LIBRARY_PATH = $libTarget + [System.IO.Path]::PathSeparator +
+        $binTarget + [System.IO.Path]::PathSeparator + $oldDyldLibraryPath
     $env:OPENUSD_PLUGIN_PATH = $pluginPath
     $env:OPENUSD_PARITY_CAPTURE_REQUIRED = '1'
 
@@ -526,6 +530,7 @@ finally
 {
     $env:PATH = $oldPath
     $env:LD_LIBRARY_PATH = $oldLdLibraryPath
+    $env:DYLD_LIBRARY_PATH = $oldDyldLibraryPath
     $env:OPENUSD_PLUGIN_PATH = $oldPluginPath
     $env:OPENUSD_PARITY_CAPTURE_REQUIRED = $oldCaptureRequired
     $env:OPENUSD_MESA_WGL_OPENGL32_PATH = $oldMesaOpenGl
