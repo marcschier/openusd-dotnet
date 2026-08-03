@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Globalization;
+using OpenUsd.Skel;
 
 namespace OpenUsd.Tests;
 
@@ -70,90 +71,130 @@ public sealed class InspectionSnapshotRecordTests
     }
 
     [Test]
-    public async Task PrimIndexNodesCompareByValueForScalarsButNotCollections()
+    public async Task PrimIndexNodesCompareCollectionContentsByValue()
     {
-        IReadOnlyList<string> sharedLayers = ["root.usda", "sub.usda"];
-        PcpPrimIndexNode left = CreateNode("/World", sharedLayers);
-        PcpPrimIndexNode right = CreateNode("/World", sharedLayers);
-        PcpPrimIndexNode other = CreateNode("/Other", sharedLayers);
+        PcpPrimIndexNode left = CreateNode("/World", ["root.usda", "sub.usda", "session.usda"]);
+        PcpPrimIndexNode right = CreateNode("/World", ["root.usda", "sub.usda", "session.usda"]);
 
-        // Scalar members compare by value, as records do.
         await Assert.That(left).IsEqualTo(right);
         await Assert.That(left.GetHashCode()).IsEqualTo(right.GetHashCode());
-        await Assert.That(left).IsNotEqualTo(other);
+        await Assert.That(left).IsNotEqualTo(CreateNode("/World", ["other.usda", "sub.usda", "session.usda"]));
+        await Assert.That(left).IsNotEqualTo(CreateNode("/World", ["root.usda", "other.usda", "session.usda"]));
+        await Assert.That(left).IsNotEqualTo(CreateNode("/World", ["root.usda", "sub.usda", "other.usda"]));
 
-        // But the collection member does NOT. The compiler-generated Equals
-        // uses EqualityComparer<IReadOnlyList<string>>.Default, which is
-        // reference equality for a list, so two structurally identical
-        // snapshots built from separate lists are NOT equal. That is a real
-        // trap for the intended use -- diffing two snapshots to decide whether
-        // to repaint would report a change that did not happen -- so it is
-        // asserted here rather than assumed away. See the todo
-        // 'inspection-snapshot-value-equality'.
-        PcpPrimIndexNode separateList = CreateNode("/World", ["root.usda", "sub.usda"]);
-        await Assert.That(left).IsNotEqualTo(separateList);
-
-        await Assert.That(left.LayerIdentifiers.Count).IsEqualTo(2);
+        await Assert.That(left.ToString()).Contains("LayerIdentifiers = [root.usda, sub.usda, session.usda]");
+        await Assert.That(left.LayerIdentifiers.Count).IsEqualTo(3);
         await Assert.That(left.LayerIdentifiers[1]).IsEqualTo("sub.usda");
         await Assert.That(left.ArcType).IsEqualTo(PcpArcType.Reference);
     }
 
     [Test]
-    public async Task PrimIndexSnapshotCarriesNodesAndErrorsSeparately()
+    public async Task PrimIndexSnapshotsCompareNodeAndErrorSequencesByValue()
     {
-        var snapshot = new PcpPrimIndex(
-            [CreateNode("/World"), CreateNode("/World/Child")],
-            ["could not resolve reference"]);
-
-        await Assert.That(snapshot.Nodes.Count).IsEqualTo(2);
-        await Assert.That(snapshot.Errors.Count).IsEqualTo(1);
-        await Assert.That(snapshot.Nodes[1].SitePath).IsEqualTo("/World/Child");
-
-        // Errors must not be conflated with nodes: a composition that produced
-        // an error still produces nodes, and a UI shows both.
-        await Assert.That(snapshot.Errors[0]).IsEqualTo("could not resolve reference");
-    }
-
-    [Test]
-    public async Task ValidationErrorsCompareByValueAndPreserveSeverity()
-    {
-        UsdValidationSeverity severity = Enum.GetValues<UsdValidationSeverity>()[0];
-        IReadOnlyList<string> sites = ["/"];
-        var left = new UsdValidationError(
-            severity, "StageMetadataChecker", "MissingDefaultPrim", "no default prim", sites);
-        var right = new UsdValidationError(
-            severity, "StageMetadataChecker", "MissingDefaultPrim", "no default prim", sites);
-        var differentMessage = new UsdValidationError(
-            severity, "StageMetadataChecker", "MissingDefaultPrim", "different message", sites);
+        var left = new PcpPrimIndex(
+            [CreateNode("/World/A"), CreateNode("/World/B"), CreateNode("/World/C")],
+            ["first error", "middle error", "last error"]);
+        var right = new PcpPrimIndex(
+            [CreateNode("/World/A"), CreateNode("/World/B"), CreateNode("/World/C")],
+            ["first error", "middle error", "last error"]);
 
         await Assert.That(left).IsEqualTo(right);
-        await Assert.That(left).IsNotEqualTo(differentMessage);
-        await Assert.That(left.Severity).IsEqualTo(severity);
-        await Assert.That(left.Sites.Count).IsEqualTo(1);
+        await Assert.That(left.GetHashCode()).IsEqualTo(right.GetHashCode());
+        await Assert.That(left).IsNotEqualTo(new PcpPrimIndex(
+            [CreateNode("/World/Z"), CreateNode("/World/B"), CreateNode("/World/C")],
+            ["first error", "middle error", "last error"]));
+        await Assert.That(left).IsNotEqualTo(new PcpPrimIndex(
+            [CreateNode("/World/A"), CreateNode("/World/Z"), CreateNode("/World/C")],
+            ["first error", "middle error", "last error"]));
+        await Assert.That(left).IsNotEqualTo(new PcpPrimIndex(
+            [CreateNode("/World/A"), CreateNode("/World/B"), CreateNode("/World/Z")],
+            ["first error", "middle error", "last error"]));
+        await Assert.That(left).IsNotEqualTo(new PcpPrimIndex(
+            [CreateNode("/World/A"), CreateNode("/World/B"), CreateNode("/World/C")],
+            ["other error", "middle error", "last error"]));
+        await Assert.That(left).IsNotEqualTo(new PcpPrimIndex(
+            [CreateNode("/World/A"), CreateNode("/World/B"), CreateNode("/World/C")],
+            ["first error", "other error", "last error"]));
+        await Assert.That(left).IsNotEqualTo(new PcpPrimIndex(
+            [CreateNode("/World/A"), CreateNode("/World/B"), CreateNode("/World/C")],
+            ["first error", "middle error", "other error"]));
 
-        // Same caveat as the prim-index node: Sites is compared by reference,
-        // so an identical error rebuilt from a separate list is not equal.
-        var separateList = new UsdValidationError(
-            severity, "StageMetadataChecker", "MissingDefaultPrim", "no default prim", ["/"]);
-        await Assert.That(left).IsNotEqualTo(separateList);
+        await Assert.That(left.ToString()).Contains("Errors = [first error, middle error, last error]");
+        await Assert.That(left.Nodes.Count).IsEqualTo(3);
+        await Assert.That(left.Errors.Count).IsEqualTo(3);
     }
 
     [Test]
-    public async Task ValidatorInfoCarriesKeywordsAndSchemaTypesSeparately()
+    public async Task ValidationErrorsCompareSitesByValue()
     {
-        var info = new UsdValidationValidatorInfo(
+        UsdValidationSeverity severity = Enum.GetValues<UsdValidationSeverity>()[0];
+        var left = new UsdValidationError(
+            severity, "StageMetadataChecker", "MissingDefaultPrim", "no default prim", ["/A", "/B", "/C"]);
+        var right = new UsdValidationError(
+            severity, "StageMetadataChecker", "MissingDefaultPrim", "no default prim", ["/A", "/B", "/C"]);
+
+        await Assert.That(left).IsEqualTo(right);
+        await Assert.That(left.GetHashCode()).IsEqualTo(right.GetHashCode());
+        await Assert.That(left).IsNotEqualTo(new UsdValidationError(
+            severity, "StageMetadataChecker", "MissingDefaultPrim", "no default prim", ["/Z", "/B", "/C"]));
+        await Assert.That(left).IsNotEqualTo(new UsdValidationError(
+            severity, "StageMetadataChecker", "MissingDefaultPrim", "no default prim", ["/A", "/Z", "/C"]));
+        await Assert.That(left).IsNotEqualTo(new UsdValidationError(
+            severity, "StageMetadataChecker", "MissingDefaultPrim", "no default prim", ["/A", "/B", "/Z"]));
+        await Assert.That(left.ToString()).Contains("Sites = [/A, /B, /C]");
+        await Assert.That(left.Severity).IsEqualTo(severity);
+        await Assert.That(left.Sites.Count).IsEqualTo(3);
+    }
+
+    [Test]
+    public async Task ValidatorInfoComparesKeywordAndSchemaSequencesByValue()
+    {
+        var left = new UsdValidationValidatorInfo(
             "StageMetadataChecker",
             "Checks stage metadata.",
             "usdValidation",
-            ["metadata", "stage"],
-            ["UsdStage"],
+            ["metadata", "stage", "root"],
+            ["UsdStage", "UsdPrim", "UsdProperty"],
+            IsSuite: false,
+            IsTimeDependent: false);
+        var right = new UsdValidationValidatorInfo(
+            "StageMetadataChecker",
+            "Checks stage metadata.",
+            "usdValidation",
+            ["metadata", "stage", "root"],
+            ["UsdStage", "UsdPrim", "UsdProperty"],
             IsSuite: false,
             IsTimeDependent: false);
 
-        await Assert.That(info.Keywords.Count).IsEqualTo(2);
-        await Assert.That(info.SchemaTypes.Count).IsEqualTo(1);
-        await Assert.That(info.Keywords[1]).IsEqualTo("stage");
-        await Assert.That(info.IsSuite).IsFalse();
+        await Assert.That(left).IsEqualTo(right);
+        await Assert.That(left.GetHashCode()).IsEqualTo(right.GetHashCode());
+        await Assert.That(left).IsNotEqualTo(left with { Keywords = ["other", "stage", "root"] });
+        await Assert.That(left).IsNotEqualTo(left with { Keywords = ["metadata", "other", "root"] });
+        await Assert.That(left).IsNotEqualTo(left with { Keywords = ["metadata", "stage", "other"] });
+        await Assert.That(left).IsNotEqualTo(left with { SchemaTypes = ["Other", "UsdPrim", "UsdProperty"] });
+        await Assert.That(left).IsNotEqualTo(left with { SchemaTypes = ["UsdStage", "Other", "UsdProperty"] });
+        await Assert.That(left).IsNotEqualTo(left with { SchemaTypes = ["UsdStage", "UsdPrim", "Other"] });
+        await Assert.That(left.ToString()).Contains("Keywords = [metadata, stage, root]");
+        await Assert.That(left.ToString()).Contains("SchemaTypes = [UsdStage, UsdPrim, UsdProperty]");
+        await Assert.That(left.IsSuite).IsFalse();
+    }
+
+    [Test]
+    public async Task SkelJointInfluencesCompareArraysByValue()
+    {
+        var left = new UsdSkelJointInfluences([1, 2, 3], [0.25F, 0.5F, 0.75F], 3, UsdSkelInterpolation.Vertex);
+        var right = new UsdSkelJointInfluences([1, 2, 3], [0.25F, 0.5F, 0.75F], 3, UsdSkelInterpolation.Vertex);
+
+        await Assert.That(left).IsEqualTo(right);
+        await Assert.That(left.GetHashCode()).IsEqualTo(right.GetHashCode());
+        await Assert.That(left).IsNotEqualTo(left with { JointIndices = [9, 2, 3] });
+        await Assert.That(left).IsNotEqualTo(left with { JointIndices = [1, 9, 3] });
+        await Assert.That(left).IsNotEqualTo(left with { JointIndices = [1, 2, 9] });
+        await Assert.That(left).IsNotEqualTo(left with { JointWeights = [9F, 0.5F, 0.75F] });
+        await Assert.That(left).IsNotEqualTo(left with { JointWeights = [0.25F, 9F, 0.75F] });
+        await Assert.That(left).IsNotEqualTo(left with { JointWeights = [0.25F, 0.5F, 9F] });
+        await Assert.That(left.ToString()).Contains("JointIndices = [1, 2, 3]");
+        await Assert.That(left.ToString()).Contains("JointWeights = [0.25, 0.5, 0.75]");
     }
 
     [Test]

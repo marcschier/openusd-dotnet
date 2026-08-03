@@ -10,7 +10,7 @@ namespace OpenUsd.Tests;
 public sealed class DetachedValueTypeCoverageTests
 {
     [Test]
-    public async Task JointInfluencesPreserveArrayIdentityAndRecordValues()
+    public async Task JointInfluencesPreserveArrayIdentityAndCompareByValue()
     {
         int[] indices = [0, 4, 7, 9];
         float[] weights = [0.1f, 0.2f, 0.3f, 0.4f];
@@ -35,8 +35,9 @@ public sealed class DetachedValueTypeCoverageTests
         await Assert.That(value.ElementSize).IsEqualTo(2);
         await Assert.That(value.Interpolation).IsEqualTo(UsdSkelInterpolation.Vertex);
         await Assert.That(value).IsEqualTo(same);
-        await Assert.That(value).IsNotEqualTo(clonedArrays);
+        await Assert.That(value).IsEqualTo(clonedArrays);
         await Assert.That(value.GetHashCode()).IsEqualTo(same.GetHashCode());
+        await Assert.That(value.GetHashCode()).IsEqualTo(clonedArrays.GetHashCode());
     }
 
     [Test]
