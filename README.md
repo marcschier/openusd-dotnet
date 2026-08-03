@@ -39,8 +39,9 @@ Keep every `OpenUsd*` package at the same version, and add the matching
 - **A managed Hydra renderer** over D3D12, Vulkan, and Metal covering materials, textures, `UsdLux`
   lighting, point instancing, curves, points, draw modes, clip planes, `UsdSkel` skinning, and
   time-varying values.
-- **Measured parity with Storm** on 19 hard-gated curated scenes at exactly `1.000000` adjusted IoU,
-  with every uncovered feature named rather than implied.
+- **Measured parity with Storm** on 19 hard-gated curated scenes at exactly `1.000000` adjusted IoU
+  for D3D12 WARP and Vulkan SwiftShader; the render workflow also attempts the same curated capture
+  on macOS CGL/Metal, but that path remains pending hosted proof until a run records it.
 - **Cross-platform packaging gates** for `win-x64`, `linux-x64`, and `osx-arm64`.
 - **NativeAOT and trimming analyzers** across production libraries targeting .NET 8, 9, and 10.
 
