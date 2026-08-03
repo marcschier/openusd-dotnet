@@ -1318,11 +1318,6 @@ internal static partial class Program
             Console.WriteLine("World bounds passed.");
             CompositionEnumerationProbe.Run(directory);
             Console.WriteLine("Composition enumeration passed.");
-            RunPcpTsValidationProbe(directory);
-            Console.WriteLine("Pcp, Ts, and UsdValidation passed.");
-            RunUsdPhysicsProbe(directory);
-            Console.WriteLine("UsdPhysics facade passed.");
-
             string usdShadePath = Path.Combine(directory, "usdshade-authored.usda");
             File.Delete(usdShadePath);
             var textureAsset = new UsdAssetPath("textures/albédo.png");

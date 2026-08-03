@@ -92,7 +92,8 @@ jobs:
                   $_.BaseName.EndsWith(
                     '.Tests',
                     [StringComparison]::Ordinal) -and
-                  $_.BaseName -cne 'OpenUsd.Rendering.ConformanceTests'
+                  $_.BaseName -cne 'OpenUsd.Rendering.ConformanceTests' -and
+                  $_.BaseName -cne 'OpenUsd.NativeCoverage.Tests'
                 } |
                 Select-Object -ExpandProperty FullName
             )
@@ -183,14 +184,58 @@ jobs:
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 10.0.301
-      - name: Build coverage test
-        run: >
-          dotnet build tests/OpenUsd.Tests/OpenUsd.Tests.csproj
-          -c Release -f net10.0
-      - name: Test with coverage
+      - name: Install native runtime prerequisites
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y
+          build-essential clang cmake ninja-build pkg-config
+          libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxcursor-dev
+          libxi-dev libxinerama-dev libxrandr-dev libxt-dev libxtst-dev
+          zlib1g-dev
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: openusd-cache
+        with:
+          path: |
+            native/install/linux-x64
+            native/install/vulkan-sdk-1.4.321.0
+          key: >-
+            openusd-install-linux-x64-${{ hashFiles(
+              'eng/openusd.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1'
+            ) }}
+      - name: Verify OpenUSD install cache
+        if: steps.openusd-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Coverage needs the verified linux-x64 OpenUSD install cache produced by .github/workflows/native.yml."
+          echo "The expensive cache is keyed by eng/openusd.lock.json and the native fetch/build scripts."
+          echo "If eng/openusd.lock.json changed, run the native artifact pipeline before the coverage gate."
+          exit 1
+      - name: Build current native shim
         shell: pwsh
         run: |
-          $results = Join-Path $PWD 'TestResults'
+          $env:OPENUSD_ROOT = Join-Path $PWD 'native/install/linux-x64'
+          $env:VULKAN_SDK = Join-Path $PWD 'native/install/vulkan-sdk-1.4.321.0'
+          Push-Location native
+          try {
+            cmake --preset linux-x64
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cmake --build --preset linux-x64
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cmake --install build/shim/linux-x64 --prefix install/shim/linux-x64
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+      - name: Build coverage tests
+        run: |
+          dotnet build tests/OpenUsd.Tests/OpenUsd.Tests.csproj -c Release -f net10.0
+          dotnet build tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj -c Release -f net10.0
+      - name: Test managed-only coverage
+        shell: pwsh
+        run: |
+          $results = Join-Path $PWD 'TestResults/managed'
           ./eng/run-managed-tests.ps1 `
             -Project tests/OpenUsd.Tests/OpenUsd.Tests.csproj `
             -Framework net10.0 `
@@ -200,7 +245,28 @@ jobs:
               '--coverage',
               '--coverage-settings', (Join-Path $PWD 'eng/coverage.config'),
               '--coverage-output-format', 'cobertura',
-              '--coverage-output', 'coverage.cobertura.xml')
+              '--coverage-output', 'coverage.managed.cobertura.xml')
+      - name: Test native-backed coverage
+        shell: pwsh
+        run: |
+          $results = Join-Path $PWD 'TestResults/native'
+          ./eng/run-native-managed-tests.ps1 `
+            -Project tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj `
+            -Framework net10.0 `
+            -Rid linux-x64 `
+            -Configuration Release `
+            -TestArguments @(
+              '--results-directory', $results,
+              '--coverage',
+              '--coverage-settings', (Join-Path $PWD 'eng/coverage.config'),
+              '--coverage-output-format', 'cobertura',
+              '--coverage-output', 'coverage.native.cobertura.xml')
+      - name: Merge coverage
+        shell: pwsh
+        run: >
+          ./eng/merge-cobertura-line-coverage.ps1
+          -CoverageFile TestResults/managed/coverage.managed.cobertura.xml,TestResults/native/coverage.native.cobertura.xml
+          -OutputPath TestResults/coverage.cobertura.xml
       - name: Enforce coverage threshold
         shell: pwsh
         run: >
