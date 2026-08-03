@@ -1948,4 +1948,3 @@ OpenUsd.UI.UsdUINodeGraphNode.NodeSize.get -> OpenUsd.UsdVec2f
 OpenUsd.UI.UsdUINodeGraphNode.NodeSize.set -> void
 OpenUsd.UI.UsdUINodeGraphNode.Position.get -> OpenUsd.UsdVec2f
 OpenUsd.UI.UsdUINodeGraphNode.Position.set -> void
-
