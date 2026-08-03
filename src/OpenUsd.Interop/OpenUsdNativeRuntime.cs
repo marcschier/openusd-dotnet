@@ -3000,6 +3000,111 @@ public static unsafe partial class OpenUsdNativeRuntime
             offsets);
     }
 
+    internal static OpenUsdNativePcpPrimIndex GetPcpPrimIndex(
+        OpenUsdNativeStage stage,
+        string primPath)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        using var lease = new SafeHandleLease(stage);
+        var view = new NativePcpPrimIndexView
+        {
+            StructSize = (uint)sizeof(NativePcpPrimIndexView),
+            Version = 1
+        };
+        nint list = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.PcpGetPrimIndex(
+                lease.Handle,
+                primPath,
+                out list,
+                ref view,
+                ref error);
+            if (status != OpenUsdNativeStatus.Ok && list != 0)
+            {
+                NativeMethods.PcpPrimIndexListRelease(list);
+                list = 0;
+            }
+            ThrowIfFailed(status, errorBytes, error);
+        }
+
+        try
+        {
+            return DecodePcpPrimIndexView(view);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.PcpPrimIndexListRelease(list);
+            }
+        }
+    }
+
+    private static OpenUsdNativePcpPrimIndex DecodePcpPrimIndexView(NativePcpPrimIndexView view)
+    {
+        if (view.Version != 1 || view.StructSize < sizeof(NativePcpPrimIndexView) ||
+            view.NodesSize != view.NodeCount * (nuint)sizeof(OpenUsdNativePcpNodeRecord) ||
+            view.OffsetsSize != view.StringCount * (nuint)sizeof(nuint) ||
+            view.DataSize > int.MaxValue || view.NodeCount > int.MaxValue ||
+            view.StringCount > int.MaxValue || view.ErrorOffset > view.StringCount ||
+            view.ErrorCount > view.StringCount - view.ErrorOffset)
+        {
+            throw new OpenUsdNativeException(
+                OpenUsdNativeStatus.NativeError,
+                "The native runtime returned an invalid Pcp prim-index buffer.");
+        }
+        if (view.NodeCount == 0)
+        {
+            return new OpenUsdNativePcpPrimIndex([], []);
+        }
+
+        var records = new ReadOnlySpan<OpenUsdNativePcpNodeRecord>(view.Nodes, (int)view.NodeCount);
+        string[] strings = NativePackedStringListDecoder.Decode(
+            new ReadOnlySpan<byte>(view.Data, (int)view.DataSize),
+            new ReadOnlySpan<nuint>(view.Offsets, (int)view.StringCount),
+            "Pcp prim-index buffer");
+        var nodes = new OpenUsdNativePcpNode[records.Length];
+        for (int i = 0; i < records.Length; i++)
+        {
+            OpenUsdNativePcpNodeRecord record = records[i];
+            if (record.StringCount != 5 ||
+                record.StringOffset > (nuint)strings.Length ||
+                record.StringCount > (nuint)strings.Length - record.StringOffset ||
+                record.LayerOffset > (nuint)strings.Length ||
+                record.LayerCount > (nuint)strings.Length - record.LayerOffset)
+            {
+                throw new OpenUsdNativeException(
+                    OpenUsdNativeStatus.NativeError,
+                    "The native runtime returned an invalid Pcp node string range.");
+            }
+            int field = (int)record.StringOffset;
+            string[] layers = strings[(int)record.LayerOffset..(int)(record.LayerOffset + record.LayerCount)];
+            nodes[i] = new OpenUsdNativePcpNode(
+                record.ParentIndex,
+                record.ArcType,
+                record.IsCulled != 0,
+                record.IsInert != 0,
+                record.IsDueToAncestor != 0,
+                record.HasSpecs != 0,
+                record.CanContributeSpecs != 0,
+                record.NamespaceDepth,
+                record.DepthBelowIntroduction,
+                record.SiblingIndexAtOrigin,
+                strings[field],
+                strings[field + 1],
+                strings[field + 2],
+                strings[field + 3],
+                strings[field + 4],
+                layers);
+        }
+        string[] errors = strings[(int)view.ErrorOffset..(int)(view.ErrorOffset + view.ErrorCount)];
+        return new OpenUsdNativePcpPrimIndex(nodes, errors);
+    }
+
     internal static void AddInherit(
         OpenUsdNativeStage stage,
         string primPath,
@@ -4000,6 +4105,324 @@ public static unsafe partial class OpenUsdNativeRuntime
             list = 0;
         }
         ThrowIfFailed(status, errorBytes, error);
+    }
+
+    internal static nint CreateTsSpline()
+    {
+        nint spline = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.TsSplineCreate(out spline, ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+        return spline;
+    }
+
+    internal static void ReleaseTsSpline(nint spline) => NativeMethods.TsSplineRelease(spline);
+
+    internal static void SetTsSplineData(nint spline, OpenUsdNativeTsSplineData data)
+    {
+        ArgumentNullException.ThrowIfNull(data.Knots);
+        var view = new NativeTsSplineDataView
+        {
+            StructSize = (uint)sizeof(NativeTsSplineDataView),
+            Version = 1,
+            CurveType = data.CurveType,
+            IsTimeValued = data.IsTimeValued ? 1 : 0,
+            PreExtrapolation = new NativeTsExtrapolationRecord
+            {
+                Mode = data.PreExtrapolation.Mode,
+                Slope = data.PreExtrapolation.Slope
+            },
+            PostExtrapolation = new NativeTsExtrapolationRecord
+            {
+                Mode = data.PostExtrapolation.Mode,
+                Slope = data.PostExtrapolation.Slope
+            },
+            KnotsSize = (nuint)(data.Knots.Length * sizeof(OpenUsdNativeTsKnotRecord)),
+            KnotCount = (nuint)data.Knots.Length
+        };
+        fixed (OpenUsdNativeTsKnotRecord* knots = data.Knots)
+        {
+            view.Knots = knots;
+            Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+            fixed (byte* errorPointer = errorBytes)
+            {
+                var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+                OpenUsdNativeStatus status = NativeMethods.TsSplineSetData(spline, ref view, ref error);
+                ThrowIfFailed(status, errorBytes, error);
+            }
+        }
+    }
+
+    internal static OpenUsdNativeTsSplineData GetTsSplineData(nint spline)
+    {
+        var view = new NativeTsSplineDataView
+        {
+            StructSize = (uint)sizeof(NativeTsSplineDataView),
+            Version = 1
+        };
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.TsSplineGetData(spline, ref view, ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+        if (view.KnotsSize != view.KnotCount * (nuint)sizeof(OpenUsdNativeTsKnotRecord) ||
+            view.KnotCount > int.MaxValue)
+        {
+            throw new OpenUsdNativeException(
+                OpenUsdNativeStatus.NativeError,
+                "The native runtime returned an invalid Ts knot buffer.");
+        }
+        var knots = new OpenUsdNativeTsKnotRecord[(int)view.KnotCount];
+        new ReadOnlySpan<OpenUsdNativeTsKnotRecord>(view.Knots, knots.Length).CopyTo(knots);
+        return new OpenUsdNativeTsSplineData(
+            view.CurveType,
+            view.IsTimeValued != 0,
+            new OpenUsdNativeTsExtrapolation(
+                view.PreExtrapolation.Mode,
+                view.PreExtrapolation.Slope),
+            new OpenUsdNativeTsExtrapolation(
+                view.PostExtrapolation.Mode,
+                view.PostExtrapolation.Slope),
+            knots);
+    }
+
+    internal static double? EvalTsSpline(nint spline, double time)
+    {
+        double value;
+        int hasValue;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.TsSplineEval(
+                spline,
+                time,
+                out value,
+                out hasValue,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+        return hasValue == 0 ? null : value;
+    }
+
+    internal static OpenUsdNativeValidationMetadata[] GetValidationMetadata()
+    {
+        var view = new NativeValidationMetadataView
+        {
+            StructSize = (uint)sizeof(NativeValidationMetadataView),
+            Version = 1
+        };
+        nint list = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.ValidationGetRegisteredValidators(
+                out list,
+                ref view,
+                ref error);
+            if (status != OpenUsdNativeStatus.Ok && list != 0)
+            {
+                NativeMethods.ValidationMetadataListRelease(list);
+                list = 0;
+            }
+            ThrowIfFailed(status, errorBytes, error);
+        }
+        try
+        {
+            return DecodeValidationMetadata(view);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.ValidationMetadataListRelease(list);
+            }
+        }
+    }
+
+    internal static OpenUsdNativeValidationError[] ValidateStage(OpenUsdNativeStage stage)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        using var lease = new SafeHandleLease(stage);
+        return ValidateCore(
+            static (nint handle, ref NativeValidationErrorView view, ref NativeErrorBuffer error, out nint list) =>
+                NativeMethods.ValidationValidateStage(handle, out list, ref view, ref error),
+            lease.Handle);
+    }
+
+    internal static OpenUsdNativeValidationError[] ValidatePrim(
+        OpenUsdNativeStage stage,
+        string primPath)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        using var lease = new SafeHandleLease(stage);
+        var view = new NativeValidationErrorView
+        {
+            StructSize = (uint)sizeof(NativeValidationErrorView),
+            Version = 1
+        };
+        nint list = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.ValidationValidatePrim(
+                lease.Handle,
+                primPath,
+                out list,
+                ref view,
+                ref error);
+            if (status != OpenUsdNativeStatus.Ok && list != 0)
+            {
+                NativeMethods.ValidationErrorListRelease(list);
+                list = 0;
+            }
+            ThrowIfFailed(status, errorBytes, error);
+        }
+        try
+        {
+            return DecodeValidationErrors(view);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.ValidationErrorListRelease(list);
+            }
+        }
+    }
+
+    private delegate OpenUsdNativeStatus ValidationStageInvoker(
+        nint handle,
+        ref NativeValidationErrorView view,
+        ref NativeErrorBuffer error,
+        out nint list);
+
+    private static OpenUsdNativeValidationError[] ValidateCore(
+        ValidationStageInvoker invoker,
+        nint handle)
+    {
+        var view = new NativeValidationErrorView
+        {
+            StructSize = (uint)sizeof(NativeValidationErrorView),
+            Version = 1
+        };
+        nint list = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = invoker(handle, ref view, ref error, out list);
+            if (status != OpenUsdNativeStatus.Ok && list != 0)
+            {
+                NativeMethods.ValidationErrorListRelease(list);
+                list = 0;
+            }
+            ThrowIfFailed(status, errorBytes, error);
+        }
+        try
+        {
+            return DecodeValidationErrors(view);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.ValidationErrorListRelease(list);
+            }
+        }
+    }
+
+    private static OpenUsdNativeValidationMetadata[] DecodeValidationMetadata(
+        NativeValidationMetadataView view)
+    {
+        if (view.Version != 1 || view.StructSize < sizeof(NativeValidationMetadataView) ||
+            view.RecordsSize != view.Count * (nuint)sizeof(OpenUsdNativeValidationMetadataRecord) ||
+            view.OffsetsSize != view.StringCount * (nuint)sizeof(nuint) ||
+            view.Count > int.MaxValue || view.StringCount > int.MaxValue ||
+            view.DataSize > int.MaxValue)
+        {
+            throw new OpenUsdNativeException(
+                OpenUsdNativeStatus.NativeError,
+                "The native runtime returned an invalid validation metadata buffer.");
+        }
+        var records = new ReadOnlySpan<OpenUsdNativeValidationMetadataRecord>(
+            view.Records,
+            (int)view.Count);
+        string[] strings = NativePackedStringListDecoder.Decode(
+            new ReadOnlySpan<byte>(view.Data, (int)view.DataSize),
+            new ReadOnlySpan<nuint>(view.Offsets, (int)view.StringCount),
+            "validation metadata buffer");
+        var result = new OpenUsdNativeValidationMetadata[records.Length];
+        for (int index = 0; index < records.Length; index++)
+        {
+            OpenUsdNativeValidationMetadataRecord record = records[index];
+            if (record.StringCount != 3)
+            {
+                throw new OpenUsdNativeException(
+                    OpenUsdNativeStatus.NativeError,
+                    "The native runtime returned invalid validation metadata fields.");
+            }
+            int field = (int)record.StringOffset;
+            result[index] = new OpenUsdNativeValidationMetadata(
+                strings[field],
+                strings[field + 1],
+                strings[field + 2],
+                strings[(int)record.KeywordOffset..(int)(record.KeywordOffset + record.KeywordCount)],
+                strings[(int)record.SchemaTypeOffset..(int)(record.SchemaTypeOffset + record.SchemaTypeCount)],
+                record.IsSuite != 0,
+                record.IsTimeDependent != 0);
+        }
+        return result;
+    }
+
+    private static OpenUsdNativeValidationError[] DecodeValidationErrors(
+        NativeValidationErrorView view)
+    {
+        if (view.Version != 1 || view.StructSize < sizeof(NativeValidationErrorView) ||
+            view.RecordsSize != view.Count * (nuint)sizeof(OpenUsdNativeValidationErrorRecord) ||
+            view.OffsetsSize != view.StringCount * (nuint)sizeof(nuint) ||
+            view.Count > int.MaxValue || view.StringCount > int.MaxValue ||
+            view.DataSize > int.MaxValue)
+        {
+            throw new OpenUsdNativeException(
+                OpenUsdNativeStatus.NativeError,
+                "The native runtime returned an invalid validation error buffer.");
+        }
+        var records = new ReadOnlySpan<OpenUsdNativeValidationErrorRecord>(
+            view.Records,
+            (int)view.Count);
+        string[] strings = NativePackedStringListDecoder.Decode(
+            new ReadOnlySpan<byte>(view.Data, (int)view.DataSize),
+            new ReadOnlySpan<nuint>(view.Offsets, (int)view.StringCount),
+            "validation error buffer");
+        var result = new OpenUsdNativeValidationError[records.Length];
+        for (int index = 0; index < records.Length; index++)
+        {
+            OpenUsdNativeValidationErrorRecord record = records[index];
+            if (record.StringCount != 3)
+            {
+                throw new OpenUsdNativeException(
+                    OpenUsdNativeStatus.NativeError,
+                    "The native runtime returned invalid validation error fields.");
+            }
+            int field = (int)record.StringOffset;
+            result[index] = new OpenUsdNativeValidationError(
+                record.Severity,
+                strings[field],
+                strings[field + 1],
+                strings[field + 2],
+                strings[(int)record.SiteOffset..(int)(record.SiteOffset + record.SiteCount)]);
+        }
+        return result;
     }
 
     private static OpenUsdNativeException CreateNativeException(

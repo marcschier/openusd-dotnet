@@ -425,6 +425,37 @@ public readonly struct UsdPrim : IUsdStageBound
         return Array.AsReadOnly(arcs);
     }
 
+    /// <summary>Computes and returns a detached Pcp prim-index inspection snapshot.</summary>
+    public PcpPrimIndex GetPrimIndex()
+    {
+        OpenUsd.Interop.OpenUsdNativePcpPrimIndex nativeIndex = Stage.Native.GetPcpPrimIndex(Path);
+        var nodes = new PcpPrimIndexNode[nativeIndex.Nodes.Length];
+        for (int index = 0; index < nodes.Length; index++)
+        {
+            OpenUsd.Interop.OpenUsdNativePcpNode node = nativeIndex.Nodes[index];
+            nodes[index] = new PcpPrimIndexNode(
+                node.ParentIndex,
+                (PcpArcType)node.ArcType,
+                node.IsCulled,
+                node.IsInert,
+                node.IsDueToAncestor,
+                node.HasSpecs,
+                node.CanContributeSpecs,
+                node.NamespaceDepth,
+                node.DepthBelowIntroduction,
+                node.SiblingIndexAtOrigin,
+                node.SitePath,
+                node.IntroPath,
+                node.PathAtIntroduction,
+                node.PathAtOriginRootIntroduction,
+                node.LayerStackIdentifier,
+                Array.AsReadOnly(node.LayerIdentifiers));
+        }
+        return new PcpPrimIndex(
+            Array.AsReadOnly(nodes),
+            Array.AsReadOnly(nativeIndex.Errors));
+    }
+
     /// <summary>Adds an inherit arc to an existing absolute prim path.</summary>
     public void AddInherit(string inheritedPrimPath)
     {
@@ -517,7 +548,7 @@ public readonly struct UsdPrim : IUsdStageBound
     /// <summary>Clears an entry from this prim's customData dictionary.</summary>
     public void ClearMetadata(string key) => Stage.Native.ClearMetadata(Path, key);
 
-    private UsdStage Stage =>
+    internal UsdStage Stage =>
         _stage ?? throw new InvalidOperationException("The prim is not attached to a stage.");
 
     internal UsdStage OwningStage => Stage;

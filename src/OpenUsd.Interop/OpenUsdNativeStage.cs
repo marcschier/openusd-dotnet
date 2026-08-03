@@ -624,6 +624,15 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     internal OpenUsdNativePayloadArc[] GetComposedPayloadArcs(string primPath) =>
         OpenUsdNativeRuntime.GetComposedPayloadArcs(this, primPath);
 
+    internal OpenUsdNativePcpPrimIndex GetPcpPrimIndex(string primPath) =>
+        OpenUsdNativeRuntime.GetPcpPrimIndex(this, primPath);
+
+    internal OpenUsdNativeValidationError[] ValidateStage() =>
+        OpenUsdNativeRuntime.ValidateStage(this);
+
+    internal OpenUsdNativeValidationError[] ValidatePrim(string primPath) =>
+        OpenUsdNativeRuntime.ValidatePrim(this, primPath);
+
     /// <summary>Adds an inherit arc to an existing prim path.</summary>
     public void AddInherit(string primPath, string inheritedPrimPath) =>
         OpenUsdNativeRuntime.AddInherit(this, primPath, inheritedPrimPath);

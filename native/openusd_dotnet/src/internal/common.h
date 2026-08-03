@@ -216,7 +216,7 @@ struct openusd_payload_arc_list
 
 namespace
 {
-constexpr uint32_t DataAbiVersion = 8;
+constexpr uint32_t DataAbiVersion = 9;
 constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_STRING_LIST_V2 |
     OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -226,7 +226,10 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_VARIANT_SET_NAMES |
     OPENUSD_CAPABILITY_COMPOSED_DIRECT_PAYLOAD_ARCS |
     OPENUSD_CAPABILITY_WORLD_TRANSFORM_QUERY |
-    OPENUSD_CAPABILITY_CAMERA_STATE_QUERY;
+    OPENUSD_CAPABILITY_CAMERA_STATE_QUERY |
+    OPENUSD_CAPABILITY_PCP_PRIM_INDEX_QUERY |
+    OPENUSD_CAPABILITY_TS_SPLINE_QUERY |
+    OPENUSD_CAPABILITY_USD_VALIDATION_QUERY;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));

@@ -8,10 +8,13 @@ set(OPENUSD_DOTNET_SOURCES
     src/diagnostics.cpp
     src/layer.cpp
     src/metadata.cpp
+    src/pcp.cpp
     src/relationship.cpp
     src/renderer_stage_bridge.cpp
     src/runtime.cpp
     src/stage.cpp
+    src/ts.cpp
+    src/validation.cpp
     src/usdGeom.cpp
     src/usdLux.cpp
     src/usdShade.cpp

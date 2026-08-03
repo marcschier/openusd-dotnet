@@ -42,6 +42,10 @@ typedef struct openusd_stage_access openusd_stage_access;
 typedef struct openusd_layer openusd_layer;
 typedef struct openusd_string_list openusd_string_list;
 typedef struct openusd_payload_arc_list openusd_payload_arc_list;
+typedef struct openusd_pcp_prim_index_list openusd_pcp_prim_index_list;
+typedef struct openusd_ts_spline openusd_ts_spline;
+typedef struct openusd_validation_metadata_list openusd_validation_metadata_list;
+typedef struct openusd_validation_error_list openusd_validation_error_list;
 
 typedef struct openusd_string_list_view
 {
@@ -71,6 +75,182 @@ typedef struct openusd_payload_arc_list_view
     size_t count;
 } openusd_payload_arc_list_view;
 
+/* Pcp prim-index inspection: nodes are strong-to-weak Pcp node records. */
+#define OPENUSD_PCP_PRIM_INDEX_VIEW_VERSION 1u
+typedef enum openusd_pcp_arc_type
+{
+    OPENUSD_PCP_ARC_ROOT = 0,
+    OPENUSD_PCP_ARC_INHERIT = 1,
+    OPENUSD_PCP_ARC_VARIANT = 2,
+    OPENUSD_PCP_ARC_RELOCATE = 3,
+    OPENUSD_PCP_ARC_REFERENCE = 4,
+    OPENUSD_PCP_ARC_PAYLOAD = 5,
+    OPENUSD_PCP_ARC_SPECIALIZE = 6
+} openusd_pcp_arc_type;
+
+typedef struct openusd_pcp_node_record
+{
+    int32_t parent_index;
+    int32_t arc_type;
+    int32_t is_culled;
+    int32_t is_inert;
+    int32_t is_due_to_ancestor;
+    int32_t has_specs;
+    int32_t can_contribute_specs;
+    int32_t namespace_depth;
+    int32_t depth_below_introduction;
+    int32_t sibling_index_at_origin;
+    size_t string_offset;
+    size_t string_count;
+    size_t layer_offset;
+    size_t layer_count;
+} openusd_pcp_node_record;
+
+typedef struct openusd_pcp_prim_index_view
+{
+    uint32_t struct_size;
+    uint32_t version;
+    const openusd_pcp_node_record* nodes;
+    size_t nodes_size;
+    size_t node_count;
+    const char* data;
+    size_t data_size;
+    const size_t* offsets;
+    size_t offsets_size;
+    size_t string_count;
+    size_t error_offset;
+    size_t error_count;
+} openusd_pcp_prim_index_view;
+
+/* Ts spline inspection/evaluation. This ABI is double-valued and bulk-knot based. */
+#define OPENUSD_TS_SPLINE_DATA_VIEW_VERSION 1u
+typedef enum openusd_ts_interp_mode
+{
+    OPENUSD_TS_INTERP_VALUE_BLOCK = 0,
+    OPENUSD_TS_INTERP_HELD = 1,
+    OPENUSD_TS_INTERP_LINEAR = 2,
+    OPENUSD_TS_INTERP_CURVE = 3
+} openusd_ts_interp_mode;
+
+typedef enum openusd_ts_curve_type
+{
+    OPENUSD_TS_CURVE_BEZIER = 0,
+    OPENUSD_TS_CURVE_HERMITE = 1
+} openusd_ts_curve_type;
+
+typedef enum openusd_ts_extrap_mode
+{
+    OPENUSD_TS_EXTRAP_VALUE_BLOCK = 0,
+    OPENUSD_TS_EXTRAP_HELD = 1,
+    OPENUSD_TS_EXTRAP_LINEAR = 2,
+    OPENUSD_TS_EXTRAP_SLOPED = 3,
+    OPENUSD_TS_EXTRAP_LOOP_REPEAT = 4,
+    OPENUSD_TS_EXTRAP_LOOP_RESET = 5,
+    OPENUSD_TS_EXTRAP_LOOP_OSCILLATE = 6
+} openusd_ts_extrap_mode;
+
+typedef enum openusd_ts_tangent_algorithm
+{
+    OPENUSD_TS_TANGENT_NONE = 0,
+    OPENUSD_TS_TANGENT_CUSTOM = 1,
+    OPENUSD_TS_TANGENT_AUTO_EASE = 2
+} openusd_ts_tangent_algorithm;
+
+#define OPENUSD_TS_KNOT_HAS_PRE_VALUE (UINT32_C(1) << 0)
+typedef struct openusd_ts_knot_record
+{
+    double time;
+    double value;
+    double pre_value;
+    double pre_tangent_width;
+    double pre_tangent_slope;
+    double post_tangent_width;
+    double post_tangent_slope;
+    int32_t next_interpolation;
+    int32_t pre_tangent_algorithm;
+    int32_t post_tangent_algorithm;
+    uint32_t flags;
+} openusd_ts_knot_record;
+
+typedef struct openusd_ts_extrapolation_record
+{
+    int32_t mode;
+    double slope;
+} openusd_ts_extrapolation_record;
+
+typedef struct openusd_ts_spline_data_view
+{
+    uint32_t struct_size;
+    uint32_t version;
+    int32_t curve_type;
+    int32_t is_time_valued;
+    openusd_ts_extrapolation_record pre_extrapolation;
+    openusd_ts_extrapolation_record post_extrapolation;
+    const openusd_ts_knot_record* knots;
+    size_t knots_size;
+    size_t knot_count;
+} openusd_ts_spline_data_view;
+
+/* UsdValidation registry/run results. */
+#define OPENUSD_VALIDATION_METADATA_VIEW_VERSION 1u
+typedef struct openusd_validation_metadata_record
+{
+    int32_t is_suite;
+    int32_t is_time_dependent;
+    size_t string_offset;
+    size_t string_count;
+    size_t keyword_offset;
+    size_t keyword_count;
+    size_t schema_type_offset;
+    size_t schema_type_count;
+} openusd_validation_metadata_record;
+
+typedef struct openusd_validation_metadata_view
+{
+    uint32_t struct_size;
+    uint32_t version;
+    const openusd_validation_metadata_record* records;
+    size_t records_size;
+    size_t count;
+    const char* data;
+    size_t data_size;
+    const size_t* offsets;
+    size_t offsets_size;
+    size_t string_count;
+} openusd_validation_metadata_view;
+
+#define OPENUSD_VALIDATION_ERROR_VIEW_VERSION 1u
+typedef enum openusd_validation_severity
+{
+    OPENUSD_VALIDATION_SEVERITY_NONE = 0,
+    OPENUSD_VALIDATION_SEVERITY_ERROR = 1,
+    OPENUSD_VALIDATION_SEVERITY_WARNING = 2,
+    OPENUSD_VALIDATION_SEVERITY_INFO = 3
+} openusd_validation_severity;
+
+typedef struct openusd_validation_error_record
+{
+    int32_t severity;
+    size_t string_offset;
+    size_t string_count;
+    size_t site_offset;
+    size_t site_count;
+} openusd_validation_error_record;
+
+typedef struct openusd_validation_error_view
+{
+    uint32_t struct_size;
+    uint32_t version;
+    const openusd_validation_error_record* records;
+    size_t records_size;
+    size_t count;
+    const char* data;
+    size_t data_size;
+    const size_t* offsets;
+    size_t offsets_size;
+    size_t string_count;
+} openusd_validation_error_view;
+
 #define OPENUSD_IMAGE_INFO_VERSION 1u
 typedef struct openusd_image_info
 {
@@ -89,6 +269,9 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_COMPOSED_DIRECT_PAYLOAD_ARCS (UINT64_C(1) << 6)
 #define OPENUSD_CAPABILITY_WORLD_TRANSFORM_QUERY (UINT64_C(1) << 7)
 #define OPENUSD_CAPABILITY_CAMERA_STATE_QUERY (UINT64_C(1) << 8)
+#define OPENUSD_CAPABILITY_PCP_PRIM_INDEX_QUERY (UINT64_C(1) << 9)
+#define OPENUSD_CAPABILITY_TS_SPLINE_QUERY (UINT64_C(1) << 10)
+#define OPENUSD_CAPABILITY_USD_VALIDATION_QUERY (UINT64_C(1) << 11)
 
 typedef struct openusd_vec3f
 {
@@ -1267,6 +1450,13 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_get_composed_payload_arcs(
     openusd_payload_arc_list_view* view,
     openusd_error_buffer* error);
 
+OPENUSD_DOTNET_API openusd_status openusd_pcp_get_prim_index(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_pcp_prim_index_list** list,
+    openusd_pcp_prim_index_view* view,
+    openusd_error_buffer* error);
+
 OPENUSD_DOTNET_API openusd_status openusd_stage_add_inherit(
     const openusd_stage* stage,
     const char* prim_path,
@@ -1909,6 +2099,45 @@ OPENUSD_DOTNET_API openusd_status openusd_skel_get_joint_influences(
 
 OPENUSD_DOTNET_API void openusd_string_list_release(openusd_string_list* list);
 OPENUSD_DOTNET_API void openusd_payload_arc_list_release(openusd_payload_arc_list* list);
+OPENUSD_DOTNET_API void openusd_pcp_prim_index_list_release(openusd_pcp_prim_index_list* list);
+
+OPENUSD_DOTNET_API openusd_status openusd_ts_spline_create(
+    openusd_ts_spline** spline,
+    openusd_error_buffer* error);
+OPENUSD_DOTNET_API void openusd_ts_spline_release(openusd_ts_spline* spline);
+OPENUSD_DOTNET_API openusd_status openusd_ts_spline_set_data(
+    openusd_ts_spline* spline,
+    const openusd_ts_spline_data_view* view,
+    openusd_error_buffer* error);
+OPENUSD_DOTNET_API openusd_status openusd_ts_spline_get_data(
+    const openusd_ts_spline* spline,
+    openusd_ts_spline_data_view* view,
+    openusd_error_buffer* error);
+OPENUSD_DOTNET_API openusd_status openusd_ts_spline_eval(
+    const openusd_ts_spline* spline,
+    double time,
+    double* value,
+    int32_t* has_value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_validation_get_registered_validators(
+    openusd_validation_metadata_list** list,
+    openusd_validation_metadata_view* view,
+    openusd_error_buffer* error);
+OPENUSD_DOTNET_API void openusd_validation_metadata_list_release(
+    openusd_validation_metadata_list* list);
+OPENUSD_DOTNET_API openusd_status openusd_validation_validate_stage(
+    const openusd_stage* stage,
+    openusd_validation_error_list** list,
+    openusd_validation_error_view* view,
+    openusd_error_buffer* error);
+OPENUSD_DOTNET_API openusd_status openusd_validation_validate_prim(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_validation_error_list** list,
+    openusd_validation_error_view* view,
+    openusd_error_buffer* error);
+OPENUSD_DOTNET_API void openusd_validation_error_list_release(openusd_validation_error_list* list);
 
 #ifdef __cplusplus
 }

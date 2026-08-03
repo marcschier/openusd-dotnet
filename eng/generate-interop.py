@@ -56,11 +56,19 @@ def map_parameter(declaration: str) -> tuple[str, str]:
                        "const openusd_stage_access*", "openusd_stage_access*",
                        "openusd_stage_access* const",
                        "const openusd_layer*", "openusd_layer*",
-                       "openusd_string_list*", "openusd_payload_arc_list*"}:
+                       "openusd_string_list*", "openusd_payload_arc_list*",
+                       "openusd_pcp_prim_index_list*", "openusd_ts_spline*",
+                       "const openusd_ts_spline*",
+                       "openusd_validation_metadata_list*",
+                       "openusd_validation_error_list*"}:
         return "nint", managed_name
     if native_type in {"openusd_stage**", "openusd_stage_access**",
                        "openusd_layer**", "openusd_string_list**",
-                       "openusd_payload_arc_list**"}:
+                       "openusd_payload_arc_list**",
+                       "openusd_pcp_prim_index_list**",
+                       "openusd_ts_spline**",
+                       "openusd_validation_metadata_list**",
+                       "openusd_validation_error_list**"}:
         return "out nint", managed_name
     if native_type == "openusd_error_buffer*":
         return "ref NativeErrorBuffer", managed_name
@@ -70,6 +78,16 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return "ref NativeStringListView", managed_name
     if native_type == "openusd_payload_arc_list_view*":
         return "ref NativePayloadArcListView", managed_name
+    if native_type == "openusd_pcp_prim_index_view*":
+        return "ref NativePcpPrimIndexView", managed_name
+    if native_type == "const openusd_ts_spline_data_view*":
+        return "ref NativeTsSplineDataView", managed_name
+    if native_type == "openusd_ts_spline_data_view*":
+        return "ref NativeTsSplineDataView", managed_name
+    if native_type == "openusd_validation_metadata_view*":
+        return "ref NativeValidationMetadataView", managed_name
+    if native_type == "openusd_validation_error_view*":
+        return "ref NativeValidationErrorView", managed_name
     if native_type == "const openusd_vec2f*":
         return ("OpenUsdNativeVec2f*" if native_name == "values"
                 else "ref OpenUsdNativeVec2f"), managed_name
@@ -141,6 +159,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return "float*", managed_name
     if native_type == "float*":
         return ("out float" if native_name == "value" else "float*"), managed_name
+    if native_type == "const openusd_ts_knot_record*":
+        return "OpenUsdNativeTsKnotRecord*", managed_name
     if native_type == "const uint8_t*":
         return "byte*", managed_name
     if native_type == "uint8_t*":
@@ -159,6 +179,12 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         "openusd_skel_animation_vec3_property",
         "openusd_skel_binding_relationship",
         "openusd_skel_interpolation",
+        "openusd_pcp_arc_type",
+        "openusd_ts_interp_mode",
+        "openusd_ts_curve_type",
+        "openusd_ts_extrap_mode",
+        "openusd_ts_tangent_algorithm",
+        "openusd_validation_severity",
     }
     if native_type in enum_types:
         return "int", managed_name
@@ -241,6 +267,74 @@ public static unsafe partial class OpenUsdNativeRuntime
         internal nuint* Offsets;
         internal nuint OffsetsSize;
         internal nuint Count;
+    }}
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePcpPrimIndexView
+    {{
+        internal uint StructSize;
+        internal uint Version;
+        internal OpenUsdNativePcpNodeRecord* Nodes;
+        internal nuint NodesSize;
+        internal nuint NodeCount;
+        internal byte* Data;
+        internal nuint DataSize;
+        internal nuint* Offsets;
+        internal nuint OffsetsSize;
+        internal nuint StringCount;
+        internal nuint ErrorOffset;
+        internal nuint ErrorCount;
+    }}
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeTsExtrapolationRecord
+    {{
+        internal int Mode;
+        internal double Slope;
+    }}
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeTsSplineDataView
+    {{
+        internal uint StructSize;
+        internal uint Version;
+        internal int CurveType;
+        internal int IsTimeValued;
+        internal NativeTsExtrapolationRecord PreExtrapolation;
+        internal NativeTsExtrapolationRecord PostExtrapolation;
+        internal OpenUsdNativeTsKnotRecord* Knots;
+        internal nuint KnotsSize;
+        internal nuint KnotCount;
+    }}
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeValidationMetadataView
+    {{
+        internal uint StructSize;
+        internal uint Version;
+        internal OpenUsdNativeValidationMetadataRecord* Records;
+        internal nuint RecordsSize;
+        internal nuint Count;
+        internal byte* Data;
+        internal nuint DataSize;
+        internal nuint* Offsets;
+        internal nuint OffsetsSize;
+        internal nuint StringCount;
+    }}
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeValidationErrorView
+    {{
+        internal uint StructSize;
+        internal uint Version;
+        internal OpenUsdNativeValidationErrorRecord* Records;
+        internal nuint RecordsSize;
+        internal nuint Count;
+        internal byte* Data;
+        internal nuint DataSize;
+        internal nuint* Offsets;
+        internal nuint OffsetsSize;
+        internal nuint StringCount;
     }}
 
     [StructLayout(LayoutKind.Sequential)]

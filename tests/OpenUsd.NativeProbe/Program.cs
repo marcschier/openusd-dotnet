@@ -8,7 +8,7 @@ using OpenUsd.Skel;
 
 namespace OpenUsd.NativeProbe;
 
-internal static class Program
+internal static partial class Program
 {
     public static async Task<int> Main(string[] args)
     {
@@ -1318,6 +1318,8 @@ internal static class Program
             Console.WriteLine("World bounds passed.");
             CompositionEnumerationProbe.Run(directory);
             Console.WriteLine("Composition enumeration passed.");
+            RunPcpTsValidationProbe(directory);
+            Console.WriteLine("Pcp, Ts, and UsdValidation passed.");
 
             string usdShadePath = Path.Combine(directory, "usdshade-authored.usda");
             File.Delete(usdShadePath);
