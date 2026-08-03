@@ -5,11 +5,11 @@ This repository is an independent .NET integration for OpenUSD. It is not affili
 
 The planned native runtime is built from Pixar OpenUSD, licensed under the Apache License 2.0. Third-party notices and exact source revisions will be generated from eng/openusd.lock.json before native runtime packages are published.
 
-The optional OpenUsd.Runtime.Cesium.<rid> packages are quarantined from the core runtime and are
-built from CesiumGS cesium-native v0.63.0, licensed under Apache-2.0. cesium-native's transitive
-vcpkg dependency set is pinned by eng/cesium.lock.json and the vcpkg baseline recorded there. The
-generated package notice file contains the full copyright and license texts. The locked dependency
-licenses are:
+The quarantined cesium-native build is separate from the core runtime and is built from CesiumGS
+cesium-native v0.63.0, licensed under Apache-2.0. cesium-native's transitive vcpkg dependency set is
+pinned by eng/cesium.lock.json and the vcpkg baseline recorded there. Packaging is deferred until a
+C ABI shim links cesium-native into a runtime shared library. Generated build notices contain the
+full copyright and license texts. The locked dependency licenses are:
 
 | Dependency | Version | License |
 | --- | --- | --- |

@@ -154,22 +154,6 @@ if (Test-Path $vcpkgHeaderRoot)
     Copy-Item (Join-Path $vcpkgHeaderRoot '*') (Join-Path $installRoot 'include') -Recurse -Force
 }
 
-$headerArchive = Join-Path $installRoot 'cesium-headers.tar.gz'
-Remove-Item $headerArchive -Force -ErrorAction SilentlyContinue
-Push-Location $installRoot
-try
-{
-    & tar -czf $headerArchive include
-    if ($LASTEXITCODE -ne 0)
-    {
-        throw 'Failed to create cesium-native header archive.'
-    }
-}
-finally
-{
-    Pop-Location
-}
-
 $noticePath = Join-Path $installRoot 'THIRD-PARTY-CESIUM.md'
 $noticeLines = @(
     '# cesium-native third-party notices',

@@ -51,12 +51,11 @@ that exact vcpkg commit under `native/.cache`, and bootstraps the tool from the 
 then resolves the manifest from that baseline plus cesium-native's overlay ports/triplets, so the
 resolved port versions and port git-tree hashes are reproducible in `vcpkg-manifest-install.log`.
 
-The build is intentionally opt-in and does not feed the Core or Imaging packages. cesium-native
-brings a much larger native surface than the lean OpenUSD runtime, including curl, OpenSSL, Draco,
-KTX, SQLite, Blend2D, asmjit, s2geometry/abseil, spdlog, meshoptimizer, WebP, zstd, and other
-support libraries. Keeping it in `native/install/cesium/<rid>` and
-`OpenUsd.Runtime.Cesium.<rid>` prevents a user who only needs USD authoring or rendering from
-receiving the Cesium dependency set.
+The build is intentionally quarantined and does not feed the Core or Imaging packages.
+cesium-native brings a much larger native surface than the lean OpenUSD runtime, including curl,
+OpenSSL, Draco, KTX, SQLite, Blend2D, asmjit, s2geometry/abseil, spdlog, meshoptimizer, WebP,
+zstd, and other support libraries. Keeping it in `native/install/cesium/<rid>` prevents a user who
+only needs USD authoring or rendering from receiving the Cesium dependency set.
 
 Inspect the locked Cesium plan:
 
@@ -71,21 +70,22 @@ Build and smoke-test the Windows install from an x64 developer shell:
 ```
 
 The install contains static libraries in `native/install/cesium/<rid>/lib`, expanded headers in
-`native/install/cesium/<rid>/include`, an archived copy of those headers for NuGet under
-`cesium-headers.tar.gz`, and generated third-party notices. The NuGet package carries the static
-libraries, CMake metadata, header archive, and notices under `OpenUsd.Runtime.Cesium.<rid>`; it is
-not referenced by Core or Imaging.
+`native/install/cesium/<rid>/include`, and generated third-party notices. These files are a
+build-time SDK for a later C ABI shim, not runtime assets. Packaging is deliberately deferred until
+that shim exists because the shipped artifact should be one linked shared library
+(`.dll`/`.so`/`.dylib`) that statically contains cesium-native, not hundreds of megabytes of `.lib`
+or `.a` files that consumers cannot load directly. Do not add `OpenUsd.Runtime.Cesium.<rid>`
+packages for the static libraries.
 
 The smoke probe is `native/cesium_probe`. It links against the installed `cesium-native` CMake
 package, parses an in-memory 3D Tiles `tileset.json` with `Cesium3DTilesReader::TilesetReader`, and
 fails unless the parsed asset version, top-level geometric error, and recursive tile count match the
 expected values. It is deliberately stronger than a load-only check.
 
-`cesium-native.yml` builds `win-x64`, `linux-x64`, and `osx-arm64`, runs the same probe, packs the
-opt-in runtime package, and records install/library/package byte counts for each RID. Local Windows
-verification measured `win-x64` at 1,012,407,536 install bytes, 984,482,970 library bytes, and a
-188,009,396 byte NuGet package. Linux and macOS sizes must come from CI because they cannot be
-verified on the Windows workstation.
+`cesium-native.yml` builds `win-x64`, `linux-x64`, and `osx-arm64`, runs the same probe, and records
+install/library byte counts for each RID. Local Windows verification measured `win-x64` at
+1,012,407,536 install bytes and 984,482,970 static-library bytes. Linux and macOS sizes must come
+from CI because they cannot be verified on the Windows workstation.
 
 ## Local build
 

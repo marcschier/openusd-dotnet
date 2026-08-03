@@ -10,8 +10,6 @@ on:
       - 'eng/fetch-cesium-native.ps1'
       - 'eng/build-cesium-native.ps1'
       - 'native/cesium_probe/**'
-      - 'src/OpenUsd.Runtime.Cesium.*/**'
-      - 'src/OpenUsd.Runtime.Packaging/OpenUsd.Runtime.Cesium.Packaging.targets'
   pull_request:
     branches: [ master, main ]
     paths:
@@ -20,8 +18,6 @@ on:
       - 'eng/fetch-cesium-native.ps1'
       - 'eng/build-cesium-native.ps1'
       - 'native/cesium_probe/**'
-      - 'src/OpenUsd.Runtime.Cesium.*/**'
-      - 'src/OpenUsd.Runtime.Packaging/OpenUsd.Runtime.Cesium.Packaging.targets'
 
 permissions:
   contents: read
@@ -90,13 +86,6 @@ jobs:
       - name: Build locked cesium-native
         shell: pwsh
         run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }}
-      - name: Pack opt-in Cesium runtime
-        shell: pwsh
-        run: >-
-          ./eng/pack-packages.ps1
-          -Scope cesium-runtime
-          -Rid ${{ matrix.rid }}
-          -OutputPath artifacts/cesium-nupkg
       - name: Report Cesium output sizes
         shell: pwsh
         run: |
@@ -104,16 +93,14 @@ jobs:
             Measure-Object Length -Sum
           $libraries = Get-ChildItem native/install/cesium/${{ matrix.rid }}/lib -Recurse -File |
             Measure-Object Length -Sum
-          $package = Get-ChildItem artifacts/cesium-nupkg/OpenUsd.Runtime.Cesium.${{ matrix.rid }}.*.nupkg |
-            Select-Object -First 1
           "install-bytes=$($install.Sum)" | Tee-Object -FilePath artifacts/cesium-size-${{ matrix.rid }}.txt
           "library-bytes=$($libraries.Sum)" | Tee-Object -FilePath artifacts/cesium-size-${{ matrix.rid }}.txt -Append
-          "package-bytes=$($package.Length)" | Tee-Object -FilePath artifacts/cesium-size-${{ matrix.rid }}.txt -Append
+          "package-bytes=deferred-until-c-abi-shim" |
+            Tee-Object -FilePath artifacts/cesium-size-${{ matrix.rid }}.txt -Append
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: openusd-runtime-cesium-${{ matrix.rid }}
+          name: openusd-cesium-native-size-${{ matrix.rid }}
           path: |
-            artifacts/cesium-nupkg/
             artifacts/cesium-size-${{ matrix.rid }}.txt
           if-no-files-found: error
           retention-days: 30

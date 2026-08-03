@@ -20,9 +20,6 @@ public sealed class PublicApiBaselineTests
 
     private static readonly string[] ExpectedRuntimeProjects =
     [
-        "OpenUsd.Runtime.Cesium.linux-x64",
-        "OpenUsd.Runtime.Cesium.osx-arm64",
-        "OpenUsd.Runtime.Cesium.win-x64",
         "OpenUsd.Runtime.Core.linux-x64",
         "OpenUsd.Runtime.Core.osx-arm64",
         "OpenUsd.Runtime.Core.win-x64",
