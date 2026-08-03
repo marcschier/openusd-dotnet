@@ -351,7 +351,7 @@ float4 FRAGMENT_ENTRY_POINT(
         float3 lightEye = lightIndex == 0u && !hasSceneLighting
             ? eye
             : sceneEye;
-        if (lightType == 2.0)
+        if (lightType >= 2.0)
         {
             float3 toLight = frame.lightPositionType[lightIndex].xyz - worldPosition;
             float distanceSquared = max(dot(toLight, toLight), SurfaceEpsilon);
@@ -384,10 +384,11 @@ float4 FRAGMENT_ENTRY_POINT(
                 normalDotEye,
                 normalDotHalf);
         }
-        float3 irradiance = lightColor * lightIntensity * SurfacePi;
+        float3 diffuseIrradiance = lightColor * lightIntensity * SurfacePi;
+        float3 specularIrradiance = lightColor * lightIntensity;
         color += occlusion * normalDotLight *
-            ((directDiffuse * diffuseScale) + (directSpecular * specularScale)) *
-            irradiance;
+            ((directDiffuse * diffuseScale * diffuseIrradiance) +
+            (directSpecular * specularScale * specularIrradiance));
     }
     color += emissiveColor;
     return float4(color, opacity);

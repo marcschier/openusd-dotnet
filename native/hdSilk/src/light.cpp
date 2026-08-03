@@ -91,6 +91,18 @@ HdSilkLight::Sync(
     {
         record.type = OPENUSD_SILK_LIGHT_SPHERE;
     }
+    else if (_typeId == HdPrimTypeTokens->rectLight)
+    {
+        record.type = OPENUSD_SILK_LIGHT_RECT;
+    }
+    else if (_typeId == HdPrimTypeTokens->diskLight)
+    {
+        record.type = OPENUSD_SILK_LIGHT_DISK;
+    }
+    else if (_typeId == HdPrimTypeTokens->cylinderLight)
+    {
+        record.type = OPENUSD_SILK_LIGHT_CYLINDER;
+    }
     else if (_typeId == HdPrimTypeTokens->domeLight)
     {
         record.ambientOnly = true;

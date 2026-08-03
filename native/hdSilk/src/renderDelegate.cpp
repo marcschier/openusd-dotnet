@@ -49,6 +49,9 @@ const TfTokenVector HdSilkRenderDelegate::SUPPORTED_SPRIM_TYPES =
     HdPrimTypeTokens->material,
     HdPrimTypeTokens->distantLight,
     HdPrimTypeTokens->sphereLight,
+    HdPrimTypeTokens->rectLight,
+    HdPrimTypeTokens->diskLight,
+    HdPrimTypeTokens->cylinderLight,
     HdPrimTypeTokens->domeLight,
 };
 
@@ -209,6 +212,9 @@ HdSilkRenderDelegate::CreateSprim(TfToken const& typeId, SdfPath const& sprimId)
     }
     if (typeId == HdPrimTypeTokens->distantLight ||
         typeId == HdPrimTypeTokens->sphereLight ||
+        typeId == HdPrimTypeTokens->rectLight ||
+        typeId == HdPrimTypeTokens->diskLight ||
+        typeId == HdPrimTypeTokens->cylinderLight ||
         typeId == HdPrimTypeTokens->domeLight)
     {
         return new HdSilkLight(sprimId, typeId);
@@ -230,6 +236,9 @@ HdSilkRenderDelegate::CreateFallbackSprim(TfToken const& typeId)
     }
     if (typeId == HdPrimTypeTokens->distantLight ||
         typeId == HdPrimTypeTokens->sphereLight ||
+        typeId == HdPrimTypeTokens->rectLight ||
+        typeId == HdPrimTypeTokens->diskLight ||
+        typeId == HdPrimTypeTokens->cylinderLight ||
         typeId == HdPrimTypeTokens->domeLight)
     {
         return new HdSilkLight(SdfPath::EmptyPath(), typeId);

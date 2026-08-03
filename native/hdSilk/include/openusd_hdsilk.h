@@ -127,9 +127,10 @@ extern "C" {
 /// instance-zero prototype geometry, material path and attributes.
 ///
 /// ABI v9 extends FRAME with a fixed light table. hdSilk currently publishes
-/// direct DistantLight and SphereLight entries plus DomeLight as ambient only.
-/// The table is frame-local because lights are evaluated in eye space by the
-/// managed renderer after applying the current view matrix.
+/// direct DistantLight, SphereLight, RectLight, DiskLight and CylinderLight
+/// entries plus DomeLight as ambient only. The table is frame-local because
+/// lights are evaluated in eye space by the managed renderer after applying
+/// the current view matrix.
 ///
 /// FRAME v9 appends after clip_planes:
 ///   uint32 light_count (0..4 direct lights)
@@ -237,6 +238,9 @@ extern "C" {
 #define OPENUSD_SILK_MAX_FRAME_LIGHTS 4u
 #define OPENUSD_SILK_LIGHT_DISTANT 1u
 #define OPENUSD_SILK_LIGHT_SPHERE 2u
+#define OPENUSD_SILK_LIGHT_RECT 3u
+#define OPENUSD_SILK_LIGHT_DISK 4u
+#define OPENUSD_SILK_LIGHT_CYLINDER 5u
 #define OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST 1u
 #define OPENUSD_SILK_TOPOLOGY_LINE_LIST 2u
 #define OPENUSD_SILK_TOPOLOGY_POINT_LIST 3u
