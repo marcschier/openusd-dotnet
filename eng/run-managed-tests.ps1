@@ -208,9 +208,17 @@ else
     {
         $properties = Get-ProjectProperties `
             -ProjectPath $candidate.FullName `
-            -Property @('IsTestProject')
+            -Property @('IsTestProject', 'OpenUsdRequiresNativeRuntime')
         if ($properties.IsTestProject -eq 'true')
         {
+            if ($properties.OpenUsdRequiresNativeRuntime -eq 'true')
+            {
+                Write-Host (
+                    "[managed-tests] SKIPPED $($candidate.BaseName): " +
+                    'the project requires a staged OpenUSD native runtime. ' +
+                    'Run eng/run-native-managed-tests.ps1 for native-backed managed tests.')
+                continue
+            }
             $projectPaths.Add($candidate.FullName)
         }
     }

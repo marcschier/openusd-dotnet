@@ -31,6 +31,7 @@
     <Project Path="tests/OpenUsd.Interop.Tests/OpenUsd.Interop.Tests.csproj" />
     <Project Path="tests/OpenUsd.LiveAuthoring.Tests/OpenUsd.LiveAuthoring.Tests.csproj" />
     <Project Path="tests/OpenUsd.Native.Tests/OpenUsd.Native.Tests.csproj" />
+    <Project Path="tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj" />
     <Project Path="tests/OpenUsd.NativeProbe/OpenUsd.NativeProbe.csproj" />
     <Project Path="tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj" />
     <Project Path="tests/OpenUsd.Performance.Tests/OpenUsd.Performance.Tests.csproj" />
