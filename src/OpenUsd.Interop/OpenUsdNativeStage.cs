@@ -774,6 +774,10 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     public bool IsShadeShader(string primPath) =>
         OpenUsdNativeRuntime.IsShadeShader(this, primPath);
 
+    /// <summary>Returns whether a prim is a UsdShadeNodeGraph.</summary>
+    public bool IsShadeNodeGraph(string primPath) =>
+        OpenUsdNativeRuntime.IsShadeNodeGraph(this, primPath);
+
     /// <summary>Defines a UsdShadeMaterial prim.</summary>
     public void DefineShadeMaterial(string primPath) =>
         OpenUsdNativeRuntime.DefineShadeMaterial(this, primPath);
@@ -781,6 +785,10 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     /// <summary>Defines a UsdShadeShader prim.</summary>
     public void DefineShadeShader(string primPath) =>
         OpenUsdNativeRuntime.DefineShadeShader(this, primPath);
+
+    /// <summary>Defines a UsdShadeNodeGraph prim.</summary>
+    public void DefineShadeNodeGraph(string primPath) =>
+        OpenUsdNativeRuntime.DefineShadeNodeGraph(this, primPath);
 
     /// <summary>Authors a shader source identifier.</summary>
     public void SetShaderSourceId(string shaderPath, string sourceId) =>
@@ -876,6 +884,14 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
         string outputName) =>
         OpenUsdNativeRuntime.GetShadeOutputType(this, connectablePath, outputName);
 
+    /// <summary>Gets authored shading input names.</summary>
+    public string[] GetShadeInputNames(string connectablePath) =>
+        OpenUsdNativeRuntime.GetShadeInputNames(this, connectablePath);
+
+    /// <summary>Gets authored shading output names.</summary>
+    public string[] GetShadeOutputNames(string connectablePath) =>
+        OpenUsdNativeRuntime.GetShadeOutputNames(this, connectablePath);
+
     /// <summary>Connects a shading input or output to a source property.</summary>
     public void ConnectShade(
         string destinationPath,
@@ -930,9 +946,47 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     public void CreateMaterialSurfaceOutput(string materialPath) =>
         OpenUsdNativeRuntime.CreateMaterialSurfaceOutput(this, materialPath);
 
+    /// <summary>Creates a material terminal output.</summary>
+    public void CreateMaterialTerminalOutput(
+        string materialPath,
+        OpenUsdNativeShadeMaterialTerminal terminal,
+        string renderContext) =>
+        OpenUsdNativeRuntime.CreateMaterialTerminalOutput(
+            this,
+            materialPath,
+            terminal,
+            renderContext);
+
     /// <summary>Authors a direct material binding.</summary>
     public void BindMaterial(string primPath, string materialPath) =>
         OpenUsdNativeRuntime.BindMaterial(this, primPath, materialPath);
+
+    /// <summary>Authors a direct material binding with strength and purpose.</summary>
+    public void BindMaterial(
+        string primPath,
+        string materialPath,
+        OpenUsdNativeShadeBindingStrength strength,
+        OpenUsdNativeShadeMaterialPurpose purpose) =>
+        OpenUsdNativeRuntime.BindMaterial(this, primPath, materialPath, strength, purpose);
+
+    /// <summary>Authors a collection material binding.</summary>
+    public void BindMaterialCollection(
+        string primPath,
+        string collectionPrimPath,
+        string collectionName,
+        string materialPath,
+        string bindingName,
+        OpenUsdNativeShadeBindingStrength strength,
+        OpenUsdNativeShadeMaterialPurpose purpose) =>
+        OpenUsdNativeRuntime.BindMaterialCollection(
+            this,
+            primPath,
+            collectionPrimPath,
+            collectionName,
+            materialPath,
+            bindingName,
+            strength,
+            purpose);
 
     /// <summary>Removes the direct material binding.</summary>
     public void UnbindMaterial(string primPath) =>
@@ -1226,6 +1280,78 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     /// <summary>Reads joint indices, weights, and shape metadata in one bulk call.</summary>
     public OpenUsdNativeSkelInfluences GetSkelJointInfluences(string primPath) =>
         OpenUsdNativeRuntime.GetSkelJointInfluences(this, primPath);
+
+    /// <summary>Authors a skinning method token.</summary>
+    public void SetSkelSkinningMethod(
+        string primPath,
+        OpenUsdNativeSkelSkinningMethod method) =>
+        OpenUsdNativeRuntime.SetSkelSkinningMethod(this, primPath, method);
+
+    /// <summary>Reads a skinning method token.</summary>
+    public OpenUsdNativeSkelSkinningMethod GetSkelSkinningMethod(string primPath) =>
+        OpenUsdNativeRuntime.GetSkelSkinningMethod(this, primPath);
+
+    /// <summary>Authors blend-shape channel names.</summary>
+    public void SetSkelBlendShapes(string primPath, ReadOnlySpan<string> names) =>
+        OpenUsdNativeRuntime.SetSkelBlendShapes(this, primPath, names);
+
+    /// <summary>Reads blend-shape channel names.</summary>
+    public string[] GetSkelBlendShapes(string primPath) =>
+        OpenUsdNativeRuntime.GetSkelBlendShapes(this, primPath);
+
+    /// <summary>Authors blend-shape targets.</summary>
+    public void SetSkelBlendShapeTargets(string primPath, ReadOnlySpan<string> targets) =>
+        OpenUsdNativeRuntime.SetSkelBlendShapeTargets(this, primPath, targets);
+
+    /// <summary>Reads blend-shape targets.</summary>
+    public string[] GetSkelBlendShapeTargets(string primPath) =>
+        OpenUsdNativeRuntime.GetSkelBlendShapeTargets(this, primPath);
+
+    /// <summary>Authors blend-shape vectors in one bulk call.</summary>
+    public void SetSkelBlendShapeVec3(
+        string primPath,
+        OpenUsdNativeSkelBlendShapeVec3Property property,
+        ReadOnlySpan<OpenUsdNativeVec3f> values) =>
+        OpenUsdNativeRuntime.SetSkelBlendShapeVec3(this, primPath, property, values);
+
+    /// <summary>Reads blend-shape vectors in one bulk call.</summary>
+    public OpenUsdNativeVec3f[] GetSkelBlendShapeVec3(
+        string primPath,
+        OpenUsdNativeSkelBlendShapeVec3Property property) =>
+        OpenUsdNativeRuntime.GetSkelBlendShapeVec3(this, primPath, property);
+
+    /// <summary>Authors blend-shape point indices in one bulk call.</summary>
+    public void SetSkelBlendShapePointIndices(string primPath, ReadOnlySpan<int> values) =>
+        OpenUsdNativeRuntime.SetSkelBlendShapePointIndices(this, primPath, values);
+
+    /// <summary>Reads blend-shape point indices in one bulk call.</summary>
+    public int[] GetSkelBlendShapePointIndices(string primPath) =>
+        OpenUsdNativeRuntime.GetSkelBlendShapePointIndices(this, primPath);
+
+    /// <summary>Authors a blend-shape inbetween.</summary>
+    public void SetSkelBlendShapeInbetween(
+        string primPath,
+        string name,
+        float weight,
+        ReadOnlySpan<OpenUsdNativeVec3f> offsets,
+        ReadOnlySpan<OpenUsdNativeVec3f> normalOffsets) =>
+        OpenUsdNativeRuntime.SetSkelBlendShapeInbetween(
+            this,
+            primPath,
+            name,
+            weight,
+            offsets,
+            normalOffsets);
+
+    /// <summary>Reads authored blend-shape inbetween names.</summary>
+    public string[] GetSkelBlendShapeInbetweenNames(string primPath) =>
+        OpenUsdNativeRuntime.GetSkelBlendShapeInbetweenNames(this, primPath);
+
+    /// <summary>Reads one blend-shape inbetween.</summary>
+    public OpenUsdNativeSkelBlendShapeInbetween GetSkelBlendShapeInbetween(
+        string primPath,
+        string name) =>
+        OpenUsdNativeRuntime.GetSkelBlendShapeInbetween(this, primPath, name);
 
     /// <summary>Gets the directly bound material prim path.</summary>
     public string GetDirectMaterialPath(string primPath) =>

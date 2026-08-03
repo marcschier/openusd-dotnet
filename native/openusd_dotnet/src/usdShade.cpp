@@ -43,10 +43,34 @@ openusd_status openusd_shade_is_shader(
             WriteError(error, "A valid stage, absolute prim path, and result output are required.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
+
         const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
         *is_shader = prim && prim.IsA<UsdShadeShader>() ? 1 : 0;
         return OPENUSD_STATUS_OK;
 
+    });
+}
+
+openusd_status openusd_shade_is_node_graph(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t* is_node_graph,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(is_node_graph);
+        if (stage == nullptr || !stage->value || is_node_graph == nullptr ||
+            !IsValidPrimPath(prim_path))
+        {
+            WriteError(error, "A valid stage, absolute prim path, and result output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+        *is_node_graph = prim && prim.IsA<UsdShadeNodeGraph>() ? 1 : 0;
+        return OPENUSD_STATUS_OK;
     });
 }
 
@@ -91,6 +115,20 @@ openusd_status openusd_shade_define_shader(
             WriteError(error, "A valid stage and absolute shader prim path are required.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
+
+        return Guard(error, [&]()
+                {
+                    const UsdShadeNodeGraph graph =
+                        UsdShadeNodeGraph::Define(stage->value, SdfPath(prim_path));
+                    if (!graph)
+                    {
+                        WriteError(error, "Could not define the UsdShadeNodeGraph prim.");
+                        return OPENUSD_STATUS_NATIVE_ERROR;
+                    }
+                    return OPENUSD_STATUS_OK;
+                });
+            });
+        }
         return Guard(error, [&]()
         {
             const UsdShadeShader shader =
@@ -103,6 +141,33 @@ openusd_status openusd_shade_define_shader(
             return OPENUSD_STATUS_OK;
         });
 
+    });
+}
+
+openusd_status openusd_shade_define_node_graph(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path))
+        {
+            WriteError(error, "A valid stage and absolute node-graph prim path are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return Guard(error, [&]()
+        {
+            const UsdShadeNodeGraph graph =
+                UsdShadeNodeGraph::Define(stage->value, SdfPath(prim_path));
+            if (!graph)
+            {
+                WriteError(error, "Could not define the UsdShadeNodeGraph prim.");
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            return OPENUSD_STATUS_OK;
+        });
     });
 }
 
@@ -793,6 +858,155 @@ openusd_status openusd_shade_get_connected_sources(
     });
 }
 
+openusd_status openusd_shade_get_input_names(
+    const openusd_stage* stage,
+    const char* connectable_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetStringListOutput(list, view);
+        if (stage == nullptr || !stage->value || list == nullptr || view == nullptr ||
+            view->struct_size < sizeof(openusd_string_list_view))
+        {
+            WriteError(error, "A valid stage and versioned input-name outputs are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return GuardStringListOutput(error, list, view, [&](auto& result)
+        {
+            const UsdShadeConnectableAPI connectable =
+                GetRequiredConnectable(stage, connectable_path, error);
+            if (!connectable)
+            {
+                return IsValidPrimPath(connectable_path)
+                    ? OPENUSD_STATUS_NOT_FOUND
+                    : OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            std::vector<std::string> names;
+            for (const UsdShadeInput& input : connectable.GetInputs(true))
+            {
+                names.push_back(input.GetBaseName().GetString());
+            }
+            result = std::make_unique<openusd_string_list>();
+            FillStringList(result.get(), names, view);
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+openusd_status openusd_shade_get_output_names(
+    const openusd_stage* stage,
+    const char* connectable_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetStringListOutput(list, view);
+        if (stage == nullptr || !stage->value || list == nullptr || view == nullptr ||
+            view->struct_size < sizeof(openusd_string_list_view))
+        {
+            WriteError(error, "A valid stage and versioned output-name outputs are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return GuardStringListOutput(error, list, view, [&](auto& result)
+        {
+            const UsdShadeConnectableAPI connectable =
+                GetRequiredConnectable(stage, connectable_path, error);
+            if (!connectable)
+            {
+                return IsValidPrimPath(connectable_path)
+                    ? OPENUSD_STATUS_NOT_FOUND
+                    : OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            std::vector<std::string> names;
+            for (const UsdShadeOutput& output : connectable.GetOutputs(true))
+            {
+                names.push_back(output.GetBaseName().GetString());
+            }
+            result = std::make_unique<openusd_string_list>();
+            FillStringList(result.get(), names, view);
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+static TfToken GetShadeBindingStrength(openusd_shade_binding_strength strength)
+{
+    return strength == OPENUSD_SHADE_BINDING_STRONGER_THAN_DESCENDANTS
+        ? UsdShadeTokens->strongerThanDescendants
+        : UsdShadeTokens->weakerThanDescendants;
+}
+
+static TfToken GetShadeMaterialPurpose(openusd_shade_material_purpose purpose)
+{
+    switch (purpose)
+    {
+        case OPENUSD_SHADE_MATERIAL_PURPOSE_PREVIEW:
+            return UsdShadeTokens->preview;
+        case OPENUSD_SHADE_MATERIAL_PURPOSE_FULL:
+            return UsdShadeTokens->full;
+        default:
+            return UsdShadeTokens->allPurpose;
+    }
+}
+
+openusd_status openusd_shade_material_create_terminal_output(
+    const openusd_stage* stage,
+    const char* material_path,
+    openusd_shade_material_terminal terminal,
+    const char* render_context,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(material_path))
+        {
+            WriteError(error, "A valid stage and material path are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const UsdShadeMaterial material(stage->value->GetPrimAtPath(SdfPath(material_path)));
+        if (!material)
+        {
+            WriteError(error, "The requested prim is not a UsdShadeMaterial.");
+            return OPENUSD_STATUS_NOT_FOUND;
+        }
+        const TfToken context(render_context == nullptr ? "" : render_context);
+        UsdShadeOutput output;
+        if (terminal == OPENUSD_SHADE_MATERIAL_TERMINAL_SURFACE)
+        {
+            output = material.CreateSurfaceOutput(context);
+        }
+        else if (terminal == OPENUSD_SHADE_MATERIAL_TERMINAL_DISPLACEMENT)
+        {
+            output = material.CreateDisplacementOutput(context);
+        }
+        else if (terminal == OPENUSD_SHADE_MATERIAL_TERMINAL_VOLUME)
+        {
+            output = material.CreateVolumeOutput(context);
+        }
+        else
+        {
+            WriteError(error, "The material terminal is unsupported.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        if (!output)
+        {
+            WriteError(error, "Could not create the material terminal output.");
+            return OPENUSD_STATUS_NATIVE_ERROR;
+        }
+        return OPENUSD_STATUS_OK;
+    });
+}
+
 openusd_status openusd_shade_material_create_surface_output(
     const openusd_stage* stage,
     const char* material_path,
@@ -818,7 +1032,6 @@ openusd_status openusd_shade_material_create_surface_output(
             return OPENUSD_STATUS_NATIVE_ERROR;
         }
         return OPENUSD_STATUS_OK;
-
     });
 }
 
@@ -856,15 +1069,107 @@ openusd_status openusd_shade_material_bind(
                 whyNot.empty() ? "MaterialBindingAPI cannot be applied to the prim." : whyNot);
             return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
-        const UsdShadeMaterialBindingAPI binding =
-            UsdShadeMaterialBindingAPI::Apply(prim);
+        const UsdShadeMaterialBindingAPI binding = UsdShadeMaterialBindingAPI::Apply(prim);
         if (!binding || !binding.Bind(material))
         {
             WriteError(error, "Could not bind the material to the prim.");
             return OPENUSD_STATUS_NATIVE_ERROR;
         }
         return OPENUSD_STATUS_OK;
+    });
+}
 
+openusd_status openusd_shade_material_bind_ext(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* material_path,
+    openusd_shade_binding_strength strength,
+    openusd_shade_material_purpose purpose,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+            !IsValidPrimPath(material_path))
+        {
+            WriteError(error, "A valid stage, prim path, and material path are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const UsdPrim prim = GetRequiredPrim(stage, prim_path, error);
+        if (!prim)
+        {
+            return OPENUSD_STATUS_NOT_FOUND;
+        }
+        const UsdShadeMaterial material(stage->value->GetPrimAtPath(SdfPath(material_path)));
+        if (!material)
+        {
+            WriteError(error, "The requested material prim is missing or has the wrong schema.");
+            return OPENUSD_STATUS_NOT_FOUND;
+        }
+        const UsdShadeMaterialBindingAPI binding = UsdShadeMaterialBindingAPI::Apply(prim);
+        if (!binding ||
+            !binding.Bind(material, GetShadeBindingStrength(strength), GetShadeMaterialPurpose(purpose)))
+        {
+            WriteError(error, "Could not bind the material to the prim.");
+            return OPENUSD_STATUS_NATIVE_ERROR;
+        }
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_shade_material_bind_collection(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* collection_prim_path,
+    const char* collection_name,
+    const char* material_path,
+    const char* binding_name,
+    openusd_shade_binding_strength strength,
+    openusd_shade_material_purpose purpose,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+            !IsValidPrimPath(collection_prim_path) || !IsValidPrimPath(material_path) ||
+            collection_name == nullptr || collection_name[0] == '\0')
+        {
+            WriteError(error, "Valid prim, collection, material, and collection name are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const UsdPrim prim = GetRequiredPrim(stage, prim_path, error);
+        const UsdPrim collectionPrim = GetRequiredPrim(stage, collection_prim_path, error);
+        if (!prim || !collectionPrim)
+        {
+            return OPENUSD_STATUS_NOT_FOUND;
+        }
+        const UsdShadeMaterial material(stage->value->GetPrimAtPath(SdfPath(material_path)));
+        if (!material)
+        {
+            WriteError(error, "The requested material prim is missing or has the wrong schema.");
+            return OPENUSD_STATUS_NOT_FOUND;
+        }
+        UsdCollectionAPI collection =
+            UsdCollectionAPI::GetCollection(collectionPrim, TfToken(collection_name));
+        if (!collection)
+        {
+            collection = UsdCollectionAPI::Apply(collectionPrim, TfToken(collection_name));
+        }
+        const UsdShadeMaterialBindingAPI binding = UsdShadeMaterialBindingAPI::Apply(prim);
+        if (!binding || !collection ||
+            !binding.Bind(
+                collection,
+                material,
+                TfToken(binding_name == nullptr ? "" : binding_name),
+                GetShadeBindingStrength(strength),
+                GetShadeMaterialPurpose(purpose)))
+        {
+            WriteError(error, "Could not bind the material to the collection.");
+            return OPENUSD_STATUS_NATIVE_ERROR;
+        }
+        return OPENUSD_STATUS_OK;
     });
 }
 
@@ -893,7 +1198,6 @@ openusd_status openusd_shade_material_unbind(
             return OPENUSD_STATUS_NATIVE_ERROR;
         }
         return OPENUSD_STATUS_OK;
-
     });
 }
 

@@ -21,6 +21,9 @@ public readonly struct UsdShadeShader : IUsdStageBound
     /// <summary>Gets the underlying prim descriptor.</summary>
     public UsdPrim Prim => Stage.GetPrim(Path);
 
+    /// <summary>Gets generic connectability operations for the shader.</summary>
+    public UsdShadeConnectable Connectable => new(Stage, Path);
+
     /// <summary>Gets or sets the shader source identifier.</summary>
     public string SourceId
     {
@@ -105,6 +108,12 @@ public readonly struct UsdShadeShader : IUsdStageBound
     }
 
     internal UsdStage Stage { get; }
+
+    /// <summary>Gets authored input names.</summary>
+    public IReadOnlyList<string> GetInputNames() => Connectable.GetInputNames();
+
+    /// <summary>Gets authored output names.</summary>
+    public IReadOnlyList<string> GetOutputNames() => Connectable.GetOutputNames();
 
     private UsdShadeInput CreateInput(string name, UsdShadeValueType valueType)
     {

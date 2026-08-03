@@ -37,7 +37,20 @@ public sealed class UsdSkelValidationTests
         nameof(OpenUsdNativeStage.SetSkelGeomBindTransform),
         nameof(OpenUsdNativeStage.GetSkelGeomBindTransform),
         nameof(OpenUsdNativeStage.SetSkelJointInfluences),
-        nameof(OpenUsdNativeStage.GetSkelJointInfluences)
+        nameof(OpenUsdNativeStage.GetSkelJointInfluences),
+        nameof(OpenUsdNativeStage.SetSkelSkinningMethod),
+        nameof(OpenUsdNativeStage.GetSkelSkinningMethod),
+        nameof(OpenUsdNativeStage.SetSkelBlendShapes),
+        nameof(OpenUsdNativeStage.GetSkelBlendShapes),
+        nameof(OpenUsdNativeStage.SetSkelBlendShapeTargets),
+        nameof(OpenUsdNativeStage.GetSkelBlendShapeTargets),
+        nameof(OpenUsdNativeStage.SetSkelBlendShapeVec3),
+        nameof(OpenUsdNativeStage.GetSkelBlendShapeVec3),
+        nameof(OpenUsdNativeStage.SetSkelBlendShapePointIndices),
+        nameof(OpenUsdNativeStage.GetSkelBlendShapePointIndices),
+        nameof(OpenUsdNativeStage.SetSkelBlendShapeInbetween),
+        nameof(OpenUsdNativeStage.GetSkelBlendShapeInbetweenNames),
+        nameof(OpenUsdNativeStage.GetSkelBlendShapeInbetween)
     ];
 
     [Test]
@@ -108,7 +121,45 @@ public sealed class UsdSkelValidationTests
                     1,
                     OpenUsdNativeSkelInterpolation.Constant)),
             (nameof(stage.GetSkelJointInfluences),
-                path => _ = stage.GetSkelJointInfluences(path))
+                path => _ = stage.GetSkelJointInfluences(path)),
+            (nameof(stage.SetSkelSkinningMethod),
+                path => stage.SetSkelSkinningMethod(
+                    path,
+                    OpenUsdNativeSkelSkinningMethod.ClassicLinear)),
+            (nameof(stage.GetSkelSkinningMethod),
+                path => _ = stage.GetSkelSkinningMethod(path)),
+            (nameof(stage.SetSkelBlendShapes),
+                path => stage.SetSkelBlendShapes(path, ["Smile"])),
+            (nameof(stage.GetSkelBlendShapes),
+                path => _ = stage.GetSkelBlendShapes(path)),
+            (nameof(stage.SetSkelBlendShapeTargets),
+                path => stage.SetSkelBlendShapeTargets(path, ["/World/Smile"])),
+            (nameof(stage.GetSkelBlendShapeTargets),
+                path => _ = stage.GetSkelBlendShapeTargets(path)),
+            (nameof(stage.SetSkelBlendShapeVec3),
+                path => stage.SetSkelBlendShapeVec3(
+                    path,
+                    OpenUsdNativeSkelBlendShapeVec3Property.Offsets,
+                    [default])),
+            (nameof(stage.GetSkelBlendShapeVec3),
+                path => _ = stage.GetSkelBlendShapeVec3(
+                    path,
+                    OpenUsdNativeSkelBlendShapeVec3Property.Offsets)),
+            (nameof(stage.SetSkelBlendShapePointIndices),
+                path => stage.SetSkelBlendShapePointIndices(path, [0])),
+            (nameof(stage.GetSkelBlendShapePointIndices),
+                path => _ = stage.GetSkelBlendShapePointIndices(path)),
+            (nameof(stage.SetSkelBlendShapeInbetween),
+                path => stage.SetSkelBlendShapeInbetween(
+                    path,
+                    "half",
+                    0.5F,
+                    [default],
+                    [])),
+            (nameof(stage.GetSkelBlendShapeInbetweenNames),
+                path => _ = stage.GetSkelBlendShapeInbetweenNames(path)),
+            (nameof(stage.GetSkelBlendShapeInbetween),
+                path => _ = stage.GetSkelBlendShapeInbetween(path, "half"))
         ];
 
         foreach ((string name, Action<string> invoke) in entries)
@@ -319,6 +370,7 @@ public sealed class UsdSkelValidationTests
             typeof(UsdSkelRoot),
             typeof(UsdSkelSkeleton),
             typeof(UsdSkelAnimation),
+            typeof(UsdSkelBlendShape),
             typeof(UsdSkelBinding)
         ];
         int facadeMethodCount = facadeTypes.Sum(type => type
@@ -328,7 +380,7 @@ public sealed class UsdSkelValidationTests
 
         await Assert.That(stageEntries.SetEquals(NativeEntryNames)).IsTrue();
         await Assert.That(runtimeEntries.SetEquals(NativeEntryNames)).IsTrue();
-        await Assert.That(facadeMethodCount).IsEqualTo(42);
+        await Assert.That(facadeMethodCount).IsEqualTo(58);
     }
 
     private static UsdStage CreateDetachedStage()

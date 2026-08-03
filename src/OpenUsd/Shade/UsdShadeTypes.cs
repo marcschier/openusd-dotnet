@@ -38,6 +38,37 @@ public enum UsdShadeAttributeType
     Output = 2
 }
 
+/// <summary>Identifies standard material terminal outputs.</summary>
+public enum UsdShadeMaterialTerminal
+{
+    /// <summary>The surface terminal.</summary>
+    Surface = 0,
+    /// <summary>The displacement terminal.</summary>
+    Displacement = 1,
+    /// <summary>The volume terminal.</summary>
+    Volume = 2
+}
+
+/// <summary>Specifies material binding strength relative to descendants.</summary>
+public enum UsdShadeBindingStrength
+{
+    /// <summary>The binding is weaker than descendant bindings.</summary>
+    WeakerThanDescendants = 0,
+    /// <summary>The binding is stronger than descendant bindings.</summary>
+    StrongerThanDescendants = 1
+}
+
+/// <summary>Specifies material binding purpose.</summary>
+public enum UsdShadeMaterialPurpose
+{
+    /// <summary>The all-purpose material binding.</summary>
+    All = 0,
+    /// <summary>The preview material binding.</summary>
+    Preview = 1,
+    /// <summary>The full-fidelity material binding.</summary>
+    Full = 2
+}
+
 /// <summary>Describes one connected source of a shading property.</summary>
 public readonly record struct UsdShadeConnection(
     string SourcePrimPath,

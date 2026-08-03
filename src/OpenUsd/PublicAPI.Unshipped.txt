@@ -1620,3 +1620,95 @@ OpenUsd.Geom.UsdGeomModelAPI.UsdGeomModelAPI(OpenUsd.UsdPrim prim) -> void
 OpenUsd.Geom.UsdGeomNurbsCurves.GetKnots() -> double[]!
 static OpenUsd.Geom.UsdGeomModelAPI.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomModelAPI value) -> bool
 static OpenUsd.Geom.UsdGeomModelAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomModelAPI
+OpenUsd.Shade.UsdShadeBindingStrength
+OpenUsd.Shade.UsdShadeBindingStrength.StrongerThanDescendants = 1 -> OpenUsd.Shade.UsdShadeBindingStrength
+OpenUsd.Shade.UsdShadeBindingStrength.WeakerThanDescendants = 0 -> OpenUsd.Shade.UsdShadeBindingStrength
+OpenUsd.Shade.UsdShadeConnectable
+OpenUsd.Shade.UsdShadeConnectable.CreateInput(string! name, OpenUsd.Shade.UsdShadeValueType valueType) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeConnectable.CreateOutput(string! name, OpenUsd.Shade.UsdShadeValueType valueType) -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeConnectable.GetInput(string! name) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeConnectable.GetInputNames() -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Shade.UsdShadeConnectable.GetOutput(string! name) -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeConnectable.GetOutputNames() -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Shade.UsdShadeConnectable.Path.get -> string!
+OpenUsd.Shade.UsdShadeConnectable.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Shade.UsdShadeConnectable.UsdShadeConnectable() -> void
+OpenUsd.Shade.UsdShadeMaterial.Bind(OpenUsd.UsdPrim prim, OpenUsd.Shade.UsdShadeBindingStrength strength, OpenUsd.Shade.UsdShadeMaterialPurpose purpose = OpenUsd.Shade.UsdShadeMaterialPurpose.All) -> void
+OpenUsd.Shade.UsdShadeMaterial.BindCollection(OpenUsd.UsdPrim prim, OpenUsd.UsdPrim collectionPrim, string! collectionName, string! bindingName = "", OpenUsd.Shade.UsdShadeBindingStrength strength = OpenUsd.Shade.UsdShadeBindingStrength.WeakerThanDescendants, OpenUsd.Shade.UsdShadeMaterialPurpose purpose = OpenUsd.Shade.UsdShadeMaterialPurpose.All) -> void
+OpenUsd.Shade.UsdShadeMaterial.CreateDisplacementOutput() -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeMaterial.CreateTerminalOutput(OpenUsd.Shade.UsdShadeMaterialTerminal terminal, string! renderContext = "") -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeMaterial.CreateVolumeOutput() -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeMaterialPurpose
+OpenUsd.Shade.UsdShadeMaterialPurpose.All = 0 -> OpenUsd.Shade.UsdShadeMaterialPurpose
+OpenUsd.Shade.UsdShadeMaterialPurpose.Full = 2 -> OpenUsd.Shade.UsdShadeMaterialPurpose
+OpenUsd.Shade.UsdShadeMaterialPurpose.Preview = 1 -> OpenUsd.Shade.UsdShadeMaterialPurpose
+OpenUsd.Shade.UsdShadeMaterialTerminal
+OpenUsd.Shade.UsdShadeMaterialTerminal.Displacement = 1 -> OpenUsd.Shade.UsdShadeMaterialTerminal
+OpenUsd.Shade.UsdShadeMaterialTerminal.Surface = 0 -> OpenUsd.Shade.UsdShadeMaterialTerminal
+OpenUsd.Shade.UsdShadeMaterialTerminal.Volume = 2 -> OpenUsd.Shade.UsdShadeMaterialTerminal
+OpenUsd.Shade.UsdShadeNodeGraph
+OpenUsd.Shade.UsdShadeNodeGraph.Connectable.get -> OpenUsd.Shade.UsdShadeConnectable
+OpenUsd.Shade.UsdShadeNodeGraph.CreateInput(string! name, OpenUsd.Shade.UsdShadeValueType valueType) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeNodeGraph.CreateOutput(string! name, OpenUsd.Shade.UsdShadeValueType valueType) -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeNodeGraph.GetInput(string! name) -> OpenUsd.Shade.UsdShadeInput
+OpenUsd.Shade.UsdShadeNodeGraph.GetInputNames() -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Shade.UsdShadeNodeGraph.GetOutput(string! name) -> OpenUsd.Shade.UsdShadeOutput
+OpenUsd.Shade.UsdShadeNodeGraph.GetOutputNames() -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Shade.UsdShadeNodeGraph.Path.get -> string!
+OpenUsd.Shade.UsdShadeNodeGraph.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Shade.UsdShadeNodeGraph.UsdShadeNodeGraph() -> void
+OpenUsd.Shade.UsdShadeShader.Connectable.get -> OpenUsd.Shade.UsdShadeConnectable
+OpenUsd.Shade.UsdShadeShader.GetInputNames() -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Shade.UsdShadeShader.GetOutputNames() -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Skel.UsdSkelBinding.GetBlendShapes() -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Skel.UsdSkelBinding.GetBlendShapeTargets() -> System.Collections.Generic.IReadOnlyList<OpenUsd.Skel.UsdSkelBlendShape>!
+OpenUsd.Skel.UsdSkelBinding.SetBlendShapes(System.ReadOnlySpan<string!> names) -> void
+OpenUsd.Skel.UsdSkelBinding.SetBlendShapeTargets(System.ReadOnlySpan<OpenUsd.Skel.UsdSkelBlendShape> targets) -> void
+OpenUsd.Skel.UsdSkelBinding.SkinningMethod.get -> OpenUsd.Skel.UsdSkelSkinningMethod
+OpenUsd.Skel.UsdSkelBinding.SkinningMethod.set -> void
+OpenUsd.Skel.UsdSkelBlendShape
+OpenUsd.Skel.UsdSkelBlendShape.GetInbetween(string! name) -> OpenUsd.Skel.UsdSkelBlendShapeInbetween!
+OpenUsd.Skel.UsdSkelBlendShape.GetInbetweenNames() -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Skel.UsdSkelBlendShape.GetNormalOffsets() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Skel.UsdSkelBlendShape.GetOffsets() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Skel.UsdSkelBlendShape.GetPointIndices() -> int[]!
+OpenUsd.Skel.UsdSkelBlendShape.Path.get -> string!
+OpenUsd.Skel.UsdSkelBlendShape.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Skel.UsdSkelBlendShape.SetInbetween(string! name, float weight, System.ReadOnlySpan<OpenUsd.UsdVec3f> offsets, System.ReadOnlySpan<OpenUsd.UsdVec3f> normalOffsets = default(System.ReadOnlySpan<OpenUsd.UsdVec3f>)) -> void
+OpenUsd.Skel.UsdSkelBlendShape.SetNormalOffsets(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Skel.UsdSkelBlendShape.SetOffsets(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Skel.UsdSkelBlendShape.SetPointIndices(System.ReadOnlySpan<int> values) -> void
+OpenUsd.Skel.UsdSkelBlendShape.UsdSkelBlendShape() -> void
+OpenUsd.Skel.UsdSkelBlendShapeInbetween
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.<Clone>$() -> OpenUsd.Skel.UsdSkelBlendShapeInbetween!
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.Deconstruct(out string! Name, out float Weight, out OpenUsd.UsdVec3f[]! Offsets, out OpenUsd.UsdVec3f[]! NormalOffsets) -> void
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.Equals(OpenUsd.Skel.UsdSkelBlendShapeInbetween? other) -> bool
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.Name.get -> string!
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.Name.init -> void
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.NormalOffsets.get -> OpenUsd.UsdVec3f[]!
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.NormalOffsets.init -> void
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.Offsets.get -> OpenUsd.UsdVec3f[]!
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.Offsets.init -> void
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.UsdSkelBlendShapeInbetween(string! Name, float Weight, OpenUsd.UsdVec3f[]! Offsets, OpenUsd.UsdVec3f[]! NormalOffsets) -> void
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.Weight.get -> float
+OpenUsd.Skel.UsdSkelBlendShapeInbetween.Weight.init -> void
+OpenUsd.Skel.UsdSkelBlendShapeQuery
+OpenUsd.Skel.UsdSkelBlendShapeQuery.BlendShapes.get -> System.Collections.Generic.IReadOnlyList<string!>!
+OpenUsd.Skel.UsdSkelBlendShapeQuery.GetInbetweens(int targetIndex) -> System.Collections.Generic.IReadOnlyList<OpenUsd.Skel.UsdSkelBlendShapeInbetween!>!
+OpenUsd.Skel.UsdSkelBlendShapeQuery.PrimPath.get -> string!
+OpenUsd.Skel.UsdSkelBlendShapeQuery.Targets.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Skel.UsdSkelBlendShape>!
+OpenUsd.Skel.UsdSkelSkinningMethod
+OpenUsd.Skel.UsdSkelSkinningMethod.ClassicLinear = 0 -> OpenUsd.Skel.UsdSkelSkinningMethod
+OpenUsd.Skel.UsdSkelSkinningMethod.DualQuaternion = 1 -> OpenUsd.Skel.UsdSkelSkinningMethod
+override OpenUsd.Skel.UsdSkelBlendShapeInbetween.Equals(object? obj) -> bool
+override OpenUsd.Skel.UsdSkelBlendShapeInbetween.GetHashCode() -> int
+override OpenUsd.Skel.UsdSkelBlendShapeInbetween.ToString() -> string!
+static OpenUsd.Shade.UsdShadeNodeGraph.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Shade.UsdShadeNodeGraph value) -> bool
+static OpenUsd.Shade.UsdShadeNodeGraph.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Shade.UsdShadeNodeGraph
+static OpenUsd.Shade.UsdShadeStageExtensions.DefineNodeGraph(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Shade.UsdShadeNodeGraph
+static OpenUsd.Skel.UsdSkelBlendShape.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Skel.UsdSkelBlendShape value) -> bool
+static OpenUsd.Skel.UsdSkelBlendShape.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Skel.UsdSkelBlendShape
+static OpenUsd.Skel.UsdSkelBlendShapeInbetween.operator !=(OpenUsd.Skel.UsdSkelBlendShapeInbetween? left, OpenUsd.Skel.UsdSkelBlendShapeInbetween? right) -> bool
+static OpenUsd.Skel.UsdSkelBlendShapeInbetween.operator ==(OpenUsd.Skel.UsdSkelBlendShapeInbetween? left, OpenUsd.Skel.UsdSkelBlendShapeInbetween? right) -> bool
+static OpenUsd.Skel.UsdSkelBlendShapeQuery.Create(OpenUsd.Skel.UsdSkelBinding binding) -> OpenUsd.Skel.UsdSkelBlendShapeQuery!
+static OpenUsd.Skel.UsdSkelStageExtensions.DefineBlendShape(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Skel.UsdSkelBlendShape

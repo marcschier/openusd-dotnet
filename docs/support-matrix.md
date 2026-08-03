@@ -239,7 +239,8 @@ Uncovered or deliberately ungated features:
 - Wide point splats, authored curve widths/ribbons, wire draw mode, and shaded-wire draw mode are not gated.
 - Authored `cullStyle` tokens have no parity scene.
 - Animated materials, textures, lights, and topology have no parity scene.
-- GPU skinning and blend shapes are not gated.
+- GPU skinning and blend-shape rendering are not gated. The data API can author and inspect
+  `UsdSkelBlendShape` data, but hdSilk still does not evaluate it in this parity matrix.
 - `subdivision-catmull-clark` is measured at 0.931015 and remains ungated. Full Catmull-Clark/Loop/bilinear
   subdivision, creases, and subdivision primvar refinement are not part of the 1.0 parity claim.
 
@@ -301,15 +302,18 @@ The complete API examples and native ownership rules are in [Data API](data-api.
 | Schema family | Current managed coverage | Scope |
 | --- | --- | --- |
 | `UsdGeom` | Xform, Xformable, Imageable, Mesh, Camera | Focused, not generated-complete |
-| `UsdShade` | Material, Shader, inputs/outputs, Preview Surface, UV Texture | Focused |
+| `UsdShade` | Material, Shader, NodeGraph, connectability, terminals, binding, Preview Surface, UV Texture | Focused |
 | `UsdLux` | Common light API, shaping, six concrete light types | Focused |
-| `UsdSkel` | Root, Skeleton, Animation, Binding, joint data | Focused |
-| Pcp | Detached prim-index node/error inspection | Focused read-only |
-| Ts | Double-valued spline knots, tangents, extrapolation, evaluation | Focused read-only |
-| UsdValidation | Registry enumeration and stage/prim validation results | Focused read-only |
-| UsdPhysics | Scene, body, collision, material, joints, limits/drives, filtering | Authoring only |
+| `UsdSkel` | Root, Skeleton, Animation, BlendShape, Binding, joint and binding data | Focused |
+| `Pcp` | Detached prim-index node/error inspection | Focused read-only |
+| `Ts` | Double-valued spline knots, tangents, extrapolation, evaluation | Focused read-only |
+| `UsdValidation` | Registry enumeration and stage/prim validation results | Focused read-only |
+| `UsdPhysics` | Scene, body, collision, material, joints, limits/drives, filtering | Authoring only |
 
 Complete generated bindings for every OpenUSD schema are not a current claim.
+UsdShade binding coverage includes purpose, strength, and collection bindings. UsdSkel blend-shape
+coverage includes inbetweens, skinning method, and target relationships for authoring and
+inspection; hdSilk blend-shape rendering is not implemented.
 
 ## Picking and selection
 

@@ -423,6 +423,9 @@ public sealed class NativeAbiVersionTests
             "openusd_skel_get_animation_vec3",
             "openusd_skel_get_animation_rotations",
             "openusd_skel_get_joint_influences",
+            "openusd_skel_get_blend_shape_vec3",
+            "openusd_skel_get_blend_shape_point_indices",
+            "openusd_skel_get_blend_shape_inbetween",
         ];
         MatchCollection definitions = Regex.Matches(
             implementation,
@@ -445,17 +448,17 @@ public sealed class NativeAbiVersionTests
             Regex.Count(
                 implementation,
                 @"\breturn WithAbiWritableBuffer\(",
-                RegexOptions.CultureInvariant)).IsEqualTo(14);
+                RegexOptions.CultureInvariant)).IsEqualTo(16);
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"\breturn WithAbiWritableBuffers\(",
-                RegexOptions.CultureInvariant)).IsEqualTo(1);
+                RegexOptions.CultureInvariant)).IsEqualTo(2);
 
         foreach (string export in expectedExports)
         {
             await Assert.That(bodies.ContainsKey(export)).IsTrue();
-            string guard = export == "openusd_skel_get_joint_influences"
+            string guard = export is "openusd_skel_get_joint_influences" or "openusd_skel_get_blend_shape_inbetween"
                 ? "WithAbiWritableBuffers("
                 : "WithAbiWritableBuffer(";
             await Assert.That(bodies[export].Contains(
@@ -542,7 +545,7 @@ public sealed class NativeAbiVersionTests
         await Assert.That(Regex.Count(
             managed,
             @"\bThrowIfFailedAndReleaseStringList\(",
-            RegexOptions.CultureInvariant)).IsEqualTo(9);
+            RegexOptions.CultureInvariant)).IsEqualTo(11);
         await Assert.That(Regex.Count(
             managed,
             @"\bThrowIfFailedAndReleasePayloadArcList\(",

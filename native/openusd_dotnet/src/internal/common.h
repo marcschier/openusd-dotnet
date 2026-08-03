@@ -88,10 +88,13 @@
 #include "pxr/usd/usdShade/input.h"
 #include "pxr/usd/usdShade/material.h"
 #include "pxr/usd/usdShade/materialBindingAPI.h"
+#include "pxr/usd/usdShade/nodeGraph.h"
 #include "pxr/usd/usdShade/output.h"
 #include "pxr/usd/usdShade/shader.h"
 #include "pxr/usd/usdSkel/animation.h"
 #include "pxr/usd/usdSkel/bindingAPI.h"
+#include "pxr/usd/usdSkel/blendShape.h"
+#include "pxr/usd/usdSkel/blendShapeQuery.h"
 #include "pxr/usd/usdSkel/root.h"
 #include "pxr/usd/usdSkel/skeleton.h"
 #include "pxr/usd/usdSkel/topology.h"
@@ -2636,6 +2639,8 @@ bool IsSkelSchema(const UsdPrim& prim, openusd_skel_schema_kind schema_kind)
             return prim.IsA<UsdSkelSkeleton>();
         case OPENUSD_SKEL_SCHEMA_ANIMATION:
             return prim.IsA<UsdSkelAnimation>();
+        case OPENUSD_SKEL_SCHEMA_BLEND_SHAPE:
+            return prim.IsA<UsdSkelBlendShape>();
         default:
             return false;
     }
@@ -2798,6 +2803,8 @@ UsdRelationship GetSkelBindingRelationship(
             return create ? binding.CreateSkeletonRel() : binding.GetSkeletonRel();
         case OPENUSD_SKEL_BINDING_ANIMATION_SOURCE:
             return create ? binding.CreateAnimationSourceRel() : binding.GetAnimationSourceRel();
+        case OPENUSD_SKEL_BINDING_BLEND_SHAPE_TARGETS:
+            return create ? binding.CreateBlendShapeTargetsRel() : binding.GetBlendShapeTargetsRel();
         default:
             WriteError(error, "The requested skeleton binding relationship is unsupported.");
             return {};
@@ -2821,7 +2828,9 @@ openusd_status ValidateSkelBindingTarget(
         ? static_cast<bool>(UsdSkelSkeleton(target))
         : relationship == OPENUSD_SKEL_BINDING_ANIMATION_SOURCE
             ? static_cast<bool>(UsdSkelAnimation(target))
-            : false;
+            : relationship == OPENUSD_SKEL_BINDING_BLEND_SHAPE_TARGETS
+                ? static_cast<bool>(UsdSkelBlendShape(target))
+                : false;
     if (!valid)
     {
         WriteError(error, "The skeleton binding target has the wrong schema.");

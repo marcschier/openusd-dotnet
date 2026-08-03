@@ -45,8 +45,10 @@ public sealed class UsdStageBoundResultGuardTests
             typeof(UsdGeomXform),
             typeof(UsdGeomXformable),
             typeof(UsdPreviewSurface),
+            typeof(UsdShadeConnectable),
             typeof(UsdShadeInput),
             typeof(UsdShadeMaterial),
+            typeof(UsdShadeNodeGraph),
             typeof(UsdShadeOutput),
             typeof(UsdShadeShader),
             typeof(UsdUvTexture),
@@ -60,6 +62,7 @@ public sealed class UsdStageBoundResultGuardTests
             typeof(UsdLuxSphereLight),
             typeof(UsdSkelAnimation),
             typeof(UsdSkelBinding),
+            typeof(UsdSkelBlendShape),
             typeof(UsdSkelRoot),
             typeof(UsdSkelSkeleton)
         ];

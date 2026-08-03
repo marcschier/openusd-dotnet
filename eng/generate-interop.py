@@ -95,10 +95,10 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return ("OpenUsdNativeVec2f*" if native_name == "values"
                 else "out OpenUsdNativeVec2f"), managed_name
     if native_type == "const openusd_vec3f*":
-        return ("OpenUsdNativeVec3f*" if native_name == "values"
+        return ("OpenUsdNativeVec3f*" if native_name in {"values", "offsets", "normal_offsets"}
                 else "ref OpenUsdNativeVec3f"), managed_name
     if native_type == "openusd_vec3f*":
-        return ("OpenUsdNativeVec3f*" if native_name == "values"
+        return ("OpenUsdNativeVec3f*" if native_name in {"values", "offsets", "normal_offsets"}
                 else "out OpenUsdNativeVec3f"), managed_name
     if native_type == "openusd_vec3f":
         return "OpenUsdNativeVec3f", managed_name
@@ -161,7 +161,7 @@ def map_parameter(declaration: str) -> tuple[str, str]:
     if native_type == "const float*":
         return "float*", managed_name
     if native_type == "float*":
-        return ("out float" if native_name == "value" else "float*"), managed_name
+        return ("out float" if native_name in {"value", "weight"} else "float*"), managed_name
     if native_type == "const openusd_ts_knot_record*":
         return "OpenUsdNativeTsKnotRecord*", managed_name
     if native_type == "const uint8_t*":
@@ -171,6 +171,9 @@ def map_parameter(declaration: str) -> tuple[str, str]:
     enum_types = {
         "openusd_shade_value_type",
         "openusd_shade_attribute_type",
+        "openusd_shade_material_terminal",
+        "openusd_shade_binding_strength",
+        "openusd_shade_material_purpose",
         "openusd_lux_schema_kind",
         "openusd_lux_float_property",
         "openusd_lux_bool_property",
@@ -182,6 +185,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         "openusd_skel_animation_vec3_property",
         "openusd_skel_binding_relationship",
         "openusd_skel_interpolation",
+        "openusd_skel_skinning_method",
+        "openusd_skel_blend_shape_vec3_property",
         "openusd_pcp_arc_type",
         "openusd_ts_interp_mode",
         "openusd_ts_curve_type",

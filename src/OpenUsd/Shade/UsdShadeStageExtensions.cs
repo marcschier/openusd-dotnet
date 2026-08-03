@@ -27,6 +27,15 @@ public static class UsdShadeStageExtensions
         return new UsdShadeShader(stage, path);
     }
 
+    /// <summary>Defines a UsdShadeNodeGraph.</summary>
+    public static UsdShadeNodeGraph DefineNodeGraph(this UsdStage stage, string path)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        UsdPath.ValidateAbsolutePrimPath(path);
+        stage.Native.DefineShadeNodeGraph(path);
+        return new UsdShadeNodeGraph(stage, path);
+    }
+
     /// <summary>Gets the directly bound material for a prim.</summary>
     public static UsdShadeMaterial GetDirectlyBoundMaterial(
         this UsdStage stage,

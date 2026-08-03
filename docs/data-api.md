@@ -532,7 +532,8 @@ zero because `GfCamera::GetFrustum()` does not use it, but it must remain finite
 ## Focused UsdShade facade
 
 `OpenUsd.Shade` provides schema-validated `UsdShadeMaterial`, `UsdShadeShader`,
-`UsdShadeInput`, and `UsdShadeOutput` views backed by OpenUSD's `UsdShade` C++ schema APIs:
+`UsdShadeNodeGraph`, `UsdShadeConnectable`, `UsdShadeInput`, and `UsdShadeOutput`
+views backed by OpenUSD's `UsdShade` C++ schema APIs:
 
 ```csharp
 using OpenUsd.Geom;
@@ -556,8 +557,8 @@ preview.ConnectDiffuseColor(texture.Rgb);
 preview.Material.Bind(mesh.Prim);
 ```
 
-`DefineMaterial` and `DefineShader` use `UsdShadeMaterial::Define` and
-`UsdShadeShader::Define`. `Wrap` rejects an existing prim of the wrong schema with
+`DefineMaterial`, `DefineShader`, and `DefineNodeGraph` use the matching concrete
+UsdShade `Define` methods. `Wrap` rejects an existing prim of the wrong schema with
 `ArgumentException`; `TryWrap` returns `false` for missing or incompatible prims.
 Shader source identifiers use `SetShaderId`/`GetShaderId`.
 
@@ -574,14 +575,23 @@ native-owned packed UTF-8 list. `GetConnectedSource()` remains the single-source
 throws explicitly unless exactly one source exists. Managed code decodes and releases the native
 allocation immediately.
 
-Material surface output creation uses the universal render context. Direct binding uses
-`UsdShadeMaterialBindingAPI::Apply`, `Bind`, `UnbindDirectBinding`, and `GetDirectBinding`; the
-material and target prim must belong to the same managed stage. `UsdPreviewSurface` provides common
-diffuseColor, emissiveColor, metallic, roughness, opacity, opacityThreshold, normal, and displacement
-setters without replacing the generic input/output API. `UsdUvTexture` is a small helper for the
-standard shader ID, file asset input, and canonical roleless `float3` rgb output. A primvar-reader
-convenience facade is deferred; generic shader inputs, outputs, and connections remain sufficient to
-author that node explicitly.
+`UsdShadeConnectable` exposes common input/output authoring and discovery across shaders and
+node graphs. `UsdShadeNodeGraph` forwards to the same connectable surface, so a MaterialX
+consumer can enumerate authored node-graph interface inputs/outputs, walk child prims through
+the stage, and resolve connections in bulk without per-element native calls.
+
+Material terminal creation covers `surface`, `displacement`, and `volume` outputs in the
+universal or named render contexts. Direct binding uses `UsdShadeMaterialBindingAPI::Apply`,
+`Bind`, `UnbindDirectBinding`, and `GetDirectBinding`; the material and target prim must belong
+to the same managed stage. Direct bindings can author `bindMaterialAs` as weaker or stronger
+than descendants, and can target all-purpose, `preview`, or `full` material purposes. Collection
+bindings accept the binding-site prim, collection prim/name, optional binding name, material,
+strength, and purpose, creating the collection API if needed. `UsdPreviewSurface` provides common
+diffuseColor, emissiveColor, metallic, roughness, opacity, opacityThreshold, normal, and
+displacement setters without replacing the generic input/output API. `UsdUvTexture` is a small
+helper for the standard shader ID, file asset input, and canonical roleless `float3` rgb output.
+A primvar-reader convenience facade is deferred; generic shader inputs, outputs, and connections
+remain sufficient to author that node explicitly.
 
 ## Focused UsdLux facade
 
@@ -639,7 +649,8 @@ remain available for a future broader Lux surface.
 ## Focused UsdSkel facade
 
 `OpenUsd.Skel` provides schema-validated `UsdSkelRoot`, `UsdSkelSkeleton`,
-`UsdSkelAnimation`, and `UsdSkelBinding` views backed by OpenUSD's UsdSkel schema APIs:
+`UsdSkelAnimation`, `UsdSkelBlendShape`, and `UsdSkelBinding` views backed by
+OpenUSD's UsdSkel schema APIs:
 
 ```csharp
 using OpenUsd.Geom;
@@ -648,6 +659,7 @@ using OpenUsd.Skel;
 UsdSkelRoot root = stage.DefineSkelRoot("/World/Character");
 UsdSkelSkeleton skeleton = stage.DefineSkeleton("/World/Character/Skeleton");
 UsdSkelAnimation animation = stage.DefineAnimation("/World/Character/Animation");
+UsdSkelBlendShape smile = stage.DefineBlendShape("/World/Character/Smile");
 UsdGeomMesh mesh = stage.DefineMesh("/World/Character/Mesh");
 
 string[] joints = ["Root", "Root/Arm"];
@@ -661,6 +673,11 @@ animation.SetRotations([UsdQuatf.Identity, UsdQuatf.Identity]);
 animation.SetScales([new(1, 1, 1), new(1, 1, 1)]);
 animation.SetRotations(sampledRotations, timeCode: 10);
 
+smile.SetOffsets(smileOffsets);
+smile.SetNormalOffsets(smileNormalOffsets);
+smile.SetPointIndices(smilePointIndices);
+smile.SetInbetween("half", 0.5f, halfSmileOffsets);
+
 root.ApplyBinding().SetSkeleton(skeleton);
 skeleton.ApplyBinding().SetAnimationSource(animation);
 
@@ -671,11 +688,15 @@ meshBinding.SetJointInfluences(
     jointWeights,
     elementSize: 2,
     UsdSkelInterpolation.Vertex);
+meshBinding.SkinningMethod = UsdSkelSkinningMethod.ClassicLinear;
+meshBinding.SetBlendShapes(["smile"]);
+meshBinding.SetBlendShapeTargets([smile]);
 ```
 
-`DefineSkelRoot`, `DefineSkeleton`, and `DefineAnimation` use the corresponding generated
-UsdSkel schema `Define` methods. `TryWrap` returns `false` for missing or incompatible prims;
-`Wrap` preserves a missing-prim error and rejects an existing prim of the wrong exact schema.
+`DefineSkelRoot`, `DefineSkeleton`, `DefineAnimation`, and `DefineBlendShape` use the
+corresponding generated UsdSkel schema `Define` methods. `TryWrap` returns `false` for missing or
+incompatible prims; `Wrap` preserves a missing-prim error and rejects an existing prim of the wrong
+exact schema.
 Binding `Apply` uses `UsdSkelBindingAPI::CanApply`/`Apply`, while `Wrap` requires the API to
 already be present.
 
@@ -685,13 +706,14 @@ Schema, matrix-property, animation-property, binding-relationship, and interpola
 are domain-checked and rejected with `ArgumentOutOfRangeException`. Schema wrappers preserve a
 validated absolute-path invariant from definition or wrapping through every subsequent operation.
 
-Joint tokens cross the ABI in one packed UTF-8 buffer plus offsets. Set calls borrow that
-caller-owned buffer only for the call. Get calls return one native-owned packed string list,
-which managed code decodes and releases immediately. Matrix, vector, quaternion, joint-index,
-and weight arrays are contiguous caller-owned buffers borrowed synchronously by native code.
-Reads use a size query followed by one bulk fill; native code never retains a buffer. Quaternion
-layout is scalar first (`real`, `x`, `y`, `z`), and animation scales are converted to and from
-UsdSkel's `half3[]` schema attribute.
+Joint tokens and blend-shape channel names cross the ABI in one packed UTF-8 buffer plus offsets.
+Set calls borrow that caller-owned buffer only for the call. Get calls return one native-owned
+packed string list, which managed code decodes and releases immediately. Matrix, vector,
+quaternion, joint-index, weight, blend-shape offset, normal-offset, and point-index arrays are
+contiguous caller-owned buffers borrowed synchronously by native code. Reads use a size query
+followed by one bulk fill; native code never retains a buffer. Quaternion layout is scalar first
+(`real`, `x`, `y`, `z`), and animation scales are converted to and from UsdSkel's `half3[]`
+schema attribute.
 
 Skeleton joints must be unique relative prim paths in valid parent-before-child
 `UsdSkelTopology` order. Bind/rest transform counts must equal the skeleton joint count.
@@ -707,9 +729,15 @@ and element-size metadata. Indices are range-checked against the skeleton topolo
 be finite and non-negative. Managed code performs shape, interpolation, weight, and index-range
 validation before the authoring P/Invoke and throws standard argument exceptions. The native ABI
 repeats validation defensively. The focused facade exposes constant and vertex interpolation and
-does not normalize weights. Animation joint order may intentionally differ from skeleton
-topology order. Blend shapes, skeleton-cache evaluation, skinning computation, and broader
-UsdSkel utilities remain outside this viewer-authoring slice.
+does not normalize weights. Animation joint order may intentionally differ from skeleton topology
+order.
+
+Blend-shape authoring covers offsets, normal offsets, point indices, named inbetweens with weights,
+binding channel names, target relationships, and the binding skinning-method token. Inbetween
+queries return the weight and offset arrays as one detached value. Blend-shape array lengths and
+finite weights are validated before dispatch, and target relationships must point at existing
+`UsdSkelBlendShape` prims. Skeleton-cache evaluation, skinning computation, packed joint animation
+facades, and broader UsdSkel utilities remain outside this viewer-authoring slice.
 
 ## Prim lifecycle
 
