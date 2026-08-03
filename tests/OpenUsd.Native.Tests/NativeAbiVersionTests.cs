@@ -186,7 +186,7 @@ public sealed class NativeAbiVersionTests
             "OpenUsdNativeMethods.g.cs"));
 
         await Assert.That(header).Contains("OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA");
-        await Assert.That(header).Contains("OPENUSD_DOTNET_CAPABILITY_USD_SHADE_SKEL");
+        await Assert.That(header).Contains("OPENUSD_CAPABILITY_USD_SHADE_SKEL");
         await Assert.That(contract).Contains("RequiredCapabilities = 0x7FFF");
         await Assert.That(generatedInterop).Contains("PhysicsApplyApi");
         await Assert.That(generatedInterop).Contains("PhysicsSetQuatf");

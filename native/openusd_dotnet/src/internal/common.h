@@ -252,7 +252,7 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_USD_VALIDATION_QUERY |
     OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE |
     OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA |
-    OPENUSD_DOTNET_CAPABILITY_USD_SHADE_SKEL;
+    OPENUSD_CAPABILITY_USD_SHADE_SKEL;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));

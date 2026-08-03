@@ -59,15 +59,38 @@ function Get-SourceCapabilityMask
         throw "Could not read shim data capabilities from $SourcePath."
     }
 
+    $expression = $expressionMatch.Groups['expression'].Value
+
+    # Count the operands before matching names. A capability whose macro does
+    # not fit the expected naming pattern would otherwise be skipped silently
+    # and the mask would come out too small, which is exactly what happened
+    # when bit 14 was introduced as OPENUSD_DOTNET_CAPABILITY_USD_SHADE_SKEL:
+    # every other name matched, the mask resolved to 0x3FFF instead of 0x7FFF,
+    # and the only symptom was a lock mismatch after a 90-minute hosted run on
+    # all three RIDs.
+    $operandCount = @(
+        $expression -split '\|' |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_.Length -gt 0 }).Count
+
     $capabilityNames = @(
         [regex]::Matches(
-            $expressionMatch.Groups['expression'].Value,
-            'OPENUSD_CAPABILITY_[A-Z0-9_]+') |
+            $expression,
+            'OPENUSD(?:_[A-Z0-9]+)*?_CAPABILITY_[A-Z0-9_]+') |
             ForEach-Object Value |
             Sort-Object -Unique)
     if ($capabilityNames.Count -eq 0)
     {
         throw "The shim data capability expression in $SourcePath is empty."
+    }
+
+    if ($capabilityNames.Count -ne $operandCount)
+    {
+        throw (
+            "The shim data capability expression in $SourcePath has " +
+            "$operandCount operands but only $($capabilityNames.Count) " +
+            'resolved to capability macros. An operand was skipped, so the ' +
+            'computed mask would be wrong. Check for a misnamed macro.')
     }
 
     $headerContent = Get-Content $HeaderPath -Raw

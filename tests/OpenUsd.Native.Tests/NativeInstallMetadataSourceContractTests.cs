@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace OpenUsd.Native.Tests;
@@ -126,6 +127,119 @@ public sealed class NativeInstallMetadataSourceContractTests
                 "eng/native-install-metadata.ps1 extracts ABI versions with " +
                 "these patterns, and a pattern that no longer matches makes " +
                 "the native pipeline fail: " + string.Join("; ", unmatched));
+    }
+
+    /// <summary>
+    /// Requires the capability mask the shim actually declares to equal the one
+    /// recorded in <c>eng/openusd.lock.json</c>.
+    /// </summary>
+    /// <remarks>
+    /// Both sides are read from the real artifacts -- the C header for the bit
+    /// assignments, <c>common.h</c> for the combined expression, and the lock
+    /// for the recorded value -- so this cannot agree with a stale restatement
+    /// of the expectation.
+    ///
+    /// It exists because the mismatch is otherwise invisible until the native
+    /// artifact pipeline runs, and that costs about ninety minutes and fails on
+    /// all three RIDs at once. Bit 14 shipped as
+    /// <c>OPENUSD_DOTNET_CAPABILITY_USD_SHADE_SKEL</c> while every other bit
+    /// used the <c>OPENUSD_CAPABILITY_</c> prefix, so the metadata script's
+    /// name pattern skipped it, the mask resolved to <c>0x3FFF</c> instead of
+    /// <c>0x7FFF</c>, and nothing local noticed.
+    /// </remarks>
+    [Test]
+    public async Task ShimCapabilityMaskMatchesTheLock()
+    {
+        string root = FindRepositoryRoot();
+        string common = await File.ReadAllTextAsync(
+            Path.Combine(root, "native", "openusd_dotnet", "src", "internal", "common.h"));
+        string header = await File.ReadAllTextAsync(
+            Path.Combine(root, "native", "openusd_dotnet", "include", "openusd_dotnet.h"));
+        string lockText = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "openusd.lock.json"));
+
+        Match expression = Regex.Match(
+            common,
+            @"DataCapabilities\s*=\s*(?<expression>.*?);",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(5));
+        await Assert.That(expression.Success)
+            .IsTrue()
+            .Because("common.h must declare the combined DataCapabilities expression");
+
+        string[] operands = [.. expression.Groups["expression"].Value
+            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+        ulong mask = 0;
+        List<string> unresolved = [];
+        foreach (string operand in operands)
+        {
+            Match bit = Regex.Match(
+                header,
+                @"#define\s+" + Regex.Escape(operand) + @"\s+\(UINT64_C\(1\)\s*<<\s*(?<bit>\d+)\)",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(5));
+
+            if (!bit.Success)
+            {
+                unresolved.Add(operand);
+                continue;
+            }
+
+            mask |= 1UL << int.Parse(bit.Groups["bit"].Value, CultureInfo.InvariantCulture);
+        }
+
+        // Non-vacuity: an empty operand list would make the mask trivially zero.
+        await Assert.That(operands.Length).IsGreaterThan(10);
+        await Assert.That(unresolved)
+            .IsEmpty()
+            .Because(
+                "every operand must resolve to a bit in openusd_dotnet.h, or " +
+                "the computed mask silently omits it: " + string.Join(", ", unresolved));
+
+        ulong recorded = ulong.Parse(
+            Regex.Match(
+                lockText,
+                @"""dataCapabilities""\s*:\s*(?<value>\d+)",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(5)).Groups["value"].Value,
+            CultureInfo.InvariantCulture);
+
+        await Assert.That(mask)
+            .IsEqualTo(recorded)
+            .Because(
+                $"the shim declares 0x{mask:X} but eng/openusd.lock.json records " +
+                $"0x{recorded:X}, which fails the native pipeline on all three RIDs");
+    }
+
+    /// <summary>
+    /// Requires the shim's data ABI version to equal the one in the lock.
+    /// </summary>
+    [Test]
+    public async Task ShimDataAbiVersionMatchesTheLock()
+    {
+        string root = FindRepositoryRoot();
+        string common = await File.ReadAllTextAsync(
+            Path.Combine(root, "native", "openusd_dotnet", "src", "internal", "common.h"));
+        string lockText = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "openusd.lock.json"));
+
+        Match declared = Regex.Match(
+            common,
+            @"DataAbiVersion\s*=\s*(?<value>\d+)",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(5));
+        Match recorded = Regex.Match(
+            lockText,
+            @"""data""\s*:\s*(?<value>\d+)",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(5));
+
+        await Assert.That(declared.Success).IsTrue();
+        await Assert.That(recorded.Success).IsTrue();
+        await Assert.That(declared.Groups["value"].Value)
+            .IsEqualTo(recorded.Groups["value"].Value)
+            .Because("a data ABI mismatch fails the native pipeline on all three RIDs");
     }
 
     private static string FindRepositoryRoot()
