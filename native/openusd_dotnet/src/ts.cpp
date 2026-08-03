@@ -153,10 +153,12 @@ openusd_status ValidateTsView(const openusd_ts_spline_data_view* view, openusd_e
 
 openusd_status openusd_ts_spline_create(openusd_ts_spline** spline, openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     if (spline != nullptr)
     {
         *spline = nullptr;
     }
+    // ABI_OUTPUT_INITIALIZATION
     return Guard(error, [&]() -> openusd_status
     {
         if (spline == nullptr)
@@ -179,6 +181,8 @@ openusd_status openusd_ts_spline_set_data(
     const openusd_ts_spline_data_view* view,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
+    // ABI_OUTPUT_INITIALIZATION
     return Guard(error, [&]() -> openusd_status
     {
         if (spline == nullptr)
@@ -216,8 +220,10 @@ openusd_status openusd_ts_spline_get_data(
     openusd_ts_spline_data_view* view,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return Guard(error, [&]() -> openusd_status
     {
+        // ABI_OUTPUT_INITIALIZATION
         if (spline == nullptr || view == nullptr || !IsAligned(view) ||
             view->struct_size < sizeof(openusd_ts_spline_data_view) ||
             view->version != OPENUSD_TS_SPLINE_DATA_VIEW_VERSION)
@@ -260,6 +266,7 @@ openusd_status openusd_ts_spline_eval(
     int32_t* has_value,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return Guard(error, [&]() -> openusd_status
     {
         if (value != nullptr)
@@ -270,6 +277,7 @@ openusd_status openusd_ts_spline_eval(
         {
             *has_value = 0;
         }
+        // ABI_OUTPUT_INITIALIZATION
         if (spline == nullptr || value == nullptr || has_value == nullptr || !std::isfinite(time))
         {
             WriteError(error, "A valid Ts spline, finite time, value output, and has-value output are required.");

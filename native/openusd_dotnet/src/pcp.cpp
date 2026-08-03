@@ -87,11 +87,13 @@ openusd_status openusd_pcp_get_prim_index(
     openusd_pcp_prim_index_view* view,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         uint32_t structSize = view == nullptr ? 0 : view->struct_size;
         const uint32_t requestedVersion = view == nullptr ? 0 : view->version;
         ResetPcpOutput(list, view);
+        // ABI_OUTPUT_INITIALIZATION
         if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
             list == nullptr || view == nullptr || !IsAligned(view) ||
             structSize < sizeof(openusd_pcp_prim_index_view) ||

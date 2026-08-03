@@ -229,20 +229,22 @@ openusd_status openusd_validation_get_registered_validators(
     openusd_validation_metadata_view* view,
     openusd_error_buffer* error)
 {
-    const openusd_status viewStatus = ValidateMetadataView(view, error);
-    ResetMetadata(list, view);
-    if (list == nullptr || viewStatus != OPENUSD_STATUS_OK)
+    // OUTER_ABI_GUARD
+    return Guard(error, [&]() -> openusd_status
     {
-        if (list == nullptr)
+        const openusd_status viewStatus = ValidateMetadataView(view, error);
+        ResetMetadata(list, view);
+        // ABI_OUTPUT_INITIALIZATION
+        if (list == nullptr || viewStatus != OPENUSD_STATUS_OK)
         {
-            WriteError(error, "A validation metadata list output is required.");
+            if (list == nullptr)
+            {
+                WriteError(error, "A validation metadata list output is required.");
+            }
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
-        return OPENUSD_STATUS_INVALID_ARGUMENT;
-    }
 
-    std::unique_ptr<openusd_validation_metadata_list> result;
-    const openusd_status status = Guard(error, [&]() -> openusd_status
-    {
+        std::unique_ptr<openusd_validation_metadata_list> result;
         result = std::make_unique<openusd_validation_metadata_list>();
         UsdValidationRegistry& registry = UsdValidationRegistry::GetInstance();
         std::vector<const UsdValidationValidator*> validators = registry.GetOrLoadAllValidators();
@@ -277,17 +279,9 @@ openusd_status openusd_validation_get_registered_validators(
             result->records.push_back(record);
         }
         FillMetadata(*result, view);
+        *list = result.release();
         return OPENUSD_STATUS_OK;
     });
-    if (status == OPENUSD_STATUS_OK && result)
-    {
-        *list = result.release();
-    }
-    else
-    {
-        ResetMetadata(list, view);
-    }
-    return status;
 }
 
 openusd_status openusd_validation_validate_stage(
@@ -296,10 +290,12 @@ openusd_status openusd_validation_validate_stage(
     openusd_validation_error_view* view,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         const openusd_status viewStatus = ValidateErrorView(view, error);
         ResetErrors(list, view);
+        // ABI_OUTPUT_INITIALIZATION
         if (stage == nullptr || !stage->value || list == nullptr || viewStatus != OPENUSD_STATUS_OK)
         {
             WriteError(error, "A valid stage, validation error output, and error view version 1 are required.");
@@ -318,10 +314,12 @@ openusd_status openusd_validation_validate_prim(
     openusd_validation_error_view* view,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         const openusd_status viewStatus = ValidateErrorView(view, error);
         ResetErrors(list, view);
+        // ABI_OUTPUT_INITIALIZATION
         if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
             list == nullptr || viewStatus != OPENUSD_STATUS_OK)
         {
