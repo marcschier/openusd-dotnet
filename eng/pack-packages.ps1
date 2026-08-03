@@ -21,7 +21,7 @@ param(
     # host: the Metal package needs the macOS-only mesh.metallib, and the Linux and macOS
     # Imaging packages run ELF and Mach-O validation that only their own platform can
     # perform and whose evidence is embedded in the package.
-    [ValidateSet('all', 'managed', 'metal', 'runtime')]
+    [ValidateSet('all', 'managed', 'metal', 'runtime', 'cesium-runtime')]
     [string]$Scope = 'all',
     [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
     [string]$Rid,
@@ -53,9 +53,16 @@ $published = @(
     'OpenUsd.Runtime.Imaging.osx-arm64'
 )
 
+$cesiumPublished = @(
+    'OpenUsd.Runtime.Cesium.win-x64'
+    'OpenUsd.Runtime.Cesium.linux-x64'
+    'OpenUsd.Runtime.Cesium.osx-arm64'
+)
+
 # Retained before any scope or SkipMetal filter so the src/ classification check below
-# always covers the full set whichever slice this invocation packs.
-$allPublished = $published
+# always covers the full set whichever slice this invocation packs. Cesium is opt-in and
+# intentionally not part of all/runtime scopes because it needs a separate native install.
+$allPublished = $published + $cesiumPublished
 
 $metalPackage = 'OpenUsd.Rendering.Silk.Metal'
 switch ($Scope)
@@ -80,6 +87,15 @@ switch ($Scope)
         }
 
         $published = @("OpenUsd.Runtime.Core.$Rid", "OpenUsd.Runtime.Imaging.$Rid")
+    }
+    'cesium-runtime'
+    {
+        if ([string]::IsNullOrEmpty($Rid))
+        {
+            throw 'The cesium-runtime scope requires -Rid.'
+        }
+
+        $published = @("OpenUsd.Runtime.Cesium.$Rid")
     }
 }
 

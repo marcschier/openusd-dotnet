@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <OpenUsdCesiumNativeRid Condition="'$(OpenUsdCesiumNativeRid)' == ''">linux-x64</OpenUsdCesiumNativeRid>
+    <OpenUsdCesiumNativeRoot Condition="'$(OpenUsdCesiumNativeRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/linux-x64/native/cesium'))</OpenUsdCesiumNativeRoot>
+  </PropertyGroup>
+</Project>
