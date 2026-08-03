@@ -42,7 +42,7 @@ internal static partial class Program
                  OpenUsdNativeContract.RequiredCapabilities) !=
                 OpenUsdNativeContract.RequiredCapabilities)
             {
-                Console.Error.WriteLine("Required ABI v8 capabilities are missing.");
+                Console.Error.WriteLine("Required ABI v10 capabilities are missing.");
                 return 4;
             }
 

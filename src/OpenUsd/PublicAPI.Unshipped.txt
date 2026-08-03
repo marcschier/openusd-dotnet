@@ -1325,3 +1325,297 @@ static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsPrismaticJoint(thi
 static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsRevoluteJoint(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsRevoluteJoint
 static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsScene(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsScene
 static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsSphericalJoint(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsSphericalJoint
+
+OpenUsd.Geom.UsdGeomAxis
+OpenUsd.Geom.UsdGeomAxis.X = 0 -> OpenUsd.Geom.UsdGeomAxis
+OpenUsd.Geom.UsdGeomAxis.Y = 1 -> OpenUsd.Geom.UsdGeomAxis
+OpenUsd.Geom.UsdGeomAxis.Z = 2 -> OpenUsd.Geom.UsdGeomAxis
+OpenUsd.Geom.UsdGeomBasisCurves
+OpenUsd.Geom.UsdGeomBasisCurves.Basis.get -> string!
+OpenUsd.Geom.UsdGeomBasisCurves.Basis.set -> void
+OpenUsd.Geom.UsdGeomBasisCurves.GetCurveVertexCounts() -> int[]!
+OpenUsd.Geom.UsdGeomBasisCurves.GetNormals() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomBasisCurves.GetPoints() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomBasisCurves.GetWidths() -> float[]!
+OpenUsd.Geom.UsdGeomBasisCurves.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomBasisCurves.Path.get -> string!
+OpenUsd.Geom.UsdGeomBasisCurves.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomBasisCurves.SetCurveVertexCounts(System.ReadOnlySpan<int> values) -> void
+OpenUsd.Geom.UsdGeomBasisCurves.SetNormals(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomBasisCurves.SetPoints(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomBasisCurves.SetWidths(System.ReadOnlySpan<float> values) -> void
+OpenUsd.Geom.UsdGeomBasisCurves.Type.get -> string!
+OpenUsd.Geom.UsdGeomBasisCurves.Type.set -> void
+OpenUsd.Geom.UsdGeomBasisCurves.UsdGeomBasisCurves() -> void
+OpenUsd.Geom.UsdGeomBasisCurves.WrapMode.get -> string!
+OpenUsd.Geom.UsdGeomBasisCurves.WrapMode.set -> void
+OpenUsd.Geom.UsdGeomBasisCurves.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomCapsule
+OpenUsd.Geom.UsdGeomCapsule.Axis.get -> OpenUsd.Geom.UsdGeomAxis
+OpenUsd.Geom.UsdGeomCapsule.Height.get -> double
+OpenUsd.Geom.UsdGeomCapsule.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomCapsule.Path.get -> string!
+OpenUsd.Geom.UsdGeomCapsule.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomCapsule.Radius.get -> double
+OpenUsd.Geom.UsdGeomCapsule.Radius.set -> void
+OpenUsd.Geom.UsdGeomCapsule.UsdGeomCapsule() -> void
+OpenUsd.Geom.UsdGeomCapsule.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomCone
+OpenUsd.Geom.UsdGeomCone.Axis.get -> OpenUsd.Geom.UsdGeomAxis
+OpenUsd.Geom.UsdGeomCone.Axis.set -> void
+OpenUsd.Geom.UsdGeomCone.GetExtent() -> OpenUsd.Geom.UsdExtent3f
+OpenUsd.Geom.UsdGeomCone.Height.get -> double
+OpenUsd.Geom.UsdGeomCone.Height.set -> void
+OpenUsd.Geom.UsdGeomCone.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomCone.Path.get -> string!
+OpenUsd.Geom.UsdGeomCone.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomCone.Radius.get -> double
+OpenUsd.Geom.UsdGeomCone.Radius.set -> void
+OpenUsd.Geom.UsdGeomCone.SetExtent(OpenUsd.Geom.UsdExtent3f extent) -> void
+OpenUsd.Geom.UsdGeomCone.UsdGeomCone() -> void
+OpenUsd.Geom.UsdGeomCone.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomCube
+OpenUsd.Geom.UsdGeomCube.GetExtent() -> OpenUsd.Geom.UsdExtent3f
+OpenUsd.Geom.UsdGeomCube.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomCube.Path.get -> string!
+OpenUsd.Geom.UsdGeomCube.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomCube.SetExtent(OpenUsd.Geom.UsdExtent3f extent) -> void
+OpenUsd.Geom.UsdGeomCube.Size.get -> double
+OpenUsd.Geom.UsdGeomCube.Size.set -> void
+OpenUsd.Geom.UsdGeomCube.UsdGeomCube() -> void
+OpenUsd.Geom.UsdGeomCube.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomCylinder
+OpenUsd.Geom.UsdGeomCylinder.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomCylinder.Path.get -> string!
+OpenUsd.Geom.UsdGeomCylinder.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomCylinder.UsdGeomCylinder() -> void
+OpenUsd.Geom.UsdGeomCylinder.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomHermiteCurves
+OpenUsd.Geom.UsdGeomHermiteCurves.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomHermiteCurves.Path.get -> string!
+OpenUsd.Geom.UsdGeomHermiteCurves.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomHermiteCurves.SetPoints(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomHermiteCurves.UsdGeomHermiteCurves() -> void
+OpenUsd.Geom.UsdGeomHermiteCurves.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomModelAPI
+OpenUsd.Geom.UsdGeomModelAPI.UsdGeomModelAPI() -> void
+OpenUsd.Geom.UsdGeomNurbsCurves
+OpenUsd.Geom.UsdGeomNurbsCurves.UsdGeomNurbsCurves() -> void
+OpenUsd.Geom.UsdGeomNurbsPatch
+OpenUsd.Geom.UsdGeomNurbsPatch.UsdGeomNurbsPatch() -> void
+OpenUsd.Geom.UsdGeomPlane
+OpenUsd.Geom.UsdGeomPlane.UsdGeomPlane() -> void
+OpenUsd.Geom.UsdGeomPointInstancer
+OpenUsd.Geom.UsdGeomPointInstancer.UsdGeomPointInstancer() -> void
+OpenUsd.Geom.UsdGeomPoints
+OpenUsd.Geom.UsdGeomPoints.UsdGeomPoints() -> void
+OpenUsd.Geom.UsdGeomPrimvar
+OpenUsd.Geom.UsdGeomPrimvar.UsdGeomPrimvar() -> void
+OpenUsd.Geom.UsdGeomPrimvarsAPI
+OpenUsd.Geom.UsdGeomPrimvarsAPI.UsdGeomPrimvarsAPI() -> void
+OpenUsd.Geom.UsdGeomSphere
+OpenUsd.Geom.UsdGeomSphere.UsdGeomSphere() -> void
+OpenUsd.Geom.UsdGeomSubset
+OpenUsd.Geom.UsdGeomSubset.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomSubset.Path.get -> string!
+OpenUsd.Geom.UsdGeomSubset.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomSubset.UsdGeomSubset() -> void
+OpenUsd.Geom.UsdGeomSubset.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomTetMesh
+OpenUsd.Geom.UsdGeomTetMesh.GetPoints() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomTetMesh.GetSurfaceFaceVertexIndices() -> int[]!
+OpenUsd.Geom.UsdGeomTetMesh.GetTetVertexIndices() -> int[]!
+OpenUsd.Geom.UsdGeomTetMesh.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomTetMesh.Path.get -> string!
+OpenUsd.Geom.UsdGeomTetMesh.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomTetMesh.SetPoints(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomTetMesh.SetSurfaceFaceVertexIndices(System.ReadOnlySpan<int> values) -> void
+OpenUsd.Geom.UsdGeomTetMesh.SetTetVertexIndices(System.ReadOnlySpan<int> values) -> void
+OpenUsd.Geom.UsdGeomTetMesh.UsdGeomTetMesh() -> void
+OpenUsd.Geom.UsdGeomTetMesh.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+static OpenUsd.Geom.UsdGeomBasisCurves.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomBasisCurves value) -> bool
+static OpenUsd.Geom.UsdGeomBasisCurves.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomBasisCurves
+static OpenUsd.Geom.UsdGeomCapsule.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomCapsule value) -> bool
+static OpenUsd.Geom.UsdGeomCapsule.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomCapsule
+static OpenUsd.Geom.UsdGeomCone.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomCone value) -> bool
+static OpenUsd.Geom.UsdGeomCone.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomCone
+static OpenUsd.Geom.UsdGeomCube.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomCube value) -> bool
+static OpenUsd.Geom.UsdGeomCube.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomCube
+static OpenUsd.Geom.UsdGeomHermiteCurves.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomHermiteCurves value) -> bool
+static OpenUsd.Geom.UsdGeomHermiteCurves.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomHermiteCurves
+static OpenUsd.Geom.UsdGeomTetMesh.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomTetMesh value) -> bool
+static OpenUsd.Geom.UsdGeomTetMesh.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomTetMesh
+OpenUsd.Geom.UsdGeomCapsule.Axis.set -> void
+OpenUsd.Geom.UsdGeomCapsule.GetExtent() -> OpenUsd.Geom.UsdExtent3f
+OpenUsd.Geom.UsdGeomCapsule.Height.set -> void
+OpenUsd.Geom.UsdGeomCapsule.SetExtent(OpenUsd.Geom.UsdExtent3f extent) -> void
+OpenUsd.Geom.UsdGeomCylinder.Axis.get -> OpenUsd.Geom.UsdGeomAxis
+OpenUsd.Geom.UsdGeomCylinder.Axis.set -> void
+OpenUsd.Geom.UsdGeomCylinder.GetExtent() -> OpenUsd.Geom.UsdExtent3f
+OpenUsd.Geom.UsdGeomCylinder.Height.get -> double
+OpenUsd.Geom.UsdGeomCylinder.Height.set -> void
+OpenUsd.Geom.UsdGeomCylinder.Radius.get -> double
+OpenUsd.Geom.UsdGeomCylinder.Radius.set -> void
+OpenUsd.Geom.UsdGeomCylinder.SetExtent(OpenUsd.Geom.UsdExtent3f extent) -> void
+OpenUsd.Geom.UsdGeomHermiteCurves.GetCurveVertexCounts() -> int[]!
+OpenUsd.Geom.UsdGeomHermiteCurves.GetPoints() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomHermiteCurves.GetTangents() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomHermiteCurves.GetWidths() -> float[]!
+OpenUsd.Geom.UsdGeomHermiteCurves.SetCurveVertexCounts(System.ReadOnlySpan<int> values) -> void
+OpenUsd.Geom.UsdGeomHermiteCurves.SetTangents(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomHermiteCurves.SetWidths(System.ReadOnlySpan<float> values) -> void
+OpenUsd.Geom.UsdGeomNurbsCurves.GetCurveVertexCounts() -> int[]!
+OpenUsd.Geom.UsdGeomNurbsCurves.GetOrder() -> int[]!
+OpenUsd.Geom.UsdGeomNurbsCurves.GetPoints() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomNurbsCurves.GetWidths() -> float[]!
+OpenUsd.Geom.UsdGeomNurbsCurves.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomNurbsCurves.Path.get -> string!
+OpenUsd.Geom.UsdGeomNurbsCurves.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomNurbsCurves.SetCurveVertexCounts(System.ReadOnlySpan<int> values) -> void
+OpenUsd.Geom.UsdGeomNurbsCurves.SetKnots(System.ReadOnlySpan<double> values) -> void
+OpenUsd.Geom.UsdGeomNurbsCurves.SetOrder(System.ReadOnlySpan<int> values) -> void
+OpenUsd.Geom.UsdGeomNurbsCurves.SetPoints(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomNurbsCurves.SetWidths(System.ReadOnlySpan<float> values) -> void
+OpenUsd.Geom.UsdGeomNurbsCurves.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomNurbsPatch.GetPoints() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomNurbsPatch.GetUKnots() -> double[]!
+OpenUsd.Geom.UsdGeomNurbsPatch.GetVKnots() -> double[]!
+OpenUsd.Geom.UsdGeomNurbsPatch.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomNurbsPatch.Path.get -> string!
+OpenUsd.Geom.UsdGeomNurbsPatch.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomNurbsPatch.SetPoints(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomNurbsPatch.SetUKnots(System.ReadOnlySpan<double> values) -> void
+OpenUsd.Geom.UsdGeomNurbsPatch.SetVKnots(System.ReadOnlySpan<double> values) -> void
+OpenUsd.Geom.UsdGeomNurbsPatch.UOrder.get -> int
+OpenUsd.Geom.UsdGeomNurbsPatch.UOrder.set -> void
+OpenUsd.Geom.UsdGeomNurbsPatch.UVertexCount.get -> int
+OpenUsd.Geom.UsdGeomNurbsPatch.UVertexCount.set -> void
+OpenUsd.Geom.UsdGeomNurbsPatch.VOrder.get -> int
+OpenUsd.Geom.UsdGeomNurbsPatch.VOrder.set -> void
+OpenUsd.Geom.UsdGeomNurbsPatch.VVertexCount.get -> int
+OpenUsd.Geom.UsdGeomNurbsPatch.VVertexCount.set -> void
+OpenUsd.Geom.UsdGeomNurbsPatch.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomPlane.Axis.get -> OpenUsd.Geom.UsdGeomAxis
+OpenUsd.Geom.UsdGeomPlane.Axis.set -> void
+OpenUsd.Geom.UsdGeomPlane.GetExtent() -> OpenUsd.Geom.UsdExtent3f
+OpenUsd.Geom.UsdGeomPlane.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomPlane.Path.get -> string!
+OpenUsd.Geom.UsdGeomPlane.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomPlane.SetExtent(OpenUsd.Geom.UsdExtent3f extent) -> void
+OpenUsd.Geom.UsdGeomPlane.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomPointInstancer.GetPositions() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPointInstancer.GetPositions(double timeCode) -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPointInstancer.GetProtoIndices() -> int[]!
+OpenUsd.Geom.UsdGeomPointInstancer.GetScales() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPointInstancer.GetVelocities() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPointInstancer.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomPointInstancer.Path.get -> string!
+OpenUsd.Geom.UsdGeomPointInstancer.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomPointInstancer.Prototypes.get -> OpenUsd.UsdRelationship
+OpenUsd.Geom.UsdGeomPointInstancer.SetPositions(System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
+OpenUsd.Geom.UsdGeomPointInstancer.SetPositions(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomPointInstancer.SetProtoIndices(System.ReadOnlySpan<int> values) -> void
+OpenUsd.Geom.UsdGeomPointInstancer.SetScales(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomPointInstancer.SetVelocities(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomPointInstancer.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomPoints.GetAccelerations() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPoints.GetExtent() -> OpenUsd.Geom.UsdExtent3f
+OpenUsd.Geom.UsdGeomPoints.GetNormals() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPoints.GetPoints() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPoints.GetPoints(double timeCode) -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPoints.GetVelocities() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPoints.GetWidths() -> float[]!
+OpenUsd.Geom.UsdGeomPoints.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomPoints.Path.get -> string!
+OpenUsd.Geom.UsdGeomPoints.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomPoints.SetAccelerations(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomPoints.SetExtent(OpenUsd.Geom.UsdExtent3f extent) -> void
+OpenUsd.Geom.UsdGeomPoints.SetNormals(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomPoints.SetPoints(System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
+OpenUsd.Geom.UsdGeomPoints.SetPoints(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomPoints.SetVelocities(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomPoints.SetWidths(System.ReadOnlySpan<float> values) -> void
+OpenUsd.Geom.UsdGeomPoints.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomPrimvar.AttributeName.get -> string!
+OpenUsd.Geom.UsdGeomPrimvar.ElementSize.get -> int
+OpenUsd.Geom.UsdGeomPrimvar.ElementSize.set -> void
+OpenUsd.Geom.UsdGeomPrimvar.GetFloatArray() -> float[]!
+OpenUsd.Geom.UsdGeomPrimvar.GetIndices() -> int[]!
+OpenUsd.Geom.UsdGeomPrimvar.GetInt32Array() -> int[]!
+OpenUsd.Geom.UsdGeomPrimvar.GetVec2fArray() -> OpenUsd.UsdVec2f[]!
+OpenUsd.Geom.UsdGeomPrimvar.GetVec3fArray() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPrimvar.Interpolation.get -> OpenUsd.Geom.UsdGeomInterpolation
+OpenUsd.Geom.UsdGeomPrimvar.Interpolation.set -> void
+OpenUsd.Geom.UsdGeomPrimvar.Name.get -> string!
+OpenUsd.Geom.UsdGeomPrimvar.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomPrimvar.PrimPath.get -> string!
+OpenUsd.Geom.UsdGeomPrimvar.SetFloatArray(System.ReadOnlySpan<float> values) -> void
+OpenUsd.Geom.UsdGeomPrimvar.SetIndices(System.ReadOnlySpan<int> values) -> void
+OpenUsd.Geom.UsdGeomPrimvar.SetInt32Array(System.ReadOnlySpan<int> values) -> void
+OpenUsd.Geom.UsdGeomPrimvar.SetVec2fArray(System.ReadOnlySpan<OpenUsd.UsdVec2f> values) -> void
+OpenUsd.Geom.UsdGeomPrimvar.SetVec3fArray(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomPrimvarsAPI.CreatePrimvar(string! name, OpenUsd.Geom.UsdGeomInterpolation interpolation = OpenUsd.Geom.UsdGeomInterpolation.Constant, int elementSize = 1) -> OpenUsd.Geom.UsdGeomPrimvar
+OpenUsd.Geom.UsdGeomPrimvarsAPI.GetPrimvar(string! name) -> OpenUsd.Geom.UsdGeomPrimvar
+OpenUsd.Geom.UsdGeomPrimvarsAPI.Path.get -> string!
+OpenUsd.Geom.UsdGeomPrimvarsAPI.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomPrimvarsAPI.UsdGeomPrimvarsAPI(OpenUsd.UsdPrim prim) -> void
+OpenUsd.Geom.UsdGeomSphere.GetExtent() -> OpenUsd.Geom.UsdExtent3f
+OpenUsd.Geom.UsdGeomSphere.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Geom.UsdGeomSphere.Path.get -> string!
+OpenUsd.Geom.UsdGeomSphere.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomSphere.Radius.get -> double
+OpenUsd.Geom.UsdGeomSphere.Radius.set -> void
+OpenUsd.Geom.UsdGeomSphere.SetExtent(OpenUsd.Geom.UsdExtent3f extent) -> void
+OpenUsd.Geom.UsdGeomSphere.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomSubset.ElementType.get -> string!
+OpenUsd.Geom.UsdGeomSubset.ElementType.set -> void
+OpenUsd.Geom.UsdGeomSubset.FamilyName.get -> string!
+OpenUsd.Geom.UsdGeomSubset.FamilyName.set -> void
+OpenUsd.Geom.UsdGeomSubset.GetIndices() -> int[]!
+OpenUsd.Geom.UsdGeomSubset.SetIndices(System.ReadOnlySpan<int> values) -> void
+static OpenUsd.Geom.UsdGeomCylinder.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomCylinder value) -> bool
+static OpenUsd.Geom.UsdGeomCylinder.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomCylinder
+static OpenUsd.Geom.UsdGeomNurbsCurves.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomNurbsCurves value) -> bool
+static OpenUsd.Geom.UsdGeomNurbsCurves.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomNurbsCurves
+static OpenUsd.Geom.UsdGeomNurbsPatch.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomNurbsPatch value) -> bool
+static OpenUsd.Geom.UsdGeomNurbsPatch.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomNurbsPatch
+static OpenUsd.Geom.UsdGeomPlane.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomPlane value) -> bool
+static OpenUsd.Geom.UsdGeomPlane.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomPlane
+static OpenUsd.Geom.UsdGeomPointInstancer.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomPointInstancer value) -> bool
+static OpenUsd.Geom.UsdGeomPointInstancer.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomPointInstancer
+static OpenUsd.Geom.UsdGeomPoints.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomPoints value) -> bool
+static OpenUsd.Geom.UsdGeomPoints.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomPoints
+static OpenUsd.Geom.UsdGeomPrimvarsAPI.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomPrimvarsAPI value) -> bool
+static OpenUsd.Geom.UsdGeomPrimvarsAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomPrimvarsAPI
+static OpenUsd.Geom.UsdGeomSphere.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomSphere value) -> bool
+static OpenUsd.Geom.UsdGeomSphere.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomSphere
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineBasisCurves(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomBasisCurves
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineCapsule(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomCapsule
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineCone(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomCone
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineCube(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomCube
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineCylinder(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomCylinder
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineHermiteCurves(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomHermiteCurves
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineNurbsCurves(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomNurbsCurves
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineNurbsPatch(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomNurbsPatch
+static OpenUsd.Geom.UsdGeomStageExtensions.DefinePlane(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomPlane
+static OpenUsd.Geom.UsdGeomStageExtensions.DefinePointInstancer(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomPointInstancer
+static OpenUsd.Geom.UsdGeomStageExtensions.DefinePoints(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomPoints
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineSphere(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomSphere
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineSubset(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomSubset
+static OpenUsd.Geom.UsdGeomStageExtensions.DefineTetMesh(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Geom.UsdGeomTetMesh
+static OpenUsd.Geom.UsdGeomSubset.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomSubset value) -> bool
+static OpenUsd.Geom.UsdGeomSubset.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomSubset
+OpenUsd.Geom.UsdGeomModelAPI.ApplyDrawMode.get -> bool
+OpenUsd.Geom.UsdGeomModelAPI.ApplyDrawMode.set -> void
+OpenUsd.Geom.UsdGeomModelAPI.CardGeometry.get -> string!
+OpenUsd.Geom.UsdGeomModelAPI.CardGeometry.set -> void
+OpenUsd.Geom.UsdGeomModelAPI.DrawMode.get -> string!
+OpenUsd.Geom.UsdGeomModelAPI.DrawMode.set -> void
+OpenUsd.Geom.UsdGeomModelAPI.GetExtentsHint() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomModelAPI.Path.get -> string!
+OpenUsd.Geom.UsdGeomModelAPI.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Geom.UsdGeomModelAPI.SetExtentsHint(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomModelAPI.UsdGeomModelAPI(OpenUsd.UsdPrim prim) -> void
+OpenUsd.Geom.UsdGeomNurbsCurves.GetKnots() -> double[]!
+static OpenUsd.Geom.UsdGeomModelAPI.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Geom.UsdGeomModelAPI value) -> bool
+static OpenUsd.Geom.UsdGeomModelAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Geom.UsdGeomModelAPI

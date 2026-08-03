@@ -16,14 +16,15 @@ public sealed class NativeContractTests
     }
 
     [Test]
-    public async Task DataAbiElevenRequiresPhysicsSchemaAndInspectionCapabilities()
+    public async Task DataAbiTwelveRequiresUsdGeomPhysicsAndPriorCapabilities()
     {
         uint abiVersion = OpenUsdNativeContract.AbiVersion;
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
 
-        await Assert.That(abiVersion).IsEqualTo(11U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x2FFFUL);
-        await Assert.That(requiredCapabilities & 0x1FFUL).IsEqualTo(0x1FFUL);
+        await Assert.That(abiVersion).IsEqualTo(12U);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x3FFFUL);
+        await Assert.That(requiredCapabilities & 0xFFFUL).IsEqualTo(0xFFFUL);
+        await Assert.That(requiredCapabilities & 0x1000UL).IsEqualTo(0x1000UL);
         await Assert.That(requiredCapabilities & 0x2000UL).IsEqualTo(0x2000UL);
     }
 

@@ -67,4 +67,47 @@ internal static class UsdGeomSchema
         }
         return result;
     }
+
+    internal static string ToToken(UsdGeomAxis axis) => axis switch
+    {
+        UsdGeomAxis.X => "X",
+        UsdGeomAxis.Y => "Y",
+        UsdGeomAxis.Z => "Z",
+        _ => throw new ArgumentOutOfRangeException(nameof(axis))
+    };
+
+    internal static UsdGeomAxis ToAxis(string token) => token switch
+    {
+        "X" => UsdGeomAxis.X,
+        "Y" => UsdGeomAxis.Y,
+        "Z" => UsdGeomAxis.Z,
+        _ => throw new InvalidOperationException("OpenUSD returned an unsupported axis token.")
+    };
+
+    internal static void SetExtent(UsdPrim prim, UsdExtent3f extent) =>
+        prim.SetVec3fArray("extent", [extent.Minimum, extent.Maximum]);
+
+    internal static void SetExtent(UsdPrim prim, UsdExtent3f extent, double timeCode) =>
+        prim.SetVec3fArray("extent", [extent.Minimum, extent.Maximum], timeCode);
+
+    internal static UsdExtent3f GetExtent(UsdPrim prim)
+    {
+        UsdVec3f[] values = prim.GetVec3fArray("extent");
+        return ToExtent(values);
+    }
+
+    internal static UsdExtent3f GetExtent(UsdPrim prim, double timeCode)
+    {
+        UsdVec3f[] values = prim.GetVec3fArray("extent", timeCode);
+        return ToExtent(values);
+    }
+
+    private static UsdExtent3f ToExtent(UsdVec3f[] values)
+    {
+        if (values.Length != 2)
+        {
+            throw new InvalidOperationException("A UsdGeom extent must contain exactly two corners.");
+        }
+        return new UsdExtent3f(values[0], values[1]);
+    }
 }

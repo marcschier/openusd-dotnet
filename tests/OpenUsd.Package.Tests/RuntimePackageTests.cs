@@ -15,10 +15,10 @@ public sealed class RuntimePackageTests
 {
     private const string RequiredExecutionEnvironmentVariable =
         "OPENUSD_PACKAGE_EXECUTION_REQUIRED";
-    private const uint RequiredDataAbiVersion = 11;
-    private const ulong RequiredDataCapabilities = 0x2FFF;
-    private const uint PreviousDataAbiVersion = 9;
-    private const ulong PreviousDataCapabilities = 0xFFF;
+    private const uint RequiredDataAbiVersion = 12;
+    private const ulong RequiredDataCapabilities = 0x3FFF;
+    private const uint PreviousDataAbiVersion = 11;
+    private const ulong PreviousDataCapabilities = 0x2FFF;
     private const int RequiredStormAbiVersion = 6;
     private const int RequiredSilkSessionAbiVersion = 4;
     private const int RequiredSilkPageAbiVersion = 9;

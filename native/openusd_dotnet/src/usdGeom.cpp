@@ -2,6 +2,81 @@
 
 #include "internal/common.h"
 
+namespace
+{
+template <typename TSchema>
+bool IsSchema(const UsdPrim& prim)
+{
+    return static_cast<bool>(TSchema(prim));
+}
+
+template <typename TSchema>
+openusd_status DefineSchema(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* schema_name,
+    openusd_error_buffer* error)
+{
+    TfErrorMark mark;
+    const TSchema schema = TSchema::Define(stage->value, SdfPath(prim_path));
+    if (!schema || !mark.IsClean())
+    {
+        std::string message = ConsumeErrors(mark);
+        WriteError(error, message.empty() ? std::string("Could not define ") + schema_name + "." : message);
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
+    return OPENUSD_STATUS_OK;
+}
+
+openusd_status DefineGeomSchemaByKind(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t schema_kind,
+    openusd_error_buffer* error)
+{
+    switch (schema_kind)
+    {
+        case OPENUSD_GEOM_SCHEMA_XFORM:
+            return DefineSchema<UsdGeomXform>(stage, prim_path, "UsdGeomXform", error);
+        case OPENUSD_GEOM_SCHEMA_MESH:
+            return DefineSchema<UsdGeomMesh>(stage, prim_path, "UsdGeomMesh", error);
+        case OPENUSD_GEOM_SCHEMA_CAMERA:
+            return DefineSchema<UsdGeomCamera>(stage, prim_path, "UsdGeomCamera", error);
+        case OPENUSD_GEOM_SCHEMA_SUBSET:
+            return DefineSchema<UsdGeomSubset>(stage, prim_path, "UsdGeomSubset", error);
+        case OPENUSD_GEOM_SCHEMA_BASIS_CURVES:
+            return DefineSchema<UsdGeomBasisCurves>(stage, prim_path, "UsdGeomBasisCurves", error);
+        case OPENUSD_GEOM_SCHEMA_NURBS_CURVES:
+            return DefineSchema<UsdGeomNurbsCurves>(stage, prim_path, "UsdGeomNurbsCurves", error);
+        case OPENUSD_GEOM_SCHEMA_HERMITE_CURVES:
+            return DefineSchema<UsdGeomHermiteCurves>(stage, prim_path, "UsdGeomHermiteCurves", error);
+        case OPENUSD_GEOM_SCHEMA_NURBS_PATCH:
+            return DefineSchema<UsdGeomNurbsPatch>(stage, prim_path, "UsdGeomNurbsPatch", error);
+        case OPENUSD_GEOM_SCHEMA_POINTS:
+            return DefineSchema<UsdGeomPoints>(stage, prim_path, "UsdGeomPoints", error);
+        case OPENUSD_GEOM_SCHEMA_POINT_INSTANCER:
+            return DefineSchema<UsdGeomPointInstancer>(stage, prim_path, "UsdGeomPointInstancer", error);
+        case OPENUSD_GEOM_SCHEMA_CAPSULE:
+            return DefineSchema<UsdGeomCapsule>(stage, prim_path, "UsdGeomCapsule", error);
+        case OPENUSD_GEOM_SCHEMA_CONE:
+            return DefineSchema<UsdGeomCone>(stage, prim_path, "UsdGeomCone", error);
+        case OPENUSD_GEOM_SCHEMA_CUBE:
+            return DefineSchema<UsdGeomCube>(stage, prim_path, "UsdGeomCube", error);
+        case OPENUSD_GEOM_SCHEMA_CYLINDER:
+            return DefineSchema<UsdGeomCylinder>(stage, prim_path, "UsdGeomCylinder", error);
+        case OPENUSD_GEOM_SCHEMA_SPHERE:
+            return DefineSchema<UsdGeomSphere>(stage, prim_path, "UsdGeomSphere", error);
+        case OPENUSD_GEOM_SCHEMA_PLANE:
+            return DefineSchema<UsdGeomPlane>(stage, prim_path, "UsdGeomPlane", error);
+        case OPENUSD_GEOM_SCHEMA_TET_MESH:
+            return DefineSchema<UsdGeomTetMesh>(stage, prim_path, "UsdGeomTetMesh", error);
+        default:
+            WriteError(error, "The geometry schema kind cannot be defined as a concrete prim.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+}
+}
+
 openusd_status openusd_geom_is_schema(
     const openusd_stage* stage,
     const char* prim_path,
@@ -46,6 +121,54 @@ openusd_status openusd_geom_is_schema(
                     break;
                 case OPENUSD_GEOM_SCHEMA_CAMERA:
                     result = static_cast<bool>(UsdGeomCamera(prim));
+                    break;
+                case OPENUSD_GEOM_SCHEMA_SUBSET:
+                    result = IsSchema<UsdGeomSubset>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_BASIS_CURVES:
+                    result = IsSchema<UsdGeomBasisCurves>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_NURBS_CURVES:
+                    result = IsSchema<UsdGeomNurbsCurves>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_HERMITE_CURVES:
+                    result = IsSchema<UsdGeomHermiteCurves>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_NURBS_PATCH:
+                    result = IsSchema<UsdGeomNurbsPatch>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_POINTS:
+                    result = IsSchema<UsdGeomPoints>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_POINT_INSTANCER:
+                    result = IsSchema<UsdGeomPointInstancer>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_CAPSULE:
+                    result = IsSchema<UsdGeomCapsule>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_CONE:
+                    result = IsSchema<UsdGeomCone>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_CUBE:
+                    result = IsSchema<UsdGeomCube>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_CYLINDER:
+                    result = IsSchema<UsdGeomCylinder>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_SPHERE:
+                    result = IsSchema<UsdGeomSphere>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_PLANE:
+                    result = IsSchema<UsdGeomPlane>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_TET_MESH:
+                    result = IsSchema<UsdGeomTetMesh>(prim);
+                    break;
+                case OPENUSD_GEOM_SCHEMA_MODEL_API:
+                    result = static_cast<bool>(UsdGeomModelAPI(prim));
+                    break;
+                case OPENUSD_GEOM_SCHEMA_PRIMVARS_API:
+                    result = static_cast<bool>(UsdGeomPrimvarsAPI(prim));
                     break;
                 default:
                     WriteError(error, "The geometry schema kind is invalid.");
@@ -138,6 +261,127 @@ openusd_status openusd_geom_define_camera(
                 std::string message = ConsumeErrors(mark);
                 WriteError(error, message.empty() ? "Could not define the UsdGeomCamera." : message);
                 return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            return OPENUSD_STATUS_OK;
+        });
+
+    });
+}
+
+openusd_status openusd_geom_define_schema(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t schema_kind,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path))
+        {
+            WriteError(error, "A valid stage and absolute prim path are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return Guard(error, [&]()
+        {
+            return DefineGeomSchemaByKind(stage, prim_path, schema_kind, error);
+        });
+
+    });
+}
+
+openusd_status openusd_geom_set_int32_attr(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t value,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+            attribute_name == nullptr || attribute_name[0] == '\0')
+        {
+            WriteError(error, "A valid stage, prim path, and attribute name are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return Guard(error, [&]()
+        {
+            const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+            if (!prim)
+            {
+                WriteError(error, std::string("Prim was not found: ") + prim_path);
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+            UsdAttribute attribute = prim.GetAttribute(TfToken(attribute_name));
+            if (attribute && attribute.GetTypeName() != SdfValueTypeNames->Int)
+            {
+                WriteError(error, "The attribute is not an exact int value.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            if (!attribute)
+            {
+                attribute = prim.CreateAttribute(TfToken(attribute_name), SdfValueTypeNames->Int, true);
+            }
+            TfErrorMark mark;
+            const bool set = attribute && attribute.Set(value, GetTimeCode(time_sampled, time_code));
+            if (!set || !mark.IsClean())
+            {
+                std::string message = ConsumeErrors(mark);
+                WriteError(error, message.empty() ? "Could not set the int attribute." : message);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            return OPENUSD_STATUS_OK;
+        });
+
+    });
+}
+
+openusd_status openusd_geom_get_int32_attr(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    int32_t* value,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(value);
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+            attribute_name == nullptr || attribute_name[0] == '\0' || value == nullptr)
+        {
+            WriteError(error, "A valid stage, prim path, attribute name, and output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return Guard(error, [&]()
+        {
+            const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+            const UsdAttribute attribute = prim ? prim.GetAttribute(TfToken(attribute_name)) : UsdAttribute();
+            if (!attribute)
+            {
+                WriteError(error, "The requested int attribute was not found.");
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+            if (attribute.GetTypeName() != SdfValueTypeNames->Int)
+            {
+                WriteError(error, "The attribute is not an exact int value.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            TfErrorMark mark;
+            const bool read = attribute.Get(value, GetTimeCode(time_sampled, time_code));
+            if (!read || !mark.IsClean())
+            {
+                const bool had_errors = !mark.IsClean();
+                std::string message = ConsumeErrors(mark);
+                WriteError(error, message.empty() ? "The attribute has no readable int value." : message);
+                return had_errors ? OPENUSD_STATUS_NATIVE_ERROR : OPENUSD_STATUS_NOT_FOUND;
             }
             return OPENUSD_STATUS_OK;
         });

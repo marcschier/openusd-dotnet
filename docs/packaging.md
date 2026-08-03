@@ -41,8 +41,8 @@ packages for each supported RID:
   Windows includes `openusd_storm_child.dll`; Linux includes the exact ABI-7 Storm child SONAME link
   chain; macOS includes exactly one `libopenusd_storm_child.dylib`.
 
-The current package set requires project-owned data ABI version 8 and native
-capabilities `0x1FF`. Package-only execution prints and verifies both values
+The current package set requires project-owned data ABI version 12 and native
+capabilities `0x3FFF`. Package-only execution prints and verifies both values
 before exercising stage operations.
 
 The first package matrix covers `win-x64`, `linux-x64`, and `osx-arm64`. Package projects consume
@@ -103,7 +103,7 @@ links, regular duplicate copies, unversioned or arbitrary SONAMEs, absolute
 link targets, and extra `.so.*` entries fail packing. The nupkg records links using Unix ZIP
 symlink metadata and link-target payloads; its Linux build target rehydrates
 those links after NuGet extraction. They are never flattened into resources.
-Packing validates the source header as ABI v8, requires the ABI-query, v2/v3 frame,
+Packing validates the source header as ABI v10, requires the ABI-query, v2/v3 frame,
 pick, packed-selection, navigation-input, and framebuffer-capture exports, and parses
 `readelf --dynamic --wide` output for
 the Storm child, Hydra, and hdSilk.
@@ -267,8 +267,8 @@ its working directory, and successful output contains:
 
 ```text
 PACKAGE_EXECUTION_OK
-ABI=8
-CAPABILITIES=0x1FF
+ABI=12
+CAPABILITIES=0x3FFF
 INPUT_OPENED=true
 CAMERA_STATE_QUERY=true
 ROUNDTRIP_SAVED=true
@@ -279,8 +279,8 @@ CWD_IS_PUBLISH=true
 The process output and generated consumer project must not contain repository source paths,
 `ProjectReference`, or `native/install`.
 A separate clean-feed managed consumer loads only `OpenUsd.Interop` from its
-nupkg and invokes the compatibility validator. Data ABI 6 with the complete
-v8 mask and data ABI 8 with the former `0x7F` mask must both throw the typed
+nupkg and invokes the compatibility validator. Data ABI 11 with the complete
+v12 mask and Data ABI 12 with the former `0x2FFF` mask must both throw the typed
 `OpenUsdNativeException`.
 
 ## Package-only Imaging execution gate
@@ -445,8 +445,8 @@ native source and header files. Generated `native/build`, `native/install`,
 
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
-the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, data ABI 8 and
-capabilities `0x1FF`, Storm ABI 6, hdSilk session/page ABI 4/9, and Storm child
+the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 12 and
+capabilities `0x3FFF`, Storm ABI 6, hdSilk session/page ABI 4/9, and Storm child
 ABI 7. Metadata schema 3 records camera-state version 1, Storm-child navigation
 input version 1, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their

@@ -10,6 +10,7 @@
 #include "pxr/base/gf/frustum.h"
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/gf/quatf.h"
+#include "pxr/base/gf/quath.h"
 #include "pxr/base/gf/range1d.h"
 #include "pxr/base/gf/range2d.h"
 #include "pxr/base/gf/range3d.h"
@@ -50,11 +51,27 @@
 #include "pxr/usd/usd/specializes.h"
 #include "pxr/usd/usd/variantSets.h"
 #include "pxr/usd/usdGeom/bboxCache.h"
+#include "pxr/usd/usdGeom/basisCurves.h"
 #include "pxr/usd/usdGeom/camera.h"
+#include "pxr/usd/usdGeom/capsule.h"
+#include "pxr/usd/usdGeom/cone.h"
+#include "pxr/usd/usdGeom/cube.h"
+#include "pxr/usd/usdGeom/cylinder.h"
 #include "pxr/usd/usdGeom/gprim.h"
+#include "pxr/usd/usdGeom/hermiteCurves.h"
 #include "pxr/usd/usdGeom/imageable.h"
 #include "pxr/usd/usdGeom/mesh.h"
+#include "pxr/usd/usdGeom/modelAPI.h"
+#include "pxr/usd/usdGeom/nurbsCurves.h"
+#include "pxr/usd/usdGeom/nurbsPatch.h"
+#include "pxr/usd/usdGeom/plane.h"
+#include "pxr/usd/usdGeom/pointInstancer.h"
+#include "pxr/usd/usdGeom/points.h"
 #include "pxr/usd/usdGeom/primvar.h"
+#include "pxr/usd/usdGeom/primvarsAPI.h"
+#include "pxr/usd/usdGeom/sphere.h"
+#include "pxr/usd/usdGeom/subset.h"
+#include "pxr/usd/usdGeom/tetMesh.h"
 #include "pxr/usd/usdGeom/tokens.h"
 #include "pxr/usd/usdGeom/xform.h"
 #include "pxr/usd/usdGeom/xformCache.h"
@@ -216,7 +233,7 @@ struct openusd_payload_arc_list
 
 namespace
 {
-constexpr uint32_t DataAbiVersion = 11;
+constexpr uint32_t DataAbiVersion = 12;
 constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_STRING_LIST_V2 |
     OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -227,9 +244,10 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_COMPOSED_DIRECT_PAYLOAD_ARCS |
     OPENUSD_CAPABILITY_WORLD_TRANSFORM_QUERY |
     OPENUSD_CAPABILITY_CAMERA_STATE_QUERY |
-OPENUSD_CAPABILITY_PCP_PRIM_INDEX_QUERY |
+    OPENUSD_CAPABILITY_PCP_PRIM_INDEX_QUERY |
     OPENUSD_CAPABILITY_TS_SPLINE_QUERY |
     OPENUSD_CAPABILITY_USD_VALIDATION_QUERY |
+    OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE |
     OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);

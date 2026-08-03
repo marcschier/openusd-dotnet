@@ -78,13 +78,13 @@ and tests must be updated together.
 
 | Boundary | Current contract | Runtime check |
 | --- | ---: | --- |
-| Data shim `openusd_dotnet` | ABI 8, required capabilities `0x1FF` | Managed runtime validates both. |
+| Data shim `openusd_dotnet` | ABI 12, required capabilities `0x3FFF` | Managed runtime validates both. |
 | Direct Storm `openusd_hydra` | ABI 5 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 7 | Managed child runtime requires an exact version. |
 | hdSilk session API | ABI 4 | Kept aligned through the matched Imaging runtime. |
 | hdSilk command page | ABI 3 | Every managed page is validated before parsing. |
 
-The data capability mask is part of compatibility. A native library with ABI 8 but an older capability
+The data capability mask is part of compatibility. A native library with ABI 9 but an older capability
 mask is rejected, as is an older ABI that happens to report newer capability bits.
 
 The hdSilk page is a pointer-free, little-endian wire format. A page-version change must update the
@@ -160,7 +160,7 @@ When diagnosing or reviewing a deployment, verify:
 2. the publish RID is one of the current runtime RIDs;
 3. all managed and runtime OpenUsd packages use the same version;
 4. Imaging's exact Core dependency resolved without override;
-5. data ABI 11 and capabilities `0x2FFF` are reported;
+5. data ABI 12 and capabilities `0x3FFF` are reported;
 6. any selected rendering path has its matching ABI and plugin assets;
 7. `usd/**` and `plugin/usd/**` retain their directory structure;
 8. no source-build or globally installed library wins native resolution; and

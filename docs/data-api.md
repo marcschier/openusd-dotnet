@@ -78,7 +78,7 @@ not written by `UsdStage.Save`, while root-layer edits persist normally.
 
 ### Shared stage access and render sources
 
-Data ABI v8 keeps the v7 intrusive-reference-counted stage handle and serializes every stage-based
+Data ABI v10 keeps the v8 intrusive-reference-counted stage handle and serializes every stage-based
 status call with a recursive mutex. Ordinary calls take a short lock internally. The explicit native
 access guard retains the stage and holds that same lock across a lexical operation; nested stage API
 calls on the owner thread remain valid. A guard must end on the thread that began it. A wrong-thread
@@ -857,10 +857,9 @@ without invoking managed callbacks from OpenUSD threads.
 
 `eng/generate-interop.py` derives the checked-in `[LibraryImport]` declarations from
 `native/openusd_dotnet/include/openusd_dotnet.h`. CI fails if `OpenUsdNativeMethods.g.cs` is stale.
-Data ABI v8 preserves every v7 export and capability and adds
-`OPENUSD_CAPABILITY_CAMERA_STATE_QUERY` (`0x100`) and
-`OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA` (`0x200`). Together with the prior capabilities, the
-managed required mask is `0x3FF`. Managed startup rejects an older ABI or a v8
+Data ABI v12 preserves every v11 export and capability and adds
+`OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE` (`0x1000`). Together with the prior physics schema
+capability, the managed required mask is `0x3FFF`. Managed startup rejects an older ABI or a v12
 runtime missing required exports. Every status-returning export executes its complete body inside the
 common exception/TfError guard, so C++ exceptions and unconsumed OpenUSD diagnostics never cross C;
 access-end alone performs its already-validated owner-thread `noexcept` commit after the guard.
@@ -899,3 +898,12 @@ before crossing the native boundary. Their fixed Unicode `XID_Start`/`XID_Contin
 pinned OpenUSD 26.05 runtime, including underscore as an identifier start. Native-independent unit
 tests exercise them alongside `UsdVec2f`, `UsdVec3f`, `UsdMatrix4d`, `UsdBounds3d`, `UsdPayloadArc`,
 and the internal packed-string encoding/decoding helpers.
+
+### UsdGeom schema facades
+
+Data ABI v10 adds `OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE` (`0x1000`). The `OpenUsd.Geom`
+facade now defines and wraps the remaining focused geometry schemas: subsets, curves, points,
+point instancers, implicit surfaces, tetrahedral meshes, primvars, and model draw-mode data. Array
+attributes such as points, curve vertex counts, topology, primvar values, and instancer positions
+cross the native boundary as contiguous buffers; the managed facade does not introduce per-element
+P/Invoke on authoring paths.

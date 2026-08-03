@@ -9,7 +9,23 @@ internal enum UsdGeomSchemaKind
     Xformable = 1,
     Xform = 2,
     Mesh = 3,
-    Camera = 4
+    Camera = 4,
+    Subset = 5,
+    BasisCurves = 6,
+    NurbsCurves = 7,
+    HermiteCurves = 8,
+    NurbsPatch = 9,
+    Points = 10,
+    PointInstancer = 11,
+    Capsule = 12,
+    Cone = 13,
+    Cube = 14,
+    Cylinder = 15,
+    Sphere = 16,
+    Plane = 17,
+    TetMesh = 18,
+    ModelAPI = 19,
+    PrimvarsAPI = 20
 }
 
 /// <summary>Specifies composed imageable visibility.</summary>
@@ -120,3 +136,16 @@ public enum UsdGeomCameraProjection
 public readonly record struct UsdExtent3f(
     UsdVec3f Minimum,
     UsdVec3f Maximum) : IUsdDetachedResult;
+
+/// <summary>Specifies common UsdGeom axis tokens.</summary>
+public enum UsdGeomAxis
+{
+    /// <summary>The X axis.</summary>
+    X = 0,
+
+    /// <summary>The Y axis.</summary>
+    Y = 1,
+
+    /// <summary>The Z axis.</summary>
+    Z = 2
+}
