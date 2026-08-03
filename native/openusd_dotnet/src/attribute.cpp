@@ -775,19 +775,98 @@ openusd_status openusd_stage_set_int32_array(
     // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
-        return SetArrayAttribute<int32_t, int>(
-            stage,
-            prim_path,
-            attribute_name,
-            values,
-            count,
-            time_sampled,
-            time_code,
-            SdfValueTypeNames->IntArray,
-            "int32",
-            [](const SdfValueTypeName& type) { return type == SdfValueTypeNames->IntArray; },
-            [](int32_t value) { return static_cast<int>(value); },
-            error);
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+            attribute_name == nullptr || attribute_name[0] == '\0' ||
+            !IsValidArrayBuffer(values, count))
+        {
+            WriteError(error, "A valid stage, prim path, attribute name, aligned buffer, and count are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+
+        return Guard(error, [&]()
+        {
+            const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+            if (!prim)
+            {
+                WriteError(error, std::string("Prim was not found: ") + prim_path);
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+
+            TfErrorMark mark;
+            const TfToken name(attribute_name);
+            UsdAttribute attribute = prim.GetAttribute(name);
+            SdfValueTypeName typeName = SdfValueTypeNames->IntArray;
+            if (attribute)
+            {
+                typeName = attribute.GetTypeName();
+                if (typeName != SdfValueTypeNames->IntArray &&
+                    typeName != SdfValueTypeNames->Int3Array &&
+                    typeName != SdfValueTypeNames->Int4Array)
+                {
+                    WriteError(error, "The attribute is not a int32 array.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+            }
+            else
+            {
+                attribute = prim.CreateAttribute(name, typeName, true);
+            }
+
+            bool set = false;
+            if (typeName == SdfValueTypeNames->IntArray)
+            {
+                VtArray<int> array(count);
+                for (size_t index = 0; index < count; ++index)
+                {
+                    array[index] = static_cast<int>(values[index]);
+                }
+                set = attribute && attribute.Set(array, GetTimeCode(time_sampled, time_code));
+            }
+            else if (typeName == SdfValueTypeNames->Int3Array)
+            {
+                if (count % 3 != 0)
+                {
+                    WriteError(error, "The int3 array requires a count divisible by three.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+                VtArray<GfVec3i> array(count / 3);
+                for (size_t index = 0; index < array.size(); ++index)
+                {
+                    const size_t valueIndex = index * 3;
+                    array[index] = GfVec3i(
+                        values[valueIndex],
+                        values[valueIndex + 1],
+                        values[valueIndex + 2]);
+                }
+                set = attribute && attribute.Set(array, GetTimeCode(time_sampled, time_code));
+            }
+            else
+            {
+                if (count % 4 != 0)
+                {
+                    WriteError(error, "The int4 array requires a count divisible by four.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+                VtArray<GfVec4i> array(count / 4);
+                for (size_t index = 0; index < array.size(); ++index)
+                {
+                    const size_t valueIndex = index * 4;
+                    array[index] = GfVec4i(
+                        values[valueIndex],
+                        values[valueIndex + 1],
+                        values[valueIndex + 2],
+                        values[valueIndex + 3]);
+                }
+                set = attribute && attribute.Set(array, GetTimeCode(time_sampled, time_code));
+            }
+            if (!set || !mark.IsClean())
+            {
+                std::string message = ConsumeErrors(mark);
+                WriteError(error, message.empty() ? "Could not set the int32 array attribute." : message);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            return OPENUSD_STATUS_OK;
+        });
 
     });
 }
@@ -810,19 +889,146 @@ openusd_status openusd_stage_get_int32_array(
         ResetAbiOutput(required);
         return WithAbiWritableBuffer(values, capacity, [&]()
         {
-            return GetArrayAttribute<int32_t, int>(
-                stage,
-                prim_path,
-                attribute_name,
-                time_sampled,
-                time_code,
-                values,
-                capacity,
-                required,
-                "int32",
-                [](const SdfValueTypeName& type) { return type == SdfValueTypeNames->IntArray; },
-                [](int value) { return static_cast<int32_t>(value); },
-                error);
+            if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+                attribute_name == nullptr || attribute_name[0] == '\0' ||
+                required == nullptr || !IsValidArrayBuffer(values, capacity))
+            {
+                WriteError(error, "A valid stage, prim path, attribute name, aligned buffer, and size output are required.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+
+            return Guard(error, [&]()
+            {
+                const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+                const UsdAttribute attribute =
+                    prim ? prim.GetAttribute(TfToken(attribute_name)) : UsdAttribute();
+                if (!attribute)
+                {
+                    WriteError(error, "The requested int32 array was not found.");
+                    return OPENUSD_STATUS_NOT_FOUND;
+                }
+
+                const SdfValueTypeName typeName = attribute.GetTypeName();
+                const UsdTimeCode time = GetTimeCode(time_sampled, time_code);
+                TfErrorMark mark;
+                if (typeName == SdfValueTypeNames->IntArray)
+                {
+                    VtArray<int> array;
+                    const bool read = attribute.Get(&array, time);
+                    if (!read || !mark.IsClean())
+                    {
+                        const bool hadErrors = !mark.IsClean();
+                        std::string message = ConsumeErrors(mark);
+                        if (message.empty())
+                        {
+                            message = attribute.GetResolveInfo(time).ValueIsBlocked()
+                                ? "The attribute value is blocked."
+                                : "The attribute has no readable int32 array value.";
+                        }
+                        WriteError(error, message);
+                        return hadErrors ? OPENUSD_STATUS_NATIVE_ERROR : OPENUSD_STATUS_NOT_FOUND;
+                    }
+                    if (values == nullptr && capacity == 0)
+                    {
+                        *required = array.size();
+                        return OPENUSD_STATUS_OK;
+                    }
+                    if (capacity < array.size())
+                    {
+                        *required = array.size();
+                        WriteError(error, "The supplied int32 array buffer is too small.");
+                        return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+                    }
+                    for (size_t index = 0; index < array.size(); ++index)
+                    {
+                        values[index] = static_cast<int32_t>(array[index]);
+                    }
+                    *required = array.size();
+                    return OPENUSD_STATUS_OK;
+                }
+                if (typeName == SdfValueTypeNames->Int3Array)
+                {
+                    VtArray<GfVec3i> array;
+                    const bool read = attribute.Get(&array, time);
+                    if (!read || !mark.IsClean())
+                    {
+                        const bool hadErrors = !mark.IsClean();
+                        std::string message = ConsumeErrors(mark);
+                        if (message.empty())
+                        {
+                            message = attribute.GetResolveInfo(time).ValueIsBlocked()
+                                ? "The attribute value is blocked."
+                                : "The attribute has no readable int3 array value.";
+                        }
+                        WriteError(error, message);
+                        return hadErrors ? OPENUSD_STATUS_NATIVE_ERROR : OPENUSD_STATUS_NOT_FOUND;
+                    }
+                    const size_t requiredCount = array.size() * 3;
+                    if (values == nullptr && capacity == 0)
+                    {
+                        *required = requiredCount;
+                        return OPENUSD_STATUS_OK;
+                    }
+                    if (capacity < requiredCount)
+                    {
+                        *required = requiredCount;
+                        WriteError(error, "The supplied int32 array buffer is too small.");
+                        return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+                    }
+                    for (size_t index = 0; index < array.size(); ++index)
+                    {
+                        const size_t valueIndex = index * 3;
+                        values[valueIndex] = array[index][0];
+                        values[valueIndex + 1] = array[index][1];
+                        values[valueIndex + 2] = array[index][2];
+                    }
+                    *required = requiredCount;
+                    return OPENUSD_STATUS_OK;
+                }
+                if (typeName == SdfValueTypeNames->Int4Array)
+                {
+                    VtArray<GfVec4i> array;
+                    const bool read = attribute.Get(&array, time);
+                    if (!read || !mark.IsClean())
+                    {
+                        const bool hadErrors = !mark.IsClean();
+                        std::string message = ConsumeErrors(mark);
+                        if (message.empty())
+                        {
+                            message = attribute.GetResolveInfo(time).ValueIsBlocked()
+                                ? "The attribute value is blocked."
+                                : "The attribute has no readable int4 array value.";
+                        }
+                        WriteError(error, message);
+                        return hadErrors ? OPENUSD_STATUS_NATIVE_ERROR : OPENUSD_STATUS_NOT_FOUND;
+                    }
+                    const size_t requiredCount = array.size() * 4;
+                    if (values == nullptr && capacity == 0)
+                    {
+                        *required = requiredCount;
+                        return OPENUSD_STATUS_OK;
+                    }
+                    if (capacity < requiredCount)
+                    {
+                        *required = requiredCount;
+                        WriteError(error, "The supplied int32 array buffer is too small.");
+                        return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+                    }
+                    for (size_t index = 0; index < array.size(); ++index)
+                    {
+                        const size_t valueIndex = index * 4;
+                        values[valueIndex] = array[index][0];
+                        values[valueIndex + 1] = array[index][1];
+                        values[valueIndex + 2] = array[index][2];
+                        values[valueIndex + 3] = array[index][3];
+                    }
+                    *required = requiredCount;
+                    return OPENUSD_STATUS_OK;
+                }
+
+                WriteError(error, "The attribute is not a int32 array.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            });
         });
 
     });
@@ -993,7 +1199,11 @@ openusd_status openusd_stage_set_vec3f_array(
             "vec3f",
             [](const SdfValueTypeName& type)
             {
-                return type == SdfValueTypeNames->Float3Array;
+                return type == SdfValueTypeNames->Float3Array ||
+                    type == SdfValueTypeNames->Vector3fArray ||
+                    type == SdfValueTypeNames->Point3fArray ||
+                    type == SdfValueTypeNames->Normal3fArray ||
+                    type == SdfValueTypeNames->Color3fArray;
             },
             [](const openusd_vec3f& value) { return GfVec3f(value.x, value.y, value.z); },
             error);
@@ -1031,7 +1241,11 @@ openusd_status openusd_stage_get_vec3f_array(
                 "vec3f",
                 [](const SdfValueTypeName& type)
                 {
-                    return type == SdfValueTypeNames->Float3Array;
+                    return type == SdfValueTypeNames->Float3Array ||
+                        type == SdfValueTypeNames->Vector3fArray ||
+                        type == SdfValueTypeNames->Point3fArray ||
+                        type == SdfValueTypeNames->Normal3fArray ||
+                        type == SdfValueTypeNames->Color3fArray;
                 },
                 [](const GfVec3f& value)
                 {

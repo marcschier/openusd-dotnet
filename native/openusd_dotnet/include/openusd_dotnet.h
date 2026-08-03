@@ -1161,6 +1161,25 @@ OPENUSD_DOTNET_API openusd_status openusd_geom_get_int32_attr(
     int32_t* value,
     openusd_error_buffer* error);
 
+OPENUSD_DOTNET_API openusd_status openusd_geom_point_instancer_set_orientations(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const openusd_quatf* values,
+    size_t count,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_geom_point_instancer_get_orientations(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t time_sampled,
+    double time_code,
+    openusd_quatf* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
 OPENUSD_DOTNET_API openusd_status openusd_geom_imageable_set_visibility(
     const openusd_stage* stage,
     const char* prim_path,

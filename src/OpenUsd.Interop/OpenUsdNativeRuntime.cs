@@ -1505,6 +1505,27 @@ public static unsafe partial class OpenUsdNativeRuntime
         }
     }
 
+    internal static void SetGeomPointInstancerOrientations(
+        OpenUsdNativeStage stage,
+        string primPath,
+        ReadOnlySpan<OpenUsdNativeQuatf> values) =>
+        SetGeomArray(
+            stage,
+            primPath,
+            values,
+            null,
+            NativeMethods.GeomPointInstancerSetOrientations);
+
+    internal static OpenUsdNativeQuatf[] GetGeomPointInstancerOrientations(
+        OpenUsdNativeStage stage,
+        string primPath) =>
+        GetGeomArray<OpenUsdNativeQuatf>(
+            stage,
+            primPath,
+            null,
+            NativeMethods.GeomPointInstancerGetOrientations,
+            "point-instancer orientations");
+
     internal static void SetGeomVisibility(
         OpenUsdNativeStage stage,
         string primPath,

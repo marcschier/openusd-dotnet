@@ -68,6 +68,28 @@ internal static class UsdGeomSchema
         return result;
     }
 
+    internal static OpenUsdNativeQuatf[] ToNative(ReadOnlySpan<UsdQuatf> values)
+    {
+        var result = new OpenUsdNativeQuatf[values.Length];
+        for (int index = 0; index < values.Length; ++index)
+        {
+            result[index] = values[index].ToNative();
+        }
+
+        return result;
+    }
+
+    internal static UsdQuatf[] FromNative(OpenUsdNativeQuatf[] values)
+    {
+        var result = new UsdQuatf[values.Length];
+        for (int index = 0; index < values.Length; ++index)
+        {
+            result[index] = UsdQuatf.FromNative(values[index]);
+        }
+
+        return result;
+    }
+
     internal static string ToToken(UsdGeomAxis axis) => axis switch
     {
         UsdGeomAxis.X => "X",

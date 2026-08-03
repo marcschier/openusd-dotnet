@@ -45,6 +45,10 @@ public readonly struct UsdGeomPointInstancer : IUsdStageBound
     public UsdVec3f[] GetPositions(double timeCode) => Prim.GetVec3fArray("positions", timeCode);
     public void SetProtoIndices(ReadOnlySpan<int> values) => Prim.SetInt32Array("protoIndices", values);
     public int[] GetProtoIndices() => Prim.GetInt32Array("protoIndices");
+    public void SetOrientations(ReadOnlySpan<UsdQuatf> values) =>
+        Stage.Native.SetGeomPointInstancerOrientations(Path, UsdGeomSchema.ToNative(values));
+    public UsdQuatf[] GetOrientations() =>
+        UsdGeomSchema.FromNative(Stage.Native.GetGeomPointInstancerOrientations(Path));
     public void SetVelocities(ReadOnlySpan<UsdVec3f> values) => Prim.SetVec3fArray("velocities", values);
     public UsdVec3f[] GetVelocities() => Prim.GetVec3fArray("velocities");
     public void SetScales(ReadOnlySpan<UsdVec3f> values) => Prim.SetVec3fArray("scales", values);

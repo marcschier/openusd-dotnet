@@ -1503,6 +1503,7 @@ OpenUsd.Geom.UsdGeomPlane.Path.get -> string!
 OpenUsd.Geom.UsdGeomPlane.Prim.get -> OpenUsd.UsdPrim
 OpenUsd.Geom.UsdGeomPlane.SetExtent(OpenUsd.Geom.UsdExtent3f extent) -> void
 OpenUsd.Geom.UsdGeomPlane.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Geom.UsdGeomPointInstancer.GetOrientations() -> OpenUsd.UsdQuatf[]!
 OpenUsd.Geom.UsdGeomPointInstancer.GetPositions() -> OpenUsd.UsdVec3f[]!
 OpenUsd.Geom.UsdGeomPointInstancer.GetPositions(double timeCode) -> OpenUsd.UsdVec3f[]!
 OpenUsd.Geom.UsdGeomPointInstancer.GetProtoIndices() -> int[]!
@@ -1512,6 +1513,7 @@ OpenUsd.Geom.UsdGeomPointInstancer.Imageable.get -> OpenUsd.Geom.UsdGeomImageabl
 OpenUsd.Geom.UsdGeomPointInstancer.Path.get -> string!
 OpenUsd.Geom.UsdGeomPointInstancer.Prim.get -> OpenUsd.UsdPrim
 OpenUsd.Geom.UsdGeomPointInstancer.Prototypes.get -> OpenUsd.UsdRelationship
+OpenUsd.Geom.UsdGeomPointInstancer.SetOrientations(System.ReadOnlySpan<OpenUsd.UsdQuatf> values) -> void
 OpenUsd.Geom.UsdGeomPointInstancer.SetPositions(System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
 OpenUsd.Geom.UsdGeomPointInstancer.SetPositions(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
 OpenUsd.Geom.UsdGeomPointInstancer.SetProtoIndices(System.ReadOnlySpan<int> values) -> void

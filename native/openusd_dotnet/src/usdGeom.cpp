@@ -165,10 +165,10 @@ openusd_status openusd_geom_is_schema(
                     result = IsSchema<UsdGeomTetMesh>(prim);
                     break;
                 case OPENUSD_GEOM_SCHEMA_MODEL_API:
-                    result = static_cast<bool>(UsdGeomModelAPI(prim));
+                    result = static_cast<bool>(prim);
                     break;
                 case OPENUSD_GEOM_SCHEMA_PRIMVARS_API:
-                    result = static_cast<bool>(UsdGeomPrimvarsAPI(prim));
+                    result = static_cast<bool>(prim);
                     break;
                 default:
                     WriteError(error, "The geometry schema kind is invalid.");
@@ -384,6 +384,95 @@ openusd_status openusd_geom_get_int32_attr(
                 return had_errors ? OPENUSD_STATUS_NATIVE_ERROR : OPENUSD_STATUS_NOT_FOUND;
             }
             return OPENUSD_STATUS_OK;
+        });
+
+    });
+}
+
+openusd_status openusd_geom_point_instancer_set_orientations(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const openusd_quatf* values,
+    size_t count,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        return Guard(error, [&]()
+        {
+            UsdGeomPointInstancer schema;
+            openusd_status status =
+                GetGeomSchema(stage, prim_path, "UsdGeomPointInstancer", &schema, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            return SetSchemaArray<openusd_quatf, GfQuath>(
+                schema.CreateOrientationsAttr(),
+                values,
+                count,
+                GetTimeCode(time_sampled, time_code),
+                SdfValueTypeNames->QuathArray,
+                "point-instancer orientations",
+                [](openusd_quatf value)
+                {
+                    return GfQuath(GfQuatf(value.real, GfVec3f(value.x, value.y, value.z)));
+                },
+                error);
+        });
+
+    });
+}
+
+openusd_status openusd_geom_point_instancer_get_orientations(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t time_sampled,
+    double time_code,
+    openusd_quatf* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(required);
+        return WithAbiWritableBuffer(values, capacity, [&]()
+        {
+            return Guard(error, [&]()
+            {
+                UsdGeomPointInstancer schema;
+                openusd_status status =
+                    GetGeomSchema(stage, prim_path, "UsdGeomPointInstancer", &schema, error);
+                if (status != OPENUSD_STATUS_OK)
+                {
+                    return status;
+                }
+                return GetSchemaArray<openusd_quatf, GfQuath>(
+                    schema.GetOrientationsAttr(),
+                    GetTimeCode(time_sampled, time_code),
+                    values,
+                    capacity,
+                    required,
+                    SdfValueTypeNames->QuathArray,
+                    "point-instancer orientations",
+                    [](const GfQuath& value)
+                    {
+                        const GfQuatf quatf(value);
+                        const GfVec3f imaginary = quatf.GetImaginary();
+                        return openusd_quatf{
+                            quatf.GetReal(),
+                            imaginary[0],
+                            imaginary[1],
+                            imaginary[2]};
+                    },
+                    error);
+            });
         });
 
     });

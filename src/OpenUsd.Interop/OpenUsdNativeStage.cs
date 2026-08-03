@@ -339,6 +339,16 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
         double? timeCode = null) =>
         OpenUsdNativeRuntime.GetGeomInt32(this, primPath, attributeName, timeCode);
 
+    /// <summary>Authors UsdGeomPointInstancer orientations using one bulk native call.</summary>
+    public void SetGeomPointInstancerOrientations(
+        string primPath,
+        ReadOnlySpan<OpenUsdNativeQuatf> values) =>
+        OpenUsdNativeRuntime.SetGeomPointInstancerOrientations(this, primPath, values);
+
+    /// <summary>Gets UsdGeomPointInstancer orientations using a two-call bulk buffer transfer.</summary>
+    public OpenUsdNativeQuatf[] GetGeomPointInstancerOrientations(string primPath) =>
+        OpenUsdNativeRuntime.GetGeomPointInstancerOrientations(this, primPath);
+
     /// <summary>Authors UsdGeomImageable visibility.</summary>
     public void SetGeomVisibility(
         string primPath,

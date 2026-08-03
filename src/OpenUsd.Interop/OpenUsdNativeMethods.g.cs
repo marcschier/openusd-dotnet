@@ -1006,6 +1006,37 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_geom_point_instancer_set_orientations",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus GeomPointInstancerSetOrientations(
+            nint stage,
+            string primPath,
+            OpenUsdNativeQuatf* values,
+            nuint count,
+            int timeSampled,
+            double timeCode,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_geom_point_instancer_get_orientations",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus GeomPointInstancerGetOrientations(
+            nint stage,
+            string primPath,
+            int timeSampled,
+            double timeCode,
+            OpenUsdNativeQuatf* values,
+            nuint capacity,
+            out nuint required,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_geom_imageable_set_visibility",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
