@@ -42,7 +42,7 @@ internal static partial class Program
                  OpenUsdNativeContract.RequiredCapabilities) !=
                 OpenUsdNativeContract.RequiredCapabilities)
             {
-                Console.Error.WriteLine("Required ABI v8 capabilities are missing.");
+                Console.Error.WriteLine("Required ABI v10 capabilities are missing.");
                 return 4;
             }
 
@@ -1161,17 +1161,7 @@ internal static partial class Program
                 {
                     normalCardinalityRejected = true;
                 }
-                bool arrayRoleMismatchRejected;
-                try
-                {
-                    _ = mesh.Prim.GetVec3fArray("points");
-                    arrayRoleMismatchRejected = false;
-                }
-                catch (OpenUsdNativeException exception)
-                    when (exception.Status == OpenUsdNativeStatus.InvalidArgument)
-                {
-                    arrayRoleMismatchRejected = true;
-                }
+                UsdVec3f[] genericMeshPoints = mesh.Prim.GetVec3fArray("points");
 
                 if (!wrongSchemaRejected ||
                     !wrapRejected ||
@@ -1179,7 +1169,7 @@ internal static partial class Program
                     !negativeFocalRejected ||
                     !malformedTopologyRejected ||
                     !normalCardinalityRejected ||
-                    !arrayRoleMismatchRejected ||
+                    !genericMeshPoints.SequenceEqual(geomPoints) ||
                     world.Xformable.GetLocalTransform() != xformValue ||
                     !world.Xformable.GetResetXformStack() ||
                     mesh.Imageable.GetVisibility() != UsdGeomVisibility.Invisible ||
@@ -1318,6 +1308,7 @@ internal static partial class Program
             Console.WriteLine("World bounds passed.");
             CompositionEnumerationProbe.Run(directory);
             Console.WriteLine("Composition enumeration passed.");
+
             string usdShadePath = Path.Combine(directory, "usdshade-authored.usda");
             File.Delete(usdShadePath);
             var textureAsset = new UsdAssetPath("textures/albédo.png");

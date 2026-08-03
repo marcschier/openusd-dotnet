@@ -272,6 +272,7 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_PCP_PRIM_INDEX_QUERY (UINT64_C(1) << 9)
 #define OPENUSD_CAPABILITY_TS_SPLINE_QUERY (UINT64_C(1) << 10)
 #define OPENUSD_CAPABILITY_USD_VALIDATION_QUERY (UINT64_C(1) << 11)
+#define OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE (UINT64_C(1) << 12)
 #define OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA (UINT64_C(1) << 13)
 
 typedef struct openusd_vec3f
@@ -324,7 +325,23 @@ typedef enum openusd_geom_schema_kind
     OPENUSD_GEOM_SCHEMA_XFORMABLE = 1,
     OPENUSD_GEOM_SCHEMA_XFORM = 2,
     OPENUSD_GEOM_SCHEMA_MESH = 3,
-    OPENUSD_GEOM_SCHEMA_CAMERA = 4
+    OPENUSD_GEOM_SCHEMA_CAMERA = 4,
+    OPENUSD_GEOM_SCHEMA_SUBSET = 5,
+    OPENUSD_GEOM_SCHEMA_BASIS_CURVES = 6,
+    OPENUSD_GEOM_SCHEMA_NURBS_CURVES = 7,
+    OPENUSD_GEOM_SCHEMA_HERMITE_CURVES = 8,
+    OPENUSD_GEOM_SCHEMA_NURBS_PATCH = 9,
+    OPENUSD_GEOM_SCHEMA_POINTS = 10,
+    OPENUSD_GEOM_SCHEMA_POINT_INSTANCER = 11,
+    OPENUSD_GEOM_SCHEMA_CAPSULE = 12,
+    OPENUSD_GEOM_SCHEMA_CONE = 13,
+    OPENUSD_GEOM_SCHEMA_CUBE = 14,
+    OPENUSD_GEOM_SCHEMA_CYLINDER = 15,
+    OPENUSD_GEOM_SCHEMA_SPHERE = 16,
+    OPENUSD_GEOM_SCHEMA_PLANE = 17,
+    OPENUSD_GEOM_SCHEMA_TET_MESH = 18,
+    OPENUSD_GEOM_SCHEMA_MODEL_API = 19,
+    OPENUSD_GEOM_SCHEMA_PRIMVARS_API = 20
 } openusd_geom_schema_kind;
 
 typedef enum openusd_geom_visibility
@@ -1117,6 +1134,50 @@ OPENUSD_DOTNET_API openusd_status openusd_geom_define_mesh(
 OPENUSD_DOTNET_API openusd_status openusd_geom_define_camera(
     const openusd_stage* stage,
     const char* prim_path,
+    openusd_error_buffer* error);
+
+/* UsdGeom schema-completion additions. */
+OPENUSD_DOTNET_API openusd_status openusd_geom_define_schema(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t schema_kind,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_geom_set_int32_attr(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t value,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_geom_get_int32_attr(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    int32_t* value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_geom_point_instancer_set_orientations(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const openusd_quatf* values,
+    size_t count,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_geom_point_instancer_get_orientations(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t time_sampled,
+    double time_code,
+    openusd_quatf* values,
+    size_t capacity,
+    size_t* required,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_geom_imageable_set_visibility(

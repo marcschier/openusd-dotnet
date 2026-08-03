@@ -1427,6 +1427,105 @@ public static unsafe partial class OpenUsdNativeRuntime
     internal static void DefineGeomCamera(OpenUsdNativeStage stage, string primPath) =>
         InvokeStagePrimAction(stage, primPath, NativeMethods.GeomDefineCamera);
 
+    internal static void DefineGeomSchema(OpenUsdNativeStage stage, string primPath, int schemaKind)
+    {
+        if (schemaKind < 2 || schemaKind > 18)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(schemaKind),
+                "Only concrete UsdGeom schema kinds can be defined.");
+        }
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.GeomDefineSchema(
+                lease.Handle,
+                primPath,
+                schemaKind,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    internal static void SetGeomInt32(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        int value,
+        double? timeCode)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeName);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.GeomSetInt32Attr(
+                lease.Handle,
+                primPath,
+                attributeName,
+                value,
+                timeCode.HasValue ? 1 : 0,
+                timeCode.GetValueOrDefault(),
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    internal static int GetGeomInt32(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        double? timeCode)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeName);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.GeomGetInt32Attr(
+                lease.Handle,
+                primPath,
+                attributeName,
+                timeCode.HasValue ? 1 : 0,
+                timeCode.GetValueOrDefault(),
+                out int value,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return value;
+        }
+    }
+
+    internal static void SetGeomPointInstancerOrientations(
+        OpenUsdNativeStage stage,
+        string primPath,
+        ReadOnlySpan<OpenUsdNativeQuatf> values) =>
+        SetGeomArray(
+            stage,
+            primPath,
+            values,
+            null,
+            NativeMethods.GeomPointInstancerSetOrientations);
+
+    internal static OpenUsdNativeQuatf[] GetGeomPointInstancerOrientations(
+        OpenUsdNativeStage stage,
+        string primPath) =>
+        GetGeomArray<OpenUsdNativeQuatf>(
+            stage,
+            primPath,
+            null,
+            NativeMethods.GeomPointInstancerGetOrientations,
+            "point-instancer orientations");
+
     internal static void SetGeomVisibility(
         OpenUsdNativeStage stage,
         string primPath,

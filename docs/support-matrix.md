@@ -387,3 +387,12 @@ NativeAOT, and evidence failures without weakening these support boundaries.
 [release]: ../.github/workflows/release.yml
 [render]: ../.github/workflows/render.yml
 [shaders]: ../.github/workflows/shaders.yml
+
+## UsdGeom data schema surface
+
+| Surface | Current state |
+| --- | --- |
+| Mesh, xform, imageable, camera | Implemented |
+| Subset, curves, points, point instancer, implicit surfaces, tet mesh | Implemented |
+| PrimvarsAPI and ModelAPI authoring helpers | Implemented |
+| Hydra rendering for these prims | Unchanged; hdSilk/Storm support is tracked separately |

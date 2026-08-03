@@ -320,6 +320,35 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     public void DefineGeomCamera(string primPath) =>
         OpenUsdNativeRuntime.DefineGeomCamera(this, primPath);
 
+    /// <summary>Defines a concrete UsdGeom schema prim.</summary>
+    public void DefineGeomSchema(string primPath, int schemaKind) =>
+        OpenUsdNativeRuntime.DefineGeomSchema(this, primPath, schemaKind);
+
+    /// <summary>Sets an exact int UsdGeom schema attribute.</summary>
+    public void SetGeomInt32(
+        string primPath,
+        string attributeName,
+        int value,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.SetGeomInt32(this, primPath, attributeName, value, timeCode);
+
+    /// <summary>Gets an exact int UsdGeom schema attribute.</summary>
+    public int GetGeomInt32(
+        string primPath,
+        string attributeName,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.GetGeomInt32(this, primPath, attributeName, timeCode);
+
+    /// <summary>Authors UsdGeomPointInstancer orientations using one bulk native call.</summary>
+    public void SetGeomPointInstancerOrientations(
+        string primPath,
+        ReadOnlySpan<OpenUsdNativeQuatf> values) =>
+        OpenUsdNativeRuntime.SetGeomPointInstancerOrientations(this, primPath, values);
+
+    /// <summary>Gets UsdGeomPointInstancer orientations using a two-call bulk buffer transfer.</summary>
+    public OpenUsdNativeQuatf[] GetGeomPointInstancerOrientations(string primPath) =>
+        OpenUsdNativeRuntime.GetGeomPointInstancerOrientations(this, primPath);
+
     /// <summary>Authors UsdGeomImageable visibility.</summary>
     public void SetGeomVisibility(
         string primPath,

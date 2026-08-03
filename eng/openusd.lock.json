@@ -24,8 +24,8 @@
     "license": "Apache-2.0"
   },
   "abi": {
-    "data": 11,
-    "dataCapabilities": 12287,
+    "data": 12,
+    "dataCapabilities": 16383,
     "storm": 6,
     "renderCommands": 9
   },

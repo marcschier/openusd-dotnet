@@ -3824,7 +3824,7 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    if (openusd_get_abi_version() != 11 ||
+    if (openusd_get_abi_version() != 12 ||
         (openusd_get_capabilities() &
          (OPENUSD_CAPABILITY_STRING_LIST_V2 |
           OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -3836,9 +3836,10 @@ int main(int argc, char** argv)
           OPENUSD_CAPABILITY_WORLD_TRANSFORM_QUERY |
           OPENUSD_CAPABILITY_CAMERA_STATE_QUERY |
           OPENUSD_CAPABILITY_PCP_PRIM_INDEX_QUERY |
-           OPENUSD_CAPABILITY_TS_SPLINE_QUERY |
-           OPENUSD_CAPABILITY_USD_VALIDATION_QUERY |
-           OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA)) !=
+          OPENUSD_CAPABILITY_TS_SPLINE_QUERY |
+          OPENUSD_CAPABILITY_USD_VALIDATION_QUERY |
+          OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE |
+          OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA)) !=
             (OPENUSD_CAPABILITY_STRING_LIST_V2 |
              OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
              OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES |
@@ -3851,6 +3852,7 @@ int main(int argc, char** argv)
              OPENUSD_CAPABILITY_PCP_PRIM_INDEX_QUERY |
              OPENUSD_CAPABILITY_TS_SPLINE_QUERY |
              OPENUSD_CAPABILITY_USD_VALIDATION_QUERY |
+             OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE |
              OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA))
     {
         std::cerr << "Unexpected ABI version.\n";
@@ -6582,6 +6584,6 @@ int main(int argc, char** argv)
     }
     openusd_string_list_release(sourcesList);
     openusd_stage_release(stage);
-    std::cout << "ABI v8 hardening passed.\n";
+    std::cout << "ABI v10 hardening passed.\n";
     return 0;
 }
