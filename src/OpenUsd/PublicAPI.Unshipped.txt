@@ -1325,7 +1325,6 @@ static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsPrismaticJoint(thi
 static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsRevoluteJoint(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsRevoluteJoint
 static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsScene(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsScene
 static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsSphericalJoint(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsSphericalJoint
-
 OpenUsd.Geom.UsdGeomAxis
 OpenUsd.Geom.UsdGeomAxis.X = 0 -> OpenUsd.Geom.UsdGeomAxis
 OpenUsd.Geom.UsdGeomAxis.Y = 1 -> OpenUsd.Geom.UsdGeomAxis

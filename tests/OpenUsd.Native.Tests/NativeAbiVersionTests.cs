@@ -186,7 +186,7 @@ public sealed class NativeAbiVersionTests
             "OpenUsdNativeMethods.g.cs"));
 
         await Assert.That(header).Contains("OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA");
-        await Assert.That(contract).Contains("RequiredCapabilities = 0x2FFF");
+        await Assert.That(contract).Contains("RequiredCapabilities = 0x3FFF");
         await Assert.That(generatedInterop).Contains("PhysicsApplyApi");
         await Assert.That(generatedInterop).Contains("PhysicsSetQuatf");
     }
@@ -257,19 +257,19 @@ public sealed class NativeAbiVersionTests
             @"(?m)^openusd_status\s+(?<name>openusd_\w+)\s*\(",
             RegexOptions.CultureInvariant);
 
-        await Assert.That(declarations.Count).IsEqualTo(245);
-        await Assert.That(definitions.Count).IsEqualTo(246);
-        await Assert.That(outputBearingExports.Count).IsEqualTo(125);
+        await Assert.That(declarations.Count).IsEqualTo(247);
+        await Assert.That(definitions.Count).IsEqualTo(248);
+        await Assert.That(outputBearingExports.Count).IsEqualTo(126);
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"// ABI_OUTPUT_INITIALIZATION",
-                RegexOptions.CultureInvariant)).IsEqualTo(125);
+                RegexOptions.CultureInvariant)).IsEqualTo(126);
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"\breturn GuardStage\(stage, error",
-                RegexOptions.CultureInvariant)).IsEqualTo(224);
+                RegexOptions.CultureInvariant)).IsEqualTo(226);
 
         for (int index = 0; index < definitions.Count; index++)
         {
