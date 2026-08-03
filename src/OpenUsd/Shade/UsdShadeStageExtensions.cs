@@ -46,4 +46,18 @@ public static class UsdShadeStageExtensions
         string path = stage.Native.GetDirectMaterialPath(prim.Path);
         return new UsdShadeMaterial(stage, path);
     }
+
+    /// <summary>Gets the material resolved by UsdShade material-binding rules.</summary>
+    public static UsdShadeMaterial GetBoundMaterial(
+        this UsdStage stage,
+        UsdPrim prim,
+        UsdShadeMaterialPurpose purpose = UsdShadeMaterialPurpose.All)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        UsdShadeSchema.ValidateSameStage(stage, prim.OwningStage);
+        string path = stage.Native.GetBoundMaterialPath(
+            prim.Path,
+            (OpenUsd.Interop.OpenUsdNativeShadeMaterialPurpose)purpose);
+        return new UsdShadeMaterial(stage, path);
+    }
 }

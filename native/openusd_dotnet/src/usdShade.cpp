@@ -117,19 +117,6 @@ openusd_status openusd_shade_define_shader(
         }
 
         return Guard(error, [&]()
-                {
-                    const UsdShadeNodeGraph graph =
-                        UsdShadeNodeGraph::Define(stage->value, SdfPath(prim_path));
-                    if (!graph)
-                    {
-                        WriteError(error, "Could not define the UsdShadeNodeGraph prim.");
-                        return OPENUSD_STATUS_NATIVE_ERROR;
-                    }
-                    return OPENUSD_STATUS_OK;
-                });
-            });
-        }
-        return Guard(error, [&]()
         {
             const UsdShadeShader shader =
                 UsdShadeShader::Define(stage->value, SdfPath(prim_path));
@@ -1231,6 +1218,45 @@ openusd_status openusd_shade_get_direct_material(
         if (!material)
         {
             WriteError(error, "The prim has no directly bound material.");
+            return OPENUSD_STATUS_NOT_FOUND;
+        }
+        return CopyString(
+            material.GetPrim().GetPath().GetString(), buffer, capacity, required);
+
+    });
+}
+
+openusd_status openusd_shade_get_bound_material(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_shade_material_purpose purpose,
+    char* buffer,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiStringOutput(buffer, capacity);
+        ResetAbiOutput(required);
+        if (stage == nullptr || !stage->value || required == nullptr ||
+            !IsValidPrimPath(prim_path))
+        {
+            WriteError(error, "A valid stage, prim path, and size output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const UsdPrim prim = GetRequiredPrim(stage, prim_path, error);
+        if (!prim)
+        {
+            return OPENUSD_STATUS_NOT_FOUND;
+        }
+        const UsdShadeMaterial material =
+            UsdShadeMaterialBindingAPI(prim).ComputeBoundMaterial(GetShadeMaterialPurpose(purpose));
+        if (!material)
+        {
+            WriteError(error, "The prim has no resolved material binding.");
             return OPENUSD_STATUS_NOT_FOUND;
         }
         return CopyString(

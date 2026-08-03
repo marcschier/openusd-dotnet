@@ -259,12 +259,12 @@ public sealed class NativeAbiVersionTests
 
         await Assert.That(declarations.Count).IsEqualTo(247);
         await Assert.That(definitions.Count).IsEqualTo(248);
-        await Assert.That(outputBearingExports.Count).IsEqualTo(126);
+        await Assert.That(outputBearingExports.Count).IsEqualTo(127);
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"// ABI_OUTPUT_INITIALIZATION",
-                RegexOptions.CultureInvariant)).IsEqualTo(126);
+                RegexOptions.CultureInvariant)).IsEqualTo(127);
         await Assert.That(
             Regex.Count(
                 implementation,

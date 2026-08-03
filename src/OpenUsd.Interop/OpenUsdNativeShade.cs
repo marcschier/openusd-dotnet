@@ -570,6 +570,27 @@ public static unsafe partial class OpenUsdNativeRuntime
         return GetStagePrimString(stage, primPath, NativeMethods.ShadeGetDirectMaterial);
     }
 
+    internal static string GetBoundMaterialPath(
+        OpenUsdNativeStage stage,
+        string primPath,
+        OpenUsdNativeShadeMaterialPurpose purpose)
+    {
+        ValidateShadePrimPath(primPath);
+        ValidatePurpose(purpose);
+        return GetStagePrimString(
+            stage,
+            primPath,
+            (nint handle, string path, byte* buffer, nuint capacity, out nuint required, ref NativeErrorBuffer error) =>
+                NativeMethods.ShadeGetBoundMaterial(
+                    handle,
+                    path,
+                    (int)purpose,
+                    buffer,
+                    capacity,
+                    out required,
+                    ref error));
+    }
+
     private static void ValidateShadeProperty(string primPath, string propertyName)
     {
         ValidateShadePrimPath(primPath);

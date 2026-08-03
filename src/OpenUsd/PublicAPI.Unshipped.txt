@@ -994,6 +994,7 @@ static OpenUsd.Shade.UsdShadeShader.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Sh
 static OpenUsd.Shade.UsdShadeShader.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Shade.UsdShadeShader
 static OpenUsd.Shade.UsdShadeStageExtensions.DefineMaterial(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Shade.UsdShadeMaterial
 static OpenUsd.Shade.UsdShadeStageExtensions.DefineShader(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Shade.UsdShadeShader
+static OpenUsd.Shade.UsdShadeStageExtensions.GetBoundMaterial(this OpenUsd.UsdStage! stage, OpenUsd.UsdPrim prim, OpenUsd.Shade.UsdShadeMaterialPurpose purpose = OpenUsd.Shade.UsdShadeMaterialPurpose.All) -> OpenUsd.Shade.UsdShadeMaterial
 static OpenUsd.Shade.UsdShadeStageExtensions.GetDirectlyBoundMaterial(this OpenUsd.UsdStage! stage, OpenUsd.UsdPrim prim) -> OpenUsd.Shade.UsdShadeMaterial
 static OpenUsd.Shade.UsdUvTexture.Create(OpenUsd.UsdStage! stage, string! shaderPath, OpenUsd.UsdAssetPath assetPath) -> OpenUsd.Shade.UsdUvTexture
 static OpenUsd.Skel.UsdSkelAnimation.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Skel.UsdSkelAnimation value) -> bool

@@ -1357,6 +1357,12 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     public string GetDirectMaterialPath(string primPath) =>
         OpenUsdNativeRuntime.GetDirectMaterialPath(this, primPath);
 
+    /// <summary>Gets the resolved bound material prim path.</summary>
+    public string GetBoundMaterialPath(
+        string primPath,
+        OpenUsdNativeShadeMaterialPurpose purpose) =>
+        OpenUsdNativeRuntime.GetBoundMaterialPath(this, primPath, purpose);
+
     /// <inheritdoc/>
     protected override bool ReleaseHandle()
     {

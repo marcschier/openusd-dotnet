@@ -2080,6 +2080,15 @@ OPENUSD_DOTNET_API openusd_status openusd_shade_get_direct_material(
     size_t* required,
     openusd_error_buffer* error);
 
+OPENUSD_DOTNET_API openusd_status openusd_shade_get_bound_material(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_shade_material_purpose purpose,
+    char* buffer,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
 OPENUSD_DOTNET_API openusd_status openusd_lux_is_schema(
     const openusd_stage* stage,
     const char* prim_path,

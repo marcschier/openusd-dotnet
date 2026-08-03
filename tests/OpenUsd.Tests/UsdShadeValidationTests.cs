@@ -46,7 +46,8 @@ public sealed class UsdShadeValidationTests
         nameof(OpenUsdNativeStage.BindMaterial),
         nameof(OpenUsdNativeStage.BindMaterialCollection),
         nameof(OpenUsdNativeStage.UnbindMaterial),
-        nameof(OpenUsdNativeStage.GetDirectMaterialPath)
+        nameof(OpenUsdNativeStage.GetDirectMaterialPath),
+        nameof(OpenUsdNativeStage.GetBoundMaterialPath)
     ];
 
     private static readonly string[] NativeRuntimeEntryNames =
@@ -80,7 +81,8 @@ public sealed class UsdShadeValidationTests
         nameof(OpenUsdNativeRuntime.BindMaterial),
         nameof(OpenUsdNativeRuntime.BindMaterialCollection),
         nameof(OpenUsdNativeRuntime.UnbindMaterial),
-        nameof(OpenUsdNativeRuntime.GetDirectMaterialPath)
+        nameof(OpenUsdNativeRuntime.GetDirectMaterialPath),
+        nameof(OpenUsdNativeRuntime.GetBoundMaterialPath)
     ];
 
     [Test]
@@ -148,7 +150,9 @@ public sealed class UsdShadeValidationTests
                     OpenUsdNativeShadeBindingStrength.WeakerThanDescendants,
                     OpenUsdNativeShadeMaterialPurpose.Preview)),
             (nameof(stage.UnbindMaterial), stage.UnbindMaterial),
-            (nameof(stage.GetDirectMaterialPath), path => _ = stage.GetDirectMaterialPath(path))
+            (nameof(stage.GetDirectMaterialPath), path => _ = stage.GetDirectMaterialPath(path)),
+            (nameof(stage.GetBoundMaterialPath),
+                path => _ = stage.GetBoundMaterialPath(path, OpenUsdNativeShadeMaterialPurpose.All))
         ];
 
         foreach ((string name, Action<string> invoke) in entries)
@@ -207,6 +211,10 @@ public sealed class UsdShadeValidationTests
                     "/World/Material",
                     "",
                     OpenUsdNativeShadeBindingStrength.WeakerThanDescendants,
+                    (OpenUsdNativeShadeMaterialPurpose)99)),
+            (nameof(stage.GetBoundMaterialPath),
+                () => _ = stage.GetBoundMaterialPath(
+                    "/World/Mesh",
                     (OpenUsdNativeShadeMaterialPurpose)99))
         ];
 

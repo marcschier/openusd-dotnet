@@ -586,12 +586,13 @@ universal or named render contexts. Direct binding uses `UsdShadeMaterialBinding
 to the same managed stage. Direct bindings can author `bindMaterialAs` as weaker or stronger
 than descendants, and can target all-purpose, `preview`, or `full` material purposes. Collection
 bindings accept the binding-site prim, collection prim/name, optional binding name, material,
-strength, and purpose, creating the collection API if needed. `UsdPreviewSurface` provides common
-diffuseColor, emissiveColor, metallic, roughness, opacity, opacityThreshold, normal, and
-displacement setters without replacing the generic input/output API. `UsdUvTexture` is a small
-helper for the standard shader ID, file asset input, and canonical roleless `float3` rgb output.
-A primvar-reader convenience facade is deferred; generic shader inputs, outputs, and connections
-remain sufficient to author that node explicitly.
+strength, and purpose, creating the collection API if needed. `GetBoundMaterial` asks
+`UsdShadeMaterialBindingAPI` to resolve direct, inherited, strength-ordered, purpose-specific, and
+collection bindings for a prim. `UsdPreviewSurface` provides common diffuseColor, emissiveColor,
+metallic, roughness, opacity, opacityThreshold, normal, and displacement setters without replacing
+the generic input/output API. `UsdUvTexture` is a small helper for the standard shader ID, file asset
+input, and canonical roleless `float3` rgb output. A primvar-reader convenience facade is deferred;
+generic shader inputs, outputs, and connections remain sufficient to author that node explicitly.
 
 ## Focused UsdLux facade
 
