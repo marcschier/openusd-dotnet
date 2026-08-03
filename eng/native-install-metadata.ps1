@@ -123,7 +123,7 @@ function Get-VerifiedHeaderHash
 Assert-RequiredPath $openUsdRoot "$Rid OpenUSD install"
 Assert-RequiredPath $shimRoot "$Rid shim install"
 
-$dataAbiSource = Join-Path $repoRoot 'native/openusd_dotnet/src/openusd_dotnet.cpp'
+$dataAbiSource = Join-Path $repoRoot 'native/openusd_dotnet/src/internal/common.h'
 $dataHeader = Join-Path $repoRoot 'native/openusd_dotnet/include/openusd_dotnet.h'
 $hydraHeader = Join-Path $repoRoot 'native/openusd_hydra/include/openusd_hydra.h'
 $pageAbiSource = Join-Path $repoRoot 'native/hdSilk/include/openusd_hdsilk.h'
