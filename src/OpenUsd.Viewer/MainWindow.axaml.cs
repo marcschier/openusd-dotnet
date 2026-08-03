@@ -88,6 +88,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private bool _primCommandBusy;
     private bool _rootLayerEditsExplicitlyEnabled;
     private bool _applyingLayout;
+    private int _hierarchyExpandDepth;
     private double _stagePanelWidth = ViewerSettings.Default.StagePanelWidth;
     private double _inspectorPanelWidth = ViewerSettings.Default.InspectorPanelWidth;
     private int _timelineUiUpdatePosted;
@@ -185,6 +186,8 @@ public sealed partial class MainWindow : Window, IDisposable
             ReloadStageButton.Click += OnReloadStageClick;
             ReloadStageMenuItem.Click += OnReloadStageClick;
             HierarchyFilter.TextChanged += OnHierarchyFilterChanged;
+            HierarchyTypeFilter.TextChanged += OnHierarchyFilterChanged;
+            HierarchyExpandDepthInput.TextChanged += OnHierarchyExpandDepthChanged;
             StageHierarchy.SelectionChanged += OnHierarchySelectionChanged;
             PlayPauseButton.Click += OnPlayPauseClick;
             CurrentTimeInput.KeyDown += OnCurrentTimeInputKeyDown;
@@ -2854,6 +2857,26 @@ public sealed partial class MainWindow : Window, IDisposable
     private void OnHierarchyFilterChanged(object? sender, TextChangedEventArgs e) =>
         RenderHierarchy();
 
+    private void OnHierarchyExpandDepthChanged(object? sender, TextChangedEventArgs e)
+    {
+        string? text = HierarchyExpandDepthInput.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _hierarchyExpandDepth = 0;
+            RenderHierarchy();
+            return;
+        }
+        if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int depth) &&
+            depth >= 0)
+        {
+            _hierarchyExpandDepth = depth;
+            HierarchyExpandDepthInput.Foreground = null;
+            RenderHierarchy();
+            return;
+        }
+        HierarchyExpandDepthInput.Foreground = Brushes.OrangeRed;
+    }
+
     private void ShowStageSummary()
     {
         StageIdentity.Text = string.IsNullOrEmpty(_statistics.RootLayerIdentifier)
@@ -2873,7 +2896,9 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void RenderHierarchy()
     {
-        ViewerHierarchySnapshot filtered = _hierarchy.Filter(HierarchyFilter.Text);
+        ViewerHierarchySnapshot filtered = _hierarchy.Filter(new ViewerHierarchyFilter(
+            HierarchyFilter.Text,
+            HierarchyTypeFilter.Text));
         var source = new ViewerHierarchyTreeSource(filtered);
         TreeViewItem? selectedItem = null;
         _rebuildingHierarchy = true;
@@ -3311,7 +3336,10 @@ public sealed partial class MainWindow : Window, IDisposable
                  StringComparison.Ordinal));
         if (node.Entry.ChildCount != 0)
         {
-            if (containsSelection)
+            if (ViewerHierarchyExpansionPolicy.ShouldMaterializeChildren(
+                node.Entry,
+                _hierarchyExpandDepth,
+                containsSelection))
             {
                 item.ItemsSource = CreateTreeItems(node.Children, ref selectedItem);
                 item.IsExpanded = true;
@@ -3479,9 +3507,15 @@ public sealed partial class MainWindow : Window, IDisposable
         try
         {
             InspectorRows.Children.Clear();
+            CompositionRows.Children.Clear();
             InspectorRows.Children.Add(new TextBlock
             {
                 Text = $"Loading {primPath}..."
+            });
+            CompositionRows.Children.Add(new TextBlock
+            {
+                Text = $"Loading composition for {primPath}...",
+                TextWrapping = TextWrapping.Wrap
             });
             ViewerRenderCoordinator? coordinator = _coordinator;
             if (coordinator is null)
@@ -3507,10 +3541,16 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 ShowError($"Could not inspect '{primPath}': {exception.Message}");
                 InspectorRows.Children.Clear();
+                CompositionRows.Children.Clear();
                 InspectorRows.Children.Add(new TextBlock
                 {
                     FontWeight = FontWeight.SemiBold,
                     Text = $"Inspection failed: {exception.Message}",
+                    TextWrapping = TextWrapping.Wrap
+                });
+                CompositionRows.Children.Add(new TextBlock
+                {
+                    Text = $"Composition inspection failed: {exception.Message}",
                     TextWrapping = TextWrapping.Wrap
                 });
             }
@@ -3525,6 +3565,7 @@ public sealed partial class MainWindow : Window, IDisposable
         try
         {
             InspectorRows.Children.Clear();
+            CompositionRows.Children.Clear();
             AddInspectorHeading("Prim identity");
             AddInspectorRow("Path", inspector.Path);
             AddInspectorRow(
@@ -3646,6 +3687,24 @@ public sealed partial class MainWindow : Window, IDisposable
                         payloadArc.SourceLayerIdentifier));
             }
 
+            AddInspectorHeading("Composition");
+            AddInspectorRow("Prim index", ViewerCompositionFormatter.FormatSummary(inspector.Composition));
+            AddCompositionHeading("Pcp prim index");
+            AddCompositionRow("Summary", ViewerCompositionFormatter.FormatSummary(inspector.Composition));
+            for (int index = 0; index < inspector.Composition.Nodes.Count; index++)
+            {
+                string nodeText = ViewerCompositionFormatter.FormatNode(
+                    inspector.Composition.Nodes[index],
+                    index);
+                AddInspectorRow("Pcp node", nodeText);
+                AddCompositionRow("Node", nodeText);
+            }
+            foreach (string error in inspector.Composition.Errors)
+            {
+                AddInspectorRow("Pcp error", error);
+                AddCompositionRow("Error", error);
+            }
+
             AddInspectorHeading($"Attributes ({inspector.Attributes.Length})");
             foreach (ViewerAttributeSnapshot attribute in inspector.Attributes)
             {
@@ -3686,8 +3745,23 @@ public sealed partial class MainWindow : Window, IDisposable
             Text = text
         });
 
+    private void AddCompositionHeading(string text) =>
+        CompositionRows.Children.Add(new TextBlock
+        {
+            Margin = new Avalonia.Thickness(0, 8, 0, 0),
+            FontWeight = FontWeight.SemiBold,
+            Text = text
+        });
+
     private void AddInspectorRow(string name, string value) =>
         InspectorRows.Children.Add(new TextBlock
+        {
+            Text = $"{name}: {ViewerScalarFormatter.Bound(value, 512)}",
+            TextWrapping = TextWrapping.Wrap
+        });
+
+    private void AddCompositionRow(string name, string value) =>
+        CompositionRows.Children.Add(new TextBlock
         {
             Text = $"{name}: {ViewerScalarFormatter.Bound(value, 512)}",
             TextWrapping = TextWrapping.Wrap
@@ -4285,11 +4359,19 @@ public sealed partial class MainWindow : Window, IDisposable
         _currentInspector = null;
         UpdateCameraAvailability();
         InspectorRows.Children.Clear();
+        CompositionRows.Children.Clear();
         InspectorRows.Children.Add(new TextBlock
         {
             Text = _coordinator is null
                 ? "Open a USD stage, then select a prim to inspect it."
                 : "Select a prim to inspect metadata, variants, payloads, and session controls.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        CompositionRows.Children.Add(new TextBlock
+        {
+            Text = _coordinator is null
+                ? "Open a USD stage, then select a prim to inspect composition."
+                : "Select a prim to inspect its Pcp prim index.",
             TextWrapping = TextWrapping.Wrap
         });
     }

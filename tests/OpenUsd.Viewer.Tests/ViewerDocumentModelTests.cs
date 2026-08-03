@@ -21,6 +21,7 @@ public sealed class ViewerDocumentModelTests
             snapshot.Entries.Single(entry => entry.Path == "/World/Looks/Material");
 
         await Assert.That(world.Name).IsEqualTo("World");
+        await Assert.That(world.TypeName).IsEqualTo(string.Empty);
         await Assert.That(world.ParentPath).IsNull();
         await Assert.That(world.Depth).IsEqualTo(0);
         await Assert.That(world.ChildCount).IsEqualTo(2);
@@ -45,6 +46,82 @@ public sealed class ViewerDocumentModelTests
         await Assert.That(filtered.Entries.Select(entry => entry.Path))
             .IsEquivalentTo(["/World", "/World/Looks", "/World/Looks/BlueMaterial"]);
         await Assert.That(filtered.Contains("/World/Geometry")).IsFalse();
+    }
+
+    [Test]
+    public async Task FilteringMatchesPrimTypesAndKeepsFirstMiddleAndLastMatches()
+    {
+        ViewerHierarchySnapshot snapshot = ViewerHierarchySnapshot.Build(
+        [
+            new ViewerHierarchySourceEntry("/World", "Xform"),
+            new ViewerHierarchySourceEntry("/World/FirstMesh", "Mesh"),
+            new ViewerHierarchySourceEntry("/World/Scope", "Scope"),
+            new ViewerHierarchySourceEntry("/World/Scope/MiddleMesh", "Mesh"),
+            new ViewerHierarchySourceEntry("/World/Scope/Camera", "Camera"),
+            new ViewerHierarchySourceEntry("/World/LastMesh", "Mesh")
+        ]);
+
+        ViewerHierarchySnapshot filtered = snapshot.Filter(new ViewerHierarchyFilter(
+            NameQuery: null,
+            TypeQuery: "mesh"));
+
+        await Assert.That(filtered.Entries.Select(entry => entry.Path))
+            .IsEquivalentTo(
+            [
+                "/World",
+                "/World/FirstMesh",
+                "/World/Scope",
+                "/World/Scope/MiddleMesh",
+                "/World/LastMesh"
+            ]);
+        await Assert.That(filtered.Entries[1].TypeName).IsEqualTo("Mesh");
+        await Assert.That(filtered.Entries[3].Name).IsEqualTo("MiddleMesh");
+        await Assert.That(filtered.Entries[^1].Path).IsEqualTo("/World/LastMesh");
+        await Assert.That(filtered.Contains("/World/Scope/Camera")).IsFalse();
+    }
+
+    [Test]
+    public async Task FilteringCombinesNameAndTypePredicates()
+    {
+        ViewerHierarchySnapshot snapshot = ViewerHierarchySnapshot.Build(
+        [
+            new ViewerHierarchySourceEntry("/World", "Xform"),
+            new ViewerHierarchySourceEntry("/World/Looks", "Scope"),
+            new ViewerHierarchySourceEntry("/World/Looks/BlueMaterial", "Material"),
+            new ViewerHierarchySourceEntry("/World/Geometry", "Scope"),
+            new ViewerHierarchySourceEntry("/World/Geometry/BlueCube", "Mesh")
+        ]);
+
+        ViewerHierarchySnapshot filtered = snapshot.Filter(new ViewerHierarchyFilter("blue", "mesh"));
+
+        await Assert.That(filtered.Entries.Select(entry => entry.Path))
+            .IsEquivalentTo(["/World", "/World/Geometry", "/World/Geometry/BlueCube"]);
+        await Assert.That(filtered.Contains("/World/Looks/BlueMaterial")).IsFalse();
+    }
+
+    [Test]
+    public async Task ExpandDepthMaterializesOnlyRequestedDepthUnlessSelectionNeedsAncestors()
+    {
+        ViewerHierarchyEntry root = new("/World", "World", "Xform", null, Depth: 0, ChildCount: 2);
+        ViewerHierarchyEntry child = new("/World/Geom", "Geom", "Scope", "/World", Depth: 1, ChildCount: 1);
+        ViewerHierarchyEntry leaf = new("/World/Geom/Cube", "Cube", "Mesh", "/World/Geom", Depth: 2, ChildCount: 0);
+
+        await Assert.That(ViewerHierarchyExpansionPolicy.ShouldMaterializeChildren(
+            root,
+            expandDepth: 1,
+            containsSelection: false)).IsTrue();
+        await Assert.That(ViewerHierarchyExpansionPolicy.ShouldMaterializeChildren(
+            child,
+            expandDepth: 1,
+            containsSelection: false)).IsFalse();
+        await Assert.That(ViewerHierarchyExpansionPolicy.ShouldMaterializeChildren(
+            child,
+            expandDepth: 1,
+            containsSelection: true)).IsTrue();
+        await Assert.That(ViewerHierarchyExpansionPolicy.ShouldMaterializeChildren(
+            leaf,
+            expandDepth: 99,
+            containsSelection: true)).IsFalse();
     }
 
     [Test]
@@ -156,6 +233,29 @@ public sealed class ViewerDocumentModelTests
     }
 
     [Test]
+    public async Task CompositionFormatterShowsNodeDetailsAndErrors()
+    {
+        var composition = new PcpPrimIndex(
+            [
+                CreateCompositionNode(PcpArcType.Root, "/World", []),
+                CreateCompositionNode(PcpArcType.Reference, "/World/Ref", ["root.usda", "asset.usda"])
+            ],
+            ["unresolved asset"]);
+
+        string summary = ViewerCompositionFormatter.FormatSummary(composition);
+        string first = ViewerCompositionFormatter.FormatNode(composition.Nodes[0], 0);
+        string last = ViewerCompositionFormatter.FormatNode(composition.Nodes[1], 1);
+
+        await Assert.That(summary).IsEqualTo("2 nodes; 1 errors");
+        await Assert.That(first).Contains("#0: Root");
+        await Assert.That(first).Contains("layers=0");
+        await Assert.That(last).Contains("#1: Reference");
+        await Assert.That(last).Contains("site=/World/Ref");
+        await Assert.That(last).Contains("layers=2");
+        await Assert.That(composition.Errors[0]).IsEqualTo("unresolved asset");
+    }
+
+    [Test]
     public async Task LayerStackPreservesStrengthOrderRolesAndMuteEligibility()
     {
         ViewerLayerStackSnapshot snapshot = ViewerLayerStackSnapshot.Create(
@@ -222,4 +322,26 @@ public sealed class ViewerDocumentModelTests
 
         await Assert.That(merged).IsEquivalentTo(["session.usda", "root.usda"]);
     }
+
+    private static PcpPrimIndexNode CreateCompositionNode(
+        PcpArcType arcType,
+        string sitePath,
+        IReadOnlyList<string> layers) =>
+        new(
+            ParentIndex: -1,
+            ArcType: arcType,
+            IsCulled: false,
+            IsInert: false,
+            IsDueToAncestor: false,
+            HasSpecs: true,
+            CanContributeSpecs: true,
+            NamespaceDepth: 1,
+            DepthBelowIntroduction: 0,
+            SiblingIndexAtOrigin: 0,
+            SitePath: sitePath,
+            IntroPath: sitePath,
+            PathAtIntroduction: sitePath,
+            PathAtOriginRootIntroduction: sitePath,
+            LayerStackIdentifier: "root.usda",
+            LayerIdentifiers: layers);
 }

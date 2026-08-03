@@ -21,7 +21,8 @@ public sealed class ViewerSourceContractTests
 
         await Assert.That(models).Contains("ViewerDocumentSnapshot BuildDocument(UsdStage stage)");
         await Assert.That(models).Contains("IReadOnlyList<UsdPrim> prims = stage.Traverse();");
-        await Assert.That(models).Contains("paths[index] = prims[index].Path;");
+        await Assert.That(models).Contains(
+            "entries[index] = new ViewerHierarchySourceEntry(prims[index].Path, prims[index].TypeName);");
         await Assert.That(models).Contains("stage.StartTimeCode");
         await Assert.That(models).Contains("stage.EndTimeCode");
         await Assert.That(models).Contains("stage.FramesPerSecond");
