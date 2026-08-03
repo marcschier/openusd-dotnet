@@ -16,14 +16,14 @@ public sealed class NativeContractTests
     }
 
     [Test]
-    public async Task DataAbiEightRequiresCameraStateAndPriorCapabilities()
+    public async Task DataAbiNineRequiresInspectionCapabilitiesAndPriorCapabilities()
     {
         uint abiVersion = OpenUsdNativeContract.AbiVersion;
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
 
-        await Assert.That(abiVersion).IsEqualTo(8U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x1FFUL);
-        await Assert.That(requiredCapabilities & 0xFFUL).IsEqualTo(0xFFUL);
+        await Assert.That(abiVersion).IsEqualTo(9U);
+        await Assert.That(requiredCapabilities).IsEqualTo(0xFFFUL);
+        await Assert.That(requiredCapabilities & 0x1FFUL).IsEqualTo(0x1FFUL);
     }
 
     [Test]

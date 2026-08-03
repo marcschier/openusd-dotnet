@@ -279,6 +279,57 @@ selected prim on the stage scheduler. It copies variant names, current selection
 into detached snapshots before updating UI controls. Variant edits use composition invalidation;
 payload arcs remain read-only while load/unload continues to use the composed load-state API.
 
+`UsdPrim.GetPrimIndex()` exposes the broader Pcp graph needed by a usdview-style Composition tab. It
+returns one detached `PcpPrimIndex` snapshot containing strong-to-weak nodes, parent indexes, arc type,
+culled/inert/spec contribution flags, introduction paths, the node layer-stack root identifier, all
+contributing layer identifiers, and local Pcp error strings. The ABI shape is one native-owned versioned
+view with a node-record array plus one packed string table; managed code copies the complete tree before
+releasing the native owner. This deliberately leaves Pcp map-expression internals, relocation maps, and
+private diagnostic subclasses out of the first surface; callers get stable paths, layers, flags, ordering,
+and stringified local errors without any `pxr::` type crossing the ABI.
+
+### Ts splines
+
+`TsSpline` owns a double-valued OpenUSD `pxr/base/ts` spline and moves all knots across the ABI in one
+bulk `TsKnot` array:
+
+```csharp
+using var spline = new TsSpline();
+spline.SetData(
+    [
+        new TsKnot(0, 0, null, 0, 0, 0, 0, TsInterpMode.Linear,
+            TsTangentAlgorithm.None, TsTangentAlgorithm.None),
+        new TsKnot(1, 10, null, 0, 0, 0, 0, TsInterpMode.Held,
+            TsTangentAlgorithm.None, TsTangentAlgorithm.None),
+    ]);
+double? value = spline.Evaluate(0.5);
+```
+
+The first surface covers authored knots, optional pre-values, pre/post tangent widths and slopes,
+interpolation modes, tangent algorithms, Bezier/Hermite curve type, held/linear/sloped/looping
+extrapolation records, and evaluation at a time. It intentionally leaves half/float storage, sampled
+polyline generation, custom knot data, loop baking, anti-regression controls, and authoring breakdowns
+for later; the Viewer spline plot can already copy knots once and evaluate interactively without
+per-knot P/Invoke.
+
+### UsdValidation
+
+`UsdValidation` exposes the validation registry through detached lists:
+
+```csharp
+IReadOnlyList<UsdValidationValidatorInfo> validators =
+    UsdValidation.GetRegisteredValidators();
+IReadOnlyList<UsdValidationError> errors = UsdValidation.Validate(stage);
+```
+
+Validator metadata is returned as records containing name, documentation, plugin name, keywords, schema
+types, suite flag, and time-dependency flag. Validation results are returned as records containing
+severity, validator name, error name, message, and site strings. Stage and prim validation both use
+`UsdValidationContext` with all registry validators loaded, and each run crosses the ABI once as a
+native-owned record array plus packed string table. Fixers, filtered contexts, layer-only validation,
+time-range selection, and structured site objects are deliberately omitted; a validation panel can still
+enumerate validators and render all errors for a stage or selected prim without further ABI work.
+
 ### World bounds
 
 Stage and prim bounds use one `UsdGeomBBoxCache` query and return a detached finite value:

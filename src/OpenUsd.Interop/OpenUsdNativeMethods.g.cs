@@ -33,6 +33,74 @@ public static unsafe partial class OpenUsdNativeRuntime
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct NativePcpPrimIndexView
+    {
+        internal uint StructSize;
+        internal uint Version;
+        internal OpenUsdNativePcpNodeRecord* Nodes;
+        internal nuint NodesSize;
+        internal nuint NodeCount;
+        internal byte* Data;
+        internal nuint DataSize;
+        internal nuint* Offsets;
+        internal nuint OffsetsSize;
+        internal nuint StringCount;
+        internal nuint ErrorOffset;
+        internal nuint ErrorCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeTsExtrapolationRecord
+    {
+        internal int Mode;
+        internal double Slope;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeTsSplineDataView
+    {
+        internal uint StructSize;
+        internal uint Version;
+        internal int CurveType;
+        internal int IsTimeValued;
+        internal NativeTsExtrapolationRecord PreExtrapolation;
+        internal NativeTsExtrapolationRecord PostExtrapolation;
+        internal OpenUsdNativeTsKnotRecord* Knots;
+        internal nuint KnotsSize;
+        internal nuint KnotCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeValidationMetadataView
+    {
+        internal uint StructSize;
+        internal uint Version;
+        internal OpenUsdNativeValidationMetadataRecord* Records;
+        internal nuint RecordsSize;
+        internal nuint Count;
+        internal byte* Data;
+        internal nuint DataSize;
+        internal nuint* Offsets;
+        internal nuint OffsetsSize;
+        internal nuint StringCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeValidationErrorView
+    {
+        internal uint StructSize;
+        internal uint Version;
+        internal OpenUsdNativeValidationErrorRecord* Records;
+        internal nuint RecordsSize;
+        internal nuint Count;
+        internal byte* Data;
+        internal nuint DataSize;
+        internal nuint* Offsets;
+        internal nuint OffsetsSize;
+        internal nuint StringCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private readonly struct NativeErrorBuffer
     {
         internal NativeErrorBuffer(byte* data, nuint capacity)
@@ -1675,6 +1743,19 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_pcp_get_prim_index",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus PcpGetPrimIndex(
+            nint stage,
+            string primPath,
+            out nint list,
+            ref NativePcpPrimIndexView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_stage_add_inherit",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
@@ -2866,6 +2947,103 @@ public static unsafe partial class OpenUsdNativeRuntime
             EntryPoint = "openusd_payload_arc_list_release")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial void PayloadArcListRelease(
+            nint list);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_pcp_prim_index_list_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void PcpPrimIndexListRelease(
+            nint list);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ts_spline_create")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus TsSplineCreate(
+            out nint spline,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ts_spline_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void TsSplineRelease(
+            nint spline);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ts_spline_set_data")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus TsSplineSetData(
+            nint spline,
+            ref NativeTsSplineDataView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ts_spline_get_data")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus TsSplineGetData(
+            nint spline,
+            ref NativeTsSplineDataView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ts_spline_eval")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus TsSplineEval(
+            nint spline,
+            double time,
+            out double value,
+            out int hasValue,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_validation_get_registered_validators")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ValidationGetRegisteredValidators(
+            out nint list,
+            ref NativeValidationMetadataView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_validation_metadata_list_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void ValidationMetadataListRelease(
+            nint list);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_validation_validate_stage")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ValidationValidateStage(
+            nint stage,
+            out nint list,
+            ref NativeValidationErrorView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_validation_validate_prim",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ValidationValidatePrim(
+            nint stage,
+            string primPath,
+            out nint list,
+            ref NativeValidationErrorView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_validation_error_list_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void ValidationErrorListRelease(
             nint list);
     }
 }
