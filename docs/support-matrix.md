@@ -304,9 +304,10 @@ The complete API examples and native ownership rules are in [Data API](data-api.
 | `UsdShade` | Material, Shader, inputs/outputs, Preview Surface, UV Texture | Focused |
 | `UsdLux` | Common light API, shaping, six concrete light types | Focused |
 | `UsdSkel` | Root, Skeleton, Animation, Binding, joint data | Focused |
-| `Pcp` | Detached prim-index node/error inspection | Focused read-only |
-| `Ts` | Double-valued spline knots, tangents, extrapolation, evaluation | Focused read-only |
-| `UsdValidation` | Registry enumeration and stage/prim validation results | Focused read-only |
+| Pcp | Detached prim-index node/error inspection | Focused read-only |
+| Ts | Double-valued spline knots, tangents, extrapolation, evaluation | Focused read-only |
+| UsdValidation | Registry enumeration and stage/prim validation results | Focused read-only |
+| UsdPhysics | Scene, body, collision, material, joints, limits/drives, filtering | Authoring only |
 
 Complete generated bindings for every OpenUSD schema are not a current claim.
 

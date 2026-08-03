@@ -858,8 +858,9 @@ without invoking managed callbacks from OpenUSD threads.
 `eng/generate-interop.py` derives the checked-in `[LibraryImport]` declarations from
 `native/openusd_dotnet/include/openusd_dotnet.h`. CI fails if `OpenUsdNativeMethods.g.cs` is stale.
 Data ABI v8 preserves every v7 export and capability and adds
-`OPENUSD_CAPABILITY_CAMERA_STATE_QUERY` (`0x100`). Together with the prior capabilities, the
-managed required mask is `0x1FF`. Managed startup rejects an older ABI or a v8
+`OPENUSD_CAPABILITY_CAMERA_STATE_QUERY` (`0x100`) and
+`OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA` (`0x200`). Together with the prior capabilities, the
+managed required mask is `0x3FF`. Managed startup rejects an older ABI or a v8
 runtime missing required exports. Every status-returning export executes its complete body inside the
 common exception/TfError guard, so C++ exceptions and unconsumed OpenUSD diagnostics never cross C;
 access-end alone performs its already-validated owner-thread `noexcept` commit after the guard.

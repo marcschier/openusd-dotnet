@@ -990,6 +990,92 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
         OpenUsdNativeLuxShapingProperty property) =>
         OpenUsdNativeRuntime.GetLuxShaping(this, primPath, property);
 
+    public bool IsPhysicsSchema(string primPath, OpenUsdNativePhysicsSchemaKind schemaKind) =>
+        OpenUsdNativeRuntime.IsPhysicsSchema(this, primPath, schemaKind);
+
+    public void DefinePhysics(string primPath, OpenUsdNativePhysicsSchemaKind schemaKind) =>
+        OpenUsdNativeRuntime.DefinePhysics(this, primPath, schemaKind);
+
+    public bool HasPhysicsApi(
+        string primPath,
+        OpenUsdNativePhysicsApiKind apiKind,
+        string? instanceName = null) =>
+        OpenUsdNativeRuntime.HasPhysicsApi(this, primPath, apiKind, instanceName);
+
+    public void ApplyPhysicsApi(
+        string primPath,
+        OpenUsdNativePhysicsApiKind apiKind,
+        string? instanceName = null) =>
+        OpenUsdNativeRuntime.ApplyPhysicsApi(this, primPath, apiKind, instanceName);
+
+    public void SetPhysicsFloat(
+        string primPath,
+        OpenUsdNativePhysicsFloatProperty property,
+        float value,
+        string? instanceName = null) =>
+        OpenUsdNativeRuntime.SetPhysicsFloat(this, primPath, property, value, instanceName);
+
+    public float GetPhysicsFloat(
+        string primPath,
+        OpenUsdNativePhysicsFloatProperty property,
+        string? instanceName = null) =>
+        OpenUsdNativeRuntime.GetPhysicsFloat(this, primPath, property, instanceName);
+
+    public void SetPhysicsBool(
+        string primPath,
+        OpenUsdNativePhysicsBoolProperty property,
+        bool value) =>
+        OpenUsdNativeRuntime.SetPhysicsBool(this, primPath, property, value);
+
+    public bool GetPhysicsBool(string primPath, OpenUsdNativePhysicsBoolProperty property) =>
+        OpenUsdNativeRuntime.GetPhysicsBool(this, primPath, property);
+
+    public void SetPhysicsVec3f(
+        string primPath,
+        OpenUsdNativePhysicsVec3fProperty property,
+        OpenUsdNativeVec3f value) =>
+        OpenUsdNativeRuntime.SetPhysicsVec3f(this, primPath, property, value);
+
+    public OpenUsdNativeVec3f GetPhysicsVec3f(
+        string primPath,
+        OpenUsdNativePhysicsVec3fProperty property) =>
+        OpenUsdNativeRuntime.GetPhysicsVec3f(this, primPath, property);
+
+    public void SetPhysicsQuatf(
+        string primPath,
+        OpenUsdNativePhysicsQuatfProperty property,
+        OpenUsdNativeQuatf value) =>
+        OpenUsdNativeRuntime.SetPhysicsQuatf(this, primPath, property, value);
+
+    public OpenUsdNativeQuatf GetPhysicsQuatf(
+        string primPath,
+        OpenUsdNativePhysicsQuatfProperty property) =>
+        OpenUsdNativeRuntime.GetPhysicsQuatf(this, primPath, property);
+
+    public void SetPhysicsToken(
+        string primPath,
+        OpenUsdNativePhysicsTokenProperty property,
+        string value,
+        string? instanceName = null) =>
+        OpenUsdNativeRuntime.SetPhysicsToken(this, primPath, property, value, instanceName);
+
+    public string GetPhysicsToken(
+        string primPath,
+        OpenUsdNativePhysicsTokenProperty property,
+        string? instanceName = null) =>
+        OpenUsdNativeRuntime.GetPhysicsToken(this, primPath, property, instanceName);
+
+    public void SetPhysicsString(
+        string primPath,
+        OpenUsdNativePhysicsStringProperty property,
+        string value) =>
+        OpenUsdNativeRuntime.SetPhysicsString(this, primPath, property, value);
+
+    public string GetPhysicsString(
+        string primPath,
+        OpenUsdNativePhysicsStringProperty property) =>
+        OpenUsdNativeRuntime.GetPhysicsString(this, primPath, property);
+
     /// <summary>Returns whether a prim is the requested concrete UsdSkel schema.</summary>
     public bool IsSkelSchema(string primPath, OpenUsdNativeSkelSchemaKind schemaKind) =>
         OpenUsdNativeRuntime.IsSkelSchema(this, primPath, schemaKind);
