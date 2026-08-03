@@ -1003,19 +1003,13 @@ public sealed class StormSilkParityCaptureDriverTests
                 "material-metallic-workflow",
                 Path.Combine(assetRoot, "parity-material-metallic-workflow.usda"),
                 "PreviewSurface metallic workflow lights a metallic prim beside a dielectric one.",
-                ColorComparisonReady: false,
+                ColorComparisonReady: true,
                 GateEnabled: true,
                 GateReason:
-                    "Coverage gates at 1.000000 adjusted IoU against a 0.493349 worst perturbation " +
-                    "(0.506651 margin). This does NOT prove the metallic workflow: coverage is " +
-                    "identical for any shading, and colour is deliberately not gated here. Colour " +
-                    "measures max 25 / mean 14.112 against a 10-16 max calibration on the other " +
-                    "material scenes, and the captures show Storm rendering the metal near black " +
-                    "(3,5,4) where hdSilk renders dim gold (15..25,13..20,7..10) - consistent with " +
-                    "hdSilk's residual (1 - metallic) diffuse surviving where Storm suppresses it. " +
-                    "An ambient-attenuation fix was implemented, measured to change nothing because " +
-                    "this scene has no ambient, and reverted. The metallic shading path therefore " +
-                    "remains unproven; see material-metallic-color.",
+                    "Coverage and colour gate after splitting direct diffuse and specular irradiance: " +
+                    "Storm's PreviewSurface path applies the light's pi-scaled diffuse irradiance to " +
+                    "Lambert but not to direct specular. The all-pi path measured max 25 / mean 14.112; " +
+                    "removing only the specular pi reduces the metallic residual to max 8 / mean 4.558.",
                 RecommendedMinimumAdjustedIou: 0.92)
             {
                 UseSceneLights = true,
