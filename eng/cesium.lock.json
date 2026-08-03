@@ -1,0 +1,88 @@
+{
+  "$schemaVersion": 1,
+  "cesiumNative": {
+    "version": "0.63.0",
+    "tag": "v0.63.0",
+    "commit": "b4137763914820b01a42b52ee886a55b036cd6ac",
+    "archiveUrl": "https://codeload.github.com/CesiumGS/cesium-native/tar.gz/b4137763914820b01a42b52ee886a55b036cd6ac",
+    "archiveName": "cesium-native-b4137763914820b01a42b52ee886a55b036cd6ac.tar.gz",
+    "archiveSha256": "3E756FB8EE9FB69167215D038E79AB50E60AD524F970481F14309E687B887B3B",
+    "extractDirectory": "cesium-native-b4137763914820b01a42b52ee886a55b036cd6ac",
+    "license": "Apache-2.0",
+    "vcpkgManifestSha256": "2F529DE1FE288DFCE61D46753B52C3AF3BDFC6D2CB760773DB5D0381C756A777",
+    "vcpkgConfigurationSha256": "8634F6384DD267AD98E81C4964C4F5BEEC550BEA08D27495DD2DE77D93B344F7"
+  },
+  "vcpkg": {
+    "repository": "https://github.com/microsoft/vcpkg.git",
+    "baseline": "56bb2411609227288b70117ead2c47585ba07713",
+    "manifestMode": true,
+    "windowsTriplet": "x64-windows-static-md",
+    "linuxTriplet": "x64-linux",
+    "macosTriplet": "arm64-osx"
+  },
+  "profile": {
+    "name": "cesium-quarantined",
+    "configuration": "Release",
+    "libraryLinkage": "static",
+    "enabled": [
+      "headers",
+      "static libraries",
+      "smoke probe"
+    ],
+    "disabled": [
+      "cesium-native tests",
+      "clang-tidy on build",
+      "shared libraries"
+    ],
+    "platforms": {
+      "win-x64": {
+        "triplet": "x64-windows-static-md",
+        "compiler": "Visual Studio 18 Enterprise",
+        "cmake": "3.30.4"
+      },
+      "linux-x64": {
+        "triplet": "x64-linux",
+        "compiler": "GCC or Clang from the CI image",
+        "cmake": "3.30.4"
+      },
+      "osx-arm64": {
+        "triplet": "arm64-osx",
+        "compiler": "Apple clang from Xcode 16",
+        "cmake": "3.30.4",
+        "deploymentTarget": "13.0"
+      }
+    }
+  },
+  "directVcpkgDependencies": [
+    "ada-url",
+    "asmjit",
+    "asyncplusplus",
+    "blend2d[jit]",
+    "cpp-httplib",
+    "curl",
+    "doctest",
+    "draco",
+    "earcut-hpp",
+    "expected-lite",
+    "glm",
+    "ktx",
+    "libjpeg-turbo",
+    "libmorton",
+    "libwebp",
+    "meshoptimizer",
+    "modp-base64",
+    "ms-gsl",
+    "openssl",
+    "picosha2",
+    "rapidjson",
+    "s2geometry",
+    "spdlog",
+    "spz",
+    "sqlite3",
+    "stb",
+    "tinyxml2",
+    "zlib",
+    "zlib-ng",
+    "zstd"
+  ]
+}
