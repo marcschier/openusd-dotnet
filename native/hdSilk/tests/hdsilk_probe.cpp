@@ -2,6 +2,7 @@
 
 #include "openusd_hdsilk.h"
 #include "hdsilk_test_hooks.h"
+#include "materialXBridge.h"
 #include "openusd_dotnet_test_hooks.h"
 #include "sceneState.h"
 
@@ -9,6 +10,8 @@
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/gf/vec3d.h"
 #include "pxr/imaging/cameraUtil/conformWindow.h"
+#include "pxr/imaging/hd/tokens.h"
+#include "pxr/usd/sdf/assetPath.h"
 
 #include <algorithm>
 #include <array>
@@ -1658,6 +1661,69 @@ bool VerifyNeverReusedHandles(
     }
     return tokens.size() == iterationCount;
 }
+
+bool VerifyMaterialXBridge()
+{
+    HdMaterialNode primvar;
+    primvar.path = SdfPath("/World/Material/Primvar");
+    primvar.identifier = TfToken("ND_geompropvalue_vector2");
+    primvar.parameters[TfToken("geomprop")] = VtValue(std::string("st"));
+
+    HdMaterialNode image;
+    image.path = SdfPath("/World/Material/Image");
+    image.identifier = TfToken("ND_image_color3");
+    image.parameters[TfToken("file")] =
+        VtValue(SdfAssetPath("textures/materialx-basecolor.png"));
+
+    HdMaterialNode surface;
+    surface.path = SdfPath("/World/Material/Surface");
+    surface.identifier = TfToken("ND_standard_surface_surfaceshader");
+    surface.parameters[TfToken("specular_roughness")] = VtValue(0.42F);
+    surface.parameters[TfToken("metalness")] = VtValue(0.0F);
+
+    HdMaterialNetwork network;
+    network.nodes = {primvar, image, surface};
+    network.relationships.push_back(
+        {primvar.path, TfToken("out"), image.path, TfToken("texcoord")});
+    network.relationships.push_back(
+        {image.path, TfToken("out"), surface.path, TfToken("base_color")});
+    network.primvars = {TfToken("st")};
+
+    HdMaterialNetworkMap map;
+    map.map[HdMaterialTerminalTokens->surface] = network;
+    map.config["mtlxVersion"] = VtValue(std::string("1.39"));
+
+    const HdSilkMaterialXDocument document =
+        HdSilkCreateMaterialXDocumentFromNetwork(SdfPath("/World/Material"), map);
+    if (!document.success)
+    {
+        std::cerr << "MaterialX bridge failed: " << document.error
+                  << " validation='" << document.validation << "'\n";
+        return false;
+    }
+
+    bool vulkanGenerated = true;
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
+    const HdSilkMaterialXVulkanShader vulkan =
+        HdSilkGenerateMaterialXVulkanFragment(SdfPath("/World/Material"), map);
+    vulkanGenerated = vulkan.fragmentSpirv.size() > 5 &&
+        vulkan.fragmentSpirv[0] == 0x07230203u &&
+        vulkan.fragmentSource.find("main") != std::string::npos;
+    if (!vulkan.success)
+    {
+        std::cerr << "MaterialX Vulkan generation failed: " << vulkan.error << "\n";
+        return false;
+    }
+#endif
+
+    return vulkanGenerated &&
+        document.xml.find("standard_surface") != std::string::npos &&
+        document.xml.find("image") != std::string::npos &&
+        document.xml.find("materialx-basecolor.png") != std::string::npos &&
+        document.xml.find("specular_roughness") != std::string::npos &&
+        document.textureNodeCount == 1 &&
+        document.primvarNodeCount == 1;
+}
 }
 
 int main(int argc, char** argv)
@@ -1678,6 +1744,11 @@ int main(int argc, char** argv)
     if (openusd_hdsilk_test_external_delegate_does_not_publish() != 1)
     {
         std::cerr << "External hdSilk delegate stole a creation token.\n";
+        return 4;
+    }
+    if (!VerifyMaterialXBridge())
+    {
+        std::cerr << "hdSilk MaterialX bridge check failed.\n";
         return 4;
     }
 

@@ -13,6 +13,8 @@ set(OPENUSD_HDSILK_SOURCES
     src/light.cpp
     src/material.h
     src/material.cpp
+    src/materialXBridge.h
+    src/materialXBridge.cpp
     src/mesh.h
     src/mesh.cpp
     src/points.h
@@ -26,9 +28,23 @@ set(OPENUSD_HDSILK_SOURCES
     src/sceneState.h
     src/sceneState.cpp)
 
+find_package(MaterialX CONFIG REQUIRED)
+
+set(OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS)
+if(TARGET Vulkan::shaderc_combined)
+    list(APPEND OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS
+        MaterialXGenGlsl
+        Vulkan::shaderc_combined)
+endif()
+
 function(configure_openusd_hdsilk_target target_name core_target)
     target_compile_features(${target_name} PRIVATE cxx_std_17)
     target_compile_definitions(${target_name} PRIVATE OPENUSD_HDSILK_BUILD)
+    if(OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS)
+        target_compile_definitions(
+            ${target_name}
+            PRIVATE OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
+    endif()
     target_include_directories(${target_name}
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
@@ -39,7 +55,13 @@ function(configure_openusd_hdsilk_target target_name core_target)
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${CMAKE_CURRENT_SOURCE_DIR}/../private
             ${CMAKE_CURRENT_SOURCE_DIR}/../openusd_dotnet/private)
-    target_link_libraries(${target_name} PRIVATE ${core_target} usd_m)
+    target_link_libraries(
+        ${target_name}
+        PRIVATE
+            ${core_target}
+            usd_m
+            MaterialXFormat
+            ${OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS})
     if(MSVC)
         target_compile_options(${target_name} PRIVATE /W4 /WX /permissive-)
     else()

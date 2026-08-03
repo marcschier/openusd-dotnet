@@ -1,11 +1,22 @@
 add_executable(
     hdsilk_probe
     hdsilk_probe.cpp
+    ../src/materialXBridge.cpp
     ../src/sceneState.cpp)
 target_compile_features(hdsilk_probe PRIVATE cxx_std_17)
 target_link_libraries(
     hdsilk_probe
-    PRIVATE openusd_hdsilk_test openusd_dotnet_renderer_test usd_m)
+    PRIVATE
+        openusd_hdsilk_test
+        openusd_dotnet_renderer_test
+        usd_m
+        MaterialXFormat
+        ${OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS})
+if(OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS)
+    target_compile_definitions(
+        hdsilk_probe
+        PRIVATE OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
+endif()
 target_include_directories(
     hdsilk_probe
     PRIVATE

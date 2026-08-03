@@ -449,6 +449,14 @@ material record or leaves the individual input at its documented default and emi
 input, and node identifier, so the reason is visible in the OpenUSD diagnostic stream rather than hidden as a plausible
 render.
 
+The native hdSilk layer also contains the input-side bridge from Hydra material networks to MaterialX documents. It
+converts the `HdMaterialNetworkMap` to OpenUSD's `HdMaterialNetwork2` form, runs the upstream `hdMtlx` document builder
+with the MaterialX standard libraries, validates the result, and records texture/primvar nodes. The same native probe
+also exercises the first Vulkan generated-source path: `VkShaderGenerator` emits fragment GLSL for that document and
+shaderc/glslang compiles it to SPIR-V with the expected magic word. This proves the document and Vulkan generator path,
+but not arbitrary MaterialX rendering; the generated SPIR-V is not yet wired into hdSilk's managed runtime shader
+compilation service or draw selection.
+
 D3D12 binds the checked pick shaders through one generation-tagged RGBA8/D32 PSO. `SceneParameters`
 uses root CBV b0 and the mesh token base uses four 32-bit root constants at b1, so a draw does not
 allocate a token upload buffer. D3D12 keeps three persistently mapped 256-byte readback slots; each
