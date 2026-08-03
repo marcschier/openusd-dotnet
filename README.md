@@ -355,8 +355,7 @@ Native-backed execution additionally requires the matching locked runtime and sh
 - Complete generated coverage of every OpenUSD schema and optional component.
 - A replacement for `usdview`, a full DCC, or a general-purpose game engine.
 - Runtime packages for RIDs outside `win-x64`, `linux-x64`, and `osx-arm64` today.
-- Bundling Python, usdview, tutorials, examples, Embree, Alembic, Draco, OpenVDB, or RenderMan in
-  the locked native profile.
+- Bundling Python, usdview, tutorials, examples, Embree, or RenderMan in the locked native profile.
 
 ## 🔒 Security
 

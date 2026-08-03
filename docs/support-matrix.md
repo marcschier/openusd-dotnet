@@ -99,6 +99,12 @@ RIDs.
 The native toolchain and archive model are in [Native build](native-build.md). Runtime asset layout
 and package-only execution are in [Packaging](packaging.md).
 
+The locked viewer-standard native profile enables USD validation, Imaging, USD Imaging, Storm,
+MaterialX, OpenImageIO, OpenColorIO, oneTBB, OpenGL, Ptex, OpenVDB, Alembic, and Draco. Python,
+usdview, tests, examples, tutorials, tools, documentation, Embree, and RenderMan remain disabled.
+The Python exclusion is intentional for runtime architecture; build tooling may still use Python to
+run OpenUSD's pinned build script.
+
 ## Viewer renderers
 
 | Viewer kind | Hydra path | Concrete presentation/API | Supported host | Current role |

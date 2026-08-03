@@ -63,6 +63,7 @@ endif()
 if(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
 endif()
+find_package(Ptex CONFIG REQUIRED)
 find_package(pxr CONFIG REQUIRED)
 
 add_subdirectory(openusd_dotnet)

@@ -161,6 +161,21 @@ Get-ChildItem artifacts/packages -File |
   }
 ```
 
+The native profile expansion that enables OpenVDB, Alembic, Draco, and Ptex increases the Windows
+runtime package primarily through OpenVDB. Measured from same-worktree packages using the previous
+locked `win-x64` install as baseline:
+
+| RID | Baseline Core | Expanded Core | Core delta | Imaging delta | Status |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `win-x64` | 27.50 MiB | 33.34 MiB | +5.84 MiB | +0.00 MiB (1,035 bytes) | Measured locally |
+| `linux-x64` | Pending hosted workflow | Pending hosted workflow | Pending | Pending | Not measured on Windows |
+| `osx-arm64` | Pending hosted workflow | Pending hosted workflow | Pending | Pending | Not measured on Windows |
+
+The `win-x64` compressed Core delta is dominated by `openvdb.dll` (+3.80 MiB), followed by
+`draco.dll` (+0.64 MiB), the larger monolithic `usd_ms.dll` (+0.48 MiB), `Alembic.dll` (+0.47 MiB),
+`Ptex.dll` (+0.25 MiB), and `blosc.dll` (+0.18 MiB). Linux and macOS deltas must be recorded from
+the hosted native/package jobs because those installs cannot be built or validated on Windows.
+
 Canonical evidence is generated with the build it describes:
 
 - `native/install/<rid>/.openusd-install-metadata.json` binds the current native

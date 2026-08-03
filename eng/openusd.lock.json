@@ -10,7 +10,7 @@
     "extractDirectory": "OpenUSD-2095fafafd033fa23386d7ec6d58c7cc33974518",
     "buildScript": "build_scripts/build_usd.py",
     "buildScriptSha256": "258C2BD80974154C00B8CB7D6CA19257D6E1878BDBDCE6501DDF18A5E230C629",
-    "patchedBuildScriptSha256": "D1ADFB3E014FF92B5234DD0D3106507CDB5DBABF6DD84EFE6ABEFF130E12F609",
+    "patchedBuildScriptSha256": "E99047743C9D07CE6171AAB160411AE3E200FA44AF293EF60060C47C2D33923C",
     "patches": [
       {
         "id": "windows-python-3.13-batch-launch",
@@ -19,6 +19,10 @@
       {
         "id": "windows-vs18-boost-toolset",
         "description": "Bind Boost's vc143 toolset to the cl.exe already configured by the developer shell when Visual Studio is newer than Boost's discovery table."
+      },
+      {
+        "id": "windows-draco-monolithic-profile",
+        "description": "Permit the locked Windows monolithic native profile to build the Draco plugin by removing the upstream script and CMake configure guards; the resulting install is verified by native probes and package gates."
       }
     ],
     "license": "Apache-2.0"
@@ -74,7 +78,11 @@
       "openImageIO",
       "openColorIO",
       "oneTBB",
-      "openGL"
+      "openGL",
+      "ptex",
+      "openVDB",
+      "alembic",
+      "draco"
     ],
     "disabled": [
       "python",
@@ -84,12 +92,8 @@
       "tutorials",
       "tools",
       "documentation",
-      "ptex",
-      "openVDB",
       "embree",
-      "prman",
-      "alembic",
-      "draco"
+      "prman"
     ],
     "platforms": {
       "win-x64": {
@@ -299,6 +303,87 @@
       "url": "https://github.com/AcademySoftwareFoundation/MaterialX/archive/v1.39.4.zip",
       "archiveName": "v1.39.4.zip",
       "sha256": "3910B2498D7DA6C8E5AC150B9E6A74E530626044309EDB077829C024ED691E0E",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "Ptex",
+      "version": "2.4.2",
+      "tag": "v2.4.2",
+      "commit": "4e970554cea68eb5f2173bf261b61404fd9cc772",
+      "url": "https://github.com/wdas/ptex/archive/refs/tags/v2.4.2.zip",
+      "archiveName": "v2.4.2.zip",
+      "sha256": "83A0DAC7DFE993970DA6384888A49CB3A7CD8952B3B615A6C1A5E356259E78AA",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "Blosc",
+      "version": "1.20.1",
+      "tag": "v1.20.1",
+      "commit": "a44e961498cdca2eb893fa897cd15dd007fad496",
+      "url": "https://github.com/Blosc/c-blosc/archive/v1.20.1.zip",
+      "archiveName": "v1.20.1.zip",
+      "sha256": "9717F7C9D8288C343A743618E8D47ACEA48F835306782F2F9EBF825CC8DFAA34",
+      "platforms": [
+        "win-x64",
+        "linux-x64"
+      ]
+    },
+    {
+      "name": "Blosc",
+      "version": "1.21.6",
+      "tag": "v1.21.6",
+      "commit": "616f4b7343a8479f7e71dd3d7025bd92c9a6bbd0",
+      "url": "https://github.com/Blosc/c-blosc/archive/v1.21.6.zip",
+      "archiveName": "v1.21.6.zip",
+      "sha256": "1919C97D55023C04AA8771EA8235B63E9DA3C22E3D2A68340B33710D19C2A2EB",
+      "platforms": [
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "OpenVDB",
+      "version": "10.1.0",
+      "tag": "v10.1.0",
+      "commit": "87a508ca48a69f06d149be6cb0d8289fc1314f72",
+      "url": "https://github.com/AcademySoftwareFoundation/openvdb/archive/refs/tags/v10.1.0.zip",
+      "archiveName": "v10.1.0.zip",
+      "sha256": "611B319B30F73C9739882BAD2FF9AD3200E12409003AB6F64E2CCCDB899B4896",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "Alembic",
+      "version": "1.8.5",
+      "tag": "1.8.5",
+      "commit": "f4e3cc33e4270ade9d076a2cac7a2a4409c61675",
+      "url": "https://github.com/alembic/alembic/archive/refs/tags/1.8.5.zip",
+      "archiveName": "1.8.5.zip",
+      "sha256": "9196561B785102B48A731359642E9FBDF62C3A5183DE5CACA7C6F03292F474DF",
+      "platforms": [
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
+      ]
+    },
+    {
+      "name": "Draco",
+      "version": "1.5.6",
+      "tag": "1.5.6",
+      "commit": "9f856abaafb4b39f1f013763ff061522e0261c6f",
+      "url": "https://github.com/google/draco/archive/refs/tags/1.5.6.zip",
+      "archiveName": "1.5.6.zip",
+      "sha256": "40ED351FBB4EE4E37D84197A3394567C2F6E4B444F693C1FD37C7BDFC961B0EA",
       "platforms": [
         "win-x64",
         "linux-x64",
