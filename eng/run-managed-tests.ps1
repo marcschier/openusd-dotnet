@@ -22,6 +22,76 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
+# Resolve the repository-pinned host explicitly rather than trusting PATH.
+#
+# global.json pins the SDK and lists '.dotnet' ahead of '$host$' in its
+# paths, so the whole point of the local install is a reproducible
+# toolchain. But 'paths' governs SDK resolution only -- it does not change
+# which dotnet host actually runs the tests. Invoking a bare 'dotnet' here
+# resolved to the machine-wide host, which advertises runtimes the pinned
+# install does not have, and that produced per-framework test counts for
+# target frameworks the repository cannot actually execute. A test count
+# that was never measured is the worst possible output from a test runner.
+function Get-RepositoryDotnet
+{
+    param([Parameter(Mandatory = $true)][string]$RepositoryRoot)
+
+    $localName = if ($IsWindows -or $env:OS -eq 'Windows_NT') { 'dotnet.exe' } else { 'dotnet' }
+    $localPath = Join-Path (Join-Path $RepositoryRoot '.dotnet') $localName
+    if (Test-Path -LiteralPath $localPath)
+    {
+        return $localPath
+    }
+
+    $command = Get-Command 'dotnet' -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -eq $command)
+    {
+        throw 'No dotnet host was found on PATH and the repository has no .dotnet install.'
+    }
+    return $command.Source
+}
+
+$script:DotnetHost = Get-RepositoryDotnet -RepositoryRoot $repoRoot
+Write-Host "[managed-tests] host=$script:DotnetHost"
+
+$script:SkippedFrameworks = @()
+
+# Which Microsoft.NETCore.App major versions the pinned host can actually
+# launch. Queried once from the host itself rather than assumed.
+$script:HostRuntimeMajors = @(
+    & $script:DotnetHost --list-runtimes 2>&1 |
+        Where-Object { $_ -match '^Microsoft\.NETCore\.App\s+(\d+)\.' } |
+        ForEach-Object { [int]$Matches[1] } |
+        Sort-Object -Unique)
+if ($script:HostRuntimeMajors.Count -eq 0)
+{
+    throw "'$script:DotnetHost --list-runtimes' reported no Microsoft.NETCore.App runtimes."
+}
+
+function Get-FrameworkRuntimeVersion
+{
+    param([Parameter(Mandatory = $true)][string]$TargetFramework)
+
+    if ($TargetFramework -match '^net(?<major>\d+)\.(?<minor>\d+)$')
+    {
+        return "$($Matches['major']).$($Matches['minor'])"
+    }
+    return $TargetFramework
+}
+
+function Test-FrameworkExecutable
+{
+    param([Parameter(Mandatory = $true)][string]$TargetFramework)
+
+    if ($TargetFramework -notmatch '^net(?<major>\d+)\.\d+$')
+    {
+        # Not a .NET Core style framework; let the run itself decide.
+        return $true
+    }
+    return ([int]$Matches['major']) -in $script:HostRuntimeMajors
+}
+
 function Get-ProjectProperties
 {
     param(
@@ -42,7 +112,7 @@ function Get-ProjectProperties
         $arguments += "-p:TargetFramework=$TargetFramework"
     }
 
-    $output = & dotnet @arguments 2>&1
+    $output = & $script:DotnetHost @arguments 2>&1
     if ($LASTEXITCODE -ne 0)
     {
         throw "MSBuild could not evaluate '$ProjectPath':$([Environment]::NewLine)$($output -join [Environment]::NewLine)"
@@ -202,6 +272,24 @@ foreach ($projectPath in $projectPaths)
 
         foreach ($targetFramework in $selectedFrameworks)
         {
+            # Refuse to report a count for a framework the pinned host cannot
+            # launch. Skipping is fine -- CI installs 8.0.x, 9.0.x and 10.0.301
+            # and runs all three -- but it must be stated, not inferred. A
+            # silent skip that still prints a total is indistinguishable from a
+            # passing run and has already produced test counts that were never
+            # measured.
+            if (-not (Test-FrameworkExecutable -TargetFramework $targetFramework))
+            {
+                $version = Get-FrameworkRuntimeVersion -TargetFramework $targetFramework
+                Write-Host (
+                    "[managed-tests] SKIPPED $([System.IO.Path]::GetFileNameWithoutExtension($projectPath)) ($targetFramework): " +
+                    "the pinned host has no Microsoft.NETCore.App $version runtime, " +
+                    'so this framework builds but cannot execute here. ' +
+                    'It is executed by CI.')
+                $script:SkippedFrameworks += "$([System.IO.Path]::GetFileNameWithoutExtension($projectPath)) ($targetFramework)"
+                continue
+            }
+
             $targetProperties = Get-ProjectProperties `
                 -ProjectPath $projectPath `
                 -Property @('AssemblyName', 'OutputPath', 'TargetPath') `
@@ -279,7 +367,7 @@ foreach ($run in $runs)
             $env:OPENUSD_REQUIRE_SWIFTSHADER = '1'
         }
 
-        & dotnet @arguments
+        & $script:DotnetHost @arguments
         $exitCode = $LASTEXITCODE
     }
     finally
@@ -301,6 +389,18 @@ foreach ($run in $runs)
 }
 
 Write-Host "[managed-tests] Summary: $passed passed, $($failures.Count) failed."
+if ($script:SkippedFrameworks.Count -gt 0)
+{
+    # State skips in the summary, not only where they happened. A reader who
+    # sees only the pass count must not mistake it for full framework coverage.
+    Write-Host (
+        "[managed-tests] NOT EXECUTED here ($($script:SkippedFrameworks.Count)): " +
+        ($script:SkippedFrameworks -join ', '))
+    Write-Host (
+        '[managed-tests] Those target frameworks build but have no matching ' +
+        'runtime in the pinned host. CI installs 8.0.x, 9.0.x and 10.0.301 ' +
+        'and runs them there. Do not report a count for them from this run.')
+}
 if ($failures.Count -gt 0)
 {
     foreach ($failure in $failures)
