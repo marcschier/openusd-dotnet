@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
+using OpenUsd.Rendering.Silk.Metal;
 using OpenUsd.Rendering.Silk.Vulkan;
 using OpenUsd.Rendering.Storm;
 
@@ -23,6 +24,7 @@ public sealed class StormSilkParityCaptureDriverTests
     private const double MinimumDiscriminationMargin = 0.18;
     private const string D3D12WarpBackendName = "D3D12 WARP";
     private const string VulkanSwiftShaderBackendName = "Vulkan SwiftShader";
+    private const string MetalBackendName = "Metal";
 
     /// <summary>
     /// Largest single-channel difference tolerated on a scene that binds a real
@@ -833,7 +835,12 @@ public sealed class StormSilkParityCaptureDriverTests
             return [CreateVulkanBackend()];
         }
 
-        throw new PlatformNotSupportedException("The parity harness supports Windows WGL and Linux GLX.");
+        if (OperatingSystem.IsMacOS())
+        {
+            return [CreateMetalBackend()];
+        }
+
+        throw new PlatformNotSupportedException("The parity harness supports Windows WGL, Linux GLX, and macOS CGL.");
     }
 
     private static SilkParityBackend CreatePrimaryPerturbationBackend()
@@ -848,7 +855,12 @@ public sealed class StormSilkParityCaptureDriverTests
             return CreateVulkanBackend();
         }
 
-        throw new PlatformNotSupportedException("The parity harness supports Windows WGL and Linux GLX.");
+        if (OperatingSystem.IsMacOS())
+        {
+            return CreateMetalBackend();
+        }
+
+        throw new PlatformNotSupportedException("The parity harness supports Windows WGL, Linux GLX, and macOS CGL.");
     }
 
     [SupportedOSPlatform("windows")]
@@ -867,6 +879,10 @@ public sealed class StormSilkParityCaptureDriverTests
 
     private static SilkParityBackend CreateVulkanBackend() =>
         new(VulkanSwiftShaderBackendName, static () => VulkanSilkGraphicsDevice.Create());
+
+    [SupportedOSPlatform("macos")]
+    private static SilkParityBackend CreateMetalBackend() =>
+        new(MetalBackendName, static () => MetalSilkGraphicsDevice.Create());
 
     private static ParityTolerance CreateTolerance(ParityScene scene) =>
         ParityTolerance.Geometry with
@@ -1709,6 +1725,7 @@ public sealed class StormSilkParityCaptureDriverTests
         {
             [D3D12WarpBackendName] = budget,
             [VulkanSwiftShaderBackendName] = budget,
+            [MetalBackendName] = budget,
         };
 
     private sealed record ParityScene(
