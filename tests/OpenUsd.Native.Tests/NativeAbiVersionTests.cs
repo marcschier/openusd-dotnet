@@ -160,12 +160,12 @@ public sealed class NativeAbiVersionTests
     {
         Exception exception = InvokeCompatibilityValidation(
             OpenUsdNativeContract.AbiVersion,
-            OpenUsdNativeContract.RequiredCapabilities & ~(1UL << 13));
+            OpenUsdNativeContract.RequiredCapabilities & ~(1UL << 14));
         await Assert.That(exception).IsTypeOf<OpenUsdNativeException>();
     }
 
     [Test]
-    public async Task UsdPhysicsCapabilityAndInteropAreDeclared()
+    public async Task UsdPhysicsShadeSkelCapabilitiesAndInteropAreDeclared()
     {
         string repositoryRoot = FindRepositoryRoot();
         string header = File.ReadAllText(Path.Combine(
@@ -186,9 +186,12 @@ public sealed class NativeAbiVersionTests
             "OpenUsdNativeMethods.g.cs"));
 
         await Assert.That(header).Contains("OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA");
-        await Assert.That(contract).Contains("RequiredCapabilities = 0x3FFF");
+        await Assert.That(header).Contains("OPENUSD_DOTNET_CAPABILITY_USD_SHADE_SKEL");
+        await Assert.That(contract).Contains("RequiredCapabilities = 0x7FFF");
         await Assert.That(generatedInterop).Contains("PhysicsApplyApi");
         await Assert.That(generatedInterop).Contains("PhysicsSetQuatf");
+        await Assert.That(generatedInterop).Contains("ShadeDefineNodeGraph");
+        await Assert.That(generatedInterop).Contains("SkelSetBlendShapePointIndices");
     }
 
     [Test]
@@ -257,19 +260,19 @@ public sealed class NativeAbiVersionTests
             @"(?m)^openusd_status\s+(?<name>openusd_\w+)\s*\(",
             RegexOptions.CultureInvariant);
 
-        await Assert.That(declarations.Count).IsEqualTo(247);
-        await Assert.That(definitions.Count).IsEqualTo(248);
-        await Assert.That(outputBearingExports.Count).IsEqualTo(127);
+        await Assert.That(declarations.Count).IsEqualTo(268);
+        await Assert.That(definitions.Count).IsEqualTo(269);
+        await Assert.That(outputBearingExports.Count).IsEqualTo(137);
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"// ABI_OUTPUT_INITIALIZATION",
-                RegexOptions.CultureInvariant)).IsEqualTo(127);
+                RegexOptions.CultureInvariant)).IsEqualTo(137);
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"\breturn GuardStage\(stage, error",
-                RegexOptions.CultureInvariant)).IsEqualTo(226);
+                RegexOptions.CultureInvariant)).IsEqualTo(247);
 
         for (int index = 0; index < definitions.Count; index++)
         {
