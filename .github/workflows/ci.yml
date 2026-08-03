@@ -198,6 +198,10 @@ jobs:
           path: |
             native/install/linux-x64
             native/install/vulkan-sdk-1.4.321.0
+          # Saved by the linux-x64 job of .github/workflows/native.yml. That key
+          # and path list must stay character-identical to this one: hashFiles
+          # over a different file list yields a different digest, so any drift
+          # makes this restore miss on every run and fail the gate permanently.
           key: >-
             openusd-install-linux-x64-${{ hashFiles(
               'eng/openusd.lock.json',

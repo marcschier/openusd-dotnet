@@ -31,11 +31,11 @@
   "inputs": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "02f9f4954592a3b70fe6819fb6b7ed32294c5c29ef7220aacb429e45467144e6"
+      "sha256": "d2822b0d637c725cccacc99bcbdb7f0b56e2500fbea1074942cc4d6db5d7448f"
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "60b7202b598272c7b416efb739145c02ba65fab7f1d3d7c50c2a151e570c08db"
+      "sha256": "320ef6f143be252cb4bf5ad00577a764f80866753992d64191d3e2ee0a2c9c70"
     },
     {
       "path": ".github/workflows/package.yml",

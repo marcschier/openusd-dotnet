@@ -153,6 +153,25 @@ jobs:
               '!native/src/**',
               '!native/.cache/**'
             ) }}
+      # The coverage gate in .github/workflows/ci.yml restores the expensive
+      # OpenUSD install on its own, narrower key: it builds the shim fresh from
+      # the commit under test, so it must not depend on the shim inputs above.
+      # This key and path list must stay character-identical to the
+      # `openusd-cache` step in ci.yml, because hashFiles over a different file
+      # list yields a different digest and the restore would silently never hit.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        if: matrix.rid == 'linux-x64'
+        with:
+          path: |
+            native/install/linux-x64
+            native/install/vulkan-sdk-1.4.321.0
+          key: >-
+            openusd-install-linux-x64-${{ hashFiles(
+              'eng/openusd.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1'
+            ) }}
       - name: Fetch locked native sources
         if: steps.native-cache.outputs.cache-hit != 'true'
         shell: pwsh
