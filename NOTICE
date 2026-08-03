@@ -6,14 +6,6 @@ This repository is an independent .NET integration for OpenUSD. It is not affili
 The native runtime is built from Pixar OpenUSD, licensed under the Apache License 2.0. Exact source
 URLs, revisions, and archive SHA-256 hashes are pinned in eng/openusd.lock.json.
 
-Additional locked third-party components enabled by the viewer-standard native profile include:
-
-- OpenVDB 10.1.0, Mozilla Public License 2.0.
-- Blosc 1.20.1 on Windows/Linux and 1.21.6 on macOS, BSD License.
-- Alembic 1.8.5, BSD-style 3-clause license.
-- Draco 1.5.6, Apache License 2.0.
-- Ptex 2.4.2, Disney BSD-style license.
-
 Runtime packages also include THIRD-PARTY-NOTICES.md generated from the locked native install.
 
 The quarantined cesium-native build is separate from the core runtime and is built from CesiumGS

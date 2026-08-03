@@ -38,14 +38,8 @@ Windows command search, and Visual Studio versions newer than Boost's discovery 
 script hash is locked.
 
 The viewer-standard profile retains core USD, validation, Imaging, Hydra, Storm, MaterialX,
-OpenImageIO, OpenColorIO, Ptex, OpenVDB, Alembic, and Draco. Python remains deliberately disabled
-and is not a native runtime dependency. usdview, examples, tutorials, tools, documentation, Embree,
+OpenImageIO, and OpenColorIO. Python, usdview, examples, tutorials, Embree, Alembic, Draco, OpenVDB,
 and RenderMan are excluded.
-
-OpenVDB brings the locked Blosc compression dependency. The Windows monolithic profile also carries a
-verified compatibility patch that removes OpenUSD's upstream Draco/monolithic configure guard; the
-resulting install is still bound by native install metadata, CTest probes, NativeAOT probes, and
-package gates.
 
 ## Cesium-native quarantine
 
