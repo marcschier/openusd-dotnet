@@ -936,3 +936,46 @@ point instancers, implicit surfaces, tetrahedral meshes, primvars, and model dra
 attributes such as points, curve vertex counts, topology, primvar values, and instancer positions
 cross the native boundary as contiguous buffers; the managed facade does not introduce per-element
 P/Invoke on authoring paths.
+
+## Focused UsdVol, UsdRender, UsdMedia, UsdProc, and UsdUI facades
+
+The data API now includes focused schema views for volume assets, render settings, spatial media,
+generative procedurals, and selected UI metadata. These are authoring and inspection facades only;
+they do not add hdSilk volume rendering.
+
+```csharp
+UsdVolVolume volume = stage.DefineVolume("/World/Volume");
+UsdVolOpenVDBAsset density = stage.DefineOpenVDBAsset("/World/Fields/Density");
+density.FilePath = new UsdAssetPath("volumes/smoke.vdb");
+density.FieldName = "density";
+volume.SetField("density", UsdVolVolumeFieldBase.Wrap(density.Prim));
+
+UsdRenderSettings settings = stage.DefineRenderSettings("/Render/Settings");
+UsdRenderProduct product = stage.DefineRenderProduct("/Render/Product");
+UsdRenderVar color = stage.DefineRenderVar("/Render/Vars/Color");
+product.SetOrderedVars([color]);
+settings.SetProducts([product]);
+
+UsdMediaSpatialAudio audio = stage.DefineSpatialAudio("/World/Sound");
+audio.FilePath = new UsdAssetPath("audio/ambience.wav");
+UsdMediaAssetPreviews previews = UsdMediaAssetPreviews.Apply(stage.GetPrim("/World"));
+previews.DefaultThumbnail = new UsdAssetPath("thumbs/default.png");
+
+UsdProcGenerativeProcedural proc = stage.DefineGenerativeProcedural("/World/Proc");
+UsdUINodeGraphNode nodeUi = UsdUINodeGraphNode.Apply(proc.Prim);
+```
+
+Applied API schemas follow the existing standalone facade pattern used by `UsdSkelBinding`:
+`Apply(UsdPrim)`, `TryWrap(UsdPrim, out ...)`, and `Wrap(UsdPrim)` live on the API facade type.
+Relationship lists such as volume field bindings, render products, and ordered render vars cross the
+native boundary in bulk. `UsdMediaAssetPreviewsAPI` is present in the pinned OpenUSD 26.05 build and
+is exposed for default thumbnail asset metadata.
+
+The exposed UsdVol slice covers `Volume`, `VolumeFieldBase`, `VolumeFieldAsset`, `FieldBase`,
+`FieldAsset`, `OpenVDBAsset`, and `Field3DAsset`. Particle-field schemas and UsdVol particle API
+schemas are intentionally left out of this volume-asset authoring slice. The exposed UsdRender slice
+covers `RenderSettingsBase`, `RenderSettings`, `RenderProduct`, `RenderVar`, and `RenderPass`; this
+OpenUSD version has no generated `RenderDenoisePass` schema. UsdUI covers `Backdrop`,
+`NodeGraphNodeAPI`, and `SceneGraphPrimAPI`; accessibility and hint API schemas remain outside this
+focused surface.
+

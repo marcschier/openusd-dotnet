@@ -201,6 +201,13 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         "openusd_physics_quatf_property",
         "openusd_physics_token_property",
         "openusd_physics_string_property",
+        "openusd_media_asset_property",
+        "openusd_vol_asset_property",
+        "openusd_ui_schema_kind",
+        "openusd_proc_schema_kind",
+        "openusd_media_schema_kind",
+        "openusd_render_schema_kind",
+        "openusd_vol_schema_kind",
     }
     if native_type in enum_types:
         return "int", managed_name
