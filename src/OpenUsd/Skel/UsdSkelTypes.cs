@@ -16,4 +16,28 @@ public sealed record UsdSkelJointInfluences(
     int[] JointIndices,
     float[] JointWeights,
     int ElementSize,
-    UsdSkelInterpolation Interpolation) : IUsdDetachedResult;
+    UsdSkelInterpolation Interpolation) : IUsdDetachedResult
+{
+    /// <inheritdoc />
+    public bool Equals(UsdSkelJointInfluences? other) =>
+        other is not null &&
+        JointIndices.SequenceEqual(other.JointIndices) &&
+        JointWeights.SequenceEqual(other.JointWeights) &&
+        ElementSize == other.ElementSize &&
+        Interpolation == other.Interpolation;
+
+    /// <inheritdoc />
+    public override int GetHashCode() =>
+        HashCode.Combine(
+            RecordCollectionFormatting.SequenceHashCode(JointIndices),
+            RecordCollectionFormatting.SequenceHashCode(JointWeights),
+            ElementSize,
+            Interpolation);
+
+    /// <inheritdoc />
+    public override string ToString() =>
+        $"{nameof(UsdSkelJointInfluences)} {{ {nameof(JointIndices)} = " +
+        $"{RecordCollectionFormatting.FormatSequence(JointIndices)}, {nameof(JointWeights)} = " +
+        $"{RecordCollectionFormatting.FormatSequence(JointWeights)}, {nameof(ElementSize)} = {ElementSize}, " +
+        $"{nameof(Interpolation)} = {Interpolation} }}";
+}

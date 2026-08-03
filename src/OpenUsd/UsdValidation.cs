@@ -26,7 +26,38 @@ public sealed record UsdValidationValidatorInfo(
     IReadOnlyList<string> Keywords,
     IReadOnlyList<string> SchemaTypes,
     bool IsSuite,
-    bool IsTimeDependent);
+    bool IsTimeDependent)
+{
+    /// <inheritdoc />
+    public bool Equals(UsdValidationValidatorInfo? other) =>
+        other is not null &&
+        Name == other.Name &&
+        Documentation == other.Documentation &&
+        PluginName == other.PluginName &&
+        Keywords.SequenceEqual(other.Keywords) &&
+        SchemaTypes.SequenceEqual(other.SchemaTypes) &&
+        IsSuite == other.IsSuite &&
+        IsTimeDependent == other.IsTimeDependent;
+
+    /// <inheritdoc />
+    public override int GetHashCode() =>
+        HashCode.Combine(
+            Name,
+            Documentation,
+            PluginName,
+            RecordCollectionFormatting.SequenceHashCode(Keywords),
+            RecordCollectionFormatting.SequenceHashCode(SchemaTypes),
+            IsSuite,
+            IsTimeDependent);
+
+    /// <inheritdoc />
+    public override string ToString() =>
+        $"{nameof(UsdValidationValidatorInfo)} {{ {nameof(Name)} = {Name}, " +
+        $"{nameof(Documentation)} = {Documentation}, {nameof(PluginName)} = {PluginName}, " +
+        $"{nameof(Keywords)} = {RecordCollectionFormatting.FormatSequence(Keywords)}, " +
+        $"{nameof(SchemaTypes)} = {RecordCollectionFormatting.FormatSequence(SchemaTypes)}, " +
+        $"{nameof(IsSuite)} = {IsSuite}, {nameof(IsTimeDependent)} = {IsTimeDependent} }}";
+}
 
 /// <summary>One UsdValidation error detached from native storage.</summary>
 public sealed record UsdValidationError(
@@ -34,7 +65,33 @@ public sealed record UsdValidationError(
     string ValidatorName,
     string ErrorName,
     string Message,
-    IReadOnlyList<string> Sites);
+    IReadOnlyList<string> Sites)
+{
+    /// <inheritdoc />
+    public bool Equals(UsdValidationError? other) =>
+        other is not null &&
+        Severity == other.Severity &&
+        ValidatorName == other.ValidatorName &&
+        ErrorName == other.ErrorName &&
+        Message == other.Message &&
+        Sites.SequenceEqual(other.Sites);
+
+    /// <inheritdoc />
+    public override int GetHashCode() =>
+        HashCode.Combine(
+            Severity,
+            ValidatorName,
+            ErrorName,
+            Message,
+            RecordCollectionFormatting.SequenceHashCode(Sites));
+
+    /// <inheritdoc />
+    public override string ToString() =>
+        $"{nameof(UsdValidationError)} {{ {nameof(Severity)} = {Severity}, " +
+        $"{nameof(ValidatorName)} = {ValidatorName}, {nameof(ErrorName)} = {ErrorName}, " +
+        $"{nameof(Message)} = {Message}, {nameof(Sites)} = " +
+        $"{RecordCollectionFormatting.FormatSequence(Sites)} }}";
+}
 
 /// <summary>Provides access to the OpenUSD validation registry and validation runs.</summary>
 public static class UsdValidation
