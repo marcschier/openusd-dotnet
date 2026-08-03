@@ -111,7 +111,10 @@ def map_parameter(declaration: str) -> tuple[str, str]:
     if native_type == "const openusd_quatf*":
         return "OpenUsdNativeQuatf*", managed_name
     if native_type == "openusd_quatf*":
-        return "OpenUsdNativeQuatf*", managed_name
+        return ("out OpenUsdNativeQuatf" if native_name == "value"
+                else "OpenUsdNativeQuatf*"), managed_name
+    if native_type == "openusd_quatf":
+        return "OpenUsdNativeQuatf", managed_name
     if native_type == "const openusd_extent3f*":
         return "ref OpenUsdNativeExtent3f", managed_name
     if native_type == "openusd_extent3f*":
@@ -185,6 +188,14 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         "openusd_ts_extrap_mode",
         "openusd_ts_tangent_algorithm",
         "openusd_validation_severity",
+        "openusd_physics_schema_kind",
+        "openusd_physics_api_kind",
+        "openusd_physics_float_property",
+        "openusd_physics_bool_property",
+        "openusd_physics_vec3f_property",
+        "openusd_physics_quatf_property",
+        "openusd_physics_token_property",
+        "openusd_physics_string_property",
     }
     if native_type in enum_types:
         return "int", managed_name

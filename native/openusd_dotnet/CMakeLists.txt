@@ -17,6 +17,7 @@ set(OPENUSD_DOTNET_SOURCES
     src/validation.cpp
     src/usdGeom.cpp
     src/usdLux.cpp
+    src/usdPhysics.cpp
     src/usdShade.cpp
     src/usdSkel.cpp)
 

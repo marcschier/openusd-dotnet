@@ -10,9 +10,9 @@ public static class OpenUsdNativeContract
     /// <summary>Gets the platform-neutral native import name.</summary>
     public const string LibraryName = "openusd_dotnet";
 
-    /// <summary>Gets the ninth version of the project-owned native ABI.</summary>
-    public const uint AbiVersion = 9;
+    /// <summary>Gets the eleventh version of the project-owned native ABI.</summary>
+    public const uint AbiVersion = 11;
 
     /// <summary>Gets the capabilities required by this managed contract.</summary>
-    public const ulong RequiredCapabilities = 0xFFF;
+public const ulong RequiredCapabilities = 0x2FFF;
 }

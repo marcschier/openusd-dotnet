@@ -272,6 +272,7 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_PCP_PRIM_INDEX_QUERY (UINT64_C(1) << 9)
 #define OPENUSD_CAPABILITY_TS_SPLINE_QUERY (UINT64_C(1) << 10)
 #define OPENUSD_CAPABILITY_USD_VALIDATION_QUERY (UINT64_C(1) << 11)
+#define OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA (UINT64_C(1) << 13)
 
 typedef struct openusd_vec3f
 {
@@ -508,6 +509,105 @@ typedef enum openusd_skel_interpolation
     OPENUSD_SKEL_INTERPOLATION_CONSTANT = 0,
     OPENUSD_SKEL_INTERPOLATION_VERTEX = 1
 } openusd_skel_interpolation;
+
+
+/* ---- UsdPhysics schema facade declarations ---- */
+typedef enum openusd_physics_schema_kind
+{
+    OPENUSD_PHYSICS_SCHEMA_SCENE = 0,
+    OPENUSD_PHYSICS_SCHEMA_COLLISION_GROUP = 1,
+    OPENUSD_PHYSICS_SCHEMA_JOINT = 2,
+    OPENUSD_PHYSICS_SCHEMA_REVOLUTE_JOINT = 3,
+    OPENUSD_PHYSICS_SCHEMA_PRISMATIC_JOINT = 4,
+    OPENUSD_PHYSICS_SCHEMA_SPHERICAL_JOINT = 5,
+    OPENUSD_PHYSICS_SCHEMA_DISTANCE_JOINT = 6,
+    OPENUSD_PHYSICS_SCHEMA_FIXED_JOINT = 7
+} openusd_physics_schema_kind;
+
+typedef enum openusd_physics_api_kind
+{
+    OPENUSD_PHYSICS_API_RIGID_BODY = 0,
+    OPENUSD_PHYSICS_API_MASS = 1,
+    OPENUSD_PHYSICS_API_COLLISION = 2,
+    OPENUSD_PHYSICS_API_MESH_COLLISION = 3,
+    OPENUSD_PHYSICS_API_MATERIAL = 4,
+    OPENUSD_PHYSICS_API_FILTERED_PAIRS = 5,
+    OPENUSD_PHYSICS_API_ARTICULATION_ROOT = 6,
+    OPENUSD_PHYSICS_API_LIMIT = 7,
+    OPENUSD_PHYSICS_API_DRIVE = 8
+} openusd_physics_api_kind;
+
+typedef enum openusd_physics_float_property
+{
+    OPENUSD_PHYSICS_FLOAT_SCENE_GRAVITY_MAGNITUDE = 0,
+    OPENUSD_PHYSICS_FLOAT_MASS_MASS = 1,
+    OPENUSD_PHYSICS_FLOAT_MASS_DENSITY = 2,
+    OPENUSD_PHYSICS_FLOAT_MATERIAL_DYNAMIC_FRICTION = 3,
+    OPENUSD_PHYSICS_FLOAT_MATERIAL_STATIC_FRICTION = 4,
+    OPENUSD_PHYSICS_FLOAT_MATERIAL_RESTITUTION = 5,
+    OPENUSD_PHYSICS_FLOAT_MATERIAL_DENSITY = 6,
+    OPENUSD_PHYSICS_FLOAT_JOINT_BREAK_FORCE = 7,
+    OPENUSD_PHYSICS_FLOAT_JOINT_BREAK_TORQUE = 8,
+    OPENUSD_PHYSICS_FLOAT_REVOLUTE_LOWER_LIMIT = 9,
+    OPENUSD_PHYSICS_FLOAT_REVOLUTE_UPPER_LIMIT = 10,
+    OPENUSD_PHYSICS_FLOAT_PRISMATIC_LOWER_LIMIT = 11,
+    OPENUSD_PHYSICS_FLOAT_PRISMATIC_UPPER_LIMIT = 12,
+    OPENUSD_PHYSICS_FLOAT_SPHERICAL_CONE_ANGLE0_LIMIT = 13,
+    OPENUSD_PHYSICS_FLOAT_SPHERICAL_CONE_ANGLE1_LIMIT = 14,
+    OPENUSD_PHYSICS_FLOAT_DISTANCE_MIN_DISTANCE = 15,
+    OPENUSD_PHYSICS_FLOAT_DISTANCE_MAX_DISTANCE = 16,
+    OPENUSD_PHYSICS_FLOAT_LIMIT_LOW = 17,
+    OPENUSD_PHYSICS_FLOAT_LIMIT_HIGH = 18,
+    OPENUSD_PHYSICS_FLOAT_DRIVE_MAX_FORCE = 19,
+    OPENUSD_PHYSICS_FLOAT_DRIVE_TARGET_POSITION = 20,
+    OPENUSD_PHYSICS_FLOAT_DRIVE_TARGET_VELOCITY = 21,
+    OPENUSD_PHYSICS_FLOAT_DRIVE_DAMPING = 22,
+    OPENUSD_PHYSICS_FLOAT_DRIVE_STIFFNESS = 23
+} openusd_physics_float_property;
+
+typedef enum openusd_physics_bool_property
+{
+    OPENUSD_PHYSICS_BOOL_RIGID_BODY_ENABLED = 0,
+    OPENUSD_PHYSICS_BOOL_RIGID_BODY_KINEMATIC_ENABLED = 1,
+    OPENUSD_PHYSICS_BOOL_RIGID_BODY_STARTS_ASLEEP = 2,
+    OPENUSD_PHYSICS_BOOL_COLLISION_ENABLED = 3,
+    OPENUSD_PHYSICS_BOOL_COLLISION_GROUP_INVERT_FILTERED_GROUPS = 4,
+    OPENUSD_PHYSICS_BOOL_JOINT_ENABLED = 5,
+    OPENUSD_PHYSICS_BOOL_JOINT_COLLISION_ENABLED = 6,
+    OPENUSD_PHYSICS_BOOL_JOINT_EXCLUDE_FROM_ARTICULATION = 7
+} openusd_physics_bool_property;
+
+typedef enum openusd_physics_vec3f_property
+{
+    OPENUSD_PHYSICS_VEC3F_SCENE_GRAVITY_DIRECTION = 0,
+    OPENUSD_PHYSICS_VEC3F_RIGID_BODY_VELOCITY = 1,
+    OPENUSD_PHYSICS_VEC3F_RIGID_BODY_ANGULAR_VELOCITY = 2,
+    OPENUSD_PHYSICS_VEC3F_MASS_CENTER_OF_MASS = 3,
+    OPENUSD_PHYSICS_VEC3F_MASS_DIAGONAL_INERTIA = 4,
+    OPENUSD_PHYSICS_VEC3F_JOINT_LOCAL_POS0 = 5,
+    OPENUSD_PHYSICS_VEC3F_JOINT_LOCAL_POS1 = 6
+} openusd_physics_vec3f_property;
+
+typedef enum openusd_physics_quatf_property
+{
+    OPENUSD_PHYSICS_QUATF_MASS_PRINCIPAL_AXES = 0,
+    OPENUSD_PHYSICS_QUATF_JOINT_LOCAL_ROT0 = 1,
+    OPENUSD_PHYSICS_QUATF_JOINT_LOCAL_ROT1 = 2
+} openusd_physics_quatf_property;
+
+typedef enum openusd_physics_token_property
+{
+    OPENUSD_PHYSICS_TOKEN_MESH_COLLISION_APPROXIMATION = 0,
+    OPENUSD_PHYSICS_TOKEN_REVOLUTE_AXIS = 1,
+    OPENUSD_PHYSICS_TOKEN_PRISMATIC_AXIS = 2,
+    OPENUSD_PHYSICS_TOKEN_SPHERICAL_AXIS = 3,
+    OPENUSD_PHYSICS_TOKEN_DRIVE_TYPE = 4
+} openusd_physics_token_property;
+
+typedef enum openusd_physics_string_property
+{
+    OPENUSD_PHYSICS_STRING_COLLISION_GROUP_MERGE_GROUP_NAME = 0
+} openusd_physics_string_property;
 
 typedef enum openusd_metadata_kind
 {
@@ -2095,6 +2195,128 @@ OPENUSD_DOTNET_API openusd_status openusd_skel_get_joint_influences(
     size_t* joint_weight_required,
     int32_t* element_size,
     openusd_skel_interpolation* interpolation,
+    openusd_error_buffer* error);
+
+
+/* ---- UsdPhysics schema facade exports ---- */
+OPENUSD_DOTNET_API openusd_status openusd_physics_is_schema(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_schema_kind schema_kind,
+    int32_t* is_schema,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_define(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_schema_kind schema_kind,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_has_api(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_api_kind api_kind,
+    const char* instance_name,
+    int32_t* has_api,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_apply_api(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_api_kind api_kind,
+    const char* instance_name,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_set_float(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_float_property property,
+    const char* instance_name,
+    float value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_get_float(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_float_property property,
+    const char* instance_name,
+    float* value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_set_bool(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_bool_property property,
+    int32_t value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_get_bool(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_bool_property property,
+    int32_t* value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_set_vec3f(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_vec3f_property property,
+    openusd_vec3f value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_get_vec3f(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_vec3f_property property,
+    openusd_vec3f* value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_set_quatf(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_quatf_property property,
+    openusd_quatf value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_get_quatf(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_quatf_property property,
+    openusd_quatf* value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_set_token(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_token_property property,
+    const char* instance_name,
+    const char* value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_get_token(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_token_property property,
+    const char* instance_name,
+    char* buffer,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_set_string(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_string_property property,
+    const char* value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_physics_get_string(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_physics_string_property property,
+    char* buffer,
+    size_t capacity,
+    size_t* required,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API void openusd_string_list_release(openusd_string_list* list);

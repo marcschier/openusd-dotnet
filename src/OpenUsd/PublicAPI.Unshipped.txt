@@ -1073,3 +1073,255 @@ static OpenUsd.UsdVec3f.operator ==(OpenUsd.UsdVec3f left, OpenUsd.UsdVec3f righ
 ~override OpenUsd.UsdStageChange.Equals(object obj) -> bool
 ~override OpenUsd.UsdStageChange.ToString() -> string
 ~override OpenUsd.UsdVec3d.Equals(object obj) -> bool
+const OpenUsd.Physics.UsdPhysicsTokens.Angular = "angular" -> string!
+const OpenUsd.Physics.UsdPhysicsTokens.Distance = "distance" -> string!
+const OpenUsd.Physics.UsdPhysicsTokens.Linear = "linear" -> string!
+const OpenUsd.Physics.UsdPhysicsTokens.RotX = "rotX" -> string!
+const OpenUsd.Physics.UsdPhysicsTokens.RotY = "rotY" -> string!
+const OpenUsd.Physics.UsdPhysicsTokens.RotZ = "rotZ" -> string!
+const OpenUsd.Physics.UsdPhysicsTokens.TransX = "transX" -> string!
+const OpenUsd.Physics.UsdPhysicsTokens.TransY = "transY" -> string!
+const OpenUsd.Physics.UsdPhysicsTokens.TransZ = "transZ" -> string!
+OpenUsd.Physics.UsdPhysicsArticulationRootAPI
+OpenUsd.Physics.UsdPhysicsArticulationRootAPI.UsdPhysicsArticulationRootAPI() -> void
+OpenUsd.Physics.UsdPhysicsAxis
+OpenUsd.Physics.UsdPhysicsAxis.X = 0 -> OpenUsd.Physics.UsdPhysicsAxis
+OpenUsd.Physics.UsdPhysicsAxis.Y = 1 -> OpenUsd.Physics.UsdPhysicsAxis
+OpenUsd.Physics.UsdPhysicsAxis.Z = 2 -> OpenUsd.Physics.UsdPhysicsAxis
+OpenUsd.Physics.UsdPhysicsCollisionAPI
+OpenUsd.Physics.UsdPhysicsCollisionAPI.CollisionEnabled.get -> bool
+OpenUsd.Physics.UsdPhysicsCollisionAPI.CollisionEnabled.set -> void
+OpenUsd.Physics.UsdPhysicsCollisionAPI.GetSimulationOwner() -> string![]!
+OpenUsd.Physics.UsdPhysicsCollisionAPI.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsCollisionAPI.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Physics.UsdPhysicsCollisionAPI.SetSimulationOwner(string! target) -> void
+OpenUsd.Physics.UsdPhysicsCollisionAPI.UsdPhysicsCollisionAPI() -> void
+OpenUsd.Physics.UsdPhysicsCollisionGroup
+OpenUsd.Physics.UsdPhysicsCollisionGroup.GetColliders() -> string![]!
+OpenUsd.Physics.UsdPhysicsCollisionGroup.GetFilteredGroups() -> string![]!
+OpenUsd.Physics.UsdPhysicsCollisionGroup.InvertFilteredGroups.get -> bool
+OpenUsd.Physics.UsdPhysicsCollisionGroup.InvertFilteredGroups.set -> void
+OpenUsd.Physics.UsdPhysicsCollisionGroup.MergeGroupName.get -> string!
+OpenUsd.Physics.UsdPhysicsCollisionGroup.MergeGroupName.set -> void
+OpenUsd.Physics.UsdPhysicsCollisionGroup.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsCollisionGroup.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Physics.UsdPhysicsCollisionGroup.SetColliders(System.ReadOnlySpan<string!> targets) -> void
+OpenUsd.Physics.UsdPhysicsCollisionGroup.SetFilteredGroups(System.ReadOnlySpan<string!> targets) -> void
+OpenUsd.Physics.UsdPhysicsCollisionGroup.UsdPhysicsCollisionGroup() -> void
+OpenUsd.Physics.UsdPhysicsDistanceJoint
+OpenUsd.Physics.UsdPhysicsDistanceJoint.Joint.get -> OpenUsd.Physics.UsdPhysicsJoint
+OpenUsd.Physics.UsdPhysicsDistanceJoint.MaxDistance.get -> float
+OpenUsd.Physics.UsdPhysicsDistanceJoint.MaxDistance.set -> void
+OpenUsd.Physics.UsdPhysicsDistanceJoint.MinDistance.get -> float
+OpenUsd.Physics.UsdPhysicsDistanceJoint.MinDistance.set -> void
+OpenUsd.Physics.UsdPhysicsDistanceJoint.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsDistanceJoint.UsdPhysicsDistanceJoint() -> void
+OpenUsd.Physics.UsdPhysicsDriveAPI
+OpenUsd.Physics.UsdPhysicsDriveAPI.Damping.get -> float
+OpenUsd.Physics.UsdPhysicsDriveAPI.Damping.set -> void
+OpenUsd.Physics.UsdPhysicsDriveAPI.MaxForce.get -> float
+OpenUsd.Physics.UsdPhysicsDriveAPI.MaxForce.set -> void
+OpenUsd.Physics.UsdPhysicsDriveAPI.Name.get -> string!
+OpenUsd.Physics.UsdPhysicsDriveAPI.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsDriveAPI.Stiffness.get -> float
+OpenUsd.Physics.UsdPhysicsDriveAPI.Stiffness.set -> void
+OpenUsd.Physics.UsdPhysicsDriveAPI.TargetPosition.get -> float
+OpenUsd.Physics.UsdPhysicsDriveAPI.TargetPosition.set -> void
+OpenUsd.Physics.UsdPhysicsDriveAPI.TargetVelocity.get -> float
+OpenUsd.Physics.UsdPhysicsDriveAPI.TargetVelocity.set -> void
+OpenUsd.Physics.UsdPhysicsDriveAPI.Type.get -> OpenUsd.Physics.UsdPhysicsDriveType
+OpenUsd.Physics.UsdPhysicsDriveAPI.Type.set -> void
+OpenUsd.Physics.UsdPhysicsDriveAPI.UsdPhysicsDriveAPI() -> void
+OpenUsd.Physics.UsdPhysicsDriveType
+OpenUsd.Physics.UsdPhysicsDriveType.Acceleration = 1 -> OpenUsd.Physics.UsdPhysicsDriveType
+OpenUsd.Physics.UsdPhysicsDriveType.Force = 0 -> OpenUsd.Physics.UsdPhysicsDriveType
+OpenUsd.Physics.UsdPhysicsFilteredPairsAPI
+OpenUsd.Physics.UsdPhysicsFilteredPairsAPI.GetFilteredPairs() -> string![]!
+OpenUsd.Physics.UsdPhysicsFilteredPairsAPI.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsFilteredPairsAPI.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Physics.UsdPhysicsFilteredPairsAPI.SetFilteredPairs(System.ReadOnlySpan<string!> targets) -> void
+OpenUsd.Physics.UsdPhysicsFilteredPairsAPI.UsdPhysicsFilteredPairsAPI() -> void
+OpenUsd.Physics.UsdPhysicsFixedJoint
+OpenUsd.Physics.UsdPhysicsFixedJoint.Joint.get -> OpenUsd.Physics.UsdPhysicsJoint
+OpenUsd.Physics.UsdPhysicsFixedJoint.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsFixedJoint.UsdPhysicsFixedJoint() -> void
+OpenUsd.Physics.UsdPhysicsFixedJoint.UsdPhysicsFixedJoint(OpenUsd.UsdStage! stage, string! path) -> void
+OpenUsd.Physics.UsdPhysicsJoint
+OpenUsd.Physics.UsdPhysicsJoint.BreakForce.get -> float
+OpenUsd.Physics.UsdPhysicsJoint.BreakForce.set -> void
+OpenUsd.Physics.UsdPhysicsJoint.BreakTorque.get -> float
+OpenUsd.Physics.UsdPhysicsJoint.BreakTorque.set -> void
+OpenUsd.Physics.UsdPhysicsJoint.CollisionEnabled.get -> bool
+OpenUsd.Physics.UsdPhysicsJoint.CollisionEnabled.set -> void
+OpenUsd.Physics.UsdPhysicsJoint.ExcludeFromArticulation.get -> bool
+OpenUsd.Physics.UsdPhysicsJoint.ExcludeFromArticulation.set -> void
+OpenUsd.Physics.UsdPhysicsJoint.GetBody0() -> string![]!
+OpenUsd.Physics.UsdPhysicsJoint.GetBody1() -> string![]!
+OpenUsd.Physics.UsdPhysicsJoint.Imageable.get -> OpenUsd.Geom.UsdGeomImageable
+OpenUsd.Physics.UsdPhysicsJoint.JointEnabled.get -> bool
+OpenUsd.Physics.UsdPhysicsJoint.JointEnabled.set -> void
+OpenUsd.Physics.UsdPhysicsJoint.LocalPos0.get -> OpenUsd.UsdVec3f
+OpenUsd.Physics.UsdPhysicsJoint.LocalPos0.set -> void
+OpenUsd.Physics.UsdPhysicsJoint.LocalPos1.get -> OpenUsd.UsdVec3f
+OpenUsd.Physics.UsdPhysicsJoint.LocalPos1.set -> void
+OpenUsd.Physics.UsdPhysicsJoint.LocalRot0.get -> OpenUsd.UsdQuatf
+OpenUsd.Physics.UsdPhysicsJoint.LocalRot0.set -> void
+OpenUsd.Physics.UsdPhysicsJoint.LocalRot1.get -> OpenUsd.UsdQuatf
+OpenUsd.Physics.UsdPhysicsJoint.LocalRot1.set -> void
+OpenUsd.Physics.UsdPhysicsJoint.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsJoint.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Physics.UsdPhysicsJoint.SetBody0(string! target) -> void
+OpenUsd.Physics.UsdPhysicsJoint.SetBody1(string! target) -> void
+OpenUsd.Physics.UsdPhysicsJoint.UsdPhysicsJoint() -> void
+OpenUsd.Physics.UsdPhysicsLimitAPI
+OpenUsd.Physics.UsdPhysicsLimitAPI.High.get -> float
+OpenUsd.Physics.UsdPhysicsLimitAPI.High.set -> void
+OpenUsd.Physics.UsdPhysicsLimitAPI.Low.get -> float
+OpenUsd.Physics.UsdPhysicsLimitAPI.Low.set -> void
+OpenUsd.Physics.UsdPhysicsLimitAPI.Name.get -> string!
+OpenUsd.Physics.UsdPhysicsLimitAPI.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsLimitAPI.UsdPhysicsLimitAPI() -> void
+OpenUsd.Physics.UsdPhysicsMassAPI
+OpenUsd.Physics.UsdPhysicsMassAPI.CenterOfMass.get -> OpenUsd.UsdVec3f
+OpenUsd.Physics.UsdPhysicsMassAPI.CenterOfMass.set -> void
+OpenUsd.Physics.UsdPhysicsMassAPI.Density.get -> float
+OpenUsd.Physics.UsdPhysicsMassAPI.Density.set -> void
+OpenUsd.Physics.UsdPhysicsMassAPI.DiagonalInertia.get -> OpenUsd.UsdVec3f
+OpenUsd.Physics.UsdPhysicsMassAPI.DiagonalInertia.set -> void
+OpenUsd.Physics.UsdPhysicsMassAPI.Mass.get -> float
+OpenUsd.Physics.UsdPhysicsMassAPI.Mass.set -> void
+OpenUsd.Physics.UsdPhysicsMassAPI.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsMassAPI.PrincipalAxes.get -> OpenUsd.UsdQuatf
+OpenUsd.Physics.UsdPhysicsMassAPI.PrincipalAxes.set -> void
+OpenUsd.Physics.UsdPhysicsMassAPI.UsdPhysicsMassAPI() -> void
+OpenUsd.Physics.UsdPhysicsMaterialAPI
+OpenUsd.Physics.UsdPhysicsMaterialAPI.Density.get -> float
+OpenUsd.Physics.UsdPhysicsMaterialAPI.Density.set -> void
+OpenUsd.Physics.UsdPhysicsMaterialAPI.DynamicFriction.get -> float
+OpenUsd.Physics.UsdPhysicsMaterialAPI.DynamicFriction.set -> void
+OpenUsd.Physics.UsdPhysicsMaterialAPI.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsMaterialAPI.Restitution.get -> float
+OpenUsd.Physics.UsdPhysicsMaterialAPI.Restitution.set -> void
+OpenUsd.Physics.UsdPhysicsMaterialAPI.StaticFriction.get -> float
+OpenUsd.Physics.UsdPhysicsMaterialAPI.StaticFriction.set -> void
+OpenUsd.Physics.UsdPhysicsMaterialAPI.UsdPhysicsMaterialAPI() -> void
+OpenUsd.Physics.UsdPhysicsMeshCollisionAPI
+OpenUsd.Physics.UsdPhysicsMeshCollisionAPI.Approximation.get -> OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation
+OpenUsd.Physics.UsdPhysicsMeshCollisionAPI.Approximation.set -> void
+OpenUsd.Physics.UsdPhysicsMeshCollisionAPI.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsMeshCollisionAPI.UsdPhysicsMeshCollisionAPI() -> void
+OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation
+OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation.BoundingCube = 4 -> OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation
+OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation.BoundingSphere = 3 -> OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation
+OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation.ConvexDecomposition = 1 -> OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation
+OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation.ConvexHull = 2 -> OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation
+OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation.MeshSimplification = 5 -> OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation
+OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation.None = 0 -> OpenUsd.Physics.UsdPhysicsMeshCollisionApproximation
+OpenUsd.Physics.UsdPhysicsPrismaticJoint
+OpenUsd.Physics.UsdPhysicsPrismaticJoint.Axis.get -> OpenUsd.Physics.UsdPhysicsAxis
+OpenUsd.Physics.UsdPhysicsPrismaticJoint.Axis.set -> void
+OpenUsd.Physics.UsdPhysicsPrismaticJoint.Joint.get -> OpenUsd.Physics.UsdPhysicsJoint
+OpenUsd.Physics.UsdPhysicsPrismaticJoint.LowerLimit.get -> float
+OpenUsd.Physics.UsdPhysicsPrismaticJoint.LowerLimit.set -> void
+OpenUsd.Physics.UsdPhysicsPrismaticJoint.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsPrismaticJoint.UpperLimit.get -> float
+OpenUsd.Physics.UsdPhysicsPrismaticJoint.UpperLimit.set -> void
+OpenUsd.Physics.UsdPhysicsPrismaticJoint.UsdPhysicsPrismaticJoint() -> void
+OpenUsd.Physics.UsdPhysicsRevoluteJoint
+OpenUsd.Physics.UsdPhysicsRevoluteJoint.Axis.get -> OpenUsd.Physics.UsdPhysicsAxis
+OpenUsd.Physics.UsdPhysicsRevoluteJoint.Axis.set -> void
+OpenUsd.Physics.UsdPhysicsRevoluteJoint.Joint.get -> OpenUsd.Physics.UsdPhysicsJoint
+OpenUsd.Physics.UsdPhysicsRevoluteJoint.LowerLimit.get -> float
+OpenUsd.Physics.UsdPhysicsRevoluteJoint.LowerLimit.set -> void
+OpenUsd.Physics.UsdPhysicsRevoluteJoint.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsRevoluteJoint.UpperLimit.get -> float
+OpenUsd.Physics.UsdPhysicsRevoluteJoint.UpperLimit.set -> void
+OpenUsd.Physics.UsdPhysicsRevoluteJoint.UsdPhysicsRevoluteJoint() -> void
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.AngularVelocity.get -> OpenUsd.UsdVec3f
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.AngularVelocity.set -> void
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.GetSimulationOwner() -> string![]!
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.KinematicEnabled.get -> bool
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.KinematicEnabled.set -> void
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.RigidBodyEnabled.get -> bool
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.RigidBodyEnabled.set -> void
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.SetSimulationOwner(string! target) -> void
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.StartsAsleep.get -> bool
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.StartsAsleep.set -> void
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.UsdPhysicsRigidBodyAPI() -> void
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.Velocity.get -> OpenUsd.UsdVec3f
+OpenUsd.Physics.UsdPhysicsRigidBodyAPI.Velocity.set -> void
+OpenUsd.Physics.UsdPhysicsScene
+OpenUsd.Physics.UsdPhysicsScene.GravityDirection.get -> OpenUsd.UsdVec3f
+OpenUsd.Physics.UsdPhysicsScene.GravityDirection.set -> void
+OpenUsd.Physics.UsdPhysicsScene.GravityMagnitude.get -> float
+OpenUsd.Physics.UsdPhysicsScene.GravityMagnitude.set -> void
+OpenUsd.Physics.UsdPhysicsScene.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsScene.Prim.get -> OpenUsd.UsdPrim
+OpenUsd.Physics.UsdPhysicsScene.UsdPhysicsScene() -> void
+OpenUsd.Physics.UsdPhysicsScene.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Physics.UsdPhysicsSphericalJoint
+OpenUsd.Physics.UsdPhysicsSphericalJoint.Axis.get -> OpenUsd.Physics.UsdPhysicsAxis
+OpenUsd.Physics.UsdPhysicsSphericalJoint.Axis.set -> void
+OpenUsd.Physics.UsdPhysicsSphericalJoint.ConeAngle0Limit.get -> float
+OpenUsd.Physics.UsdPhysicsSphericalJoint.ConeAngle0Limit.set -> void
+OpenUsd.Physics.UsdPhysicsSphericalJoint.ConeAngle1Limit.get -> float
+OpenUsd.Physics.UsdPhysicsSphericalJoint.ConeAngle1Limit.set -> void
+OpenUsd.Physics.UsdPhysicsSphericalJoint.Joint.get -> OpenUsd.Physics.UsdPhysicsJoint
+OpenUsd.Physics.UsdPhysicsSphericalJoint.Path.get -> string!
+OpenUsd.Physics.UsdPhysicsSphericalJoint.UsdPhysicsSphericalJoint() -> void
+OpenUsd.Physics.UsdPhysicsStageExtensions
+OpenUsd.Physics.UsdPhysicsTokens
+static OpenUsd.Physics.UsdPhysicsArticulationRootAPI.Apply(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsArticulationRootAPI
+static OpenUsd.Physics.UsdPhysicsArticulationRootAPI.Has(OpenUsd.UsdPrim prim) -> bool
+static OpenUsd.Physics.UsdPhysicsArticulationRootAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsArticulationRootAPI
+static OpenUsd.Physics.UsdPhysicsCollisionAPI.Apply(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsCollisionAPI
+static OpenUsd.Physics.UsdPhysicsCollisionAPI.Has(OpenUsd.UsdPrim prim) -> bool
+static OpenUsd.Physics.UsdPhysicsCollisionAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsCollisionAPI
+static OpenUsd.Physics.UsdPhysicsCollisionGroup.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Physics.UsdPhysicsCollisionGroup value) -> bool
+static OpenUsd.Physics.UsdPhysicsCollisionGroup.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsCollisionGroup
+static OpenUsd.Physics.UsdPhysicsDistanceJoint.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Physics.UsdPhysicsDistanceJoint value) -> bool
+static OpenUsd.Physics.UsdPhysicsDistanceJoint.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsDistanceJoint
+static OpenUsd.Physics.UsdPhysicsDriveAPI.Apply(OpenUsd.UsdPrim prim, string! name) -> OpenUsd.Physics.UsdPhysicsDriveAPI
+static OpenUsd.Physics.UsdPhysicsDriveAPI.Has(OpenUsd.UsdPrim prim, string! name) -> bool
+static OpenUsd.Physics.UsdPhysicsDriveAPI.Wrap(OpenUsd.UsdPrim prim, string! name) -> OpenUsd.Physics.UsdPhysicsDriveAPI
+static OpenUsd.Physics.UsdPhysicsFilteredPairsAPI.Apply(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsFilteredPairsAPI
+static OpenUsd.Physics.UsdPhysicsFilteredPairsAPI.Has(OpenUsd.UsdPrim prim) -> bool
+static OpenUsd.Physics.UsdPhysicsFilteredPairsAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsFilteredPairsAPI
+static OpenUsd.Physics.UsdPhysicsFixedJoint.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Physics.UsdPhysicsFixedJoint value) -> bool
+static OpenUsd.Physics.UsdPhysicsFixedJoint.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsFixedJoint
+static OpenUsd.Physics.UsdPhysicsJoint.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Physics.UsdPhysicsJoint value) -> bool
+static OpenUsd.Physics.UsdPhysicsJoint.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsJoint
+static OpenUsd.Physics.UsdPhysicsLimitAPI.Apply(OpenUsd.UsdPrim prim, string! name) -> OpenUsd.Physics.UsdPhysicsLimitAPI
+static OpenUsd.Physics.UsdPhysicsLimitAPI.Has(OpenUsd.UsdPrim prim, string! name) -> bool
+static OpenUsd.Physics.UsdPhysicsLimitAPI.Wrap(OpenUsd.UsdPrim prim, string! name) -> OpenUsd.Physics.UsdPhysicsLimitAPI
+static OpenUsd.Physics.UsdPhysicsMassAPI.Apply(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsMassAPI
+static OpenUsd.Physics.UsdPhysicsMassAPI.Has(OpenUsd.UsdPrim prim) -> bool
+static OpenUsd.Physics.UsdPhysicsMassAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsMassAPI
+static OpenUsd.Physics.UsdPhysicsMaterialAPI.Apply(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsMaterialAPI
+static OpenUsd.Physics.UsdPhysicsMaterialAPI.Has(OpenUsd.UsdPrim prim) -> bool
+static OpenUsd.Physics.UsdPhysicsMaterialAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsMaterialAPI
+static OpenUsd.Physics.UsdPhysicsMeshCollisionAPI.Apply(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsMeshCollisionAPI
+static OpenUsd.Physics.UsdPhysicsMeshCollisionAPI.Has(OpenUsd.UsdPrim prim) -> bool
+static OpenUsd.Physics.UsdPhysicsMeshCollisionAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsMeshCollisionAPI
+static OpenUsd.Physics.UsdPhysicsPrismaticJoint.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Physics.UsdPhysicsPrismaticJoint value) -> bool
+static OpenUsd.Physics.UsdPhysicsPrismaticJoint.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsPrismaticJoint
+static OpenUsd.Physics.UsdPhysicsRevoluteJoint.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Physics.UsdPhysicsRevoluteJoint value) -> bool
+static OpenUsd.Physics.UsdPhysicsRevoluteJoint.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsRevoluteJoint
+static OpenUsd.Physics.UsdPhysicsRigidBodyAPI.Apply(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsRigidBodyAPI
+static OpenUsd.Physics.UsdPhysicsRigidBodyAPI.Has(OpenUsd.UsdPrim prim) -> bool
+static OpenUsd.Physics.UsdPhysicsRigidBodyAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsRigidBodyAPI
+static OpenUsd.Physics.UsdPhysicsScene.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Physics.UsdPhysicsScene value) -> bool
+static OpenUsd.Physics.UsdPhysicsScene.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsScene
+static OpenUsd.Physics.UsdPhysicsSphericalJoint.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Physics.UsdPhysicsSphericalJoint value) -> bool
+static OpenUsd.Physics.UsdPhysicsSphericalJoint.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsSphericalJoint
+static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsCollisionGroup(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsCollisionGroup
+static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsDistanceJoint(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsDistanceJoint
+static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsFixedJoint(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsFixedJoint
+static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsJoint(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsJoint
+static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsPrismaticJoint(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsPrismaticJoint
+static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsRevoluteJoint(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsRevoluteJoint
+static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsScene(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsScene
+static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsSphericalJoint(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsSphericalJoint
