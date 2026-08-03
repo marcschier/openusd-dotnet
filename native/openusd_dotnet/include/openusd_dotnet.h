@@ -275,6 +275,8 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE (UINT64_C(1) << 12)
 #define OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA (UINT64_C(1) << 13)
 #define OPENUSD_DOTNET_CAPABILITY_USD_SHADE_SKEL (UINT64_C(1) << 14)
+/* Schema facade allocations: 12 Geom, 13 Physics, 14 Shade/Skel, 15 Vol/Render/Media/Proc/UI. */
+#define OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI (UINT64_C(1) << 15)
 
 typedef struct openusd_vec3f
 {

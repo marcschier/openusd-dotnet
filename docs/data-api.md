@@ -941,7 +941,7 @@ P/Invoke on authoring paths.
 
 The data API now includes focused schema views for volume assets, render settings, spatial media,
 generative procedurals, and selected UI metadata. These are authoring and inspection facades only;
-they do not add hdSilk volume rendering.
+they do not add OpenVDB runtime support or hdSilk volume rendering.
 
 ```csharp
 UsdVolVolume volume = stage.DefineVolume("/World/Volume");
@@ -972,7 +972,7 @@ native boundary in bulk. `UsdMediaAssetPreviewsAPI` is present in the pinned Ope
 is exposed for default thumbnail asset metadata.
 
 The exposed UsdVol slice covers `Volume`, `VolumeFieldBase`, `VolumeFieldAsset`, `FieldBase`,
-`FieldAsset`, `OpenVDBAsset`, and `Field3DAsset`. Particle-field schemas and UsdVol particle API
+`FieldAsset`, the `OpenVDBAsset` schema, and `Field3DAsset`. Particle-field schemas and UsdVol particle API
 schemas are intentionally left out of this volume-asset authoring slice. The exposed UsdRender slice
 covers `RenderSettingsBase`, `RenderSettings`, `RenderProduct`, `RenderVar`, and `RenderPass`; this
 OpenUSD version has no generated `RenderDenoisePass` schema. UsdUI covers `Backdrop`,
