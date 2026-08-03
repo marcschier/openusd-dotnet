@@ -445,7 +445,7 @@ public sealed class NativeAbiVersionTests
             Regex.Count(
                 implementation,
                 @"\breturn WithAbiWritableBuffer\(",
-                RegexOptions.CultureInvariant)).IsEqualTo(13);
+                RegexOptions.CultureInvariant)).IsEqualTo(14);
         await Assert.That(
             Regex.Count(
                 implementation,

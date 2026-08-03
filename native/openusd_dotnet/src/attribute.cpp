@@ -935,7 +935,6 @@ openusd_status openusd_stage_get_int32_array(
                     }
                     if (capacity < array.size())
                     {
-                        *required = array.size();
                         WriteError(error, "The supplied int32 array buffer is too small.");
                         return OPENUSD_STATUS_BUFFER_TOO_SMALL;
                     }
@@ -971,7 +970,6 @@ openusd_status openusd_stage_get_int32_array(
                     }
                     if (capacity < requiredCount)
                     {
-                        *required = requiredCount;
                         WriteError(error, "The supplied int32 array buffer is too small.");
                         return OPENUSD_STATUS_BUFFER_TOO_SMALL;
                     }
@@ -1010,7 +1008,6 @@ openusd_status openusd_stage_get_int32_array(
                     }
                     if (capacity < requiredCount)
                     {
-                        *required = requiredCount;
                         WriteError(error, "The supplied int32 array buffer is too small.");
                         return OPENUSD_STATUS_BUFFER_TOO_SMALL;
                     }

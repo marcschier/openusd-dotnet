@@ -1161,17 +1161,7 @@ internal static partial class Program
                 {
                     normalCardinalityRejected = true;
                 }
-                bool arrayRoleMismatchRejected;
-                try
-                {
-                    _ = mesh.Prim.GetVec3fArray("points");
-                    arrayRoleMismatchRejected = false;
-                }
-                catch (OpenUsdNativeException exception)
-                    when (exception.Status == OpenUsdNativeStatus.InvalidArgument)
-                {
-                    arrayRoleMismatchRejected = true;
-                }
+                UsdVec3f[] genericMeshPoints = mesh.Prim.GetVec3fArray("points");
 
                 if (!wrongSchemaRejected ||
                     !wrapRejected ||
@@ -1179,7 +1169,7 @@ internal static partial class Program
                     !negativeFocalRejected ||
                     !malformedTopologyRejected ||
                     !normalCardinalityRejected ||
-                    !arrayRoleMismatchRejected ||
+                    !genericMeshPoints.SequenceEqual(geomPoints) ||
                     world.Xformable.GetLocalTransform() != xformValue ||
                     !world.Xformable.GetResetXformStack() ||
                     mesh.Imageable.GetVisibility() != UsdGeomVisibility.Invisible ||
