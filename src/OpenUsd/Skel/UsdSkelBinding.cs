@@ -33,6 +33,13 @@ public readonly struct UsdSkelBinding : IUsdStageBound
         set => Stage.Native.SetSkelGeomBindTransform(Path, value.ToNative());
     }
 
+    /// <summary>Gets or sets the skinning method.</summary>
+    public UsdSkelSkinningMethod SkinningMethod
+    {
+        get => (UsdSkelSkinningMethod)Stage.Native.GetSkelSkinningMethod(Path);
+        set => Stage.Native.SetSkelSkinningMethod(Path, (OpenUsdNativeSkelSkinningMethod)value);
+    }
+
     /// <summary>Applies UsdSkelBindingAPI to a prim and returns its view.</summary>
     public static UsdSkelBinding Apply(UsdPrim prim)
     {
@@ -130,6 +137,34 @@ public readonly struct UsdSkelBinding : IUsdStageBound
         Stage.Native.ClearSkelBindingTarget(
             Path,
             OpenUsdNativeSkelBindingRelationship.AnimationSource);
+
+    /// <summary>Authors blend-shape channel names.</summary>
+    public void SetBlendShapes(ReadOnlySpan<string> names) =>
+        Stage.Native.SetSkelBlendShapes(Path, names);
+
+    /// <summary>Gets blend-shape channel names.</summary>
+    public IReadOnlyList<string> GetBlendShapes() => Stage.Native.GetSkelBlendShapes(Path);
+
+    /// <summary>Authors ordered blend-shape targets.</summary>
+    public void SetBlendShapeTargets(ReadOnlySpan<UsdSkelBlendShape> targets)
+    {
+        string[] paths = new string[targets.Length];
+        for (int index = 0; index < targets.Length; ++index)
+        {
+            UsdSkelSchema.ValidateSameStage(Stage, targets[index].Prim.OwningStage);
+            paths[index] = targets[index].Path;
+        }
+        Stage.Native.SetSkelBlendShapeTargets(Path, paths);
+    }
+
+    /// <summary>Gets ordered blend-shape targets.</summary>
+    public IReadOnlyList<UsdSkelBlendShape> GetBlendShapeTargets()
+    {
+        UsdStage stage = Stage;
+        return stage.Native.GetSkelBlendShapeTargets(Path)
+            .Select(path => new UsdSkelBlendShape(stage, path))
+            .ToArray();
+    }
 
     /// <summary>Authors joint indices and matching weights using one bulk native call.</summary>
     public void SetJointInfluences(

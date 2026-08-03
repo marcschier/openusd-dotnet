@@ -2246,6 +2246,18 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_shade_is_node_graph",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ShadeIsNodeGraph(
+            nint stage,
+            string primPath,
+            out int isNodeGraph,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_shade_define_material",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
@@ -2262,6 +2274,17 @@ public static unsafe partial class OpenUsdNativeRuntime
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial OpenUsdNativeStatus ShadeDefineShader(
+            nint stage,
+            string primPath,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_shade_define_node_graph",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ShadeDefineNodeGraph(
             nint stage,
             string primPath,
             ref NativeErrorBuffer error);
@@ -2430,6 +2453,32 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_shade_get_input_names",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ShadeGetInputNames(
+            nint stage,
+            string connectablePath,
+            out nint list,
+            ref NativeStringListView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_shade_get_output_names",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ShadeGetOutputNames(
+            nint stage,
+            string connectablePath,
+            out nint list,
+            ref NativeStringListView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_shade_connect",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
@@ -2501,6 +2550,19 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_shade_material_create_terminal_output",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ShadeMaterialCreateTerminalOutput(
+            nint stage,
+            string materialPath,
+            int terminal,
+            string renderContext,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_shade_material_bind",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
@@ -2509,6 +2571,37 @@ public static unsafe partial class OpenUsdNativeRuntime
             nint stage,
             string primPath,
             string materialPath,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_shade_material_bind_ext",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ShadeMaterialBindExt(
+            nint stage,
+            string primPath,
+            string materialPath,
+            int strength,
+            int purpose,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_shade_material_bind_collection",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ShadeMaterialBindCollection(
+            nint stage,
+            string primPath,
+            string collectionPrimPath,
+            string collectionName,
+            string materialPath,
+            string bindingName,
+            int strength,
+            int purpose,
             ref NativeErrorBuffer error);
 
         [LibraryImport(
@@ -2531,6 +2624,21 @@ public static unsafe partial class OpenUsdNativeRuntime
         internal static partial OpenUsdNativeStatus ShadeGetDirectMaterial(
             nint stage,
             string primPath,
+            byte* buffer,
+            nuint capacity,
+            out nuint required,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_shade_get_bound_material",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus ShadeGetBoundMaterial(
+            nint stage,
+            string primPath,
+            int purpose,
             byte* buffer,
             nuint capacity,
             out nuint required,
@@ -3222,6 +3330,185 @@ public static unsafe partial class OpenUsdNativeRuntime
             byte* buffer,
             nuint capacity,
             out nuint required,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_set_skinning_method",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelSetSkinningMethod(
+            nint stage,
+            string primPath,
+            int method,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_get_skinning_method",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelGetSkinningMethod(
+            nint stage,
+            string primPath,
+            out int method,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_set_blend_shapes",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelSetBlendShapes(
+            nint stage,
+            string primPath,
+            ref NativeStringListView names,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_get_blend_shapes",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelGetBlendShapes(
+            nint stage,
+            string primPath,
+            out nint list,
+            ref NativeStringListView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_set_blend_shape_targets",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelSetBlendShapeTargets(
+            nint stage,
+            string primPath,
+            ref NativeStringListView targets,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_get_blend_shape_targets",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelGetBlendShapeTargets(
+            nint stage,
+            string primPath,
+            out nint list,
+            ref NativeStringListView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_set_blend_shape_vec3",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelSetBlendShapeVec3(
+            nint stage,
+            string primPath,
+            int property,
+            OpenUsdNativeVec3f* values,
+            nuint count,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_get_blend_shape_vec3",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelGetBlendShapeVec3(
+            nint stage,
+            string primPath,
+            int property,
+            OpenUsdNativeVec3f* values,
+            nuint capacity,
+            out nuint required,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_set_blend_shape_point_indices",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelSetBlendShapePointIndices(
+            nint stage,
+            string primPath,
+            int* values,
+            nuint count,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_get_blend_shape_point_indices",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelGetBlendShapePointIndices(
+            nint stage,
+            string primPath,
+            int* values,
+            nuint capacity,
+            out nuint required,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_set_blend_shape_inbetween",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelSetBlendShapeInbetween(
+            nint stage,
+            string primPath,
+            string inbetweenName,
+            float weight,
+            OpenUsdNativeVec3f* offsets,
+            nuint offsetCount,
+            OpenUsdNativeVec3f* normalOffsets,
+            nuint normalOffsetCount,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_get_blend_shape_inbetween_names",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelGetBlendShapeInbetweenNames(
+            nint stage,
+            string primPath,
+            out nint list,
+            ref NativeStringListView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_skel_get_blend_shape_inbetween",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SkelGetBlendShapeInbetween(
+            nint stage,
+            string primPath,
+            string inbetweenName,
+            out float weight,
+            OpenUsdNativeVec3f* offsets,
+            nuint offsetCapacity,
+            out nuint offsetRequired,
+            OpenUsdNativeVec3f* normalOffsets,
+            nuint normalOffsetCapacity,
+            out nuint normalOffsetRequired,
             ref NativeErrorBuffer error);
 
         [LibraryImport(

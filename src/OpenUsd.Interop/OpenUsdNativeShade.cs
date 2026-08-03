@@ -42,6 +42,26 @@ internal enum OpenUsdNativeShadeAttributeType
     Output = 2
 }
 
+internal enum OpenUsdNativeShadeMaterialTerminal
+{
+    Surface = 0,
+    Displacement = 1,
+    Volume = 2
+}
+
+internal enum OpenUsdNativeShadeBindingStrength
+{
+    WeakerThanDescendants = 0,
+    StrongerThanDescendants = 1
+}
+
+internal enum OpenUsdNativeShadeMaterialPurpose
+{
+    All = 0,
+    Preview = 1,
+    Full = 2
+}
+
 /// <summary>Describes one connected shading source.</summary>
 internal readonly record struct OpenUsdNativeShadeConnection(
     string SourcePrimPath,
@@ -51,22 +71,29 @@ internal readonly record struct OpenUsdNativeShadeConnection(
 public static unsafe partial class OpenUsdNativeRuntime
 {
     internal static bool IsShadeMaterial(OpenUsdNativeStage stage, string primPath) =>
-        GetStagePrimBool(stage, primPath, NativeMethods.ShadeIsMaterial);
+        GetShadePrimBool(stage, primPath, NativeMethods.ShadeIsMaterial);
 
     internal static bool IsShadeShader(OpenUsdNativeStage stage, string primPath) =>
-        GetStagePrimBool(stage, primPath, NativeMethods.ShadeIsShader);
+        GetShadePrimBool(stage, primPath, NativeMethods.ShadeIsShader);
+
+    internal static bool IsShadeNodeGraph(OpenUsdNativeStage stage, string primPath) =>
+        GetShadePrimBool(stage, primPath, NativeMethods.ShadeIsNodeGraph);
 
     internal static void DefineShadeMaterial(OpenUsdNativeStage stage, string primPath) =>
-        InvokeStagePrimAction(stage, primPath, NativeMethods.ShadeDefineMaterial);
+        InvokeShadePrimAction(stage, primPath, NativeMethods.ShadeDefineMaterial);
 
     internal static void DefineShadeShader(OpenUsdNativeStage stage, string primPath) =>
-        InvokeStagePrimAction(stage, primPath, NativeMethods.ShadeDefineShader);
+        InvokeShadePrimAction(stage, primPath, NativeMethods.ShadeDefineShader);
+
+    internal static void DefineShadeNodeGraph(OpenUsdNativeStage stage, string primPath) =>
+        InvokeShadePrimAction(stage, primPath, NativeMethods.ShadeDefineNodeGraph);
 
     internal static void SetShaderSourceId(
         OpenUsdNativeStage stage,
         string shaderPath,
         string sourceId)
     {
+        ValidateShadePrimPath(shaderPath, nameof(shaderPath));
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
         InvokeShadeAction(
             stage,
@@ -76,8 +103,11 @@ public static unsafe partial class OpenUsdNativeRuntime
 
     internal static string GetShaderSourceId(
         OpenUsdNativeStage stage,
-        string shaderPath) =>
-        GetStagePrimString(stage, shaderPath, NativeMethods.ShadeShaderGetSourceId);
+        string shaderPath)
+    {
+        ValidateShadePrimPath(shaderPath, nameof(shaderPath));
+        return GetStagePrimString(stage, shaderPath, NativeMethods.ShadeShaderGetSourceId);
+    }
 
     internal static void CreateShadeInput(
         OpenUsdNativeStage stage,
@@ -86,6 +116,7 @@ public static unsafe partial class OpenUsdNativeRuntime
         OpenUsdNativeShadeValueType valueType)
     {
         ValidateShadeProperty(connectablePath, inputName);
+        ValidateValueType(valueType);
         InvokeShadeAction(
             stage,
             (nint handle, ref NativeErrorBuffer error) =>
@@ -176,6 +207,7 @@ public static unsafe partial class OpenUsdNativeRuntime
         OpenUsdNativeShadeValueType valueType)
     {
         ValidateShadeProperty(shaderPath, inputName);
+        ValidateValueType(valueType);
         return GetShadeVec3f(
             stage,
             (nint handle, out OpenUsdNativeVec3f value, ref NativeErrorBuffer error) =>
@@ -196,6 +228,7 @@ public static unsafe partial class OpenUsdNativeRuntime
         string value)
     {
         ValidateShadeProperty(shaderPath, inputName);
+        ValidateValueType(valueType);
         ArgumentNullException.ThrowIfNull(value);
         InvokeShadeAction(
             stage,
@@ -216,6 +249,7 @@ public static unsafe partial class OpenUsdNativeRuntime
         OpenUsdNativeShadeValueType valueType)
     {
         ValidateShadeProperty(shaderPath, inputName);
+        ValidateValueType(valueType);
         ArgumentNullException.ThrowIfNull(stage);
         using var lease = new SafeHandleLease(stage);
         nint handle = lease.Handle;
@@ -250,6 +284,7 @@ public static unsafe partial class OpenUsdNativeRuntime
         OpenUsdNativeShadeValueType valueType)
     {
         ValidateShadeProperty(connectablePath, outputName);
+        ValidateValueType(valueType);
         InvokeShadeAction(
             stage,
             (nint handle, ref NativeErrorBuffer error) =>
@@ -278,6 +313,12 @@ public static unsafe partial class OpenUsdNativeRuntime
                     ref error));
     }
 
+    internal static string[] GetShadeInputNames(OpenUsdNativeStage stage, string connectablePath) =>
+        GetShadeStringList(stage, connectablePath, NativeMethods.ShadeGetInputNames);
+
+    internal static string[] GetShadeOutputNames(OpenUsdNativeStage stage, string connectablePath) =>
+        GetShadeStringList(stage, connectablePath, NativeMethods.ShadeGetOutputNames);
+
     internal static void ConnectShade(
         OpenUsdNativeStage stage,
         string destinationPath,
@@ -289,6 +330,8 @@ public static unsafe partial class OpenUsdNativeRuntime
     {
         ValidateShadeProperty(destinationPath, destinationName);
         ValidateShadeProperty(sourcePath, sourceName);
+        ValidateAttributeType(destinationType, nameof(destinationType));
+        ValidateAttributeType(sourceType, nameof(sourceType));
         InvokeShadeAction(
             stage,
             (nint handle, ref NativeErrorBuffer error) =>
@@ -310,6 +353,7 @@ public static unsafe partial class OpenUsdNativeRuntime
         OpenUsdNativeShadeAttributeType destinationType)
     {
         ValidateShadeProperty(destinationPath, destinationName);
+        ValidateAttributeType(destinationType, nameof(destinationType));
         InvokeShadeAction(
             stage,
             (nint handle, ref NativeErrorBuffer error) =>
@@ -345,6 +389,7 @@ public static unsafe partial class OpenUsdNativeRuntime
         OpenUsdNativeShadeAttributeType destinationType)
     {
         ValidateShadeProperty(destinationPath, destinationName);
+        ValidateAttributeType(destinationType, nameof(destinationType));
         ArgumentNullException.ThrowIfNull(stage);
         using var lease = new SafeHandleLease(stage);
         var view = new NativeStringListView
@@ -424,33 +469,260 @@ public static unsafe partial class OpenUsdNativeRuntime
     internal static void CreateMaterialSurfaceOutput(
         OpenUsdNativeStage stage,
         string materialPath) =>
-        InvokeStagePrimAction(
+        InvokeShadePrimAction(
             stage,
             materialPath,
             NativeMethods.ShadeMaterialCreateSurfaceOutput);
+
+    internal static void CreateMaterialTerminalOutput(
+        OpenUsdNativeStage stage,
+        string materialPath,
+        OpenUsdNativeShadeMaterialTerminal terminal,
+        string renderContext)
+    {
+        ValidateShadePrimPath(materialPath, nameof(materialPath));
+        ValidateTerminal(terminal);
+        ArgumentNullException.ThrowIfNull(renderContext);
+        InvokeShadeAction(
+            stage,
+            (nint handle, ref NativeErrorBuffer error) =>
+                NativeMethods.ShadeMaterialCreateTerminalOutput(
+                    handle,
+                    materialPath,
+                    (int)terminal,
+                    renderContext,
+                    ref error));
+    }
 
     internal static void BindMaterial(
         OpenUsdNativeStage stage,
         string primPath,
         string materialPath) =>
-        InvokeStagePrimPairAction(
+        InvokeShadePrimPairAction(
             stage,
             primPath,
             materialPath,
             NativeMethods.ShadeMaterialBind);
 
+    internal static void BindMaterial(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string materialPath,
+        OpenUsdNativeShadeBindingStrength strength,
+        OpenUsdNativeShadeMaterialPurpose purpose)
+    {
+        ValidateShadePrimPath(primPath);
+        ValidateShadePrimPath(materialPath, nameof(materialPath));
+        ValidateStrength(strength);
+        ValidatePurpose(purpose);
+        InvokeShadeAction(
+            stage,
+            (nint handle, ref NativeErrorBuffer error) =>
+                NativeMethods.ShadeMaterialBindExt(
+                    handle,
+                    primPath,
+                    materialPath,
+                    (int)strength,
+                    (int)purpose,
+                    ref error));
+    }
+
+    internal static void BindMaterialCollection(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string collectionPrimPath,
+        string collectionName,
+        string materialPath,
+        string bindingName,
+        OpenUsdNativeShadeBindingStrength strength,
+        OpenUsdNativeShadeMaterialPurpose purpose)
+    {
+        ValidateShadePrimPath(primPath);
+        ValidateShadePrimPath(collectionPrimPath, nameof(collectionPrimPath));
+        ValidateShadePrimPath(materialPath, nameof(materialPath));
+        ArgumentException.ThrowIfNullOrWhiteSpace(collectionName);
+        ArgumentNullException.ThrowIfNull(bindingName);
+        ValidateStrength(strength);
+        ValidatePurpose(purpose);
+        InvokeShadeAction(
+            stage,
+            (nint handle, ref NativeErrorBuffer error) =>
+                NativeMethods.ShadeMaterialBindCollection(
+                    handle,
+                    primPath,
+                    collectionPrimPath,
+                    collectionName,
+                    materialPath,
+                    bindingName,
+                    (int)strength,
+                    (int)purpose,
+                    ref error));
+    }
+
     internal static void UnbindMaterial(OpenUsdNativeStage stage, string primPath) =>
-        InvokeStagePrimAction(stage, primPath, NativeMethods.ShadeMaterialUnbind);
+        InvokeShadePrimAction(stage, primPath, NativeMethods.ShadeMaterialUnbind);
 
     internal static string GetDirectMaterialPath(
         OpenUsdNativeStage stage,
-        string primPath) =>
-        GetStagePrimString(stage, primPath, NativeMethods.ShadeGetDirectMaterial);
+        string primPath)
+    {
+        ValidateShadePrimPath(primPath);
+        return GetStagePrimString(stage, primPath, NativeMethods.ShadeGetDirectMaterial);
+    }
+
+    internal static string GetBoundMaterialPath(
+        OpenUsdNativeStage stage,
+        string primPath,
+        OpenUsdNativeShadeMaterialPurpose purpose)
+    {
+        ValidateShadePrimPath(primPath);
+        ValidatePurpose(purpose);
+        return GetStagePrimString(
+            stage,
+            primPath,
+            (nint handle, string path, byte* buffer, nuint capacity, out nuint required, ref NativeErrorBuffer error) =>
+                NativeMethods.ShadeGetBoundMaterial(
+                    handle,
+                    path,
+                    (int)purpose,
+                    buffer,
+                    capacity,
+                    out required,
+                    ref error));
+    }
 
     private static void ValidateShadeProperty(string primPath, string propertyName)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        ValidateShadePrimPath(primPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+    }
+
+    private static void ValidateShadePrimPath(string? path, string paramName = "primPath")
+    {
+        if (!OpenUsdIdentifierValidation.IsAbsolutePrimPath(path))
+        {
+            throw new ArgumentException(
+                $"'{path}' is not a valid absolute prim path.",
+                paramName);
+        }
+    }
+
+    private static void ValidateValueType(
+        OpenUsdNativeShadeValueType valueType,
+        string paramName = "valueType")
+    {
+        if (valueType is < OpenUsdNativeShadeValueType.Float or > OpenUsdNativeShadeValueType.Float3)
+        {
+            throw new ArgumentOutOfRangeException(paramName);
+        }
+    }
+
+    private static void ValidateAttributeType(
+        OpenUsdNativeShadeAttributeType attributeType,
+        string paramName)
+    {
+        if (attributeType is not OpenUsdNativeShadeAttributeType.Input and
+            not OpenUsdNativeShadeAttributeType.Output)
+        {
+            throw new ArgumentOutOfRangeException(paramName);
+        }
+    }
+
+    private static void ValidateTerminal(
+        OpenUsdNativeShadeMaterialTerminal terminal,
+        string paramName = "terminal")
+    {
+        if (terminal is not OpenUsdNativeShadeMaterialTerminal.Surface and
+            not OpenUsdNativeShadeMaterialTerminal.Displacement and
+            not OpenUsdNativeShadeMaterialTerminal.Volume)
+        {
+            throw new ArgumentOutOfRangeException(paramName);
+        }
+    }
+
+    private static void ValidateStrength(
+        OpenUsdNativeShadeBindingStrength strength,
+        string paramName = "strength")
+    {
+        if (strength is not OpenUsdNativeShadeBindingStrength.WeakerThanDescendants and
+            not OpenUsdNativeShadeBindingStrength.StrongerThanDescendants)
+        {
+            throw new ArgumentOutOfRangeException(paramName);
+        }
+    }
+
+    private static void ValidatePurpose(
+        OpenUsdNativeShadeMaterialPurpose purpose,
+        string paramName = "purpose")
+    {
+        if (purpose is not OpenUsdNativeShadeMaterialPurpose.All and
+            not OpenUsdNativeShadeMaterialPurpose.Preview and
+            not OpenUsdNativeShadeMaterialPurpose.Full)
+        {
+            throw new ArgumentOutOfRangeException(paramName);
+        }
+    }
+
+    private static string[] GetShadeStringList(
+        OpenUsdNativeStage stage,
+        string primPath,
+        NativeShadeStringListGetter getter)
+    {
+        ValidateShadePrimPath(primPath);
+        ArgumentNullException.ThrowIfNull(stage);
+        using var lease = new SafeHandleLease(stage);
+        var view = new NativeStringListView
+        {
+            StructSize = (uint)sizeof(NativeStringListView)
+        };
+        nint list = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = getter(lease.Handle, primPath, out list, ref view, ref error);
+            ThrowIfFailedAndReleaseStringList(status, errorBytes, error, ref list);
+        }
+        try
+        {
+            return DecodeStringListView(view);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.StringListRelease(list);
+            }
+        }
+    }
+
+    private static bool GetShadePrimBool(
+        OpenUsdNativeStage stage,
+        string primPath,
+        NativeStagePrimBoolGetter getter)
+    {
+        ValidateShadePrimPath(primPath);
+        return GetStagePrimBool(stage, primPath, getter);
+    }
+
+    private static void InvokeShadePrimAction(
+        OpenUsdNativeStage stage,
+        string primPath,
+        NativeStagePrimAction action)
+    {
+        ValidateShadePrimPath(primPath);
+        InvokeStagePrimAction(stage, primPath, action);
+    }
+
+    private static void InvokeShadePrimPairAction(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string targetPrimPath,
+        NativeStagePrimPairAction action)
+    {
+        ValidateShadePrimPath(primPath);
+        ValidateShadePrimPath(targetPrimPath, nameof(targetPrimPath));
+        InvokeStagePrimPairAction(stage, primPath, targetPrimPath, action);
     }
 
     private static void InvokeShadeAction(
@@ -537,5 +809,12 @@ public static unsafe partial class OpenUsdNativeRuntime
     private delegate OpenUsdNativeStatus NativeShadeVec3fGetter(
         nint stage,
         out OpenUsdNativeVec3f value,
+        ref NativeErrorBuffer error);
+
+    private delegate OpenUsdNativeStatus NativeShadeStringListGetter(
+        nint stage,
+        string primPath,
+        out nint list,
+        ref NativeStringListView view,
         ref NativeErrorBuffer error);
 }

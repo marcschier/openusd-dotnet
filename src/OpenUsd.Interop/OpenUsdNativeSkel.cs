@@ -10,7 +10,9 @@ internal enum OpenUsdNativeSkelSchemaKind
     /// <summary>A UsdSkelSkeleton.</summary>
     Skeleton = 1,
     /// <summary>A UsdSkelAnimation.</summary>
-    Animation = 2
+    Animation = 2,
+    /// <summary>A UsdSkelBlendShape.</summary>
+    BlendShape = 3
 }
 
 /// <summary>Identifies skeleton matrix-array properties.</summary>
@@ -37,7 +39,9 @@ internal enum OpenUsdNativeSkelBindingRelationship
     /// <summary>The bound skeleton.</summary>
     Skeleton = 0,
     /// <summary>The bound animation source.</summary>
-    AnimationSource = 1
+    AnimationSource = 1,
+    /// <summary>The bound blend-shape targets.</summary>
+    BlendShapeTargets = 2
 }
 
 /// <summary>Identifies supported joint-influence interpolation modes.</summary>
@@ -48,6 +52,23 @@ internal enum OpenUsdNativeSkelInterpolation
     /// <summary>One influence tuple per point.</summary>
     Vertex = 1
 }
+
+internal enum OpenUsdNativeSkelSkinningMethod
+{
+    ClassicLinear = 0,
+    DualQuaternion = 1
+}
+
+internal enum OpenUsdNativeSkelBlendShapeVec3Property
+{
+    Offsets = 0,
+    NormalOffsets = 1
+}
+
+internal sealed record OpenUsdNativeSkelBlendShapeInbetween(
+    float Weight,
+    OpenUsdNativeVec3f[] Offsets,
+    OpenUsdNativeVec3f[] NormalOffsets);
 
 /// <summary>Contains one bulk joint-influence result.</summary>
 internal sealed record OpenUsdNativeSkelInfluences(
@@ -573,6 +594,246 @@ public static unsafe partial class OpenUsdNativeRuntime
             interpolationValue);
     }
 
+    internal static void SetSkelSkinningMethod(
+        OpenUsdNativeStage stage,
+        string primPath,
+        OpenUsdNativeSkelSkinningMethod method)
+    {
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        InvokeSkelAction(
+            stage,
+            (nint handle, ref NativeErrorBuffer error) =>
+                NativeMethods.SkelSetSkinningMethod(handle, primPath, (int)method, ref error));
+    }
+
+    internal static OpenUsdNativeSkelSkinningMethod GetSkelSkinningMethod(
+        OpenUsdNativeStage stage,
+        string primPath)
+    {
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        return (OpenUsdNativeSkelSkinningMethod)GetSkelInt(
+            stage,
+            (nint handle, out int value, ref NativeErrorBuffer error) =>
+                NativeMethods.SkelGetSkinningMethod(handle, primPath, out value, ref error));
+    }
+
+    internal static void SetSkelBlendShapes(
+        OpenUsdNativeStage stage,
+        string primPath,
+        ReadOnlySpan<string> names)
+    {
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        SetSkelStringList(
+            stage,
+            names,
+            (nint handle, ref NativeStringListView view, ref NativeErrorBuffer error) =>
+                NativeMethods.SkelSetBlendShapes(handle, primPath, ref view, ref error));
+    }
+
+    internal static string[] GetSkelBlendShapes(OpenUsdNativeStage stage, string primPath) =>
+        GetSkelStringList(stage, primPath, NativeMethods.SkelGetBlendShapes);
+
+    internal static void SetSkelBlendShapeTargets(
+        OpenUsdNativeStage stage,
+        string primPath,
+        ReadOnlySpan<string> targets)
+    {
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        foreach (string target in targets)
+        {
+            OpenUsdNativeSkelValidation.ValidatePrimPath(target, nameof(targets));
+        }
+        SetSkelStringList(
+            stage,
+            targets,
+            (nint handle, ref NativeStringListView view, ref NativeErrorBuffer error) =>
+                NativeMethods.SkelSetBlendShapeTargets(handle, primPath, ref view, ref error));
+    }
+
+    internal static string[] GetSkelBlendShapeTargets(OpenUsdNativeStage stage, string primPath) =>
+        GetSkelStringList(stage, primPath, NativeMethods.SkelGetBlendShapeTargets);
+
+    internal static void SetSkelBlendShapeVec3(
+        OpenUsdNativeStage stage,
+        string primPath,
+        OpenUsdNativeSkelBlendShapeVec3Property property,
+        ReadOnlySpan<OpenUsdNativeVec3f> values)
+    {
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        SetSkelArray(
+            stage,
+            values,
+            (nint handle, OpenUsdNativeVec3f* pointer, nuint count, ref NativeErrorBuffer error) =>
+                NativeMethods.SkelSetBlendShapeVec3(
+                    handle,
+                    primPath,
+                    (int)property,
+                    pointer,
+                    count,
+                    ref error));
+    }
+
+    internal static OpenUsdNativeVec3f[] GetSkelBlendShapeVec3(
+        OpenUsdNativeStage stage,
+        string primPath,
+        OpenUsdNativeSkelBlendShapeVec3Property property)
+    {
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        return GetSkelArray<OpenUsdNativeVec3f>(
+            stage,
+            (nint handle, OpenUsdNativeVec3f* pointer, nuint capacity, out nuint required,
+                ref NativeErrorBuffer error) =>
+                NativeMethods.SkelGetBlendShapeVec3(
+                    handle,
+                    primPath,
+                    (int)property,
+                    pointer,
+                    capacity,
+                    out required,
+                    ref error),
+            "blend-shape vector");
+    }
+
+    internal static void SetSkelBlendShapePointIndices(
+        OpenUsdNativeStage stage,
+        string primPath,
+        ReadOnlySpan<int> values)
+    {
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        SetSkelArray(
+            stage,
+            values,
+            (nint handle, int* pointer, nuint count, ref NativeErrorBuffer error) =>
+                NativeMethods.SkelSetBlendShapePointIndices(
+                    handle,
+                    primPath,
+                    pointer,
+                    count,
+                    ref error));
+    }
+
+    internal static int[] GetSkelBlendShapePointIndices(
+        OpenUsdNativeStage stage,
+        string primPath)
+    {
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        return GetSkelArray<int>(
+            stage,
+            (nint handle, int* pointer, nuint capacity, out nuint required,
+                ref NativeErrorBuffer error) =>
+                NativeMethods.SkelGetBlendShapePointIndices(
+                    handle,
+                    primPath,
+                    pointer,
+                    capacity,
+                    out required,
+                    ref error),
+            "blend-shape point index");
+    }
+
+    internal static void SetSkelBlendShapeInbetween(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string name,
+        float weight,
+        ReadOnlySpan<OpenUsdNativeVec3f> offsets,
+        ReadOnlySpan<OpenUsdNativeVec3f> normalOffsets)
+    {
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (!float.IsFinite(weight))
+        {
+            throw new ArgumentOutOfRangeException(nameof(weight));
+        }
+        ArgumentNullException.ThrowIfNull(stage);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (OpenUsdNativeVec3f* offsetsPointer = offsets)
+        fixed (OpenUsdNativeVec3f* normalsPointer = normalOffsets)
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.SkelSetBlendShapeInbetween(
+                lease.Handle,
+                primPath,
+                name,
+                weight,
+                offsetsPointer,
+                (nuint)offsets.Length,
+                normalsPointer,
+                (nuint)normalOffsets.Length,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    internal static string[] GetSkelBlendShapeInbetweenNames(
+        OpenUsdNativeStage stage,
+        string primPath) =>
+        GetSkelStringList(stage, primPath, NativeMethods.SkelGetBlendShapeInbetweenNames);
+
+    internal static OpenUsdNativeSkelBlendShapeInbetween GetSkelBlendShapeInbetween(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string name)
+    {
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(stage);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        float weight;
+        nuint offsetsRequired;
+        nuint normalsRequired;
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.SkelGetBlendShapeInbetween(
+                lease.Handle,
+                primPath,
+                name,
+                out weight,
+                null,
+                0,
+                out offsetsRequired,
+                null,
+                0,
+                out normalsRequired,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+        if (offsetsRequired > int.MaxValue || normalsRequired > int.MaxValue)
+        {
+            throw new OpenUsdNativeException(
+                OpenUsdNativeStatus.NativeError,
+                "The native inbetween array is too large for a managed array.");
+        }
+        OpenUsdNativeVec3f[] offsets = GC.AllocateUninitializedArray<OpenUsdNativeVec3f>(
+            (int)offsetsRequired);
+        OpenUsdNativeVec3f[] normals = GC.AllocateUninitializedArray<OpenUsdNativeVec3f>(
+            (int)normalsRequired);
+        fixed (OpenUsdNativeVec3f* offsetsPointer = offsets)
+        fixed (OpenUsdNativeVec3f* normalsPointer = normals)
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.SkelGetBlendShapeInbetween(
+                lease.Handle,
+                primPath,
+                name,
+                out weight,
+                offsetsPointer,
+                offsetsRequired,
+                out offsetsRequired,
+                normalsPointer,
+                normalsRequired,
+                out normalsRequired,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+        return new OpenUsdNativeSkelBlendShapeInbetween(weight, offsets, normals);
+    }
+
     private static void InvokeSkelAction(OpenUsdNativeStage stage, NativeSkelAction action)
     {
         ArgumentNullException.ThrowIfNull(stage);
@@ -583,6 +844,67 @@ public static unsafe partial class OpenUsdNativeRuntime
             var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
             OpenUsdNativeStatus status = action(lease.Handle, ref error);
             ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    private static void SetSkelStringList(
+            OpenUsdNativeStage stage,
+            ReadOnlySpan<string> values,
+            NativeSkelStringListSetter setter)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        (byte[] data, nuint[] offsets) = NativeStringListPacking.Pack(values);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* dataPointer = data)
+        fixed (nuint* offsetsPointer = offsets)
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var view = new NativeStringListView
+            {
+                StructSize = (uint)sizeof(NativeStringListView),
+                Data = dataPointer,
+                DataSize = (nuint)data.Length,
+                Offsets = offsetsPointer,
+                OffsetsSize = checked((nuint)offsets.Length * (nuint)sizeof(nuint)),
+                Count = (nuint)offsets.Length
+            };
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = setter(lease.Handle, ref view, ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    private static string[] GetSkelStringList(
+        OpenUsdNativeStage stage,
+        string primPath,
+        NativeSkelStringListGetter getter)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        OpenUsdNativeSkelValidation.ValidatePrimPath(primPath);
+        using var lease = new SafeHandleLease(stage);
+        var view = new NativeStringListView
+        {
+            StructSize = (uint)sizeof(NativeStringListView)
+        };
+        nint list = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = getter(lease.Handle, primPath, out list, ref view, ref error);
+            ThrowIfFailedAndReleaseStringList(status, errorBytes, error, ref list);
+        }
+        try
+        {
+            return DecodeStringListView(view);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.StringListRelease(list);
+            }
         }
     }
 
@@ -701,4 +1023,16 @@ public static unsafe partial class OpenUsdNativeRuntime
         out nuint required,
         ref NativeErrorBuffer error)
         where T : unmanaged;
+
+    private delegate OpenUsdNativeStatus NativeSkelStringListSetter(
+        nint stage,
+        ref NativeStringListView view,
+        ref NativeErrorBuffer error);
+
+    private delegate OpenUsdNativeStatus NativeSkelStringListGetter(
+        nint stage,
+        string primPath,
+        out nint list,
+        ref NativeStringListView view,
+        ref NativeErrorBuffer error);
 }

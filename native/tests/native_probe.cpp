@@ -3824,7 +3824,7 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    if (openusd_get_abi_version() != 12 ||
+    if (openusd_get_abi_version() != 13 ||
         (openusd_get_capabilities() &
          (OPENUSD_CAPABILITY_STRING_LIST_V2 |
           OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -3839,7 +3839,8 @@ int main(int argc, char** argv)
           OPENUSD_CAPABILITY_TS_SPLINE_QUERY |
           OPENUSD_CAPABILITY_USD_VALIDATION_QUERY |
           OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE |
-          OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA)) !=
+          OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA |
+          OPENUSD_DOTNET_CAPABILITY_USD_SHADE_SKEL)) !=
             (OPENUSD_CAPABILITY_STRING_LIST_V2 |
              OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
              OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES |
@@ -3853,7 +3854,8 @@ int main(int argc, char** argv)
              OPENUSD_CAPABILITY_TS_SPLINE_QUERY |
              OPENUSD_CAPABILITY_USD_VALIDATION_QUERY |
              OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE |
-             OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA))
+             OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA |
+             OPENUSD_DOTNET_CAPABILITY_USD_SHADE_SKEL))
     {
         std::cerr << "Unexpected ABI version.\n";
         return 3;

@@ -27,6 +27,15 @@ public static class UsdShadeStageExtensions
         return new UsdShadeShader(stage, path);
     }
 
+    /// <summary>Defines a UsdShadeNodeGraph.</summary>
+    public static UsdShadeNodeGraph DefineNodeGraph(this UsdStage stage, string path)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        UsdPath.ValidateAbsolutePrimPath(path);
+        stage.Native.DefineShadeNodeGraph(path);
+        return new UsdShadeNodeGraph(stage, path);
+    }
+
     /// <summary>Gets the directly bound material for a prim.</summary>
     public static UsdShadeMaterial GetDirectlyBoundMaterial(
         this UsdStage stage,
@@ -35,6 +44,20 @@ public static class UsdShadeStageExtensions
         ArgumentNullException.ThrowIfNull(stage);
         UsdShadeSchema.ValidateSameStage(stage, prim.OwningStage);
         string path = stage.Native.GetDirectMaterialPath(prim.Path);
+        return new UsdShadeMaterial(stage, path);
+    }
+
+    /// <summary>Gets the material resolved by UsdShade material-binding rules.</summary>
+    public static UsdShadeMaterial GetBoundMaterial(
+        this UsdStage stage,
+        UsdPrim prim,
+        UsdShadeMaterialPurpose purpose = UsdShadeMaterialPurpose.All)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        UsdShadeSchema.ValidateSameStage(stage, prim.OwningStage);
+        string path = stage.Native.GetBoundMaterialPath(
+            prim.Path,
+            (OpenUsd.Interop.OpenUsdNativeShadeMaterialPurpose)purpose);
         return new UsdShadeMaterial(stage, path);
     }
 }

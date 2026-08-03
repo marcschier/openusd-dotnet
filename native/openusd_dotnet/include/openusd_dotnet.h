@@ -274,6 +274,7 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_USD_VALIDATION_QUERY (UINT64_C(1) << 11)
 #define OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE (UINT64_C(1) << 12)
 #define OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA (UINT64_C(1) << 13)
+#define OPENUSD_DOTNET_CAPABILITY_USD_SHADE_SKEL (UINT64_C(1) << 14)
 
 typedef struct openusd_vec3f
 {
@@ -450,6 +451,26 @@ typedef enum openusd_shade_attribute_type
     OPENUSD_SHADE_ATTRIBUTE_OUTPUT = 2
 } openusd_shade_attribute_type;
 
+typedef enum openusd_shade_material_terminal
+{
+    OPENUSD_SHADE_MATERIAL_TERMINAL_SURFACE = 0,
+    OPENUSD_SHADE_MATERIAL_TERMINAL_DISPLACEMENT = 1,
+    OPENUSD_SHADE_MATERIAL_TERMINAL_VOLUME = 2
+} openusd_shade_material_terminal;
+
+typedef enum openusd_shade_binding_strength
+{
+    OPENUSD_SHADE_BINDING_WEAKER_THAN_DESCENDANTS = 0,
+    OPENUSD_SHADE_BINDING_STRONGER_THAN_DESCENDANTS = 1
+} openusd_shade_binding_strength;
+
+typedef enum openusd_shade_material_purpose
+{
+    OPENUSD_SHADE_MATERIAL_PURPOSE_ALL = 0,
+    OPENUSD_SHADE_MATERIAL_PURPOSE_PREVIEW = 1,
+    OPENUSD_SHADE_MATERIAL_PURPOSE_FULL = 2
+} openusd_shade_material_purpose;
+
 typedef enum openusd_lux_schema_kind
 {
     OPENUSD_LUX_SCHEMA_DISTANT_LIGHT = 0,
@@ -500,7 +521,8 @@ typedef enum openusd_skel_schema_kind
 {
     OPENUSD_SKEL_SCHEMA_ROOT = 0,
     OPENUSD_SKEL_SCHEMA_SKELETON = 1,
-    OPENUSD_SKEL_SCHEMA_ANIMATION = 2
+    OPENUSD_SKEL_SCHEMA_ANIMATION = 2,
+    OPENUSD_SKEL_SCHEMA_BLEND_SHAPE = 3
 } openusd_skel_schema_kind;
 
 typedef enum openusd_skel_matrix_property
@@ -518,7 +540,8 @@ typedef enum openusd_skel_animation_vec3_property
 typedef enum openusd_skel_binding_relationship
 {
     OPENUSD_SKEL_BINDING_SKELETON = 0,
-    OPENUSD_SKEL_BINDING_ANIMATION_SOURCE = 1
+    OPENUSD_SKEL_BINDING_ANIMATION_SOURCE = 1,
+    OPENUSD_SKEL_BINDING_BLEND_SHAPE_TARGETS = 2
 } openusd_skel_binding_relationship;
 
 typedef enum openusd_skel_interpolation
@@ -526,7 +549,6 @@ typedef enum openusd_skel_interpolation
     OPENUSD_SKEL_INTERPOLATION_CONSTANT = 0,
     OPENUSD_SKEL_INTERPOLATION_VERTEX = 1
 } openusd_skel_interpolation;
-
 
 /* ---- UsdPhysics schema facade declarations ---- */
 typedef enum openusd_physics_schema_kind
@@ -625,6 +647,18 @@ typedef enum openusd_physics_string_property
 {
     OPENUSD_PHYSICS_STRING_COLLISION_GROUP_MERGE_GROUP_NAME = 0
 } openusd_physics_string_property;
+
+typedef enum openusd_skel_skinning_method
+{
+    OPENUSD_SKEL_SKINNING_CLASSIC_LINEAR = 0,
+    OPENUSD_SKEL_SKINNING_DUAL_QUATERNION = 1
+} openusd_skel_skinning_method;
+
+typedef enum openusd_skel_blend_shape_vec3_property
+{
+    OPENUSD_SKEL_BLEND_SHAPE_OFFSETS = 0,
+    OPENUSD_SKEL_BLEND_SHAPE_NORMAL_OFFSETS = 1
+} openusd_skel_blend_shape_vec3_property;
 
 typedef enum openusd_metadata_kind
 {
@@ -1836,12 +1870,23 @@ OPENUSD_DOTNET_API openusd_status openusd_shade_is_shader(
     int32_t* is_shader,
     openusd_error_buffer* error);
 
+OPENUSD_DOTNET_API openusd_status openusd_shade_is_node_graph(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t* is_node_graph,
+    openusd_error_buffer* error);
+
 OPENUSD_DOTNET_API openusd_status openusd_shade_define_material(
     const openusd_stage* stage,
     const char* prim_path,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_shade_define_shader(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_shade_define_node_graph(
     const openusd_stage* stage,
     const char* prim_path,
     openusd_error_buffer* error);
@@ -1936,6 +1981,20 @@ OPENUSD_DOTNET_API openusd_status openusd_shade_get_output_type(
     openusd_shade_value_type* value_type,
     openusd_error_buffer* error);
 
+OPENUSD_DOTNET_API openusd_status openusd_shade_get_input_names(
+    const openusd_stage* stage,
+    const char* connectable_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_shade_get_output_names(
+    const openusd_stage* stage,
+    const char* connectable_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
 OPENUSD_DOTNET_API openusd_status openusd_shade_connect(
     const openusd_stage* stage,
     const char* destination_path,
@@ -1977,10 +2036,36 @@ OPENUSD_DOTNET_API openusd_status openusd_shade_material_create_surface_output(
     const char* material_path,
     openusd_error_buffer* error);
 
+OPENUSD_DOTNET_API openusd_status openusd_shade_material_create_terminal_output(
+    const openusd_stage* stage,
+    const char* material_path,
+    openusd_shade_material_terminal terminal,
+    const char* render_context,
+    openusd_error_buffer* error);
+
 OPENUSD_DOTNET_API openusd_status openusd_shade_material_bind(
     const openusd_stage* stage,
     const char* prim_path,
     const char* material_path,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_shade_material_bind_ext(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* material_path,
+    openusd_shade_binding_strength strength,
+    openusd_shade_material_purpose purpose,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_shade_material_bind_collection(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* collection_prim_path,
+    const char* collection_name,
+    const char* material_path,
+    const char* binding_name,
+    openusd_shade_binding_strength strength,
+    openusd_shade_material_purpose purpose,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_shade_material_unbind(
@@ -1991,6 +2076,15 @@ OPENUSD_DOTNET_API openusd_status openusd_shade_material_unbind(
 OPENUSD_DOTNET_API openusd_status openusd_shade_get_direct_material(
     const openusd_stage* stage,
     const char* prim_path,
+    char* buffer,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_shade_get_bound_material(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_shade_material_purpose purpose,
     char* buffer,
     size_t capacity,
     size_t* required,
@@ -2258,7 +2352,6 @@ OPENUSD_DOTNET_API openusd_status openusd_skel_get_joint_influences(
     openusd_skel_interpolation* interpolation,
     openusd_error_buffer* error);
 
-
 /* ---- UsdPhysics schema facade exports ---- */
 OPENUSD_DOTNET_API openusd_status openusd_physics_is_schema(
     const openusd_stage* stage,
@@ -2380,6 +2473,106 @@ OPENUSD_DOTNET_API openusd_status openusd_physics_get_string(
     size_t* required,
     openusd_error_buffer* error);
 
+OPENUSD_DOTNET_API openusd_status openusd_skel_set_skinning_method(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_skel_skinning_method method,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_get_skinning_method(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_skel_skinning_method* method,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_set_blend_shapes(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const openusd_string_list_view* names,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_get_blend_shapes(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_set_blend_shape_targets(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const openusd_string_list_view* targets,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_get_blend_shape_targets(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_set_blend_shape_vec3(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_skel_blend_shape_vec3_property property,
+    const openusd_vec3f* values,
+    size_t count,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_get_blend_shape_vec3(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_skel_blend_shape_vec3_property property,
+    openusd_vec3f* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_set_blend_shape_point_indices(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const int32_t* values,
+    size_t count,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_get_blend_shape_point_indices(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_set_blend_shape_inbetween(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* inbetween_name,
+    float weight,
+    const openusd_vec3f* offsets,
+    size_t offset_count,
+    const openusd_vec3f* normal_offsets,
+    size_t normal_offset_count,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_get_blend_shape_inbetween_names(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_skel_get_blend_shape_inbetween(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* inbetween_name,
+    float* weight,
+    openusd_vec3f* offsets,
+    size_t offset_capacity,
+    size_t* offset_required,
+    openusd_vec3f* normal_offsets,
+    size_t normal_offset_capacity,
+    size_t* normal_offset_required,
+    openusd_error_buffer* error);
 OPENUSD_DOTNET_API void openusd_string_list_release(openusd_string_list* list);
 OPENUSD_DOTNET_API void openusd_payload_arc_list_release(openusd_payload_arc_list* list);
 OPENUSD_DOTNET_API void openusd_pcp_prim_index_list_release(openusd_pcp_prim_index_list* list);

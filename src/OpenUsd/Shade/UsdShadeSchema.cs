@@ -15,7 +15,7 @@ internal static class UsdShadeSchema
         out UsdStage? stage)
     {
         stage = null;
-        if (string.IsNullOrWhiteSpace(prim.Path))
+        if (!UsdPath.IsAbsolutePrimPath(prim.Path))
         {
             return false;
         }
@@ -37,7 +37,7 @@ internal static class UsdShadeSchema
         Func<OpenUsdNativeStage, string, bool> validator,
         string schemaName)
     {
-        if (string.IsNullOrWhiteSpace(prim.Path))
+        if (!UsdPath.IsAbsolutePrimPath(prim.Path))
         {
             throw new ArgumentException("The prim is not attached to a stage.", nameof(prim));
         }

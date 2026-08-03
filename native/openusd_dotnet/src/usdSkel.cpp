@@ -15,7 +15,7 @@ openusd_status openusd_skel_is_schema(
         // ABI_OUTPUT_INITIALIZATION
         ResetAbiOutput(is_schema);
         if (is_schema == nullptr || schema_kind < OPENUSD_SKEL_SCHEMA_ROOT ||
-            schema_kind > OPENUSD_SKEL_SCHEMA_ANIMATION)
+            schema_kind > OPENUSD_SKEL_SCHEMA_BLEND_SHAPE)
         {
             WriteError(error, "A valid skeleton schema kind and result are required.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
@@ -46,7 +46,7 @@ openusd_status openusd_skel_define(
     {
         if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
             schema_kind < OPENUSD_SKEL_SCHEMA_ROOT ||
-            schema_kind > OPENUSD_SKEL_SCHEMA_ANIMATION)
+            schema_kind > OPENUSD_SKEL_SCHEMA_BLEND_SHAPE)
         {
             WriteError(error, "A valid stage, absolute prim path, and skeleton schema kind are required.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
@@ -65,6 +65,9 @@ openusd_status openusd_skel_define(
                     break;
                 case OPENUSD_SKEL_SCHEMA_ANIMATION:
                     prim = UsdSkelAnimation::Define(stage->value, path).GetPrim();
+                    break;
+                case OPENUSD_SKEL_SCHEMA_BLEND_SHAPE:
+                    prim = UsdSkelBlendShape::Define(stage->value, path).GetPrim();
                     break;
                 default:
                     break;
@@ -1015,6 +1018,7 @@ openusd_status openusd_skel_get_joint_influences(
                 WriteError(error, "Valid influence buffers and metadata outputs are required.");
                 return OPENUSD_STATUS_INVALID_ARGUMENT;
             }
+
             return Guard(error, [&]()
             {
                 UsdPrim prim;
@@ -1128,5 +1132,675 @@ openusd_status openusd_skel_get_joint_influences(
             });
         });
 
+    });
+}
+
+static openusd_status GetSkelBlendShape(
+    const openusd_stage* stage,
+    const char* prim_path,
+    UsdSkelBlendShape* shape,
+    openusd_error_buffer* error)
+{
+    UsdPrim prim;
+    const openusd_status status = GetSkelPrim(stage, prim_path, &prim, error);
+    if (status != OPENUSD_STATUS_OK)
+    {
+        return status;
+    }
+    *shape = UsdSkelBlendShape(prim);
+    if (!*shape)
+    {
+        WriteError(error, "The requested prim is not a UsdSkelBlendShape.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return OPENUSD_STATUS_OK;
+}
+
+static openusd_status ReadTokenList(
+    const openusd_string_list_view* view,
+    const char* label,
+    VtTokenArray* tokens,
+    openusd_error_buffer* error)
+{
+    const openusd_status validation = ValidateStringListView(view, label, error);
+    if (validation != OPENUSD_STATUS_OK)
+    {
+        return validation;
+    }
+    tokens->clear();
+    tokens->reserve(view->count);
+    for (size_t index = 0; index < view->count; ++index)
+    {
+        const size_t offset = view->offsets[index];
+        const char* start = view->data + offset;
+        const auto* end = static_cast<const char*>(
+            std::memchr(start, '\0', view->data_size - offset));
+        std::string text(start, end);
+        if (text.empty() || TfToken(text).IsEmpty())
+        {
+            WriteError(error, "Token lists must not contain empty names.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        tokens->push_back(TfToken(text));
+    }
+    return OPENUSD_STATUS_OK;
+}
+
+static openusd_status ReadPathList(
+    const openusd_string_list_view* view,
+    SdfPathVector* paths,
+    openusd_error_buffer* error)
+{
+    const openusd_status validation =
+        ValidateStringListView(view, "blend-shape target list", error);
+    if (validation != OPENUSD_STATUS_OK)
+    {
+        return validation;
+    }
+    paths->clear();
+    paths->reserve(view->count);
+    for (size_t index = 0; index < view->count; ++index)
+    {
+        const size_t offset = view->offsets[index];
+        const char* start = view->data + offset;
+        const auto* end = static_cast<const char*>(
+            std::memchr(start, '\0', view->data_size - offset));
+        SdfPath path(std::string(start, end));
+        if (!path.IsAbsolutePath() || !path.IsPrimPath())
+        {
+            WriteError(error, "Blend-shape targets must be absolute prim paths.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        paths->push_back(path);
+    }
+    return OPENUSD_STATUS_OK;
+}
+
+static VtVec3fArray ToVec3fArray(const openusd_vec3f* values, size_t count)
+{
+    VtVec3fArray result(count);
+    for (size_t index = 0; index < count; ++index)
+    {
+        result[index] = GfVec3f(values[index].x, values[index].y, values[index].z);
+    }
+    return result;
+}
+
+openusd_status openusd_skel_set_skinning_method(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_skel_skinning_method method,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (method != OPENUSD_SKEL_SKINNING_CLASSIC_LINEAR &&
+            method != OPENUSD_SKEL_SKINNING_DUAL_QUATERNION)
+        {
+            WriteError(error, "A supported skinning method is required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return Guard(error, [&]()
+        {
+            UsdPrim prim;
+            UsdSkelBindingAPI binding;
+            const openusd_status status = GetSkelBinding(stage, prim_path, &prim, &binding, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            const TfToken value = method == OPENUSD_SKEL_SKINNING_DUAL_QUATERNION
+                ? UsdSkelTokens->dualQuaternion
+                : UsdSkelTokens->classicLinear;
+            return SetLuxAttribute(binding.CreateSkinningMethodAttr(), value, "skinning method", error);
+        });
+    });
+}
+
+openusd_status openusd_skel_get_skinning_method(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_skel_skinning_method* method,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(method);
+        if (method == nullptr)
+        {
+            WriteError(error, "A skinning method output is required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return Guard(error, [&]()
+        {
+            UsdPrim prim;
+            UsdSkelBindingAPI binding;
+            const openusd_status status = GetSkelBinding(stage, prim_path, &prim, &binding, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            TfToken value;
+            if (!binding.GetSkinningMethodAttr().Get(&value))
+            {
+                WriteError(error, "The prim has no authored skinning method.");
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+            if (value == UsdSkelTokens->classicLinear)
+            {
+                *method = OPENUSD_SKEL_SKINNING_CLASSIC_LINEAR;
+            }
+            else if (value == UsdSkelTokens->dualQuaternion)
+            {
+                *method = OPENUSD_SKEL_SKINNING_DUAL_QUATERNION;
+            }
+            else
+            {
+                WriteError(error, "The authored skinning method is unsupported.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+openusd_status openusd_skel_set_blend_shapes(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const openusd_string_list_view* names,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        return Guard(error, [&]()
+        {
+            UsdPrim prim;
+            UsdSkelBindingAPI binding;
+            openusd_status status = GetSkelBinding(stage, prim_path, &prim, &binding, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            VtTokenArray values;
+            status = ReadTokenList(names, "blend-shape name list", &values, error);
+            return status == OPENUSD_STATUS_OK
+                ? SetLuxAttribute(binding.CreateBlendShapesAttr(), values, "blend-shape names", error)
+                : status;
+        });
+    });
+}
+
+openusd_status openusd_skel_get_blend_shapes(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetStringListOutput(list, view);
+        if (list == nullptr || view == nullptr || view->struct_size < sizeof(openusd_string_list_view))
+        {
+            WriteError(error, "Versioned blend-shape name outputs are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return GuardStringListOutput(error, list, view, [&](auto& result)
+        {
+            UsdPrim prim;
+            UsdSkelBindingAPI binding;
+            const openusd_status status = GetSkelBinding(stage, prim_path, &prim, &binding, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            VtTokenArray values;
+            if (!binding.GetBlendShapesAttr().Get(&values))
+            {
+                WriteError(error, "The prim has no authored blend-shape names.");
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+            result = std::make_unique<openusd_string_list>();
+            FillStringList(result.get(), ToStrings(values), view);
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+openusd_status openusd_skel_set_blend_shape_targets(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const openusd_string_list_view* targets,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        return Guard(error, [&]()
+        {
+            UsdPrim prim;
+            UsdSkelBindingAPI binding;
+            openusd_status status = GetSkelBinding(stage, prim_path, &prim, &binding, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            SdfPathVector paths;
+            status = ReadPathList(targets, &paths, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            for (const SdfPath& path : paths)
+            {
+                const UsdPrim target = stage->value->GetPrimAtPath(path);
+                if (!target || !UsdSkelBlendShape(target))
+                {
+                    WriteError(error, "Every blend-shape target must be an existing UsdSkelBlendShape.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+            }
+            const UsdRelationship rel = binding.CreateBlendShapeTargetsRel();
+            return rel && rel.SetTargets(paths)
+                ? OPENUSD_STATUS_OK
+                : OPENUSD_STATUS_NATIVE_ERROR;
+        });
+    });
+}
+
+openusd_status openusd_skel_get_blend_shape_targets(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetStringListOutput(list, view);
+        if (list == nullptr || view == nullptr || view->struct_size < sizeof(openusd_string_list_view))
+        {
+            WriteError(error, "Versioned blend-shape target outputs are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return GuardStringListOutput(error, list, view, [&](auto& result)
+        {
+            UsdPrim prim;
+            UsdSkelBindingAPI binding;
+            const openusd_status status = GetSkelBinding(stage, prim_path, &prim, &binding, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            SdfPathVector targets;
+            if (!binding.GetBlendShapeTargetsRel().GetTargets(&targets))
+            {
+                WriteError(error, "The prim has no authored blend-shape targets.");
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+            std::vector<std::string> values;
+            for (const SdfPath& path : targets)
+            {
+                values.push_back(path.GetString());
+            }
+            result = std::make_unique<openusd_string_list>();
+            FillStringList(result.get(), values, view);
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+openusd_status openusd_skel_set_blend_shape_vec3(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_skel_blend_shape_vec3_property property,
+    const openusd_vec3f* values,
+    size_t count,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (!IsValidArrayBuffer(values, count))
+        {
+            WriteError(error, "A valid blend-shape vector buffer is required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        for (size_t index = 0; index < count; ++index)
+        {
+            if (!std::isfinite(values[index].x) || !std::isfinite(values[index].y) ||
+                !std::isfinite(values[index].z))
+            {
+                WriteError(error, "Blend-shape vectors must contain only finite values.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+        }
+        return Guard(error, [&]()
+        {
+            UsdSkelBlendShape shape;
+            const openusd_status status = GetSkelBlendShape(stage, prim_path, &shape, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            const UsdAttribute attr = property == OPENUSD_SKEL_BLEND_SHAPE_OFFSETS
+                ? shape.CreateOffsetsAttr()
+                : property == OPENUSD_SKEL_BLEND_SHAPE_NORMAL_OFFSETS
+                    ? shape.CreateNormalOffsetsAttr()
+                    : UsdAttribute();
+            if (!attr)
+            {
+                WriteError(error, "The requested blend-shape vector property is unsupported.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            return SetSchemaArray<openusd_vec3f, GfVec3f>(
+                attr,
+                values,
+                count,
+                UsdTimeCode::Default(),
+                SdfValueTypeNames->Vector3fArray,
+                "blend-shape vectors",
+                [](openusd_vec3f value) { return GfVec3f(value.x, value.y, value.z); },
+                error);
+        });
+    });
+}
+
+openusd_status openusd_skel_get_blend_shape_vec3(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_skel_blend_shape_vec3_property property,
+    openusd_vec3f* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(required);
+        return WithAbiWritableBuffer(values, capacity, [&]()
+        {
+            return Guard(error, [&]()
+            {
+                UsdSkelBlendShape shape;
+                const openusd_status status = GetSkelBlendShape(stage, prim_path, &shape, error);
+                if (status != OPENUSD_STATUS_OK)
+                {
+                    return status;
+                }
+                const UsdAttribute attr = property == OPENUSD_SKEL_BLEND_SHAPE_OFFSETS
+                    ? shape.GetOffsetsAttr()
+                    : property == OPENUSD_SKEL_BLEND_SHAPE_NORMAL_OFFSETS
+                        ? shape.GetNormalOffsetsAttr()
+                        : UsdAttribute();
+                if (!attr)
+                {
+                    WriteError(error, "The requested blend-shape vector property is unsupported.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+                return GetSchemaArray<openusd_vec3f, GfVec3f>(
+                    attr,
+                    UsdTimeCode::Default(),
+                    values,
+                    capacity,
+                    required,
+                    SdfValueTypeNames->Vector3fArray,
+                    "blend-shape vectors",
+                    [](const GfVec3f& value)
+                    {
+                        return openusd_vec3f{value[0], value[1], value[2]};
+                    },
+                    error);
+            });
+        });
+    });
+}
+
+openusd_status openusd_skel_set_blend_shape_point_indices(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const int32_t* values,
+    size_t count,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (!IsValidArrayBuffer(values, count))
+        {
+            WriteError(error, "A valid blend-shape point-index buffer is required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        for (size_t index = 0; index < count; ++index)
+        {
+            if (values[index] < 0)
+            {
+                WriteError(error, "Blend-shape point indices must be non-negative.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+        }
+        return Guard(error, [&]()
+        {
+            UsdSkelBlendShape shape;
+            const openusd_status status = GetSkelBlendShape(stage, prim_path, &shape, error);
+            return status == OPENUSD_STATUS_OK
+                ? SetSchemaArray<int32_t, int>(
+                    shape.CreatePointIndicesAttr(),
+                    values,
+                    count,
+                    UsdTimeCode::Default(),
+                    SdfValueTypeNames->IntArray,
+                    "blend-shape point indices",
+                    [](int32_t value) { return static_cast<int>(value); },
+                    error)
+                : status;
+        });
+    });
+}
+
+openusd_status openusd_skel_get_blend_shape_point_indices(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(required);
+        return WithAbiWritableBuffer(values, capacity, [&]()
+        {
+            return Guard(error, [&]()
+            {
+                UsdSkelBlendShape shape;
+                const openusd_status status = GetSkelBlendShape(stage, prim_path, &shape, error);
+                return status == OPENUSD_STATUS_OK
+                    ? GetSchemaArray<int32_t, int>(
+                        shape.GetPointIndicesAttr(),
+                        UsdTimeCode::Default(),
+                        values,
+                        capacity,
+                        required,
+                        SdfValueTypeNames->IntArray,
+                        "blend-shape point indices",
+                        [](int value) { return static_cast<int32_t>(value); },
+                        error)
+                    : status;
+            });
+        });
+    });
+}
+
+openusd_status openusd_skel_set_blend_shape_inbetween(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* inbetween_name,
+    float weight,
+    const openusd_vec3f* offsets,
+    size_t offset_count,
+    const openusd_vec3f* normal_offsets,
+    size_t normal_offset_count,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (inbetween_name == nullptr || inbetween_name[0] == '\0' || !std::isfinite(weight) ||
+            !IsValidArrayBuffer(offsets, offset_count) ||
+            !IsValidArrayBuffer(normal_offsets, normal_offset_count))
+        {
+            WriteError(error, "A valid inbetween name, weight, and vector buffers are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return Guard(error, [&]()
+        {
+            UsdSkelBlendShape shape;
+            const openusd_status status = GetSkelBlendShape(stage, prim_path, &shape, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            const UsdSkelInbetweenShape inbetween = shape.CreateInbetween(TfToken(inbetween_name));
+            if (!inbetween || !inbetween.SetWeight(weight) ||
+                !inbetween.SetOffsets(ToVec3fArray(offsets, offset_count)) ||
+                (normal_offset_count > 0 &&
+                 !inbetween.SetNormalOffsets(ToVec3fArray(normal_offsets, normal_offset_count))))
+            {
+                WriteError(error, "Could not author the blend-shape inbetween.");
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+openusd_status openusd_skel_get_blend_shape_inbetween_names(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetStringListOutput(list, view);
+        if (list == nullptr || view == nullptr || view->struct_size < sizeof(openusd_string_list_view))
+        {
+            WriteError(error, "Versioned inbetween-name outputs are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return GuardStringListOutput(error, list, view, [&](auto& result)
+        {
+            UsdSkelBlendShape shape;
+            const openusd_status status = GetSkelBlendShape(stage, prim_path, &shape, error);
+            if (status != OPENUSD_STATUS_OK)
+            {
+                return status;
+            }
+            std::vector<std::string> values;
+            for (const UsdSkelInbetweenShape& inbetween : shape.GetAuthoredInbetweens())
+            {
+                values.push_back(inbetween.GetAttr().GetBaseName().GetString());
+            }
+            result = std::make_unique<openusd_string_list>();
+            FillStringList(result.get(), values, view);
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+openusd_status openusd_skel_get_blend_shape_inbetween(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* inbetween_name,
+    float* weight,
+    openusd_vec3f* offsets,
+    size_t offset_capacity,
+    size_t* offset_required,
+    openusd_vec3f* normal_offsets,
+    size_t normal_offset_capacity,
+    size_t* normal_offset_required,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(weight);
+        ResetAbiOutput(offset_required);
+        ResetAbiOutput(normal_offset_required);
+        return WithAbiWritableBuffers(offsets, offset_capacity, normal_offsets, normal_offset_capacity, [&]()
+        {
+            if (weight == nullptr || offset_required == nullptr ||
+                normal_offset_required == nullptr || inbetween_name == nullptr ||
+                inbetween_name[0] == '\0')
+            {
+                WriteError(error, "Valid inbetween outputs and name are required.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            return Guard(error, [&]()
+            {
+                UsdSkelBlendShape shape;
+                openusd_status status = GetSkelBlendShape(stage, prim_path, &shape, error);
+                if (status != OPENUSD_STATUS_OK)
+                {
+                    return status;
+                }
+                const UsdSkelInbetweenShape inbetween = shape.GetInbetween(TfToken(inbetween_name));
+                if (!inbetween || !inbetween.GetWeight(weight))
+                {
+                    WriteError(error, "The requested inbetween does not exist or has no weight.");
+                    return OPENUSD_STATUS_NOT_FOUND;
+                }
+                VtVec3fArray offsetValues;
+                if (!inbetween.GetOffsets(&offsetValues))
+                {
+                    WriteError(error, "The requested inbetween has no offsets.");
+                    return OPENUSD_STATUS_NOT_FOUND;
+                }
+                VtVec3fArray normalValues;
+                inbetween.GetNormalOffsets(&normalValues);
+                *offset_required = offsetValues.size();
+                *normal_offset_required = normalValues.size();
+                if (offsets == nullptr && offset_capacity == 0 &&
+                    normal_offsets == nullptr && normal_offset_capacity == 0)
+                {
+                    return OPENUSD_STATUS_OK;
+                }
+                if (offset_capacity < offsetValues.size() ||
+                    normal_offset_capacity < normalValues.size() ||
+                    (offsetValues.size() > 0 && offsets == nullptr) ||
+                    (normalValues.size() > 0 && normal_offsets == nullptr))
+                {
+                    return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+                }
+                for (size_t index = 0; index < offsetValues.size(); ++index)
+                {
+                    offsets[index] = openusd_vec3f{
+                        offsetValues[index][0], offsetValues[index][1], offsetValues[index][2]};
+                }
+                for (size_t index = 0; index < normalValues.size(); ++index)
+                {
+                    normal_offsets[index] = openusd_vec3f{
+                        normalValues[index][0], normalValues[index][1], normalValues[index][2]};
+                }
+                return OPENUSD_STATUS_OK;
+            });
+        });
     });
 }

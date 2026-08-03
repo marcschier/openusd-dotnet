@@ -20,7 +20,8 @@ internal static class OpenUsdNativeSkelValidation
     {
         if (schemaKind is not OpenUsdNativeSkelSchemaKind.Root and
             not OpenUsdNativeSkelSchemaKind.Skeleton and
-            not OpenUsdNativeSkelSchemaKind.Animation)
+            not OpenUsdNativeSkelSchemaKind.Animation and
+            not OpenUsdNativeSkelSchemaKind.BlendShape)
         {
             throw new ArgumentOutOfRangeException(paramName);
         }
@@ -31,7 +32,7 @@ internal static class OpenUsdNativeSkelValidation
         string paramName = "schemaKind")
     {
         ValidateSchemaKind(schemaKind, paramName);
-        if (schemaKind == OpenUsdNativeSkelSchemaKind.Root)
+        if (schemaKind is OpenUsdNativeSkelSchemaKind.Root or OpenUsdNativeSkelSchemaKind.BlendShape)
         {
             throw new ArgumentException(
                 "Joints are supported only on Skeleton and Animation schemas.",
@@ -66,7 +67,8 @@ internal static class OpenUsdNativeSkelValidation
         string paramName = "relationship")
     {
         if (relationship is not OpenUsdNativeSkelBindingRelationship.Skeleton and
-            not OpenUsdNativeSkelBindingRelationship.AnimationSource)
+            not OpenUsdNativeSkelBindingRelationship.AnimationSource and
+            not OpenUsdNativeSkelBindingRelationship.BlendShapeTargets)
         {
             throw new ArgumentOutOfRangeException(paramName);
         }

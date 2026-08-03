@@ -31,6 +31,13 @@ public static class UsdSkelStageExtensions
         return new UsdSkelAnimation(stage, path);
     }
 
+    /// <summary>Defines a UsdSkelBlendShape.</summary>
+    public static UsdSkelBlendShape DefineBlendShape(this UsdStage stage, string path)
+    {
+        Define(stage, path, OpenUsdNativeSkelSchemaKind.BlendShape);
+        return new UsdSkelBlendShape(stage, path);
+    }
+
     private static void Define(
         UsdStage stage,
         string path,
