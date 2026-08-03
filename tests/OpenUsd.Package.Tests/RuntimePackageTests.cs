@@ -15,15 +15,46 @@ public sealed class RuntimePackageTests
 {
     private const string RequiredExecutionEnvironmentVariable =
         "OPENUSD_PACKAGE_EXECUTION_REQUIRED";
-    private const uint RequiredDataAbiVersion = 12;
-    private const ulong RequiredDataCapabilities = 0x3FFF;
-    private const uint PreviousDataAbiVersion = 11;
-    private const ulong PreviousDataCapabilities = 0x2FFF;
+
+    // Read from eng/openusd.lock.json rather than restated here. These moved on
+    // every schema merge of the current wave, and because nothing in an
+    // ordinary local run executes the package suite, a stale value surfaced
+    // only as a CI failure whose visible symptom was four compiler warnings and
+    // a bare "exit code 2" from a generated consumer -- with the actual cause,
+    // an ABI comparison that could never be true, invisible.
+    //
+    // The lock is a sound source: OpenUsd.Native.Tests independently requires
+    // it to agree with the C header and common.h, so all four move together or
+    // something fails in milliseconds.
+    private static readonly uint RequiredDataAbiVersion =
+        (uint)ReadLockNumber("data");
+    private static readonly ulong RequiredDataCapabilities =
+        ReadLockNumber("dataCapabilities");
+
+    // "Stale" means the contract immediately before the newest capability was
+    // added, which is what a consumer built against the previous package has.
+    // Clearing the highest set bit reproduces the values these constants
+    // carried by hand: 0x3FFF became 0x2FFF, and 0x7FFF becomes 0x3FFF.
+    private static readonly uint PreviousDataAbiVersion =
+        RequiredDataAbiVersion - 1;
+    private static readonly ulong PreviousDataCapabilities =
+        RequiredDataCapabilities & ~HighestSetBit(RequiredDataCapabilities);
+
     private const int RequiredStormAbiVersion = 6;
     private const int RequiredSilkSessionAbiVersion = 4;
     private const int RequiredSilkPageAbiVersion = 9;
     private const int RequiredStormChildAbiVersion = 7;
     private const int RequiredStormChildNavigationInputVersion = 1;
+
+    private static ulong HighestSetBit(ulong value) =>
+        value == 0 ? 0 : 1UL << (63 - System.Numerics.BitOperations.LeadingZeroCount(value));
+
+    private static ulong ReadLockNumber(string name)
+    {
+        string path = Path.Combine(FindRepositoryRoot(), "eng", "openusd.lock.json");
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+        return document.RootElement.GetProperty("abi").GetProperty(name).GetUInt64();
+    }
 
     private static readonly JsonSerializerOptions IndentedJsonOptions = new()
     {
@@ -1665,6 +1696,7 @@ public sealed class RuntimePackageTests
                   <PropertyGroup>
                     <OutputType>Exe</OutputType>
                     <TargetFramework>net10.0</TargetFramework>
+                    <Nullable>enable</Nullable>
                   </PropertyGroup>
                   <ItemGroup>
                     <PackageReference Include="OpenUsd.Interop"
