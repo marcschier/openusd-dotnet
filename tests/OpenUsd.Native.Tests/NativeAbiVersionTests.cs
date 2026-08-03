@@ -260,19 +260,19 @@ public sealed class NativeAbiVersionTests
             @"(?m)^openusd_status\s+(?<name>openusd_\w+)\s*\(",
             RegexOptions.CultureInvariant);
 
-        await Assert.That(declarations.Count).IsEqualTo(268);
-        await Assert.That(definitions.Count).IsEqualTo(269);
-        await Assert.That(outputBearingExports.Count).IsEqualTo(137);
+        await Assert.That(declarations.Count).IsEqualTo(273);
+        await Assert.That(definitions.Count).IsEqualTo(274);
+        await Assert.That(outputBearingExports.Count).IsEqualTo(138);
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"// ABI_OUTPUT_INITIALIZATION",
-                RegexOptions.CultureInvariant)).IsEqualTo(137);
+                RegexOptions.CultureInvariant)).IsEqualTo(138);
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"\breturn GuardStage\(stage, error",
-                RegexOptions.CultureInvariant)).IsEqualTo(247);
+                RegexOptions.CultureInvariant)).IsEqualTo(252);
 
         for (int index = 0; index < definitions.Count; index++)
         {

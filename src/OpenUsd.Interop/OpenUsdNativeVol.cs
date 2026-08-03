@@ -82,6 +82,14 @@ public static unsafe partial class OpenUsdNativeRuntime
         InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
             NativeMethods.VolSetAsset(handle, primPath, (int)property, assetPath, ref error));
 
+    internal static void SetVolFieldIndex(OpenUsdNativeStage stage, string primPath, int fieldIndex) =>
+        InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
+            NativeMethods.VolSetFieldIndex(handle, primPath, fieldIndex, ref error));
+
+    internal static int GetVolFieldIndex(OpenUsdNativeStage stage, string primPath) =>
+        GetSchemaInt(stage, (nint handle, out int value, ref NativeErrorBuffer error) =>
+            NativeMethods.VolGetFieldIndex(handle, primPath, out value, ref error));
+
     internal static string GetVolAsset(
         OpenUsdNativeStage stage,
         string primPath,

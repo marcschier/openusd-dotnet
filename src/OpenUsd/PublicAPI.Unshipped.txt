@@ -1938,4 +1938,14 @@ static OpenUsd.Vol.UsdVolVolumeFieldAsset.TryWrap(OpenUsd.UsdPrim prim, out Open
 static OpenUsd.Vol.UsdVolVolumeFieldAsset.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Vol.UsdVolVolumeFieldAsset
 static OpenUsd.Vol.UsdVolVolumeFieldBase.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Vol.UsdVolVolumeFieldBase value) -> bool
 static OpenUsd.Vol.UsdVolVolumeFieldBase.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Vol.UsdVolVolumeFieldBase
+OpenUsd.Render.UsdRenderSettingsBase.GetCameraTargets() -> string![]!
+OpenUsd.Render.UsdRenderSettingsBase.GetDataWindowNdc(out float minX, out float minY, out float maxX, out float maxY) -> void
+OpenUsd.Render.UsdRenderSettingsBase.GetResolution(out int width, out int height) -> void
+OpenUsd.Render.UsdRenderSettingsBase.SetCamera(OpenUsd.Geom.UsdGeomCamera camera) -> void
+OpenUsd.Render.UsdRenderSettingsBase.SetDataWindowNdc(float minX, float minY, float maxX, float maxY) -> void
+OpenUsd.Render.UsdRenderSettingsBase.SetResolution(int width, int height) -> void
+OpenUsd.UI.UsdUINodeGraphNode.NodeSize.get -> OpenUsd.UsdVec2f
+OpenUsd.UI.UsdUINodeGraphNode.NodeSize.set -> void
+OpenUsd.UI.UsdUINodeGraphNode.Position.get -> OpenUsd.UsdVec2f
+OpenUsd.UI.UsdUINodeGraphNode.Position.set -> void
 

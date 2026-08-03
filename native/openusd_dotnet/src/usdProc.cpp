@@ -9,8 +9,10 @@ openusd_status openusd_proc_is_schema(
     int32_t* is_schema,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
+        // ABI_OUTPUT_INITIALIZATION
         ResetAbiOutput(is_schema);
         if (is_schema == nullptr || schema_kind != OPENUSD_PROC_SCHEMA_GENERATIVE_PROCEDURAL)
         {
@@ -36,6 +38,7 @@ openusd_status openusd_proc_define(
     openusd_proc_schema_kind schema_kind,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         if (!IsValidPrimPath(prim_path) || schema_kind != OPENUSD_PROC_SCHEMA_GENERATIVE_PROCEDURAL)

@@ -34,8 +34,8 @@ public readonly struct UsdVolVolumeFieldAsset : IUsdStageBound
     }
     public int FieldIndex
     {
-        get => (int)Prim.GetInt64("fieldIndex");
-        set => Prim.SetInt64("fieldIndex", value);
+        get => Stage.Native.GetVolFieldIndex(Path);
+        set => Stage.Native.SetVolFieldIndex(Path, value);
     }
     public string FieldDataType
     {
@@ -65,5 +65,4 @@ public readonly struct UsdVolVolumeFieldAsset : IUsdStageBound
             prim.Path);
     private UsdStage Stage => _stage ?? throw new InvalidOperationException("The schema is not attached to a stage.");
 }
-
 

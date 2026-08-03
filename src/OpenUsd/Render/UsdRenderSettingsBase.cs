@@ -3,6 +3,7 @@
 #pragma warning disable CS1591
 
 using System.Diagnostics.CodeAnalysis;
+using OpenUsd.Geom;
 using OpenUsd.Interop;
 
 namespace OpenUsd.Render;
@@ -22,6 +23,17 @@ public readonly struct UsdRenderSettingsBase : IUsdStageBound
 
     public UsdRelationship Camera => Prim.GetRelationship("camera");
     public UsdAttribute Resolution => Prim.GetAttribute("resolution");
+    public void SetCamera(UsdGeomCamera camera) =>
+        Prim.SetRelationshipTargets("camera", [camera.Path]);
+    public string[] GetCameraTargets() => Prim.GetRelationshipTargets("camera");
+    public void SetResolution(int width, int height) =>
+        Stage.Native.SetRenderResolution(Path, width, height);
+    public void GetResolution(out int width, out int height) =>
+        Stage.Native.GetRenderResolution(Path, out width, out height);
+    public void SetDataWindowNdc(float minX, float minY, float maxX, float maxY) =>
+        Stage.Native.SetRenderDataWindowNdc(Path, minX, minY, maxX, maxY);
+    public void GetDataWindowNdc(out float minX, out float minY, out float maxX, out float maxY) =>
+        Stage.Native.GetRenderDataWindowNdc(Path, out minX, out minY, out maxX, out maxY);
     public bool DisableMotionBlur
     {
         get => Prim.GetBool("disableMotionBlur");
@@ -56,7 +68,6 @@ public readonly struct UsdRenderSettingsBase : IUsdStageBound
             prim.Path);
     private UsdStage Stage => _stage ?? throw new InvalidOperationException("The schema is not attached to a stage.");
 }
-
 
 
 

@@ -701,6 +701,12 @@ typedef enum openusd_media_asset_property
     OPENUSD_MEDIA_ASSET_DEFAULT_THUMBNAIL = 1
 } openusd_media_asset_property;
 
+typedef enum openusd_media_time_property
+{
+    OPENUSD_MEDIA_TIME_START = 0,
+    OPENUSD_MEDIA_TIME_END = 1
+} openusd_media_time_property;
+
 /* UsdProc schema data API. */
 typedef enum openusd_proc_schema_kind
 {
@@ -715,6 +721,11 @@ typedef enum openusd_ui_schema_kind
     OPENUSD_UI_SCHEMA_SCENE_GRAPH_PRIM_API = 2
 } openusd_ui_schema_kind;
 
+typedef enum openusd_ui_vec2f_property
+{
+    OPENUSD_UI_VEC2F_NODE_POS = 0,
+    OPENUSD_UI_VEC2F_NODE_SIZE = 1
+} openusd_ui_vec2f_property;
 
 typedef enum openusd_metadata_kind
 {
@@ -1929,6 +1940,18 @@ OPENUSD_DOTNET_API openusd_status openusd_vol_get_asset(
     size_t* required,
     openusd_error_buffer* error);
 
+OPENUSD_DOTNET_API openusd_status openusd_vol_set_field_index(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t field_index,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_vol_get_field_index(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t* field_index,
+    openusd_error_buffer* error);
+
 /* UsdRender schema data API. */
 OPENUSD_DOTNET_API openusd_status openusd_render_is_schema(
     const openusd_stage* stage,
@@ -1941,6 +1964,38 @@ OPENUSD_DOTNET_API openusd_status openusd_render_define(
     const openusd_stage* stage,
     const char* prim_path,
     openusd_render_schema_kind schema_kind,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_render_set_resolution(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t width,
+    int32_t height,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_render_get_resolution(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t* width,
+    int32_t* height,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_render_set_data_window_ndc(
+    const openusd_stage* stage,
+    const char* prim_path,
+    float min_x,
+    float min_y,
+    float max_x,
+    float max_y,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_render_get_data_window_ndc(
+    const openusd_stage* stage,
+    const char* prim_path,
+    float* min_x,
+    float* min_y,
+    float* max_x,
+    float* max_y,
     openusd_error_buffer* error);
 
 /* UsdMedia schema data API. */
@@ -1985,6 +2040,20 @@ OPENUSD_DOTNET_API openusd_status openusd_media_clear_asset(
     openusd_media_asset_property property,
     openusd_error_buffer* error);
 
+OPENUSD_DOTNET_API openusd_status openusd_media_set_time(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_media_time_property property,
+    double value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_media_get_time(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_media_time_property property,
+    double* value,
+    openusd_error_buffer* error);
+
 /* UsdProc schema data API. */
 OPENUSD_DOTNET_API openusd_status openusd_proc_is_schema(
     const openusd_stage* stage,
@@ -2017,6 +2086,20 @@ OPENUSD_DOTNET_API openusd_status openusd_ui_apply_api(
     const openusd_stage* stage,
     const char* prim_path,
     openusd_ui_schema_kind schema_kind,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_ui_set_vec2f(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_ui_vec2f_property property,
+    const openusd_vec2f* value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_ui_get_vec2f(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_ui_vec2f_property property,
+    openusd_vec2f* value,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_layer_export(

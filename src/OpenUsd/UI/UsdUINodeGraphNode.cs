@@ -21,7 +21,17 @@ public readonly struct UsdUINodeGraphNode : IUsdStageBound
     public UsdPrim Prim => Stage.GetPrim(Path);
 
     public UsdAttribute Pos => Prim.GetAttribute("ui:nodegraph:node:pos");
+    public UsdVec2f Position
+    {
+        get => UsdVec2f.FromNative(Stage.Native.GetUiVec2f(Path, OpenUsdNativeUiVec2fProperty.NodePos));
+        set => Stage.Native.SetUiVec2f(Path, OpenUsdNativeUiVec2fProperty.NodePos, value.ToNative());
+    }
     public UsdAttribute Size => Prim.GetAttribute("ui:nodegraph:node:size");
+    public UsdVec2f NodeSize
+    {
+        get => UsdVec2f.FromNative(Stage.Native.GetUiVec2f(Path, OpenUsdNativeUiVec2fProperty.NodeSize));
+        set => Stage.Native.SetUiVec2f(Path, OpenUsdNativeUiVec2fProperty.NodeSize, value.ToNative());
+    }
     public UsdAttribute StackingOrder => Prim.GetAttribute("ui:nodegraph:node:stackingOrder");
     public UsdVec3f DisplayColor
     {
@@ -63,7 +73,6 @@ public readonly struct UsdUINodeGraphNode : IUsdStageBound
             prim.Path);
     private UsdStage Stage => _stage ?? throw new InvalidOperationException("The schema is not attached to a stage.");
 }
-
 
 
 

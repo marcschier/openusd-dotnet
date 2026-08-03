@@ -1389,11 +1389,39 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     public string GetVolAsset(string primPath, OpenUsdNativeVolAssetProperty property) =>
         OpenUsdNativeRuntime.GetVolAsset(this, primPath, property);
 
+    public void SetVolFieldIndex(string primPath, int fieldIndex) =>
+        OpenUsdNativeRuntime.SetVolFieldIndex(this, primPath, fieldIndex);
+
+    public int GetVolFieldIndex(string primPath) =>
+        OpenUsdNativeRuntime.GetVolFieldIndex(this, primPath);
+
     public bool IsRenderSchema(string primPath, OpenUsdNativeRenderSchemaKind schemaKind) =>
         OpenUsdNativeRuntime.IsRenderSchema(this, primPath, schemaKind);
 
     public void DefineRender(string primPath, OpenUsdNativeRenderSchemaKind schemaKind) =>
         OpenUsdNativeRuntime.DefineRender(this, primPath, schemaKind);
+
+    public void SetRenderResolution(string primPath, int width, int height) =>
+        OpenUsdNativeRuntime.SetRenderResolution(this, primPath, width, height);
+
+    public void GetRenderResolution(string primPath, out int width, out int height) =>
+        OpenUsdNativeRuntime.GetRenderResolution(this, primPath, out width, out height);
+
+    public void SetRenderDataWindowNdc(
+        string primPath,
+        float minX,
+        float minY,
+        float maxX,
+        float maxY) =>
+        OpenUsdNativeRuntime.SetRenderDataWindowNdc(this, primPath, minX, minY, maxX, maxY);
+
+    public void GetRenderDataWindowNdc(
+        string primPath,
+        out float minX,
+        out float minY,
+        out float maxX,
+        out float maxY) =>
+        OpenUsdNativeRuntime.GetRenderDataWindowNdc(this, primPath, out minX, out minY, out maxX, out maxY);
 
     public bool IsMediaSchema(string primPath, OpenUsdNativeMediaSchemaKind schemaKind) =>
         OpenUsdNativeRuntime.IsMediaSchema(this, primPath, schemaKind);
@@ -1413,6 +1441,12 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     public void ClearMediaAsset(string primPath, OpenUsdNativeMediaAssetProperty property) =>
         OpenUsdNativeRuntime.ClearMediaAsset(this, primPath, property);
 
+    public void SetMediaTime(string primPath, OpenUsdNativeMediaTimeProperty property, double value) =>
+        OpenUsdNativeRuntime.SetMediaTime(this, primPath, property, value);
+
+    public double GetMediaTime(string primPath, OpenUsdNativeMediaTimeProperty property) =>
+        OpenUsdNativeRuntime.GetMediaTime(this, primPath, property);
+
     public bool IsProcSchema(string primPath, OpenUsdNativeProcSchemaKind schemaKind) =>
         OpenUsdNativeRuntime.IsProcSchema(this, primPath, schemaKind);
 
@@ -1427,6 +1461,12 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
 
     public void ApplyUiApi(string primPath, OpenUsdNativeUiSchemaKind schemaKind) =>
         OpenUsdNativeRuntime.ApplyUiApi(this, primPath, schemaKind);
+
+    public void SetUiVec2f(string primPath, OpenUsdNativeUiVec2fProperty property, OpenUsdNativeVec2f value) =>
+        OpenUsdNativeRuntime.SetUiVec2f(this, primPath, property, value);
+
+    public OpenUsdNativeVec2f GetUiVec2f(string primPath, OpenUsdNativeUiVec2fProperty property) =>
+        OpenUsdNativeRuntime.GetUiVec2f(this, primPath, property);
 
     protected override bool ReleaseHandle()
     {

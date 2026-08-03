@@ -38,13 +38,13 @@ public readonly struct UsdMediaSpatialAudio : IUsdStageBound
     }
     public double StartTime
     {
-        get => Prim.GetDouble("startTime");
-        set => Prim.SetDouble("startTime", value);
+        get => Stage.Native.GetMediaTime(Path, OpenUsdNativeMediaTimeProperty.Start);
+        set => Stage.Native.SetMediaTime(Path, OpenUsdNativeMediaTimeProperty.Start, value);
     }
     public double EndTime
     {
-        get => Prim.GetDouble("endTime");
-        set => Prim.SetDouble("endTime", value);
+        get => Stage.Native.GetMediaTime(Path, OpenUsdNativeMediaTimeProperty.End);
+        set => Stage.Native.SetMediaTime(Path, OpenUsdNativeMediaTimeProperty.End, value);
     }
     public double MediaOffset
     {
@@ -73,5 +73,4 @@ public readonly struct UsdMediaSpatialAudio : IUsdStageBound
             prim.Path);
     private UsdStage Stage => _stage ?? throw new InvalidOperationException("The schema is not attached to a stage.");
 }
-
 

@@ -36,6 +36,32 @@ openusd_status ApplyAssetPreviews(const UsdPrim& prim, openusd_error_buffer* err
     }
     return OPENUSD_STATUS_OK;
 }
+
+UsdAttribute GetSpatialAudioTimeAttribute(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_media_time_property property,
+    bool create,
+    openusd_error_buffer* error)
+{
+    const UsdPrim prim = GetRequiredPrim(stage, prim_path, error);
+    UsdMediaSpatialAudio audio(prim);
+    if (!audio)
+    {
+        WriteError(error, "The requested prim is not a UsdMediaSpatialAudio.");
+        return {};
+    }
+    if (property == OPENUSD_MEDIA_TIME_START)
+    {
+        return create ? audio.CreateStartTimeAttr() : audio.GetStartTimeAttr();
+    }
+    if (property == OPENUSD_MEDIA_TIME_END)
+    {
+        return create ? audio.CreateEndTimeAttr() : audio.GetEndTimeAttr();
+    }
+    WriteError(error, "The requested UsdMedia time property is unsupported.");
+    return {};
+}
 }
 
 openusd_status openusd_media_is_schema(
@@ -45,8 +71,10 @@ openusd_status openusd_media_is_schema(
     int32_t* is_schema,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
+        // ABI_OUTPUT_INITIALIZATION
         ResetAbiOutput(is_schema);
         if (is_schema == nullptr || schema_kind < OPENUSD_MEDIA_SCHEMA_SPATIAL_AUDIO ||
             schema_kind > OPENUSD_MEDIA_SCHEMA_ASSET_PREVIEWS_API)
@@ -73,6 +101,7 @@ openusd_status openusd_media_define(
     openusd_media_schema_kind schema_kind,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         if (!IsValidPrimPath(prim_path) || schema_kind != OPENUSD_MEDIA_SCHEMA_SPATIAL_AUDIO)
@@ -99,6 +128,7 @@ openusd_status openusd_media_apply_api(
     openusd_media_schema_kind schema_kind,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         if (schema_kind != OPENUSD_MEDIA_SCHEMA_ASSET_PREVIEWS_API)
@@ -121,6 +151,7 @@ openusd_status openusd_media_set_asset(
     const char* asset_path,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         if (asset_path == nullptr)
@@ -171,8 +202,10 @@ openusd_status openusd_media_get_asset(
     size_t* required,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
+        // ABI_OUTPUT_INITIALIZATION
         ResetAbiOutput(required);
         return Guard(error, [&]()
         {
@@ -216,6 +249,7 @@ openusd_status openusd_media_clear_asset(
     openusd_media_asset_property property,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         return Guard(error, [&]()
@@ -225,6 +259,7 @@ openusd_status openusd_media_clear_asset(
             {
                 return OPENUSD_STATUS_NOT_FOUND;
             }
+
             if (property == OPENUSD_MEDIA_ASSET_FILE_PATH)
             {
                 UsdMediaSpatialAudio audio(prim);
@@ -249,6 +284,66 @@ openusd_status openusd_media_clear_asset(
             }
             WriteError(error, "The requested UsdMedia asset property is unsupported.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
+        });
+    });
+}
+
+openusd_status openusd_media_set_time(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_media_time_property property,
+    double value,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (!std::isfinite(value))
+        {
+            WriteError(error, "UsdMedia time values must be finite.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return Guard(error, [&]()
+        {
+            UsdAttribute attribute = GetSpatialAudioTimeAttribute(stage, prim_path, property, true, error);
+            return attribute
+                ? SetLuxAttribute(attribute, SdfTimeCode(value), "UsdMedia time", error)
+                : OPENUSD_STATUS_INVALID_ARGUMENT;
+        });
+    });
+}
+
+openusd_status openusd_media_get_time(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_media_time_property property,
+    double* value,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(value);
+        if (value == nullptr)
+        {
+            WriteError(error, "A UsdMedia time output is required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return Guard(error, [&]()
+        {
+            UsdAttribute attribute = GetSpatialAudioTimeAttribute(stage, prim_path, property, false, error);
+            if (!attribute)
+            {
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            SdfTimeCode result;
+            const openusd_status status = GetLuxAttribute(attribute, &result, "UsdMedia time", error);
+            if (status == OPENUSD_STATUS_OK)
+            {
+                *value = result.GetValue();
+            }
+            return status;
         });
     });
 }

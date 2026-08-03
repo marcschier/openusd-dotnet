@@ -5,8 +5,10 @@ namespace OpenUsd.Interop;
 internal enum OpenUsdNativeRenderSchemaKind { SettingsBase = 0, Settings = 1, Product = 2, Var = 3, Pass = 4 }
 internal enum OpenUsdNativeMediaSchemaKind { SpatialAudio = 0, AssetPreviewsApi = 1 }
 internal enum OpenUsdNativeMediaAssetProperty { FilePath = 0, DefaultThumbnail = 1 }
+internal enum OpenUsdNativeMediaTimeProperty { Start = 0, End = 1 }
 internal enum OpenUsdNativeProcSchemaKind { GenerativeProcedural = 0 }
 internal enum OpenUsdNativeUiSchemaKind { Backdrop = 0, NodeGraphNodeApi = 1, SceneGraphPrimApi = 2 }
+internal enum OpenUsdNativeUiVec2fProperty { NodePos = 0, NodeSize = 1 }
 
 public static unsafe partial class OpenUsdNativeRuntime
 {
@@ -22,6 +24,68 @@ public static unsafe partial class OpenUsdNativeRuntime
         OpenUsdNativeRenderSchemaKind schemaKind) =>
         InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
             NativeMethods.RenderDefine(handle, primPath, (int)schemaKind, ref error));
+
+    internal static void SetRenderResolution(OpenUsdNativeStage stage, string primPath, int width, int height) =>
+        InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
+            NativeMethods.RenderSetResolution(handle, primPath, width, height, ref error));
+
+    internal static void GetRenderResolution(
+        OpenUsdNativeStage stage,
+        string primPath,
+        out int width,
+        out int height)
+    {
+        int localWidth = 0;
+        int localHeight = 0;
+        InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
+            NativeMethods.RenderGetResolution(handle, primPath, out localWidth, out localHeight, ref error));
+        width = localWidth;
+        height = localHeight;
+    }
+
+    internal static void SetRenderDataWindowNdc(
+        OpenUsdNativeStage stage,
+        string primPath,
+        float minX,
+        float minY,
+        float maxX,
+        float maxY) =>
+        InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
+            NativeMethods.RenderSetDataWindowNdc(handle, primPath, minX, minY, maxX, maxY, ref error));
+
+    internal static void GetRenderDataWindowNdc(
+        OpenUsdNativeStage stage,
+        string primPath,
+        out float minX,
+        out float minY,
+        out float maxX,
+        out float maxY)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            float localMinX;
+            float localMinY;
+            float localMaxX;
+            float localMaxY;
+            OpenUsdNativeStatus status = NativeMethods.RenderGetDataWindowNdc(
+                lease.Handle,
+                primPath,
+                &localMinX,
+                &localMinY,
+                &localMaxX,
+                &localMaxY,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            minX = localMinX;
+            minY = localMinY;
+            maxX = localMaxX;
+            maxY = localMaxY;
+        }
+    }
 
     internal static bool IsMediaSchema(
         OpenUsdNativeStage stage,
@@ -85,6 +149,25 @@ public static unsafe partial class OpenUsdNativeRuntime
         });
     }
 
+    internal static void SetMediaTime(
+        OpenUsdNativeStage stage,
+        string primPath,
+        OpenUsdNativeMediaTimeProperty property,
+        double value) =>
+        InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
+            NativeMethods.MediaSetTime(handle, primPath, (int)property, value, ref error));
+
+    internal static double GetMediaTime(
+        OpenUsdNativeStage stage,
+        string primPath,
+        OpenUsdNativeMediaTimeProperty property)
+    {
+        double result = 0;
+        InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
+            NativeMethods.MediaGetTime(handle, primPath, (int)property, out result, ref error));
+        return result;
+    }
+
     internal static bool IsProcSchema(
         OpenUsdNativeStage stage,
         string primPath,
@@ -107,4 +190,23 @@ public static unsafe partial class OpenUsdNativeRuntime
     internal static void ApplyUiApi(OpenUsdNativeStage stage, string primPath, OpenUsdNativeUiSchemaKind schemaKind) =>
         InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
             NativeMethods.UiApplyApi(handle, primPath, (int)schemaKind, ref error));
+
+    internal static void SetUiVec2f(
+        OpenUsdNativeStage stage,
+        string primPath,
+        OpenUsdNativeUiVec2fProperty property,
+        OpenUsdNativeVec2f value) =>
+        InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
+            NativeMethods.UiSetVec2f(handle, primPath, (int)property, ref value, ref error));
+
+    internal static OpenUsdNativeVec2f GetUiVec2f(
+        OpenUsdNativeStage stage,
+        string primPath,
+        OpenUsdNativeUiVec2fProperty property)
+    {
+        var value = new OpenUsdNativeVec2f();
+        InvokeSchemaAction(stage, (nint handle, ref NativeErrorBuffer error) =>
+            NativeMethods.UiGetVec2f(handle, primPath, (int)property, out value, ref error));
+        return value;
+    }
 }

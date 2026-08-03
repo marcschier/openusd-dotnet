@@ -59,6 +59,20 @@ UsdAttribute GetVolAssetAttribute(
     }
     return create ? asset.CreateFilePathAttr() : asset.GetFilePathAttr();
 }
+
+UsdVolVolumeFieldAsset GetVolumeFieldAsset(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_error_buffer* error)
+{
+    const UsdPrim prim = GetRequiredPrim(stage, prim_path, error);
+    UsdVolVolumeFieldAsset asset(prim);
+    if (prim && !asset)
+    {
+        WriteError(error, "The requested prim is not a UsdVolVolumeFieldAsset.");
+    }
+    return asset;
+}
 }
 
 openusd_status openusd_vol_is_schema(
@@ -68,8 +82,10 @@ openusd_status openusd_vol_is_schema(
     int32_t* is_schema,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
+        // ABI_OUTPUT_INITIALIZATION
         ResetAbiOutput(is_schema);
         if (is_schema == nullptr || schema_kind < OPENUSD_VOL_SCHEMA_VOLUME ||
             schema_kind > OPENUSD_VOL_SCHEMA_FIELD3D_ASSET)
@@ -96,6 +112,7 @@ openusd_status openusd_vol_define(
     openusd_vol_schema_kind schema_kind,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         if (!IsValidPrimPath(prim_path) || schema_kind < OPENUSD_VOL_SCHEMA_VOLUME ||
@@ -140,8 +157,10 @@ openusd_status openusd_vol_get_field_paths(
     openusd_string_list_view* view,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
+        // ABI_OUTPUT_INITIALIZATION
         ResetStringListOutput(list, view);
         if (list == nullptr || view == nullptr || view->struct_size < sizeof(openusd_string_list_view))
         {
@@ -177,6 +196,7 @@ openusd_status openusd_vol_set_field_path(
     const char* target_prim_path,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         if (field_name == nullptr || field_name[0] == '\0' || !IsValidPrimPath(target_prim_path))
@@ -208,8 +228,10 @@ openusd_status openusd_vol_has_field_relationship(
     int32_t* has_relationship,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
+        // ABI_OUTPUT_INITIALIZATION
         ResetAbiOutput(has_relationship);
         if (field_name == nullptr || field_name[0] == '\0' || has_relationship == nullptr)
         {
@@ -235,6 +257,7 @@ openusd_status openusd_vol_block_field_relationship(
     const char* field_name,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         if (field_name == nullptr || field_name[0] == '\0')
@@ -262,6 +285,7 @@ openusd_status openusd_vol_set_asset(
     const char* asset_path,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
         if (asset_path == nullptr)
@@ -287,8 +311,10 @@ openusd_status openusd_vol_get_asset(
     size_t* required,
     openusd_error_buffer* error)
 {
+    // OUTER_ABI_GUARD
     return GuardStage(stage, error, [&]() -> openusd_status
     {
+        // ABI_OUTPUT_INITIALIZATION
         ResetAbiOutput(required);
         return Guard(error, [&]()
         {
@@ -297,11 +323,67 @@ openusd_status openusd_vol_get_asset(
             {
                 return OPENUSD_STATUS_INVALID_ARGUMENT;
             }
+
             SdfAssetPath value;
             openusd_status status = GetLuxAttribute(attribute, &value, "UsdVol asset", error);
             return status == OPENUSD_STATUS_OK
                 ? CopyString(value.GetAssetPath(), buffer, capacity, required)
                 : status;
+        });
+    });
+}
+
+openusd_status openusd_vol_set_field_index(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t field_index,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        return Guard(error, [&]()
+        {
+            UsdVolVolumeFieldAsset asset = GetVolumeFieldAsset(stage, prim_path, error);
+            if (!asset)
+            {
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            return SetLuxAttribute(asset.CreateFieldIndexAttr(), static_cast<int>(field_index), "UsdVol fieldIndex", error);
+        });
+    });
+}
+
+openusd_status openusd_vol_get_field_index(
+    const openusd_stage* stage,
+    const char* prim_path,
+    int32_t* field_index,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(field_index);
+        if (field_index == nullptr)
+        {
+            WriteError(error, "A fieldIndex output is required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return Guard(error, [&]()
+        {
+            UsdVolVolumeFieldAsset asset = GetVolumeFieldAsset(stage, prim_path, error);
+            if (!asset)
+            {
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            int value = 0;
+            const openusd_status status = GetLuxAttribute(asset.GetFieldIndexAttr(), &value, "UsdVol fieldIndex", error);
+            if (status == OPENUSD_STATUS_OK)
+            {
+                *field_index = static_cast<int32_t>(value);
+            }
+            return status;
         });
     });
 }
