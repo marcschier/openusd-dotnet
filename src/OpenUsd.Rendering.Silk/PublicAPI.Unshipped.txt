@@ -1589,3 +1589,62 @@ static OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.operator ==(OpenUsd.Ren
 static OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.PositionNormal.get -> OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor
 static OpenUsd.Rendering.Silk.SilkViewport.operator !=(OpenUsd.Rendering.Silk.SilkViewport left, OpenUsd.Rendering.Silk.SilkViewport right) -> bool
 static OpenUsd.Rendering.Silk.SilkViewport.operator ==(OpenUsd.Rendering.Silk.SilkViewport left, OpenUsd.Rendering.Silk.SilkViewport right) -> bool
+~override OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.ToString() -> string
+OpenUsd.Rendering.Silk.ISilkMaterialShaderCompiler
+OpenUsd.Rendering.Silk.ISilkMaterialShaderCompiler.GetOrQueue(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key) -> OpenUsd.Rendering.Silk.SilkMaterialShaderRequest!
+OpenUsd.Rendering.Silk.ISilkMaterialShaderGenerator
+OpenUsd.Rendering.Silk.ISilkMaterialShaderGenerator.CompileAsync(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.Silk.SilkMaterialShaderProgram>
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.CacheDirectory.get -> string!
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.CacheDirectory.set -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.CancellationToken.get -> System.Threading.CancellationToken
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.CancellationToken.set -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.MaxDiskBytes.get -> long
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.MaxDiskBytes.set -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.MaxMemoryEntries.get -> int
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.MaxMemoryEntries.set -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.PlaceholderProgram.get -> OpenUsd.Rendering.Silk.SilkMaterialShaderProgram?
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.PlaceholderProgram.set -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions.SilkMaterialShaderCompilerOptions() -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerService
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerService.Dispose() -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerService.GetOrQueue(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key) -> OpenUsd.Rendering.Silk.SilkMaterialShaderRequest!
+OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerService.SilkMaterialShaderCompilerService(OpenUsd.Rendering.Silk.ISilkMaterialShaderGenerator! generator, OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerOptions? options = null) -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderKey
+OpenUsd.Rendering.Silk.SilkMaterialShaderKey.CacheHash.get -> string!
+OpenUsd.Rendering.Silk.SilkMaterialShaderKey.Format.get -> OpenUsd.Rendering.Silk.SilkShaderBinaryFormat
+OpenUsd.Rendering.Silk.SilkMaterialShaderKey.MaterialHash.get -> string!
+OpenUsd.Rendering.Silk.SilkMaterialShaderKey.VersionSalt.get -> string!
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.BindingLayout.get -> OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.BindingLayout.init -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.CacheHash.get -> string!
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.CacheHash.init -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.Deconstruct(out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, out OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, out OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor BindingLayout, out string! CacheHash) -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.Equals(OpenUsd.Rendering.Silk.SilkMaterialShaderProgram other) -> bool
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.FragmentShader.get -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.FragmentShader.init -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.SilkMaterialShaderProgram() -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.SilkMaterialShaderProgram(OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor VertexShader, OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor FragmentShader, OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor BindingLayout, string! CacheHash) -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.Validate() -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.VertexShader.get -> OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor
+OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.VertexShader.init -> void
+OpenUsd.Rendering.Silk.SilkMaterialShaderRequest
+OpenUsd.Rendering.Silk.SilkMaterialShaderRequest.CompilationError.get -> System.Exception?
+OpenUsd.Rendering.Silk.SilkMaterialShaderRequest.IsPlaceholder.get -> bool
+OpenUsd.Rendering.Silk.SilkMaterialShaderRequest.Program.get -> OpenUsd.Rendering.Silk.SilkMaterialShaderProgram
+OpenUsd.Rendering.Silk.SilkMaterialShaderRequest.Status.get -> OpenUsd.Rendering.Silk.SilkMaterialShaderStatus
+OpenUsd.Rendering.Silk.SilkMaterialShaderStatus
+OpenUsd.Rendering.Silk.SilkMaterialShaderStatus.Failed = 2 -> OpenUsd.Rendering.Silk.SilkMaterialShaderStatus
+OpenUsd.Rendering.Silk.SilkMaterialShaderStatus.Placeholder = 0 -> OpenUsd.Rendering.Silk.SilkMaterialShaderStatus
+OpenUsd.Rendering.Silk.SilkMaterialShaderStatus.Ready = 1 -> OpenUsd.Rendering.Silk.SilkMaterialShaderStatus
+OpenUsd.Rendering.Silk.SilkStubMaterialShaderGenerator
+OpenUsd.Rendering.Silk.SilkStubMaterialShaderGenerator.CompileAsync(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.Silk.SilkMaterialShaderProgram>
+OpenUsd.Rendering.Silk.SilkStubMaterialShaderGenerator.SilkStubMaterialShaderGenerator() -> void
+override OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.GetHashCode() -> int
+static OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerService.CreateCheckedPlaceholder(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, string! cacheHash) -> OpenUsd.Rendering.Silk.SilkMaterialShaderProgram
+static OpenUsd.Rendering.Silk.SilkMaterialShaderKey.Create(System.ReadOnlySpan<byte> materialNetwork, OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, string! versionSalt) -> OpenUsd.Rendering.Silk.SilkMaterialShaderKey!
+static OpenUsd.Rendering.Silk.SilkMaterialShaderKey.FromMaterialHash(string! materialHash, OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, string! versionSalt) -> OpenUsd.Rendering.Silk.SilkMaterialShaderKey!
+static OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.operator !=(OpenUsd.Rendering.Silk.SilkMaterialShaderProgram left, OpenUsd.Rendering.Silk.SilkMaterialShaderProgram right) -> bool
+static OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.operator ==(OpenUsd.Rendering.Silk.SilkMaterialShaderProgram left, OpenUsd.Rendering.Silk.SilkMaterialShaderProgram right) -> bool
