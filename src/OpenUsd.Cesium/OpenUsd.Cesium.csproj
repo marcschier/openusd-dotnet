@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd\OpenUsd.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Cesium</AssemblyName>
+    <RootNamespace>OpenUsd.Cesium</RootNamespace>
+    <Description>Optional Cesium 3D Tiles importer for OpenUSD stages.</Description>
+    <PackageTags>openusd;usd;cesium;3d-tiles;gltf</PackageTags>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OpenUsdPublicApiAnalysisEnabled>false</OpenUsdPublicApiAnalysisEnabled>
+    <NoWarn>$(NoWarn);RS0016</NoWarn>
+  </PropertyGroup>
+
+</Project>

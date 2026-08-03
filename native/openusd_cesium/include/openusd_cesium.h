@@ -42,6 +42,7 @@ typedef struct openusd_cesium_task openusd_cesium_task;
 
 typedef struct openusd_cesium_vec2d { double x; double y; } openusd_cesium_vec2d;
 typedef struct openusd_cesium_vec3d { double x; double y; double z; } openusd_cesium_vec3d;
+typedef struct openusd_cesium_vec3f { float x; float y; float z; } openusd_cesium_vec3f;
 typedef struct openusd_cesium_matrix4d { double values[16]; } openusd_cesium_matrix4d;
 
 #define OPENUSD_CESIUM_VIEW_STATE_VERSION UINT32_C(1)
@@ -158,6 +159,26 @@ typedef void (*openusd_cesium_message_fn)(
     const char* message);
 typedef void (*openusd_cesium_start_task_fn)(void* user_data, openusd_cesium_task* task);
 
+#define OPENUSD_CESIUM_MESH_PRIMITIVE_VERSION UINT32_C(1)
+typedef struct openusd_cesium_mesh_primitive
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint32_t mesh_index;
+    uint32_t primitive_index;
+    const openusd_cesium_matrix4d* transform;
+    const openusd_cesium_vec3f* positions;
+    size_t position_count;
+    const int32_t* face_vertex_counts;
+    size_t face_count;
+    const int32_t* face_vertex_indices;
+    size_t face_vertex_index_count;
+} openusd_cesium_mesh_primitive;
+
+typedef void (*openusd_cesium_mesh_primitive_fn)(
+    void* user_data,
+    const openusd_cesium_mesh_primitive* primitive);
+
 #define OPENUSD_CESIUM_RENDERER_CALLBACKS_VERSION UINT32_C(1)
 typedef struct openusd_cesium_renderer_callbacks
 {
@@ -169,6 +190,7 @@ typedef struct openusd_cesium_renderer_callbacks
     openusd_cesium_free_resources_fn free_resources;
     openusd_cesium_attach_raster_fn attach_raster_in_main_thread;
     openusd_cesium_detach_raster_fn detach_raster_in_main_thread;
+    openusd_cesium_mesh_primitive_fn mesh_primitive_in_load_thread;
 } openusd_cesium_renderer_callbacks;
 
 #define OPENUSD_CESIUM_ASSET_ACCESSOR_VERSION UINT32_C(1)

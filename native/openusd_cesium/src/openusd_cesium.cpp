@@ -14,7 +14,9 @@
 #include <CesiumAsync/IAssetRequest.h>
 #include <CesiumAsync/IAssetResponse.h>
 #include <CesiumAsync/ITaskProcessor.h>
+#include <CesiumGltf/AccessorView.h>
 #include <CesiumGltf/Model.h>
+#include <CesiumGltfReader/GltfReader.h>
 #include <CesiumRasterOverlays/RasterOverlayTile.h>
 
 #include <algorithm>
@@ -298,6 +300,159 @@ openusd_cesium_tile_load_result MakeLoadResultView(const TileLoadResult& result)
     return view;
 }
 
+const CesiumGltf::Accessor* GetAccessor(const CesiumGltf::Model& model, int64_t index) noexcept {
+    if (index < 0 || static_cast<size_t>(index) >= model.accessors.size()) {
+        return nullptr;
+    }
+    return &model.accessors[static_cast<size_t>(index)];
+}
+
+const CesiumGltf::BufferView* GetBufferView(const CesiumGltf::Model& model, int64_t index) noexcept {
+    if (index < 0 || static_cast<size_t>(index) >= model.bufferViews.size()) {
+        return nullptr;
+    }
+    return &model.bufferViews[static_cast<size_t>(index)];
+}
+
+const CesiumGltf::Buffer* GetBuffer(const CesiumGltf::Model& model, int64_t index) noexcept {
+    if (index < 0 || static_cast<size_t>(index) >= model.buffers.size()) {
+        return nullptr;
+    }
+    return &model.buffers[static_cast<size_t>(index)];
+}
+
+bool CheckedRange(size_t sourceSize, size_t offset, size_t count, size_t stride) noexcept {
+    if (count == 0) {
+        return true;
+    }
+    if (stride == 0 || offset > sourceSize) {
+        return false;
+    }
+    const size_t last = count - 1;
+    return last <= (sourceSize - offset) / stride && stride <= sourceSize - offset - last * stride;
+}
+
+bool TryReadPositions(
+    const CesiumGltf::Model& model,
+    int64_t accessorIndex,
+    std::vector<openusd_cesium_vec3f>& positions) {
+    CesiumGltf::AccessorView<glm::vec3> view(model, static_cast<int32_t>(accessorIndex));
+    if (view.status() != CesiumGltf::AccessorViewStatus::Valid || view.size() < 0) {
+        return false;
+    }
+    const size_t count = static_cast<size_t>(view.size());
+    positions.resize(count);
+    for (size_t index = 0; index < count; ++index) {
+        const glm::vec3& position = view[static_cast<int64_t>(index)];
+        positions[index] = openusd_cesium_vec3f{position.x, position.y, position.z};
+    }
+    return true;
+}
+
+template <typename TIndex>
+bool CopyIndices(
+    const CesiumGltf::Model& model,
+    int64_t accessorIndex,
+    size_t vertexCount,
+    std::vector<int32_t>& indices) {
+    CesiumGltf::AccessorView<TIndex> view(model, static_cast<int32_t>(accessorIndex));
+    if (view.status() != CesiumGltf::AccessorViewStatus::Valid || view.size() < 0) {
+        return false;
+    }
+    const size_t count = static_cast<size_t>(view.size());
+    indices.resize(count);
+    for (size_t index = 0; index < count; ++index) {
+        const auto value = static_cast<uint32_t>(view[static_cast<int64_t>(index)]);
+        if (value >= vertexCount || value > static_cast<uint32_t>(INT32_MAX)) {
+            return false;
+        }
+        indices[index] = static_cast<int32_t>(value);
+    }
+    return true;
+}
+
+bool TryReadIndices(
+    const CesiumGltf::Model& model,
+    int64_t accessorIndex,
+    size_t vertexCount,
+    std::vector<int32_t>& indices) {
+    const CesiumGltf::Accessor* accessor = GetAccessor(model, accessorIndex);
+    if (accessor == nullptr || accessor->type != CesiumGltf::Accessor::Type::SCALAR ||
+        accessor->bufferView < 0 || accessor->count < 0) {
+        return false;
+    }
+    if (accessor->componentType == 5121) {
+        return CopyIndices<uint8_t>(model, accessorIndex, vertexCount, indices);
+    }
+    if (accessor->componentType == 5123) {
+        return CopyIndices<uint16_t>(model, accessorIndex, vertexCount, indices);
+    }
+    if (accessor->componentType == 5125) {
+        return CopyIndices<uint32_t>(model, accessorIndex, vertexCount, indices);
+    }
+    return false;
+}
+
+void EmitMeshPrimitives(
+    const openusd_cesium_renderer_callbacks& callbacks,
+    const TileLoadResult& result,
+    const openusd_cesium_matrix4d& transform) {
+    if (callbacks.mesh_primitive_in_load_thread == nullptr) {
+        return;
+    }
+    const auto* model = std::get_if<CesiumGltf::Model>(&result.contentKind);
+    std::optional<CesiumGltf::Model> parsedModel;
+    if ((model == nullptr || model->meshes.empty()) && result.pCompletedRequest != nullptr) {
+        if (const CesiumAsync::IAssetResponse* response = result.pCompletedRequest->response()) {
+            CesiumGltfReader::GltfReader reader;
+            CesiumGltfReader::GltfReaderResult readerResult = reader.readGltf(response->data());
+            if (readerResult.model) {
+                parsedModel = std::move(*readerResult.model);
+                model = &*parsedModel;
+            }
+        }
+    }
+    if (model == nullptr) {
+        return;
+    }
+    for (size_t meshIndex = 0; meshIndex < model->meshes.size(); ++meshIndex) {
+        const CesiumGltf::Mesh& mesh = model->meshes[meshIndex];
+        for (size_t primitiveIndex = 0; primitiveIndex < mesh.primitives.size(); ++primitiveIndex) {
+            const CesiumGltf::MeshPrimitive& primitive = mesh.primitives[primitiveIndex];
+            if ((primitive.mode != -1 && primitive.mode != 4) || primitive.indices < 0) {
+                continue;
+            }
+            const auto position = primitive.attributes.find("POSITION");
+            if (position == primitive.attributes.end()) {
+                continue;
+            }
+            std::vector<openusd_cesium_vec3f> positions;
+            if (!TryReadPositions(*model, position->second, positions)) {
+                continue;
+            }
+            std::vector<int32_t> indices;
+            if (!TryReadIndices(*model, primitive.indices, positions.size(), indices) ||
+                indices.empty() || (indices.size() % 3) != 0) {
+                continue;
+            }
+            std::vector<int32_t> counts(indices.size() / 3, 3);
+            openusd_cesium_mesh_primitive meshView{};
+            meshView.struct_size = sizeof(meshView);
+            meshView.version = OPENUSD_CESIUM_MESH_PRIMITIVE_VERSION;
+            meshView.mesh_index = static_cast<uint32_t>(std::min<size_t>(meshIndex, UINT32_MAX));
+            meshView.primitive_index = static_cast<uint32_t>(std::min<size_t>(primitiveIndex, UINT32_MAX));
+            meshView.transform = &transform;
+            meshView.positions = positions.data();
+            meshView.position_count = positions.size();
+            meshView.face_vertex_counts = counts.data();
+            meshView.face_count = counts.size();
+            meshView.face_vertex_indices = indices.data();
+            meshView.face_vertex_index_count = indices.size();
+            callbacks.mesh_primitive_in_load_thread(callbacks.user_data, &meshView);
+        }
+    }
+}
+
 class CallbackPrepareRendererResources final : public Cesium3DTilesSelection::IPrepareRendererResources {
 public:
     explicit CallbackPrepareRendererResources(openusd_cesium_renderer_callbacks callbacks) noexcept
@@ -311,9 +466,10 @@ public:
         const std::any& rendererOptions) override {
         static_cast<void>(rendererOptions);
         void* loadResource = nullptr;
+        openusd_cesium_matrix4d abiTransform = FromDMat4(transform);
+        EmitMeshPrimitives(_callbacks, tileLoadResult, abiTransform);
         if (_callbacks.prepare_in_load_thread != nullptr) {
             openusd_cesium_tile_load_result view = MakeLoadResultView(tileLoadResult);
-            openusd_cesium_matrix4d abiTransform = FromDMat4(transform);
             char errorData[512]{};
             openusd_cesium_error_buffer error{errorData, sizeof(errorData), 0};
             loadResource = _callbacks.prepare_in_load_thread(
@@ -481,6 +637,16 @@ bool ValidateCallbacks(
     return true;
 }
 
+template <typename TCallbacks>
+TCallbacks CopyCallbackTable(const TCallbacks* callbacks) noexcept {
+    TCallbacks copy{};
+    if (callbacks != nullptr) {
+        const size_t count = std::min<size_t>(callbacks->struct_size, sizeof(copy));
+        std::memcpy(&copy, callbacks, count);
+    }
+    return copy;
+}
+
 void FillUpdateResult(
     openusd_cesium_update_result* output,
     const Cesium3DTilesSelection::ViewUpdateResult& result,
@@ -547,11 +713,12 @@ extern "C" OPENUSD_CESIUM_API openusd_cesium_status openusd_cesium_tileset_creat
 
         auto owner = std::make_unique<openusd_cesium_tileset>();
         owner->mainThread = std::this_thread::get_id();
-        owner->assetAccessor = std::make_shared<CallbackAssetAccessor>(*asset_accessor);
-        owner->rendererResources = std::make_shared<CallbackPrepareRendererResources>(*renderer_callbacks);
+        owner->assetAccessor = std::make_shared<CallbackAssetAccessor>(CopyCallbackTable(asset_accessor));
+        owner->rendererResources = std::make_shared<CallbackPrepareRendererResources>(
+            CopyCallbackTable(renderer_callbacks));
         openusd_cesium_task_processor taskCallbacks{};
         if (task_processor != nullptr) {
-            taskCallbacks = *task_processor;
+            taskCallbacks = CopyCallbackTable(task_processor);
         }
         owner->taskProcessor = std::make_shared<CallbackTaskProcessor>(taskCallbacks);
         Cesium3DTilesContent::registerAllTileContentTypes();

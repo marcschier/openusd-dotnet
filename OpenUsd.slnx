@@ -23,10 +23,12 @@
     <Project Path="src/OpenUsd.Rendering/OpenUsd.Rendering.csproj" />
     <Project Path="src/OpenUsd.Viewer/OpenUsd.Viewer.csproj" />
     <Project Path="src/OpenUsd.Viewer.App/OpenUsd.Viewer.App.csproj" />
+    <Project Path="src/OpenUsd.Cesium/OpenUsd.Cesium.csproj" />
     <Project Path="src/OpenUsd/OpenUsd.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenUsd.AvaloniaVulkanSmoke/OpenUsd.AvaloniaVulkanSmoke.csproj" />
+    <Project Path="tests/OpenUsd.Cesium.Tests/OpenUsd.Cesium.Tests.csproj" />
     <Project Path="tests/OpenUsd.D3D12CompositionSmoke/OpenUsd.D3D12CompositionSmoke.csproj" />
     <Project Path="tests/OpenUsd.Interop.Tests/OpenUsd.Interop.Tests.csproj" />
     <Project Path="tests/OpenUsd.LiveAuthoring.Tests/OpenUsd.LiveAuthoring.Tests.csproj" />
