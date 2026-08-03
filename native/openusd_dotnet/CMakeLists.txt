@@ -1,7 +1,23 @@
-add_library(openusd_dotnet SHARED
+set(OPENUSD_DOTNET_SOURCES
     include/openusd_dotnet.h
     private/openusd_renderer_stage_bridge.h
-    src/openusd_dotnet.cpp)
+    src/attribute.cpp
+    src/collections.cpp
+    src/common.cpp
+    src/composition.cpp
+    src/diagnostics.cpp
+    src/layer.cpp
+    src/metadata.cpp
+    src/relationship.cpp
+    src/renderer_stage_bridge.cpp
+    src/runtime.cpp
+    src/stage.cpp
+    src/usdGeom.cpp
+    src/usdLux.cpp
+    src/usdShade.cpp
+    src/usdSkel.cpp)
+
+add_library(openusd_dotnet SHARED ${OPENUSD_DOTNET_SOURCES})
 
 function(configure_openusd_dotnet_target target_name)
     target_compile_features(${target_name} PRIVATE cxx_std_17)
@@ -74,10 +90,8 @@ endif()
 
 if(OPENUSD_BUILD_NATIVE_TESTS)
     add_library(openusd_dotnet_test STATIC
-        include/openusd_dotnet.h
-        private/openusd_renderer_stage_bridge.h
         tests/openusd_dotnet_test_hooks.h
-        src/openusd_dotnet.cpp)
+        ${OPENUSD_DOTNET_SOURCES})
     configure_openusd_dotnet_target(openusd_dotnet_test)
     target_compile_definitions(
         openusd_dotnet_test
@@ -87,10 +101,8 @@ if(OPENUSD_BUILD_NATIVE_TESTS)
         PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
     add_library(openusd_dotnet_renderer_test SHARED
-        include/openusd_dotnet.h
-        private/openusd_renderer_stage_bridge.h
         tests/openusd_dotnet_test_hooks.h
-        src/openusd_dotnet.cpp)
+        ${OPENUSD_DOTNET_SOURCES})
     configure_openusd_dotnet_target(openusd_dotnet_renderer_test)
     target_compile_definitions(
         openusd_dotnet_renderer_test

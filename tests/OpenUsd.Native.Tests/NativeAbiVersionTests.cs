@@ -214,13 +214,7 @@ public sealed class NativeAbiVersionTests
                 "openusd_dotnet",
                 "include",
                 "openusd_dotnet.h"));
-        string implementation = File.ReadAllText(
-            Path.Combine(
-                repositoryRoot,
-                "native",
-                "openusd_dotnet",
-                "src",
-                "openusd_dotnet.cpp"));
+        string implementation = ReadDataAbiImplementation(repositoryRoot);
 
         MatchCollection declarations = Regex.Matches(
             header,
@@ -287,24 +281,14 @@ public sealed class NativeAbiVersionTests
                 "openusd_dotnet",
                 "include",
                 "openusd_dotnet.h"));
-        string implementation = File.ReadAllText(
-            Path.Combine(
-                repositoryRoot,
-                "native",
-                "openusd_dotnet",
-                "src",
-                "openusd_dotnet.cpp"));
+        string implementation = ReadDataAbiImplementation(repositoryRoot);
         string managed = File.ReadAllText(
             Path.Combine(
                 repositoryRoot,
                 "src",
                 "OpenUsd.Interop",
                 "OpenUsdNativeRuntime.cs"));
-        Match bodyMatch = Regex.Match(
-            implementation,
-            @"openusd_status openusd_geom_xformable_get_world_transform\(.*?" +
-            @"(?=^openusd_status openusd_geom_xformable_set_reset_xform_stack\()",
-            RegexOptions.Singleline | RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        string body = ExtractExportBody(implementation, "openusd_geom_xformable_get_world_transform");
         Match managedMatch = Regex.Match(
             managed,
             @"internal static OpenUsdNativeMatrix4d GetGeomWorldTransform\(.*?" +
@@ -315,19 +299,18 @@ public sealed class NativeAbiVersionTests
             "#define OPENUSD_CAPABILITY_WORLD_TRANSFORM_QUERY (UINT64_C(1) << 7)");
         await Assert.That(header).Contains(
             "openusd_geom_xformable_get_world_transform(");
-        await Assert.That(bodyMatch.Success).IsTrue();
         await Assert.That(Regex.Count(
-            bodyMatch.Value,
+            body,
             @"\bGetLocalToWorldTransform\(",
             RegexOptions.CultureInvariant)).IsEqualTo(1);
-        await Assert.That(bodyMatch.Value).Contains("// ABI_OUTPUT_INITIALIZATION");
-        await Assert.That(bodyMatch.Value).Contains("if (!mark.IsClean())");
-        await Assert.That(bodyMatch.Value).Contains(
+        await Assert.That(body).Contains("// ABI_OUTPUT_INITIALIZATION");
+        await Assert.That(body).Contains("if (!mark.IsClean())");
+        await Assert.That(body).Contains(
             "const openusd_matrix4d result = FromMatrix4d(matrix);");
-        await Assert.That(bodyMatch.Value).Contains("if (!IsFiniteMatrix(result))");
-        await Assert.That(bodyMatch.Value.IndexOf(
+        await Assert.That(body).Contains("if (!IsFiniteMatrix(result))");
+        await Assert.That(body.IndexOf(
             "*value = result;",
-            StringComparison.Ordinal)).IsGreaterThan(bodyMatch.Value.IndexOf(
+            StringComparison.Ordinal)).IsGreaterThan(body.IndexOf(
                 "if (!IsFiniteMatrix(result))",
                 StringComparison.Ordinal));
         await Assert.That(managedMatch.Success).IsTrue();
@@ -351,22 +334,13 @@ public sealed class NativeAbiVersionTests
             "openusd_dotnet",
             "include",
             "openusd_dotnet.h"));
-        string implementation = File.ReadAllText(Path.Combine(
-            repositoryRoot,
-            "native",
-            "openusd_dotnet",
-            "src",
-            "openusd_dotnet.cpp"));
+        string implementation = ReadDataAbiImplementation(repositoryRoot);
         string managed = File.ReadAllText(Path.Combine(
             repositoryRoot,
             "src",
             "OpenUsd.Interop",
             "OpenUsdNativeRuntime.cs"));
-        Match bodyMatch = Regex.Match(
-            implementation,
-            @"openusd_status openusd_geom_camera_get_state\(.*?" +
-            @"(?=^openusd_status openusd_stage_set_bool\()",
-            RegexOptions.Singleline | RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        string body = ExtractExportBody(implementation, "openusd_geom_camera_get_state");
         Match managedMatch = Regex.Match(
             managed,
             @"internal static OpenUsdNativeCameraState GetGeomCameraState\(.*?" +
@@ -378,20 +352,19 @@ public sealed class NativeAbiVersionTests
         await Assert.That(header).Contains(
             "#define OPENUSD_GEOM_CAMERA_STATE_VERSION UINT32_C(1)");
         await Assert.That(header).Contains("openusd_geom_camera_get_state(");
-        await Assert.That(bodyMatch.Success).IsTrue();
         await Assert.That(Regex.Count(
-            bodyMatch.Value,
+            body,
             @"\bschema\.GetCamera\(",
             RegexOptions.CultureInvariant)).IsEqualTo(1);
         await Assert.That(Regex.Count(
-            bodyMatch.Value,
+            body,
             @"\bcamera\.GetFrustum\(",
             RegexOptions.CultureInvariant)).IsEqualTo(1);
-        await Assert.That(bodyMatch.Value).Contains("// ABI_OUTPUT_INITIALIZATION");
-        await Assert.That(bodyMatch.Value).Contains("if (!mark.IsClean())");
-        await Assert.That(bodyMatch.Value.IndexOf(
+        await Assert.That(body).Contains("// ABI_OUTPUT_INITIALIZATION");
+        await Assert.That(body).Contains("if (!mark.IsClean())");
+        await Assert.That(body.IndexOf(
             "state->is_valid = 1;",
-            StringComparison.Ordinal)).IsGreaterThan(bodyMatch.Value.IndexOf(
+            StringComparison.Ordinal)).IsGreaterThan(body.IndexOf(
                 "if (!finite || !valid_frustum || !valid_optics)",
                 StringComparison.Ordinal));
         await Assert.That(managedMatch.Success).IsTrue();
@@ -406,13 +379,7 @@ public sealed class NativeAbiVersionTests
     [Test]
     public async Task WritableBulkGettersUseFailureOnlyBufferResetGuards()
     {
-        string implementation = File.ReadAllText(
-            Path.Combine(
-                FindRepositoryRoot(),
-                "native",
-                "openusd_dotnet",
-                "src",
-                "openusd_dotnet.cpp"));
+        string implementation = ReadDataAbiImplementation(FindRepositoryRoot());
         string[] expectedExports =
         [
             "openusd_stage_get_attribute_time_samples",
@@ -474,13 +441,7 @@ public sealed class NativeAbiVersionTests
     public async Task ListOwnersPublishOnlyAfterCleanNativeStatus()
     {
         string repositoryRoot = FindRepositoryRoot();
-        string implementation = File.ReadAllText(
-            Path.Combine(
-                repositoryRoot,
-                "native",
-                "openusd_dotnet",
-                "src",
-                "openusd_dotnet.cpp"));
+        string implementation = ReadDataAbiImplementation(repositoryRoot);
         string managed = string.Concat(
             File.ReadAllText(Path.Combine(
                 repositoryRoot,
@@ -589,6 +550,39 @@ public sealed class NativeAbiVersionTests
                     parameter,
                     @"openusd_error_buffer\s*\*\s*error\b",
                     RegexOptions.CultureInvariant));
+
+    private static string ReadDataAbiImplementation(string repositoryRoot)
+    {
+        string sourceDirectory = Path.Combine(repositoryRoot, "native", "openusd_dotnet", "src");
+        return string.Join(
+            Environment.NewLine,
+            Directory.EnumerateFiles(sourceDirectory, "*.cpp", SearchOption.TopDirectoryOnly)
+                .Order(StringComparer.Ordinal)
+                .Select(File.ReadAllText));
+    }
+
+    private static string ExtractExportBody(string implementation, string exportName)
+    {
+        MatchCollection definitions = Regex.Matches(
+            implementation,
+            @"(?m)^openusd_status\s+(?<name>openusd_\w+)\s*\(",
+            RegexOptions.CultureInvariant);
+        for (int index = 0; index < definitions.Count; index++)
+        {
+            Match definition = definitions[index];
+            if (!string.Equals(definition.Groups["name"].Value, exportName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            int bodyEnd = index + 1 < definitions.Count
+                ? definitions[index + 1].Index
+                : implementation.Length;
+            return implementation[definition.Index..bodyEnd];
+        }
+
+        throw new InvalidOperationException($"Could not locate native export '{exportName}'.");
+    }
 
     private static string FindRepositoryRoot()
     {
