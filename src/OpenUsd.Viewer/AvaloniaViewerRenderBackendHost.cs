@@ -1246,7 +1246,8 @@ internal sealed class D3D12StagePresentationRenderer(
             page,
             colorTarget,
             depthTarget,
-            SilkPickFrameBinding.FromState(state, sceneRevision: null));
+            SilkPickFrameBinding.FromState(state, sceneRevision: null),
+            ViewerViewportStateMutation.ToSilkOptions(state.RenderSettings));
         Volatile.Write(ref _lastCommandCount, page.CommandCount);
         Volatile.Write(ref _lastDrawCount, result.DrawCount);
         Volatile.Write(ref _lastUniformUploads, result.UniformUploads);
@@ -1328,7 +1329,8 @@ internal sealed class VulkanStagePresentationRenderer(
             page,
             context.ColorTarget,
             context.DepthTarget,
-            SilkPickFrameBinding.FromState(state, sceneRevision: null));
+            SilkPickFrameBinding.FromState(state, sceneRevision: null),
+            ViewerViewportStateMutation.ToSilkOptions(state.RenderSettings));
         Volatile.Write(ref _lastCommandCount, page.CommandCount);
         Volatile.Write(ref _lastDrawCount, result.DrawCount);
         Volatile.Write(ref _lastUniformUploads, result.UniformUploads);
@@ -1412,7 +1414,8 @@ internal sealed class MetalStagePresentationRenderer(
             page,
             context.ColorTarget,
             context.DepthTarget,
-            SilkPickFrameBinding.FromState(state, sceneRevision: null));
+            SilkPickFrameBinding.FromState(state, sceneRevision: null),
+            ViewerViewportStateMutation.ToSilkOptions(state.RenderSettings));
         Volatile.Write(ref _lastCommandCount, page.CommandCount);
         int triangles = checked((int)context.Renderer.GpuResources.Meshes.Values.Sum(
             mesh => (long)mesh.IndexCount / 3));

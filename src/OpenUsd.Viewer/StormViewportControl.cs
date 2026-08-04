@@ -275,7 +275,8 @@ public sealed class StormViewportControl : OpenGlControlBase
                 state.Time.TimeCode,
                 state.Camera,
                 state.Revision,
-                sceneRevision: null);
+                sceneRevision: null,
+                useSceneLights: state.RenderSettings.EnableLighting);
             CompleteHostedPick(_renderer);
             Interlocked.Increment(ref _soakFrameCount);
             Interlocked.Exchange(ref _hostedFrame, null)

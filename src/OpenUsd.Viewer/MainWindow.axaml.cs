@@ -89,6 +89,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private bool _rootLayerEditsExplicitlyEnabled;
     private bool _applyingLayout;
     private int _hierarchyExpandDepth;
+    private bool _applyingViewportDisplay;
     private double _stagePanelWidth = ViewerSettings.Default.StagePanelWidth;
     private double _inspectorPanelWidth = ViewerSettings.Default.InspectorPanelWidth;
     private int _timelineUiUpdatePosted;
@@ -206,6 +207,14 @@ public sealed partial class MainWindow : Window, IDisposable
             CopyDiagnosticsButton.Click += OnCopyDiagnosticsClick;
             ExportDiagnosticsButton.Click += OnExportDiagnosticsClick;
             IncludeDiagnosticPathsCheckBox.Click += OnDiagnosticPathSettingChanged;
+            ViewportDrawModeSelector.SelectionChanged += OnViewportDrawModeChanged;
+            PurposeDefaultCheckBox.Click += OnViewportPurposeChanged;
+            PurposeProxyCheckBox.Click += OnViewportPurposeChanged;
+            PurposeRenderCheckBox.Click += OnViewportPurposeChanged;
+            PurposeGuideCheckBox.Click += OnViewportPurposeChanged;
+            SceneLightingCheckBox.Click += OnViewportLightingChanged;
+            SceneShadowsCheckBox.Click += OnViewportShadowsChanged;
+            BackgroundColorSelector.SelectionChanged += OnViewportBackgroundChanged;
             ResetCameraAutomaticButton.Click += OnResetCameraAutomaticClick;
             ResetCameraAutomaticMenuItem.Click += OnResetCameraAutomaticClick;
             ResetCameraLegacyButton.Click += OnResetCameraLegacyClick;
@@ -2020,6 +2029,183 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void OnDiagnosticPathSettingChanged(object? sender, RoutedEventArgs e) =>
         RenderDiagnostics();
+
+    private async void OnViewportDrawModeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_applyingViewportDisplay ||
+            ViewportDrawModeSelector.SelectedItem is not ComboBoxItem item ||
+            item.Tag is not string tag ||
+            !Enum.TryParse(tag, out RenderDrawMode drawMode))
+        {
+            return;
+        }
+
+        await ApplyViewportStateAsync(
+            state => ViewerViewportStateMutation.WithDrawMode(state, drawMode),
+            $"Viewport draw mode: {drawMode}.");
+    }
+
+    private async void OnViewportPurposeChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_applyingViewportDisplay ||
+            sender is not CheckBox checkBox ||
+            GetPurposeForCheckBox(checkBox) is not { } purpose)
+        {
+            return;
+        }
+
+        bool enabled = checkBox.IsChecked == true;
+        await ApplyViewportStateAsync(
+            state => ViewerViewportStateMutation.WithPurpose(state, purpose, enabled),
+            $"Viewport purposes: {purpose} {(enabled ? "enabled" : "disabled")}.");
+    }
+
+    private async void OnViewportLightingChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_applyingViewportDisplay)
+        {
+            return;
+        }
+
+        bool enabled = SceneLightingCheckBox.IsChecked == true;
+        await ApplyViewportStateAsync(
+            state => ViewerViewportStateMutation.WithLighting(state, enabled),
+            enabled ? "Viewport scene lighting enabled." : "Viewport scene lighting disabled.");
+    }
+
+    private async void OnViewportShadowsChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_applyingViewportDisplay)
+        {
+            return;
+        }
+
+        bool enabled = SceneShadowsCheckBox.IsChecked == true;
+        await ApplyViewportStateAsync(
+            state => ViewerViewportStateMutation.WithShadows(state, enabled),
+            enabled ? "Viewport shadows enabled." : "Viewport shadows disabled.");
+    }
+
+    private async void OnViewportBackgroundChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_applyingViewportDisplay ||
+            BackgroundColorSelector.SelectedItem is not ComboBoxItem item ||
+            item.Tag is not string tag ||
+            !Enum.TryParse(tag, out ViewerBackgroundPreset preset))
+        {
+            return;
+        }
+
+        await ApplyViewportStateAsync(
+            state => ViewerViewportStateMutation.WithBackground(state, preset),
+            $"Viewport background: {item.Content}.");
+    }
+
+    private async Task ApplyViewportStateAsync(
+        Func<StageRenderState, StageRenderState> mutate,
+        string status)
+    {
+        ArgumentNullException.ThrowIfNull(mutate);
+        ViewerRenderCoordinator? coordinator = _coordinator;
+        if (coordinator is null || _documentBusy)
+        {
+            ApplyViewportDisplayState(coordinator?.CurrentState ?? StageRenderState.Default);
+            return;
+        }
+
+        CancellationToken cancellationToken = _documentLifetime?.Token ?? _viewerLifetime.Token;
+        try
+        {
+            bool changed = await coordinator.MutateStateAsync(
+                state => mutate(state),
+                cancellationToken);
+            ApplyViewportDisplayState(coordinator.CurrentState);
+            if (changed)
+            {
+                ViewerStatus.Text = status;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            ShowError($"Could not update viewport display: {exception.Message}");
+            ApplyViewportDisplayState(coordinator.CurrentState);
+        }
+    }
+
+    private void ApplyViewportDisplayState(StageRenderState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        _applyingViewportDisplay = true;
+        try
+        {
+            SelectComboBoxTag(ViewportDrawModeSelector, state.Display.DrawMode.ToString());
+            PurposeDefaultCheckBox.IsChecked = (state.Display.Purposes & RenderPurpose.Default) != 0;
+            PurposeProxyCheckBox.IsChecked = (state.Display.Purposes & RenderPurpose.Proxy) != 0;
+            PurposeRenderCheckBox.IsChecked = (state.Display.Purposes & RenderPurpose.Render) != 0;
+            PurposeGuideCheckBox.IsChecked = (state.Display.Purposes & RenderPurpose.Guide) != 0;
+            SceneLightingCheckBox.IsChecked = state.RenderSettings.EnableLighting;
+            SceneShadowsCheckBox.IsChecked = state.RenderSettings.EnableShadows;
+            SelectComboBoxTag(BackgroundColorSelector, GetBackgroundPreset(state).ToString());
+        }
+        finally
+        {
+            _applyingViewportDisplay = false;
+        }
+        UpdateViewportDisplayAvailability();
+    }
+
+    private void UpdateViewportDisplayAvailability()
+    {
+        bool enabled = _coordinator is not null && !_documentBusy && !IsAutomatedViewerRun();
+        ViewportDrawModeSelector.IsEnabled = enabled;
+        PurposeDefaultCheckBox.IsEnabled = enabled;
+        PurposeProxyCheckBox.IsEnabled = enabled;
+        PurposeRenderCheckBox.IsEnabled = enabled;
+        PurposeGuideCheckBox.IsEnabled = enabled;
+        SceneLightingCheckBox.IsEnabled = enabled;
+        SceneShadowsCheckBox.IsEnabled = enabled;
+        BackgroundColorSelector.IsEnabled = enabled;
+    }
+
+    private static RenderPurpose? GetPurposeForCheckBox(CheckBox checkBox) =>
+        checkBox.Name switch
+        {
+            nameof(PurposeDefaultCheckBox) => RenderPurpose.Default,
+            nameof(PurposeProxyCheckBox) => RenderPurpose.Proxy,
+            nameof(PurposeRenderCheckBox) => RenderPurpose.Render,
+            nameof(PurposeGuideCheckBox) => RenderPurpose.Guide,
+            _ => null
+        };
+
+    private static ViewerBackgroundPreset GetBackgroundPreset(StageRenderState state)
+    {
+        Vector4 color = state.RenderSettings.ClearColor;
+        foreach (ViewerBackgroundPreset preset in Enum.GetValues<ViewerBackgroundPreset>())
+        {
+            if (color == ViewerViewportStateMutation.ToColor(preset))
+            {
+                return preset;
+            }
+        }
+        return ViewerBackgroundPreset.Black;
+    }
+
+    private static void SelectComboBoxTag(ComboBox selector, string tag)
+    {
+        foreach (object? item in selector.Items)
+        {
+            if (item is ComboBoxItem comboBoxItem &&
+                comboBoxItem.Tag is string candidate &&
+                string.Equals(candidate, tag, StringComparison.Ordinal))
+            {
+                selector.SelectedItem = comboBoxItem;
+                return;
+            }
+        }
+    }
 
     private async void OnCopyDiagnosticsClick(object? sender, RoutedEventArgs e)
     {
@@ -4265,6 +4451,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateCameraAvailability();
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
+        UpdateViewportDisplayAvailability();
         if (_currentInspector is { } inspector)
         {
             ShowInspector(inspector);
@@ -4283,6 +4470,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateCameraAvailability();
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
+        ApplyViewportDisplayState(_coordinator?.CurrentState ?? StageRenderState.Default);
         if (_currentInspector is { } inspector)
         {
             ShowInspector(inspector);
@@ -4302,6 +4490,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateCameraAvailability();
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
+        UpdateViewportDisplayAvailability();
         if (_currentInspector is { } inspector)
         {
             ShowInspector(inspector);

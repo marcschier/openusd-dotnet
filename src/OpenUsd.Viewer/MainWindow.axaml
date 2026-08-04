@@ -379,6 +379,71 @@
                     AutomationProperties.Name="Snap manual timeline changes to authored frames"
                     Content="Snap manual time changes to authored frames" />
                 <TextBlock
+                    Margin="0,8,0,0"
+                    FontWeight="SemiBold"
+                    Text="Viewport display" />
+                <TextBlock Text="Draw mode" />
+                <ComboBox
+                    x:Name="ViewportDrawModeSelector"
+                    AutomationProperties.Name="Viewport draw mode"
+                    IsEnabled="False"
+                    SelectedIndex="0">
+                  <ComboBoxItem Content="Smooth shaded" Tag="SmoothShaded" />
+                  <ComboBoxItem Content="Flat shaded" Tag="FlatShaded" />
+                  <ComboBoxItem Content="Wireframe" Tag="Wireframe" />
+                  <ComboBoxItem Content="Points" Tag="Points" />
+                  <ComboBoxItem Content="Bounds" Tag="Bounds" />
+                </ComboBox>
+                <TextBlock Text="Render purposes" />
+                <WrapPanel>
+                  <CheckBox
+                      x:Name="PurposeDefaultCheckBox"
+                      AutomationProperties.Name="Show default purpose"
+                      Content="Default"
+                      IsChecked="True"
+                      IsEnabled="False" />
+                  <CheckBox
+                      x:Name="PurposeProxyCheckBox"
+                      AutomationProperties.Name="Show proxy purpose"
+                      Content="Proxy"
+                      IsChecked="True"
+                      IsEnabled="False" />
+                  <CheckBox
+                      x:Name="PurposeRenderCheckBox"
+                      AutomationProperties.Name="Show render purpose"
+                      Content="Render"
+                      IsChecked="True"
+                      IsEnabled="False" />
+                  <CheckBox
+                      x:Name="PurposeGuideCheckBox"
+                      AutomationProperties.Name="Show guide purpose"
+                      Content="Guide"
+                      IsEnabled="False" />
+                </WrapPanel>
+                <CheckBox
+                    x:Name="SceneLightingCheckBox"
+                    AutomationProperties.Name="Use scene lighting"
+                    Content="Use scene lighting"
+                    IsChecked="True"
+                    IsEnabled="False" />
+                <CheckBox
+                    x:Name="SceneShadowsCheckBox"
+                    AutomationProperties.Name="Use scene shadows"
+                    Content="Use shadows"
+                    IsChecked="True"
+                    IsEnabled="False" />
+                <TextBlock Text="Background colour" />
+                <ComboBox
+                    x:Name="BackgroundColorSelector"
+                    AutomationProperties.Name="Viewport background colour"
+                    IsEnabled="False"
+                    SelectedIndex="0">
+                  <ComboBoxItem Content="Black" Tag="Black" />
+                  <ComboBoxItem Content="Dark gray" Tag="DarkGray" />
+                  <ComboBoxItem Content="Light gray" Tag="LightGray" />
+                  <ComboBoxItem Content="White" Tag="White" />
+                </ComboBox>
+                <TextBlock
                     x:Name="SettingsState"
                     Text="Settings are saved atomically when the Viewer closes."
                     TextWrapping="Wrap" />
