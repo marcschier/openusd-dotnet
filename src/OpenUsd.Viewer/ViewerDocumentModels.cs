@@ -202,6 +202,7 @@ internal sealed record ViewerAttributeSnapshot(
     bool HasAuthoredValue,
     bool IsBlocked,
     int TimeSampleCount,
+    string TimeSamples,
     string Value) : IUsdDetachedResult;
 
 internal sealed record ViewerRelationshipSnapshot(
@@ -647,13 +648,14 @@ internal static class ViewerStageSnapshotBuilder
             UsdAttribute attribute = attributes[index];
             string typeName = attribute.TypeName;
             UsdAttributeValueState state = attribute.GetValueState();
-            int sampleCount = attribute.GetTimeSamples().Length;
+            double[] timeSamples = attribute.GetTimeSamples();
             attributeSnapshots[index] = new ViewerAttributeSnapshot(
                 attribute.Name,
                 typeName,
                 state.HasAuthoredValueOpinion,
                 state.IsBlocked,
-                sampleCount,
+                timeSamples.Length,
+                FormatTimeSamples(timeSamples),
                 GetDisplayValue(attribute, typeName, state));
         }
 
@@ -726,6 +728,26 @@ internal static class ViewerStageSnapshotBuilder
                 string.IsNullOrEmpty(selection) ? null : selection);
         }
         return variantSets;
+    }
+
+    internal static string FormatTimeSamples(IReadOnlyList<double> samples)
+    {
+        ArgumentNullException.ThrowIfNull(samples);
+        if (samples.Count == 0)
+        {
+            return "<none>";
+        }
+        if (samples.Count <= 4)
+        {
+            return string.Join(
+                ", ",
+                samples.Select(sample => sample.ToString("G17", CultureInfo.InvariantCulture)));
+        }
+
+        int middle = samples.Count / 2;
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{samples[0]:G17}, {samples[middle]:G17}, {samples[^1]:G17} ({samples.Count} samples)");
     }
 
     private static ViewerStageStatisticsSnapshot BuildStatistics(

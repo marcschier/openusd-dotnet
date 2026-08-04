@@ -3799,10 +3799,22 @@ public sealed partial class MainWindow : Window, IDisposable
         try
         {
             InspectorRows.Children.Clear();
+            ValueRows.Children.Clear();
+            MetadataRows.Children.Clear();
             CompositionRows.Children.Clear();
             InspectorRows.Children.Add(new TextBlock
             {
                 Text = $"Loading {primPath}..."
+            });
+            ValueRows.Children.Add(new TextBlock
+            {
+                Text = $"Loading values for {primPath}...",
+                TextWrapping = TextWrapping.Wrap
+            });
+            MetadataRows.Children.Add(new TextBlock
+            {
+                Text = $"Loading metadata for {primPath}...",
+                TextWrapping = TextWrapping.Wrap
             });
             CompositionRows.Children.Add(new TextBlock
             {
@@ -3833,11 +3845,23 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 ShowError($"Could not inspect '{primPath}': {exception.Message}");
                 InspectorRows.Children.Clear();
+                ValueRows.Children.Clear();
+                MetadataRows.Children.Clear();
                 CompositionRows.Children.Clear();
                 InspectorRows.Children.Add(new TextBlock
                 {
                     FontWeight = FontWeight.SemiBold,
                     Text = $"Inspection failed: {exception.Message}",
+                    TextWrapping = TextWrapping.Wrap
+                });
+                ValueRows.Children.Add(new TextBlock
+                {
+                    Text = $"Value inspection failed: {exception.Message}",
+                    TextWrapping = TextWrapping.Wrap
+                });
+                MetadataRows.Children.Add(new TextBlock
+                {
+                    Text = $"Metadata inspection failed: {exception.Message}",
                     TextWrapping = TextWrapping.Wrap
                 });
                 CompositionRows.Children.Add(new TextBlock
@@ -3857,6 +3881,8 @@ public sealed partial class MainWindow : Window, IDisposable
         try
         {
             InspectorRows.Children.Clear();
+            ValueRows.Children.Clear();
+            MetadataRows.Children.Clear();
             CompositionRows.Children.Clear();
             AddInspectorHeading("Prim identity");
             AddInspectorRow("Path", inspector.Path);
@@ -3898,6 +3924,31 @@ public sealed partial class MainWindow : Window, IDisposable
                 inspector.AppliedSchemas.Length == 0
                     ? "<none>"
                     : string.Join(", ", inspector.AppliedSchemas));
+            AddMetadataHeading("Prim metadata");
+            AddMetadataRow("Path", inspector.Path);
+            AddMetadataRow(
+                "Type",
+                string.IsNullOrEmpty(inspector.TypeName) ? "<untyped>" : inspector.TypeName);
+            AddMetadataRow("Active", inspector.IsActive.ToString());
+            AddMetadataRow("Loaded", inspector.IsLoaded.ToString());
+            AddMetadataRow("Instance", inspector.IsInstance.ToString());
+            AddMetadataRow("Instanceable", inspector.IsInstanceable.ToString());
+            AddMetadataRow("Prototype", inspector.IsPrototype.ToString());
+            AddMetadataRow(
+                "Prototype path",
+                string.IsNullOrEmpty(inspector.PrototypePath)
+                    ? "<none>"
+                    : inspector.PrototypePath);
+            AddMetadataRow(
+                "Applied schemas",
+                inspector.AppliedSchemas.Length == 0
+                    ? "<none>"
+                    : string.Join(", ", inspector.AppliedSchemas));
+            if (inspector.IsImageable)
+            {
+                AddMetadataRow("Visibility", inspector.Visibility?.ToString() ?? "<unknown>");
+                AddMetadataRow("Purpose", inspector.Purpose?.ToString() ?? "<unknown>");
+            }
 
             AddInspectorHeading("Session controls");
             AddInspectorButtonRow(
@@ -3949,19 +4000,24 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             AddInspectorHeading($"Variant sets ({inspector.VariantSets.Length})");
+            AddMetadataHeading($"Variant sets ({inspector.VariantSets.Length})");
             if (inspector.VariantSets.Length == 0)
             {
                 AddInspectorRow("Variant sets", "<none>");
+                AddMetadataRow("Variant sets", "<none>");
             }
             foreach (ViewerVariantSetSnapshot variantSet in inspector.VariantSets)
             {
                 AddInspectorVariantRow(variantSet, inspector);
+                AddMetadataVariantRow(variantSet);
             }
 
             AddInspectorHeading($"Payload arcs ({inspector.PayloadArcs.Length})");
+            AddMetadataHeading($"Payload arcs ({inspector.PayloadArcs.Length})");
             if (inspector.PayloadArcs.Length == 0)
             {
                 AddInspectorRow("Payload arcs", "<none>");
+                AddMetadataRow("Payload arcs", "<none>");
             }
             for (int index = 0; index < inspector.PayloadArcs.Length; index++)
             {
@@ -3974,6 +4030,16 @@ public sealed partial class MainWindow : Window, IDisposable
                     $"{label} target",
                     ViewerPayloadArcFormatter.FormatTargetPrimPath(payloadArc.TargetPrimPath));
                 AddInspectorRow(
+                    $"{label} source",
+                    ViewerPayloadArcFormatter.FormatSourceLayerIdentifier(
+                        payloadArc.SourceLayerIdentifier));
+                AddMetadataRow(
+                    $"{label} asset",
+                    ViewerPayloadArcFormatter.FormatAssetPath(payloadArc.AssetPath));
+                AddMetadataRow(
+                    $"{label} target",
+                    ViewerPayloadArcFormatter.FormatTargetPrimPath(payloadArc.TargetPrimPath));
+                AddMetadataRow(
                     $"{label} source",
                     ViewerPayloadArcFormatter.FormatSourceLayerIdentifier(
                         payloadArc.SourceLayerIdentifier));
@@ -3998,6 +4064,11 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             AddInspectorHeading($"Attributes ({inspector.Attributes.Length})");
+            AddValueHeading($"Attributes ({inspector.Attributes.Length})");
+            if (inspector.Attributes.Length == 0)
+            {
+                AddValueRow("Attributes", "<none>");
+            }
             foreach (ViewerAttributeSnapshot attribute in inspector.Attributes)
             {
                 AddInspectorRow(
@@ -4005,20 +4076,33 @@ public sealed partial class MainWindow : Window, IDisposable
                     $"{attribute.TypeName}; authored={attribute.HasAuthoredValue}; " +
                     $"blocked={attribute.IsBlocked}; samples={attribute.TimeSampleCount}; " +
                     $"value={attribute.Value}");
+                AddValueAttributeRow(attribute, inspector);
             }
             AddInspectorHeading($"Relationships ({inspector.Relationships.Length})");
+            AddValueHeading($"Relationships ({inspector.Relationships.Length})");
+            AddMetadataHeading($"Relationships ({inspector.Relationships.Length})");
+            if (inspector.Relationships.Length == 0)
+            {
+                AddValueRow("Relationships", "<none>");
+                AddMetadataRow("Relationships", "<none>");
+            }
             foreach (ViewerRelationshipSnapshot relationship in inspector.Relationships)
             {
+                string targets = string.IsNullOrEmpty(relationship.Targets)
+                    ? "<no targets>"
+                    : relationship.Targets;
                 AddInspectorRow(
                     relationship.Name,
-                    string.IsNullOrEmpty(relationship.Targets)
-                        ? "<no targets>"
-                        : relationship.Targets);
+                    targets);
+                AddValueRow(relationship.Name, targets);
+                AddMetadataRow(relationship.Name, targets);
             }
             AddInspectorHeading($"Unsupported ({inspector.UnsupportedFeatures.Length})");
+            AddMetadataHeading($"Unsupported ({inspector.UnsupportedFeatures.Length})");
             foreach (ViewerUnsupportedFeature unsupported in inspector.UnsupportedFeatures)
             {
                 AddInspectorRow(unsupported.Code, unsupported.Message);
+                AddMetadataRow(unsupported.Code, unsupported.Message);
             }
         }
         finally
@@ -4045,6 +4129,22 @@ public sealed partial class MainWindow : Window, IDisposable
             Text = text
         });
 
+    private void AddValueHeading(string text) =>
+        ValueRows.Children.Add(new TextBlock
+        {
+            Margin = new Avalonia.Thickness(0, 8, 0, 0),
+            FontWeight = FontWeight.SemiBold,
+            Text = text
+        });
+
+    private void AddMetadataHeading(string text) =>
+        MetadataRows.Children.Add(new TextBlock
+        {
+            Margin = new Avalonia.Thickness(0, 8, 0, 0),
+            FontWeight = FontWeight.SemiBold,
+            Text = text
+        });
+
     private void AddInspectorRow(string name, string value) =>
         InspectorRows.Children.Add(new TextBlock
         {
@@ -4054,6 +4154,20 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void AddCompositionRow(string name, string value) =>
         CompositionRows.Children.Add(new TextBlock
+        {
+            Text = $"{name}: {ViewerScalarFormatter.Bound(value, 512)}",
+            TextWrapping = TextWrapping.Wrap
+        });
+
+    private void AddValueRow(string name, string value) =>
+        ValueRows.Children.Add(new TextBlock
+        {
+            Text = $"{name}: {ViewerScalarFormatter.Bound(value, 512)}",
+            TextWrapping = TextWrapping.Wrap
+        });
+
+    private void AddMetadataRow(string name, string value) =>
+        MetadataRows.Children.Add(new TextBlock
         {
             Text = $"{name}: {ViewerScalarFormatter.Bound(value, 512)}",
             TextWrapping = TextWrapping.Wrap
@@ -4114,6 +4228,84 @@ public sealed partial class MainWindow : Window, IDisposable
         selector.SelectionChanged += OnPrimTokenSelectionChanged;
         row.Children.Add(selector);
         InspectorRows.Children.Add(row);
+    }
+
+    private void AddValueAttributeRow(
+        ViewerAttributeSnapshot attribute,
+        ViewerPrimInspectorSnapshot inspector)
+    {
+        var row = new StackPanel
+        {
+            Spacing = 3
+        };
+        row.Children.Add(new TextBlock
+        {
+            Text = $"{attribute.Name}: {attribute.TypeName}; authored={attribute.HasAuthoredValue}; " +
+                $"blocked={attribute.IsBlocked}",
+            TextWrapping = TextWrapping.Wrap
+        });
+        row.Children.Add(new TextBlock
+        {
+            Text = $"Value: {ViewerScalarFormatter.Bound(attribute.Value, 512)}",
+            TextWrapping = TextWrapping.Wrap
+        });
+        row.Children.Add(new TextBlock
+        {
+            Text = $"Time samples: {attribute.TimeSamples}",
+            TextWrapping = TextWrapping.Wrap
+        });
+        var actions = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 8
+        };
+        AddAttributeActionButton(
+            actions,
+            "Clear",
+            new ViewerPrimCommandRequest(
+                ViewerPrimCommand.ClearAttributeValue,
+                AttributeName: attribute.Name),
+            inspector);
+        AddAttributeActionButton(
+            actions,
+            "Block",
+            new ViewerPrimCommandRequest(
+                ViewerPrimCommand.BlockAttributeValue,
+                AttributeName: attribute.Name),
+            inspector);
+        row.Children.Add(actions);
+        ValueRows.Children.Add(row);
+    }
+
+    private void AddAttributeActionButton(
+        StackPanel actions,
+        string action,
+        ViewerPrimCommandRequest request,
+        ViewerPrimInspectorSnapshot inspector)
+    {
+        var button = new Button
+        {
+            Content = action,
+            Tag = request,
+            IsEnabled = CanRunPrimCommand(request.Command, inspector)
+        };
+        AutomationProperties.SetName(
+            button,
+            $"{action} attribute {request.AttributeName} on prim {inspector.Path}");
+        button.Click += OnPrimCommandClick;
+        actions.Children.Add(button);
+    }
+
+    private void AddMetadataVariantRow(ViewerVariantSetSnapshot variantSet)
+    {
+        string currentSelection = variantSet.Selection is null
+            ? "<no selection>"
+            : string.IsNullOrEmpty(variantSet.Selection)
+                ? "<empty variant name>"
+                : variantSet.Selection;
+        AddMetadataRow(
+            variantSet.Name,
+            $"selection={currentSelection}; available={string.Join(", ", variantSet.VariantNames)}");
     }
 
     private void AddInspectorVariantRow(
@@ -4518,6 +4710,12 @@ public sealed partial class MainWindow : Window, IDisposable
             case ViewerPrimCommand.SetVariantSelection:
                 ApplyVariantSelection(prim, request);
                 break;
+            case ViewerPrimCommand.ClearAttributeValue:
+                prim.GetAttribute(request.AttributeName!).ClearValue();
+                break;
+            case ViewerPrimCommand.BlockAttributeValue:
+                prim.GetAttribute(request.AttributeName!).BlockValue();
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(request));
         }
@@ -4659,12 +4857,28 @@ public sealed partial class MainWindow : Window, IDisposable
         _currentInspector = null;
         UpdateCameraAvailability();
         InspectorRows.Children.Clear();
+        ValueRows.Children.Clear();
+        MetadataRows.Children.Clear();
         CompositionRows.Children.Clear();
         InspectorRows.Children.Add(new TextBlock
         {
             Text = _coordinator is null
                 ? "Open a USD stage, then select a prim to inspect it."
                 : "Select a prim to inspect metadata, variants, payloads, and session controls.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        ValueRows.Children.Add(new TextBlock
+        {
+            Text = _coordinator is null
+                ? "Open a USD stage, then select a prim to inspect values."
+                : "Select a prim to inspect attribute values and time samples.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        MetadataRows.Children.Add(new TextBlock
+        {
+            Text = _coordinator is null
+                ? "Open a USD stage, then select a prim to inspect metadata."
+                : "Select a prim to inspect metadata, variants, payloads, and relationships.",
             TextWrapping = TextWrapping.Wrap
         });
         CompositionRows.Children.Add(new TextBlock

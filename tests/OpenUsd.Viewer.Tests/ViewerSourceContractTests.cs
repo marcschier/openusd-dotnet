@@ -61,7 +61,9 @@ public sealed class ViewerSourceContractTests
         await Assert.That(markup).Contains("x:Name=\"HierarchyFilter\"");
         await Assert.That(markup).Contains("x:Name=\"StageHierarchy\"");
         await Assert.That(markup).Contains("x:Name=\"InspectorRows\"");
-        await Assert.That(markup).Contains("x:Name=\"LayersTab\" Header=\"_Layers\"");
+        await Assert.That(markup).Contains("x:Name=\"ValueRows\"");
+        await Assert.That(markup).Contains("x:Name=\"MetadataRows\"");
+        await Assert.That(markup).Contains("x:Name=\"LayersTab\" Header=\"_LayerStack\"");
         await Assert.That(markup).Contains("x:Name=\"LayersRows\"");
         await Assert.That(markup).Contains("x:Name=\"SetSessionEditTargetButton\"");
         await Assert.That(markup).Contains("x:Name=\"SetRootEditTargetButton\"");

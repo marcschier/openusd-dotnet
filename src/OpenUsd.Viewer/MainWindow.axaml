@@ -270,6 +270,30 @@
               </StackPanel>
             </ScrollViewer>
           </TabItem>
+          <TabItem x:Name="ValueTab" Header="_Value">
+            <ScrollViewer Margin="0,8,0,0">
+              <StackPanel
+                  x:Name="ValueRows"
+                  AutomationProperties.Name="Selected prim attribute values and time samples"
+                  Spacing="6">
+                <TextBlock
+                    Text="Select a prim to inspect attribute values and samples."
+                    TextWrapping="Wrap" />
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+          <TabItem x:Name="MetadataTab" Header="_Metadata">
+            <ScrollViewer Margin="0,8,0,0">
+              <StackPanel
+                  x:Name="MetadataRows"
+                  AutomationProperties.Name="Selected prim metadata, variants, payloads, and relationships"
+                  Spacing="6">
+                <TextBlock
+                    Text="Select a prim to inspect metadata."
+                    TextWrapping="Wrap" />
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
           <TabItem x:Name="CompositionTab" Header="_Composition">
             <ScrollViewer Margin="0,8,0,0">
               <StackPanel
@@ -282,7 +306,7 @@
               </StackPanel>
             </ScrollViewer>
           </TabItem>
-          <TabItem x:Name="LayersTab" Header="_Layers">
+          <TabItem x:Name="LayersTab" Header="_LayerStack">
             <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,Auto,Auto,*">
               <TextBlock
                   x:Name="LayerEditTarget"
