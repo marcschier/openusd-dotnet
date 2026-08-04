@@ -128,6 +128,7 @@ def Xform "World"
     private const byte MinimumColorSpaceDivergenceChannelDelta = 24;
     private const byte MinimumCullDivergenceChannelDelta = 96;
     private const byte MinimumLightDivergenceChannelDelta = 16;
+    private const byte MinimumMaterialTextureDivergenceChannelDelta = 16;
     private static readonly Lazy<nuint> ImagePluginsRegistered = new(
         RegisterImagePlugins,
         LazyThreadSafetyMode.ExecutionAndPublication);
@@ -812,6 +813,64 @@ def Xform "World"
     }
 
     [Test]
+    public async Task NonDiffuseTextureSlotsMatchNeutralInputsOnVulkan()
+    {
+        var evidence = new List<string>();
+        foreach (MaterialTextureSlotCase testCase in CreateMaterialTextureSlotCases())
+        {
+            ParityImage image;
+            try
+            {
+                image = CaptureSyntheticMaterialTextureSlotSelfConsistency(testCase, testCase.NeutralFallback);
+            }
+            catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+            {
+                SkipOrFail(testCase.Name + " Vulkan self-consistency", exception.ToString());
+                return;
+            }
+
+            (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+            string line = FormatSelfConsistencyMetrics(testCase.Name, maxChannelDelta, meanChannelDelta);
+            Console.WriteLine(line);
+            evidence.Add(line);
+            await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+            await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(2.000);
+        }
+
+        WriteEvidence("material-texture-slot-self-consistency.txt", evidence);
+    }
+
+    [Test]
+    public async Task NonDiffuseTextureSlotsDivergeFromNeutralInputsOnVulkan()
+    {
+        var evidence = new List<string>();
+        foreach (MaterialTextureSlotCase testCase in CreateMaterialTextureSlotCases())
+        {
+            ParityImage image;
+            try
+            {
+                image = CaptureSyntheticMaterialTextureSlotSelfConsistency(testCase, testCase.DivergentFallback);
+            }
+            catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+            {
+                SkipOrFail(testCase.Name + " Vulkan divergence", exception.ToString());
+                return;
+            }
+
+            (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+            string line = FormatSelfConsistencyMetrics(
+                testCase.Name + "-divergence",
+                maxChannelDelta,
+                meanChannelDelta);
+            Console.WriteLine(line);
+            evidence.Add(line);
+            await Assert.That(maxChannelDelta).IsGreaterThan(MinimumMaterialTextureDivergenceChannelDelta);
+        }
+
+        WriteEvidence("material-texture-slot-divergence.txt", evidence);
+    }
+
+    [Test]
     public async Task CullStyleBackMatchesBackUnlessDoubleSidedForSingleSidedMeshOnVulkan()
     {
         ParityImage image;
@@ -1231,6 +1290,17 @@ def Xform "World"
 
     private sealed record SelfConsistencyCase(string Name, SilkTextureWrap TextureWrap);
 
+    private sealed record MaterialTextureSlotCase(
+        string Name,
+        SilkMaterialParameter Parameter,
+        SilkColorSpace ColorSpace,
+        float[] NeutralFallback,
+        float[] DivergentFallback,
+        MaterialScalarSpec[] LeftScalars,
+        MaterialScalarSpec[] RightScalars);
+
+    private readonly record struct MaterialScalarSpec(SilkMaterialParameter Parameter, float[] Values);
+
     private enum AreaLightGate
     {
         RectEquivalent,
@@ -1365,6 +1435,90 @@ def Xform "World"
                 "st"));
     }
 
+    private static MaterialTextureSlotCase[] CreateMaterialTextureSlotCases()
+    {
+        MaterialScalarSpec[] shadedDefaults =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.62f, 0.38f, 0.14f]),
+            new(SilkMaterialParameter.Roughness, [0.62f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+            new(SilkMaterialParameter.SpecularColor, [0.45f, 0.45f, 0.45f]),
+            new(SilkMaterialParameter.UseSpecularWorkflow, [1.0f]),
+        ];
+        MaterialScalarSpec[] texturedMetallic =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.62f, 0.38f, 0.14f]),
+            new(SilkMaterialParameter.Roughness, [0.62f]),
+            new(SilkMaterialParameter.Metallic, [1.0f]),
+        ];
+        MaterialScalarSpec[] untexturedMetallic =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.62f, 0.38f, 0.14f]),
+            new(SilkMaterialParameter.Roughness, [0.62f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] roughnessFocused =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.08f, 0.08f, 0.08f]),
+            new(SilkMaterialParameter.Roughness, [0.92f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+            new(SilkMaterialParameter.SpecularColor, [1.0f, 1.0f, 1.0f]),
+            new(SilkMaterialParameter.UseSpecularWorkflow, [1.0f]),
+        ];
+        return
+        [
+            new(
+                "texture-slot-emissive",
+                SilkMaterialParameter.EmissiveColor,
+                SilkColorSpace.Raw,
+                [0, 0, 0, 1],
+                [0.28f, 0.10f, 0.02f, 1],
+                shadedDefaults,
+                shadedDefaults),
+            new(
+                "texture-slot-roughness",
+                SilkMaterialParameter.Roughness,
+                SilkColorSpace.Raw,
+                [1, 1, 1, 1],
+                [1, 0.02f, 1, 1],
+                roughnessFocused,
+                roughnessFocused),
+            new(
+                "texture-slot-metallic",
+                SilkMaterialParameter.Metallic,
+                SilkColorSpace.Raw,
+                [1, 1, 0, 1],
+                [1, 1, 1, 1],
+                untexturedMetallic,
+                texturedMetallic),
+            new(
+                "texture-slot-normal",
+                SilkMaterialParameter.Normal,
+                SilkColorSpace.Raw,
+                [0.5f, 0.5f, 1, 1],
+                [1, 0.5f, 0.5f, 1],
+                shadedDefaults,
+                shadedDefaults),
+        ];
+    }
+
+    private static ParityImage CaptureSyntheticMaterialTextureSlotSelfConsistency(
+        MaterialTextureSlotCase testCase,
+        float[] fallback) =>
+        CaptureSyntheticMaterialPair(
+            CreateMaterialCommandWithScalars("/Repeat", SilkSurfaceKind.PreviewSurface, testCase.LeftScalars),
+            CreateTexturedMaterialCommand(
+                "/Candidate",
+                MissingTextureAssetPath(),
+                testCase.Parameter,
+                SilkTextureWrap.Repeat,
+                testCase.ColorSpace,
+                [1, 1, 1, 1],
+                [0, 0, 0, 0],
+                fallback,
+                "st",
+                testCase.RightScalars));
+
     private static ParityImage CaptureSyntheticCullStyleSelfConsistency(
         SilkMeshCullStyle candidateCullStyle,
         bool doubleSided = false,
@@ -1480,6 +1634,9 @@ def Xform "World"
             "test-assets",
             "parity",
             "parity-texture-asymmetric.png");
+
+    private static string MissingTextureAssetPath() =>
+        Path.Combine(FindRepositoryRoot() ?? AppContext.BaseDirectory, "test-assets", "parity", "missing.png");
 
     private static float[] OutsideUnitTextureCoordinates() =>
     [
@@ -1618,23 +1775,37 @@ def Xform "World"
         SilkSurfaceKind kind,
         ReadOnlySpan<float> diffuseColor = default)
     {
+        MaterialScalarSpec[] scalars =
+        [
+            new(
+                SilkMaterialParameter.DiffuseColor,
+                diffuseColor.IsEmpty ? [0.90f, 0.28f, 0.08f] : diffuseColor.ToArray()),
+            new(SilkMaterialParameter.Roughness, [0.72f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        return CreateMaterialCommandWithScalars(path, kind, scalars);
+    }
+
+    private static byte[] CreateMaterialCommandWithScalars(
+        string path,
+        SilkSurfaceKind kind,
+        ReadOnlySpan<MaterialScalarSpec> scalars)
+    {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
-        var bytes = new byte[32 + pathBytes.Length + 44 + (2 * sizeof(uint))];
+        var bytes = new byte[
+            32 + pathBytes.Length + GetScalarByteCount(scalars) + (2 * sizeof(uint))];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(path));
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), (uint)pathBytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)kind);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), 3);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), checked((uint)scalars.Length));
         pathBytes.CopyTo(bytes.AsSpan(32));
         int offset = 32 + pathBytes.Length;
-        WriteScalar(
-            bytes,
-            ref offset,
-            SilkMaterialParameter.DiffuseColor,
-            diffuseColor.IsEmpty ? [0.90f, 0.28f, 0.08f] : diffuseColor);
-        WriteScalar(bytes, ref offset, SilkMaterialParameter.Roughness, [0.72f]);
-        WriteScalar(bytes, ref offset, SilkMaterialParameter.Metallic, [0.0f]);
+        foreach (MaterialScalarSpec scalar in scalars)
+        {
+            WriteScalar(bytes, ref offset, scalar.Parameter, scalar.Values);
+        }
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + sizeof(uint)), 0);
         return bytes;
@@ -1651,21 +1822,56 @@ def Xform "World"
         ReadOnlySpan<float> fallback,
         string uvPrimvar)
     {
+        MaterialScalarSpec[] scalars =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.90f, 0.28f, 0.08f]),
+            new(SilkMaterialParameter.Roughness, [0.72f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        return CreateTexturedMaterialCommand(
+            path,
+            asset,
+            parameter,
+            wrap,
+            colorSpace,
+            scale,
+            bias,
+            fallback,
+            uvPrimvar,
+            scalars);
+    }
+
+    private static byte[] CreateTexturedMaterialCommand(
+        string path,
+        string asset,
+        SilkMaterialParameter parameter,
+        SilkTextureWrap wrap,
+        SilkColorSpace colorSpace,
+        ReadOnlySpan<float> scale,
+        ReadOnlySpan<float> bias,
+        ReadOnlySpan<float> fallback,
+        string uvPrimvar,
+        ReadOnlySpan<MaterialScalarSpec> scalars)
+    {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         byte[] assetBytes = Encoding.UTF8.GetBytes(asset);
         byte[] uvBytes = Encoding.UTF8.GetBytes(uvPrimvar);
         var bytes = new byte[
-            32 + pathBytes.Length + 12 + 76 + assetBytes.Length + uvBytes.Length + sizeof(uint)];
+            32 + pathBytes.Length + GetScalarByteCount(scalars) + 76 +
+            assetBytes.Length + uvBytes.Length + (2 * sizeof(uint))];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(path));
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), (uint)pathBytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)SilkSurfaceKind.PreviewSurface);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), checked((uint)scalars.Length));
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), 1);
         pathBytes.CopyTo(bytes.AsSpan(32));
         int offset = 32 + pathBytes.Length;
-        WriteScalar(bytes, ref offset, SilkMaterialParameter.Roughness, [0.72f]);
+        foreach (MaterialScalarSpec scalar in scalars)
+        {
+            WriteScalar(bytes, ref offset, scalar.Parameter, scalar.Values);
+        }
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), (uint)parameter);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 4), (uint)wrap);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 8), (uint)wrap);
@@ -1678,7 +1884,9 @@ def Xform "World"
         WriteVector4(bytes.AsSpan(offset + 60), fallback);
         assetBytes.CopyTo(bytes.AsSpan(offset + 76));
         uvBytes.CopyTo(bytes.AsSpan(offset + 76 + assetBytes.Length));
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(bytes.Length - sizeof(uint)), 0);
+        int generatedOffset = offset + 76 + assetBytes.Length + uvBytes.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset + sizeof(uint)), 0);
         return bytes;
     }
 
@@ -1688,6 +1896,16 @@ def Xform "World"
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes[(component * sizeof(float))..], values[component]);
         }
+    }
+
+    private static int GetScalarByteCount(ReadOnlySpan<MaterialScalarSpec> scalars)
+    {
+        int length = 0;
+        foreach (MaterialScalarSpec scalar in scalars)
+        {
+            length = checked(length + (2 * sizeof(uint)) + (scalar.Values.Length * sizeof(float)));
+        }
+        return length;
     }
 
     private static byte[] CreateTexturedMeshCommand(
