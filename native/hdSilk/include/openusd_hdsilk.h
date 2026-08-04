@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 9u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 10u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 4u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -149,6 +149,11 @@ extern "C" {
 ///   float ambient_color[3]
 ///   float ambient_intensity
 ///
+/// ABI v10 appends a generated MaterialX fragment SPIR-V payload to
+/// MATERIAL_UPSERT. The existing fixed header, scalar table and texture table
+/// stay byte-for-byte identical; consumers read the generated payload after the
+/// texture table.
+///
 /// All offsets are from the command header's first byte. stable_id_hash is
 /// 64-bit FNV-1a over the exact path bytes and is an index only: path is the
 /// authoritative identity. prim_id is Hydra's explicit non-negative Rprim
@@ -190,6 +195,8 @@ extern "C" {
 ///       32    * uint8    path[path_byte_count] (UTF-8, no NUL)
 ///        *    *          scalars[scalar_count]
 ///        *    *          textures[texture_count]
+///        *    4 uint32   generated_fragment_spirv_byte_count
+///        *    * uint8    generated_fragment_spirv_bytes
 ///
 /// Each scalar entry is:
 ///        0    4 uint32   parameter (OPENUSD_SILK_MATERIAL_*)
@@ -257,6 +264,7 @@ extern "C" {
 #define OPENUSD_SILK_SURFACE_UNSUPPORTED 0u
 #define OPENUSD_SILK_SURFACE_PREVIEW_SURFACE 1u
 #define OPENUSD_SILK_SURFACE_MATERIALX_PROJECTED 2u
+#define OPENUSD_SILK_SURFACE_MATERIALX_GENERATED 3u
 
 /// UsdPreviewSurface inputs carried by the ABI v5 material tables.
 #define OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR 1u

@@ -26,6 +26,103 @@ public sealed class StormSilkParityCaptureDriverTests
     private const string D3D12WarpBackendName = "D3D12 WARP";
     private const string VulkanSwiftShaderBackendName = "Vulkan SwiftShader";
     private const string MetalBackendName = "Metal";
+    private const string GeneratedMaterialXSelfConsistencyStage = """
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 1
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "GeneratedMtlxQuad" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/GeneratedMtlx>
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (-0.80, -0.52, 0.08), (-0.20, -0.52, 0.08),
+            (-0.20, 0.48, 0.08), (-0.80, 0.48, 0.08)
+        ]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+            interpolation = "vertex"
+        )
+        color3f[] primvars:displayColor = [(0.12, 0.12, 0.12)]
+        uniform token primvars:displayColor:interpolation = "constant"
+    }
+
+    def Mesh "PreviewQuad" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/PreviewEquivalent>
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (0.20, -0.52, 0.08), (0.80, -0.52, 0.08),
+            (0.80, 0.48, 0.08), (0.20, 0.48, 0.08)
+        ]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+            interpolation = "vertex"
+        )
+        color3f[] primvars:displayColor = [(0.12, 0.12, 0.12)]
+        uniform token primvars:displayColor:interpolation = "constant"
+    }
+
+    def Scope "Looks"
+    {
+        def Material "GeneratedMtlx" (
+            prepend apiSchemas = ["MaterialXConfigAPI"]
+        )
+        {
+            string config:mtlx:version = "1.38"
+            token outputs:surface.connect = </World/Looks/GeneratedMtlx/Unlit.outputs:out>
+            token outputs:mtlx:surface.connect = </World/Looks/GeneratedMtlx/Unlit.outputs:out>
+            def Shader "Color"
+            {
+                uniform token info:id = "ND_constant_color3"
+                color3f inputs:value = (0.45, 0.18, 0.06)
+                color3f outputs:out
+            }
+            def Shader "Multiply"
+            {
+                uniform token info:id = "ND_multiply_color3FA"
+                color3f inputs:in1.connect = </World/Looks/GeneratedMtlx/Color.outputs:out>
+                float inputs:in2 = 2.0
+                color3f outputs:out
+            }
+            def Shader "Unlit"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/GeneratedMtlx/Multiply.outputs:out>
+                token outputs:out
+            }
+        }
+        def Material "PreviewEquivalent"
+        {
+            token outputs:surface.connect = </World/Looks/PreviewEquivalent/PreviewSurface.outputs:surface>
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0, 0, 0)
+                color3f inputs:emissiveColor = (0.90, 0.36, 0.12)
+                float inputs:roughness = 1.0
+                token outputs:surface
+            }
+        }
+    }
+}
+""";
 
     /// <summary>
     /// Largest single-channel difference tolerated on a scene that binds a real
@@ -463,6 +560,43 @@ public sealed class StormSilkParityCaptureDriverTests
         await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
     }
 
+    [Test]
+    public async Task MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureGeneratedMaterialXSelfConsistency();
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("MaterialX generated Vulkan self-consistency", exception.ToString());
+            return;
+        }
+
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        Console.WriteLine(
+            "materialx-generated-self-consistency maxChannelDelta=" +
+            maxChannelDelta.ToString(CultureInfo.InvariantCulture) +
+            " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture));
+        WriteEvidence(
+            "materialx-generated-self-consistency.txt",
+            [
+                "materialx-generated-self-consistency maxChannelDelta=" +
+                maxChannelDelta.ToString(CultureInfo.InvariantCulture) +
+                " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture),
+            ]);
+
+        if (maxChannelDelta > MaximumShadedChannelDelta ||
+            meanChannelDelta > MaximumShadedMeanChannelDelta)
+        {
+            Console.WriteLine(
+                "materialx-generated-self-consistency is measured but not gated yet: " +
+                "generated Vulkan output does not match the PreviewSurface equivalent.");
+        }
+    }
+
+
     private static void WriteEvidence(string fileName, IEnumerable<string> lines)
     {
         string directory = Path.Combine(AppContext.BaseDirectory, "TestResults", "parity-capture");
@@ -790,10 +924,102 @@ public sealed class StormSilkParityCaptureDriverTests
         return new ParityImage(Width, Height, pixels);
     }
 
+    private static ParityImage CaptureGeneratedMaterialXSelfConsistency()
+    {
+        string stagePath = WriteGeneratedMaterialXSelfConsistencyStage();
+        string pluginPath = ResolvePluginPath();
+        PrependHdSilkNativeSearchPath();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+        using OpenUsdSilkPage page = session.Sync(
+            Width,
+            Height,
+            TimeCode,
+            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+        EnsureGeneratedMaterialPublished(page);
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                checked((uint)Width),
+                checked((uint)Height),
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(checked((uint)Width), checked((uint)Height)));
+        using var renderer = new SilkMeshRenderer(device);
+        var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
+        for (int attempt = 0; attempt < 60; attempt++)
+        {
+            _ = renderer.ApplyAndRender(page, color, depth, options);
+            Thread.Sleep(10);
+        }
+        byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+        color.ReadbackForTesting(pixels);
+        return new ParityImage(Width, Height, pixels);
+    }
+
+    private static void EnsureGeneratedMaterialPublished(OpenUsdSilkPage page)
+    {
+        using SilkCommandEnumerator commands = page.GetEnumerator();
+        while (commands.MoveNext())
+        {
+            if (commands.Current.Type != SilkCommandType.MaterialUpsert)
+            {
+                continue;
+            }
+            SilkMaterialUpsertCommand material = commands.Current.AsMaterialUpsert();
+            if (material.SurfaceKind == SilkSurfaceKind.MaterialXGenerated &&
+                !material.GeneratedFragmentSpirV.IsEmpty)
+            {
+                return;
+            }
+        }
+
+        throw new InvalidOperationException("The generated MaterialX material was not published in the hdSilk page.");
+    }
+
+    private static string WriteGeneratedMaterialXSelfConsistencyStage()
+    {
+        string directory = Path.Combine(AppContext.BaseDirectory, "TestResults", "materialx-generated");
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "materialx-generated-self-consistency.usda");
+        File.WriteAllText(path, GeneratedMaterialXSelfConsistencyStage, new UTF8Encoding(false));
+        return path;
+    }
+
+    private static void PrependHdSilkNativeSearchPath()
+    {
+        string? root = FindRepositoryRoot();
+        if (root is null)
+        {
+            return;
+        }
+
+        PrependNativeSearchPath(
+            Path.Combine(AppContext.BaseDirectory, "parity-capture", "runtime", "bin"),
+            Path.Combine(root, "native", "install", "shim", "win-x64", "bin"),
+            Path.Combine(root, "..", "openusd", "native", "install", "win-x64", "bin"),
+            Path.Combine(root, "..", "openusd", "native", "install", "win-x64", "lib"),
+            Path.Combine(root, "..", "openusd", "native", "install", "vulkan-sdk-1.4.321.0", "Bin"));
+    }
+
+    private static void PrependNativeSearchPath(params string[] directories)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        string currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        string prefix = string.Join(
+            Path.PathSeparator,
+            directories.Where(Directory.Exists).Select(Path.GetFullPath));
+        Environment.SetEnvironmentVariable("PATH", prefix + Path.PathSeparator + currentPath);
+    }
+
     private static byte[] CreateMaterialCommand(string path, SilkSurfaceKind kind)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
-        var bytes = new byte[32 + pathBytes.Length + 44];
+        var bytes = new byte[32 + pathBytes.Length + 44 + sizeof(uint)];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(path));
@@ -805,6 +1031,7 @@ public sealed class StormSilkParityCaptureDriverTests
         WriteScalar(bytes, ref offset, SilkMaterialParameter.DiffuseColor, [0.90f, 0.28f, 0.08f]);
         WriteScalar(bytes, ref offset, SilkMaterialParameter.Roughness, [0.72f]);
         WriteScalar(bytes, ref offset, SilkMaterialParameter.Metallic, [0.0f]);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), 0);
         return bytes;
     }
 
@@ -949,9 +1176,12 @@ public sealed class StormSilkParityCaptureDriverTests
         File.Copy(hdsilkPlugin, Path.Combine(runtimeHdSilkResources, "plugInfo.json"), overwrite: true);
         Directory.CreateDirectory(Path.Combine(runtime, "bin"));
         string runtimeHdSilkLibrary = Path.Combine(runtime, "bin", "openusd_hdsilk.dll");
-        if (!File.Exists(runtimeHdSilkLibrary))
+        try
         {
-            File.Copy(hdsilkLibrary, runtimeHdSilkLibrary);
+            File.Copy(hdsilkLibrary, runtimeHdSilkLibrary, overwrite: true);
+        }
+        catch (IOException) when (File.Exists(runtimeHdSilkLibrary))
+        {
         }
 
         pluginPath = runtimePlugins;

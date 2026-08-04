@@ -54,7 +54,7 @@ struct ParsedAttribute
     float firstValue = 0.0F;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 4);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 9);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 10);
 
 openusd_render_camera AutomaticCamera()
 {
@@ -613,6 +613,14 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     AddSize(&cursor, 76) &&
                     AddSize(&cursor, assetSize) &&
                     AddSize(&cursor, uvSize);
+            }
+            uint32_t generatedFragmentSize = 0;
+            if (valid)
+            {
+                valid = ReadValue(data, size, offset + cursor, &generatedFragmentSize) &&
+                    (generatedFragmentSize % sizeof(uint32_t)) == 0 &&
+                    AddSize(&cursor, sizeof(uint32_t)) &&
+                    AddSize(&cursor, generatedFragmentSize);
             }
             // Requiring the exact size means an unaccounted byte fails here rather
             // than surfacing as a silently mis-read parameter later.

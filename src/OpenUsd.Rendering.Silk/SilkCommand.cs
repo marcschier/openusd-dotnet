@@ -700,7 +700,10 @@ public enum SilkSurfaceKind : uint
     PreviewSurface = 1,
 
     /// <summary>A MaterialX standard_surface projected to PreviewSurface-compatible inputs.</summary>
-    MaterialXProjected = 2
+    MaterialXProjected = 2,
+
+    /// <summary>A MaterialX graph compiled to a runtime fragment shader.</summary>
+    MaterialXGenerated = 3
 }
 
 /// <summary>
@@ -889,6 +892,8 @@ public readonly ref struct SilkMaterialUpsertCommand
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly string _path;
     private readonly int _pathLength;
+    private readonly int _generatedFragmentOffset;
+    private readonly int _generatedFragmentLength;
 
     internal SilkMaterialUpsertCommand(ReadOnlySpan<byte> bytes)
     {
@@ -922,6 +927,31 @@ public readonly ref struct SilkMaterialUpsertCommand
         {
             offset = AdvanceTexture(bytes, offset);
         }
+        if (offset + sizeof(uint) > bytes.Length)
+        {
+            throw new InvalidDataException(
+                "The material upsert generated shader payload length is truncated.");
+        }
+        uint generatedFragmentLength = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, sizeof(uint)));
+        if (generatedFragmentLength > int.MaxValue)
+        {
+            throw new InvalidDataException(
+                "The generated MaterialX fragment SPIR-V payload exceeds the managed page limit.");
+        }
+        _generatedFragmentLength = (int)generatedFragmentLength;
+        offset += sizeof(uint);
+        if ((_generatedFragmentLength % sizeof(uint)) != 0)
+        {
+            throw new InvalidDataException(
+                "The generated MaterialX fragment SPIR-V payload must be 32-bit aligned.");
+        }
+        _generatedFragmentOffset = offset;
+        if (_generatedFragmentLength > bytes.Length - offset)
+        {
+            throw new InvalidDataException(
+                "The generated MaterialX fragment SPIR-V payload is truncated.");
+        }
+        offset += _generatedFragmentLength;
         if (offset != bytes.Length)
         {
             throw new InvalidDataException(
@@ -946,6 +976,12 @@ public readonly ref struct SilkMaterialUpsertCommand
 
     /// <summary>Gets the authoritative USD material path.</summary>
     public string Path => _path;
+
+    /// <summary>Gets generated MaterialX fragment SPIR-V bytes, if this material carries any.</summary>
+    public ReadOnlySpan<byte> GeneratedFragmentSpirV =>
+        _generatedFragmentLength == 0
+            ? []
+            : _bytes.Slice(_generatedFragmentOffset, _generatedFragmentLength);
 
     /// <summary>Gets one constant input.</summary>
     public SilkMaterialScalarEntry GetScalar(int index)

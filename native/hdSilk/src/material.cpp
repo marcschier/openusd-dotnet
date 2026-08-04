@@ -2,6 +2,7 @@
 
 #include "material.h"
 
+#include "materialXBridge.h"
 #include "openusd_hdsilk.h"
 #include "renderDelegate.h"
 #include "sceneState.h"
@@ -30,6 +31,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((UsdPreviewSurface, "UsdPreviewSurface"))
     ((UsdUVTexture, "UsdUVTexture"))
     ((MtlxStandardSurface, "ND_standard_surface_surfaceshader"))
+    ((MtlxSurfaceUnlit, "ND_surface_unlit"))
     ((MtlxNormalMap, "ND_normalmap"))
     ((diffuseColor, "diffuseColor"))
     ((base_color, "base_color"))
@@ -307,7 +309,8 @@ const HdMaterialNode* _FindSurface(const HdMaterialNetwork& network)
     for (auto node = network.nodes.rbegin(); node != network.nodes.rend(); ++node)
     {
         if (node->identifier == _tokens->UsdPreviewSurface ||
-            node->identifier == _tokens->MtlxStandardSurface)
+            node->identifier == _tokens->MtlxStandardSurface ||
+            node->identifier == _tokens->MtlxSurfaceUnlit)
         {
             return &(*node);
         }
@@ -576,7 +579,7 @@ HdSilkMaterial::Resolve(
         // the consumer can then say which material it could not shade.
         TF_WARN(
             "hdSilk material '%s' has no supported surface terminal; expected "
-            "UsdPreviewSurface or MaterialX ND_standard_surface_surfaceshader.",
+            "UsdPreviewSurface or a supported MaterialX surface shader.",
             record.path.c_str());
         return record;
     }
@@ -654,6 +657,24 @@ HdSilkMaterial::Resolve(
             }
             record.scalars.push_back(scalar);
         }
+        return record;
+    }
+
+    if (surface->identifier == _tokens->MtlxSurfaceUnlit)
+    {
+        const HdSilkMaterialXVulkanShader shader =
+            HdSilkGenerateMaterialXVulkanFragment(id, networkMap);
+        if (!shader.success)
+        {
+            TF_WARN(
+                "hdSilk material '%s' MaterialX Vulkan generation failed: %s",
+                record.path.c_str(),
+                shader.error.c_str());
+            record.surfaceKind = OPENUSD_SILK_SURFACE_UNSUPPORTED;
+            return record;
+        }
+        record.surfaceKind = OPENUSD_SILK_SURFACE_MATERIALX_GENERATED;
+        record.generatedFragmentSpirv = shader.fragmentSpirv;
         return record;
     }
 
