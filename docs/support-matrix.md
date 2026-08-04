@@ -246,7 +246,7 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | Sphere light direct transport | `light-sphere-point` |
 | Rect light direct transport | `light-rect-*-self-consistency`, `light-rect-*-divergence-self-consistency` |
 | Disk light direct transport | `light-disk-*-self-consistency`, `light-disk-*-divergence-self-consistency` |
-| Cylinder light direct transport | `light-cylinder-*-self-consistency`, `light-cylinder-*-divergence-self-consistency` |
+| Cylinder light direct transport | `light-cylinder-*` equivalence and divergence |
 | Dome light ambient | `light-dome-ambient` |
 | Shadows | None |
 | Point instancing | `point-instancer-cluster` |
