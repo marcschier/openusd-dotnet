@@ -652,13 +652,17 @@ OpenUsd.Rendering.Silk.SilkMeshRenderer.SyncAndRender(OpenUsd.Rendering.Silk.Ope
 OpenUsd.Rendering.Silk.SilkMeshRenderer.UpdateSelection(OpenUsd.Rendering.SelectionState! selection, OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings? settings = null) -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.<Clone>$() -> OpenUsd.Rendering.Silk.SilkMeshRenderOptions!
+OpenUsd.Rendering.Silk.SilkMeshRenderOptions.BackfaceCulling.get -> bool
+OpenUsd.Rendering.Silk.SilkMeshRenderOptions.BackfaceCulling.init -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.ClearColor.get -> OpenUsd.Rendering.Silk.SilkColor
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.ClearColor.init -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.ClearDepth.get -> float
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.ClearDepth.init -> void
-OpenUsd.Rendering.Silk.SilkMeshRenderOptions.Deconstruct(out OpenUsd.Rendering.Silk.SilkColor ClearColor, out float ClearDepth) -> void
+OpenUsd.Rendering.Silk.SilkMeshRenderOptions.Deconstruct(out OpenUsd.Rendering.Silk.SilkColor ClearColor, out float ClearDepth, out bool BackfaceCulling, out bool UseSceneMaterials) -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderOptions.Equals(OpenUsd.Rendering.Silk.SilkMeshRenderOptions? other) -> bool
-OpenUsd.Rendering.Silk.SilkMeshRenderOptions.SilkMeshRenderOptions(OpenUsd.Rendering.Silk.SilkColor ClearColor, float ClearDepth) -> void
+OpenUsd.Rendering.Silk.SilkMeshRenderOptions.SilkMeshRenderOptions(OpenUsd.Rendering.Silk.SilkColor ClearColor, float ClearDepth, bool BackfaceCulling = true, bool UseSceneMaterials = true) -> void
+OpenUsd.Rendering.Silk.SilkMeshRenderOptions.UseSceneMaterials.get -> bool
+OpenUsd.Rendering.Silk.SilkMeshRenderOptions.UseSceneMaterials.init -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderResult
 OpenUsd.Rendering.Silk.SilkMeshRenderResult.Deconstruct(out int DrawCount, out int UniformUploads, out OpenUsd.Rendering.Silk.SilkSceneGpuStatistics Statistics) -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderResult.DrawCount.get -> int

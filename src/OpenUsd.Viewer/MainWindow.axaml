@@ -432,6 +432,18 @@
                     Content="Use shadows"
                     IsChecked="True"
                     IsEnabled="False" />
+                <CheckBox
+                    x:Name="BackfaceCullingCheckBox"
+                    AutomationProperties.Name="Cull backfaces"
+                    Content="Cull backfaces"
+                    IsChecked="True"
+                    IsEnabled="False" />
+                <CheckBox
+                    x:Name="SceneMaterialsCheckBox"
+                    AutomationProperties.Name="Use authored scene materials"
+                    Content="Use scene materials"
+                    IsChecked="True"
+                    IsEnabled="False" />
                 <TextBlock Text="Background colour" />
                 <ComboBox
                     x:Name="BackgroundColorSelector"

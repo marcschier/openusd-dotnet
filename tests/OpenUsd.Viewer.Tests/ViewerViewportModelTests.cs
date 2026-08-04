@@ -28,6 +28,8 @@ public sealed class ViewerViewportModelTests
         revised = ViewerViewportStateMutation.WithBackground(
             revised,
             ViewerBackgroundPreset.LightGray);
+        revised = ViewerViewportStateMutation.WithBackfaceCulling(revised, enabled: false);
+        revised = ViewerViewportStateMutation.WithSceneMaterials(revised, enabled: false);
 
         await Assert.That(revised.Display.DrawMode).IsEqualTo(RenderDrawMode.Wireframe);
         await Assert.That((revised.Display.Purposes & RenderPurpose.Guide) != 0).IsTrue();
@@ -35,6 +37,8 @@ public sealed class ViewerViewportModelTests
         await Assert.That((revised.Display.Purposes & RenderPurpose.Render) != 0).IsTrue();
         await Assert.That(revised.RenderSettings.EnableLighting).IsFalse();
         await Assert.That(revised.RenderSettings.EnableShadows).IsFalse();
+        await Assert.That(revised.RenderSettings.BackfaceCulling).IsFalse();
+        await Assert.That(revised.RenderSettings.UseSceneMaterials).IsFalse();
         await Assert.That(revised.RenderSettings.ClearColor)
             .IsEqualTo(ViewerViewportStateMutation.ToColor(ViewerBackgroundPreset.LightGray));
         await Assert.That(revised.Revision).IsGreaterThan(initial.Revision);
@@ -46,6 +50,8 @@ public sealed class ViewerViewportModelTests
         StageRenderState state = ViewerViewportStateMutation.WithBackground(
             StageRenderState.Create(new StageIdentity("stage.usda")),
             ViewerBackgroundPreset.DarkGray);
+        state = ViewerViewportStateMutation.WithBackfaceCulling(state, enabled: false);
+        state = ViewerViewportStateMutation.WithSceneMaterials(state, enabled: false);
 
         SilkMeshRenderOptions options =
             ViewerViewportStateMutation.ToSilkOptions(state.RenderSettings);
@@ -55,5 +61,7 @@ public sealed class ViewerViewportModelTests
         await Assert.That(options.ClearColor.Blue).IsEqualTo(0.18f);
         await Assert.That(options.ClearColor.Alpha).IsEqualTo(1f);
         await Assert.That(options.ClearDepth).IsEqualTo(SilkMeshRenderOptions.Default.ClearDepth);
+        await Assert.That(options.BackfaceCulling).IsFalse();
+        await Assert.That(options.UseSceneMaterials).IsFalse();
     }
 }

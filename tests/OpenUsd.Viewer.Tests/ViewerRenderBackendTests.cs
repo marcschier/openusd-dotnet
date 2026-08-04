@@ -127,6 +127,8 @@ public sealed class ViewerRenderBackendTests
         revised = ViewerViewportStateMutation.WithBackground(
             revised,
             ViewerBackgroundPreset.White);
+        revised = ViewerViewportStateMutation.WithBackfaceCulling(revised, enabled: false);
+        revised = ViewerViewportStateMutation.WithSceneMaterials(revised, enabled: false);
 
         RenderBackendManagerResult result = await manager.UpdateStateAsync(revised);
 
@@ -138,6 +140,8 @@ public sealed class ViewerRenderBackendTests
         await Assert.That((d3d12.CurrentState.Display.Purposes & RenderPurpose.Guide) != 0).IsTrue();
         await Assert.That(d3d12.CurrentState.RenderSettings.ClearColor)
             .IsEqualTo(ViewerViewportStateMutation.ToColor(ViewerBackgroundPreset.White));
+        await Assert.That(d3d12.CurrentState.RenderSettings.BackfaceCulling).IsFalse();
+        await Assert.That(d3d12.CurrentState.RenderSettings.UseSceneMaterials).IsFalse();
     }
 
     [Test]

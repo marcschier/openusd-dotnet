@@ -394,13 +394,15 @@ OpenUsd.Rendering.RenderPurpose.None = 0 -> OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderPurpose.Proxy = 2 -> OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderPurpose.Render = 4 -> OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderSettings
+OpenUsd.Rendering.RenderSettings.BackfaceCulling.get -> bool
 OpenUsd.Rendering.RenderSettings.ClearColor.get -> System.Numerics.Vector4
 OpenUsd.Rendering.RenderSettings.EnableLighting.get -> bool
 OpenUsd.Rendering.RenderSettings.EnableShadows.get -> bool
 OpenUsd.Rendering.RenderSettings.Equals(OpenUsd.Rendering.RenderSettings other) -> bool
 OpenUsd.Rendering.RenderSettings.RenderSettings() -> void
-OpenUsd.Rendering.RenderSettings.RenderSettings(int samplesPerPixel, bool enableLighting, bool enableShadows, System.Numerics.Vector4 clearColor) -> void
+OpenUsd.Rendering.RenderSettings.RenderSettings(int samplesPerPixel, bool enableLighting, bool enableShadows, System.Numerics.Vector4 clearColor, bool backfaceCulling = true, bool useSceneMaterials = true) -> void
 OpenUsd.Rendering.RenderSettings.SamplesPerPixel.get -> int
+OpenUsd.Rendering.RenderSettings.UseSceneMaterials.get -> bool
 OpenUsd.Rendering.RenderVisibility
 OpenUsd.Rendering.RenderVisibility.IncludeInvisible = 1 -> OpenUsd.Rendering.RenderVisibility
 OpenUsd.Rendering.RenderVisibility.RespectAuthored = 0 -> OpenUsd.Rendering.RenderVisibility

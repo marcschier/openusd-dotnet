@@ -46,7 +46,9 @@ internal static class ViewerViewportStateMutation
             settings.SamplesPerPixel,
             enabled,
             settings.EnableShadows,
-            settings.ClearColor));
+            settings.ClearColor,
+            settings.BackfaceCulling,
+            settings.UseSceneMaterials));
     }
 
     internal static StageRenderState WithShadows(
@@ -59,7 +61,9 @@ internal static class ViewerViewportStateMutation
             settings.SamplesPerPixel,
             settings.EnableLighting,
             enabled,
-            settings.ClearColor));
+            settings.ClearColor,
+            settings.BackfaceCulling,
+            settings.UseSceneMaterials));
     }
 
     internal static StageRenderState WithBackground(
@@ -72,7 +76,39 @@ internal static class ViewerViewportStateMutation
             settings.SamplesPerPixel,
             settings.EnableLighting,
             settings.EnableShadows,
-            ToColor(preset)));
+            ToColor(preset),
+            settings.BackfaceCulling,
+            settings.UseSceneMaterials));
+    }
+
+    internal static StageRenderState WithBackfaceCulling(
+        StageRenderState state,
+        bool enabled)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        RenderSettings settings = state.RenderSettings;
+        return state.WithRenderSettings(new RenderSettings(
+            settings.SamplesPerPixel,
+            settings.EnableLighting,
+            settings.EnableShadows,
+            settings.ClearColor,
+            enabled,
+            settings.UseSceneMaterials));
+    }
+
+    internal static StageRenderState WithSceneMaterials(
+        StageRenderState state,
+        bool enabled)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        RenderSettings settings = state.RenderSettings;
+        return state.WithRenderSettings(new RenderSettings(
+            settings.SamplesPerPixel,
+            settings.EnableLighting,
+            settings.EnableShadows,
+            settings.ClearColor,
+            settings.BackfaceCulling,
+            enabled));
     }
 
     internal static Vector4 ToColor(ViewerBackgroundPreset preset) =>
@@ -90,6 +126,8 @@ internal static class ViewerViewportStateMutation
         Vector4 color = settings.ClearColor;
         return new SilkMeshRenderOptions(
             new SilkColor(color.X, color.Y, color.Z, color.W),
-            SilkMeshRenderOptions.Default.ClearDepth);
+            SilkMeshRenderOptions.Default.ClearDepth,
+            settings.BackfaceCulling,
+            settings.UseSceneMaterials);
     }
 }

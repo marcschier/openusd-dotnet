@@ -627,24 +627,32 @@ public readonly record struct RenderSettings
         samplesPerPixel: 1,
         enableLighting: true,
         enableShadows: true,
-        new Vector4(0, 0, 0, 1));
+        new Vector4(0, 0, 0, 1),
+        backfaceCulling: true,
+        useSceneMaterials: true);
 
     /// <summary>Initializes render settings.</summary>
     /// <param name="samplesPerPixel">The requested samples per pixel.</param>
     /// <param name="enableLighting">Whether scene lighting is enabled.</param>
     /// <param name="enableShadows">Whether shadows are enabled.</param>
     /// <param name="clearColor">The linear RGBA viewport clear color.</param>
+    /// <param name="backfaceCulling">Whether back-facing single-sided surfaces are culled.</param>
+    /// <param name="useSceneMaterials">Whether authored scene materials are used.</param>
     public RenderSettings(
         int samplesPerPixel,
         bool enableLighting,
         bool enableShadows,
-        Vector4 clearColor)
+        Vector4 clearColor,
+        bool backfaceCulling = true,
+        bool useSceneMaterials = true)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(samplesPerPixel, 1);
         SamplesPerPixel = samplesPerPixel;
         EnableLighting = enableLighting;
         EnableShadows = enableShadows;
         ClearColor = clearColor;
+        BackfaceCulling = backfaceCulling;
+        UseSceneMaterials = useSceneMaterials;
     }
 
     /// <summary>Gets the requested samples per pixel.</summary>
@@ -658,6 +666,12 @@ public readonly record struct RenderSettings
 
     /// <summary>Gets the linear RGBA viewport clear color.</summary>
     public Vector4 ClearColor { get; }
+
+    /// <summary>Gets a value indicating whether back-facing single-sided surfaces are culled.</summary>
+    public bool BackfaceCulling { get; }
+
+    /// <summary>Gets a value indicating whether authored scene materials are used.</summary>
+    public bool UseSceneMaterials { get; }
 }
 
 /// <summary>

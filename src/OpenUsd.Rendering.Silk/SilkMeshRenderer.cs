@@ -63,7 +63,9 @@ public interface ISilkRenderTargetRenderer : IDisposable
 /// <summary>Clear values used by <see cref="SilkMeshRenderer"/>.</summary>
 public sealed record SilkMeshRenderOptions(
     SilkColor ClearColor,
-    float ClearDepth)
+    float ClearDepth,
+    bool BackfaceCulling = true,
+    bool UseSceneMaterials = true)
 {
     /// <summary>Gets opaque black with a far depth clear.</summary>
     public static SilkMeshRenderOptions Default { get; } =
@@ -660,9 +662,18 @@ public sealed class SilkMeshRenderer :
             }
         }
 
+        SilkShaderFeatures ResolveMaterialFeatures(SilkMeshData mesh) =>
+            options.UseSceneMaterials ? GetMaterialFeatures(mesh) : SilkShaderFeatures.None;
+
+        string ResolveMaterialShaderIdentity(SilkMeshData mesh) =>
+            options.UseSceneMaterials ? GetMaterialShaderIdentity(mesh) : string.Empty;
+
+        SilkCullMode ResolveCullMode(SilkMeshData mesh) =>
+            options.BackfaceCulling ? GetCullMode(mesh) : SilkCullMode.None;
+
         if (singleMesh is not null)
         {
-            PrepareMaterialTextures(commands, singleMesh, GetMaterialFeatures(singleMesh.Mesh));
+            PrepareMaterialTextures(commands, singleMesh, ResolveMaterialFeatures(singleMesh.Mesh));
         }
 
         if (singleMesh is null)
@@ -681,9 +692,9 @@ public sealed class SilkMeshRenderer :
                 BatchKey key = new(
                     mesh.Geometry,
                     mesh.Mesh.MaterialPath,
-                    GetMaterialFeatures(mesh.Mesh),
-                    GetMaterialShaderIdentity(mesh.Mesh),
-                    GetCullMode(mesh.Mesh),
+                    ResolveMaterialFeatures(mesh.Mesh),
+                    ResolveMaterialShaderIdentity(mesh.Mesh),
+                    ResolveCullMode(mesh.Mesh),
                     mesh.Mesh.TopologyKind);
                 if (!_batches.TryGetValue(key, out List<SilkMeshGpuResource>? batch))
                 {
@@ -721,9 +732,11 @@ public sealed class SilkMeshRenderer :
         string? boundSurfaceMaterialPath = null;
         if (singleMesh is not null)
         {
-            SilkShaderFeatures features = GetMaterialFeatures(singleMesh.Mesh);
-            SilkMaterialShaderRequest? materialShader = GetMaterialShaderRequest(singleMesh.Mesh, features);
-            SilkCullMode cullMode = GetCullMode(singleMesh.Mesh);
+            SilkShaderFeatures features = ResolveMaterialFeatures(singleMesh.Mesh);
+            SilkMaterialShaderRequest? materialShader = options.UseSceneMaterials
+                ? GetMaterialShaderRequest(singleMesh.Mesh, features)
+                : null;
+            SilkCullMode cullMode = ResolveCullMode(singleMesh.Mesh);
             ISilkGraphicsPipeline pipeline = GetPipeline(
                 singleMesh,
                 features,
@@ -868,7 +881,9 @@ public sealed class SilkMeshRenderer :
             key.Features,
             key.CullMode,
             key.TopologyKind,
-            GetMaterialShaderRequest(mesh.Mesh, key.Features));
+            string.IsNullOrEmpty(key.MaterialShaderIdentity)
+                ? null
+                : GetMaterialShaderRequest(mesh.Mesh, key.Features));
         commands.SetGraphicsPipeline(pipeline);
         DisposePipelineLease(pipeline);
         boundPipeline = next;
