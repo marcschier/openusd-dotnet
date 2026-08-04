@@ -123,11 +123,13 @@ When changing `native/openusd_dotnet/include/openusd_dotnet.h`:
 
 1. Update the native implementation and its negative, ownership, and compatibility tests.
 2. Update the ABI version or capability mask in `eng/openusd.lock.json` when the contract changes.
-3. Regenerate and verify the checked managed declarations:
+3. Regenerate and verify the checked managed declarations and capability consumers:
 
    ```powershell
    python eng/generate-interop.py
    python eng/generate-interop.py --verify
+   python eng/generate-capabilities.py
+   python eng/generate-capabilities.py --verify
    ```
 
 4. Rebuild the applicable RID, run CTest, and run the native plus NativeAOT probes.
