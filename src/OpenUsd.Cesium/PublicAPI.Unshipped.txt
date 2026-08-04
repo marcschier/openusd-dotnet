@@ -1,0 +1,41 @@
+#nullable enable
+OpenUsd.Cesium.CesiumAssetRequest
+OpenUsd.Cesium.CesiumAssetRequest.Body.get -> System.ReadOnlyMemory<byte>
+OpenUsd.Cesium.CesiumAssetRequest.CesiumAssetRequest(string method, string url, System.ReadOnlyMemory<byte> body) -> void
+OpenUsd.Cesium.CesiumAssetRequest.Method.get -> string
+OpenUsd.Cesium.CesiumAssetRequest.Url.get -> string
+OpenUsd.Cesium.CesiumAssetResponse
+OpenUsd.Cesium.CesiumAssetResponse.Body.get -> byte[]
+OpenUsd.Cesium.CesiumAssetResponse.CesiumAssetResponse(ushort statusCode, string contentType, byte[] body) -> void
+OpenUsd.Cesium.CesiumAssetResponse.ContentType.get -> string
+OpenUsd.Cesium.CesiumAssetResponse.StatusCode.get -> ushort
+OpenUsd.Cesium.CesiumFileAssetAccessor
+OpenUsd.Cesium.CesiumFileAssetAccessor.CesiumFileAssetAccessor(string rootDirectory) -> void
+OpenUsd.Cesium.CesiumFileAssetAccessor.Request(OpenUsd.Cesium.CesiumAssetRequest request) -> OpenUsd.Cesium.CesiumAssetResponse
+OpenUsd.Cesium.CesiumTileImportResult
+OpenUsd.Cesium.CesiumTileImportResult.MeshCount.get -> int
+OpenUsd.Cesium.CesiumTileImportResult.PrimPaths.get -> System.Collections.Generic.IReadOnlyList<string>
+OpenUsd.Cesium.CesiumTileImportResult.RootPath.get -> string
+OpenUsd.Cesium.CesiumTileset : System.IDisposable
+OpenUsd.Cesium.CesiumTileset.CesiumTileset(string tilesetUrl, OpenUsd.Cesium.ICesiumAssetAccessor assetAccessor, OpenUsd.Cesium.CesiumTilesetOptions? options = null) -> void
+OpenUsd.Cesium.CesiumTileset.Dispose() -> void
+OpenUsd.Cesium.CesiumTileset.ImportVisibleTiles(OpenUsd.UsdStage stage, string rootPath) -> OpenUsd.Cesium.CesiumTileImportResult
+OpenUsd.Cesium.CesiumTileset.UpdateView(OpenUsd.Cesium.CesiumViewState viewState, float deltaTimeSeconds = 0.016F) -> OpenUsd.Cesium.CesiumUpdateResult
+OpenUsd.Cesium.CesiumTilesetOptions
+OpenUsd.Cesium.CesiumTilesetOptions.MaximumScreenSpaceError.get -> double
+OpenUsd.Cesium.CesiumTilesetOptions.MaximumScreenSpaceError.set -> void
+OpenUsd.Cesium.CesiumUpdateResult
+OpenUsd.Cesium.CesiumUpdateResult.LoadProgress.get -> float
+OpenUsd.Cesium.CesiumUpdateResult.LoadedTileCount.get -> int
+OpenUsd.Cesium.CesiumUpdateResult.TilesToRenderCount.get -> int
+OpenUsd.Cesium.CesiumViewState
+OpenUsd.Cesium.CesiumViewState.CesiumViewState(OpenUsd.UsdVec3d positionEcef, OpenUsd.UsdVec3d directionEcef, OpenUsd.UsdVec3d upEcef, double viewportWidth, double viewportHeight, double horizontalFovRadians, double verticalFovRadians) -> void
+OpenUsd.Cesium.CesiumViewState.DirectionEcef.get -> OpenUsd.UsdVec3d
+OpenUsd.Cesium.CesiumViewState.HorizontalFovRadians.get -> double
+OpenUsd.Cesium.CesiumViewState.PositionEcef.get -> OpenUsd.UsdVec3d
+OpenUsd.Cesium.CesiumViewState.UpEcef.get -> OpenUsd.UsdVec3d
+OpenUsd.Cesium.CesiumViewState.VerticalFovRadians.get -> double
+OpenUsd.Cesium.CesiumViewState.ViewportHeight.get -> double
+OpenUsd.Cesium.CesiumViewState.ViewportWidth.get -> double
+OpenUsd.Cesium.ICesiumAssetAccessor
+OpenUsd.Cesium.ICesiumAssetAccessor.Request(OpenUsd.Cesium.CesiumAssetRequest request) -> OpenUsd.Cesium.CesiumAssetResponse

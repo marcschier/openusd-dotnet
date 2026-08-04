@@ -93,7 +93,8 @@ jobs:
                     '.Tests',
                     [StringComparison]::Ordinal) -and
                   $_.BaseName -cne 'OpenUsd.Rendering.ConformanceTests' -and
-                  $_.BaseName -cne 'OpenUsd.NativeCoverage.Tests'
+                  $_.BaseName -cne 'OpenUsd.NativeCoverage.Tests' -and
+                  $_.BaseName -cne 'OpenUsd.Cesium.Tests'
                 } |
                 Select-Object -ExpandProperty FullName
             )
@@ -265,6 +266,18 @@ jobs:
               '--coverage-settings', (Join-Path $PWD 'eng/coverage.config'),
               '--coverage-output-format', 'cobertura',
               '--coverage-output', 'coverage.native.cobertura.xml')
+      - name: Test optional Cesium authoring
+        shell: pwsh
+        # Excluded from the generic managed sweep because it opens a real stage
+        # and that sweep does not stage a native runtime. It needs only the core
+        # shim, not a cesium-native build, so it runs against the default
+        # OPENUSD_WITH_CESIUM=OFF install like everything else here.
+        run: >
+          ./eng/run-native-managed-tests.ps1
+          -Project tests/OpenUsd.Cesium.Tests/OpenUsd.Cesium.Tests.csproj
+          -Framework net10.0
+          -Rid linux-x64
+          -Configuration Release
       - name: Merge coverage
         shell: pwsh
         run: >

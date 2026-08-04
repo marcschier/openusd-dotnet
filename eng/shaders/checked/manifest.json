@@ -31,7 +31,7 @@
   "inputs": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "d2822b0d637c725cccacc99bcbdb7f0b56e2500fbea1074942cc4d6db5d7448f"
+      "sha256": "5d023fdc2414974489f1dd0f90684e0d498e164952e71fbd9aab1bd4835d202b"
     },
     {
       "path": ".github/workflows/native.yml",
