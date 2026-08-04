@@ -32,14 +32,18 @@ hash, the upstream build-script hash, every direct dependency archive hash, and 
 toolchain matrix.
 
 The fetch step applies verified compatibility patches to the upstream build script: Windows Boost
-bootstrap is launched through `cmd.exe` with the `vc143` toolset, and Boost is bound to the `cl.exe`
-already configured by the developer shell. This handles Python 3.13 process launching, hardened
-Windows command search, and Visual Studio versions newer than Boost's discovery table; the patched
+bootstrap is launched through `cmd.exe` with the `vc143` toolset, Boost is bound to the `cl.exe`
+already configured by the developer shell, existing lean Boost installs are rejected when OpenVDB
+needs `boost_iostreams`, Alembic's install root is passed to USD configure so the Ogawa-only build
+does not require HDF5, and the locked Windows monolithic profile is permitted to build the Draco
+plugin. This handles Python 3.13 process launching, hardened Windows command search, Visual Studio
+versions newer than Boost's discovery table, and the expanded asset-format profile; the patched
 script hash is locked.
 
 The viewer-standard profile retains core USD, validation, Imaging, Hydra, Storm, MaterialX,
-OpenImageIO, and OpenColorIO. Python, usdview, examples, tutorials, Embree, Alembic, Draco, OpenVDB,
-and RenderMan are excluded.
+OpenImageIO, OpenColorIO, Ptex, OpenVDB, Alembic, and Draco. OpenVDB brings locked Blosc
+compression. Python remains deliberately disabled and is not a native runtime dependency. usdview,
+examples, tutorials, tools, documentation, Embree, and RenderMan are excluded.
 
 ## Cesium-native quarantine
 
