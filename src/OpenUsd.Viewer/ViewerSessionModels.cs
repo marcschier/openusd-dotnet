@@ -99,10 +99,17 @@ internal sealed record ViewerPrimCommandRequest(
     string? TokenValue = null,
     string? VariantSetName = null,
     string? AttributeName = null,
+    string? PrimPath = null,
     string[]? AvailableVariantNames = null)
 {
     internal void Validate()
     {
+        if (PrimPath is not null &&
+            (string.IsNullOrWhiteSpace(PrimPath) || PrimPath[0] != '/'))
+        {
+            throw new InvalidOperationException("PrimPath must be an absolute prim path when supplied.");
+        }
+
         switch (Command)
         {
             case ViewerPrimCommand.SetActive:

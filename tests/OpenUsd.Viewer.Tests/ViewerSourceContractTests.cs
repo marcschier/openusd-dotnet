@@ -20,9 +20,10 @@ public sealed class ViewerSourceContractTests
             "MainWindow.axaml.cs"));
 
         await Assert.That(models).Contains("ViewerDocumentSnapshot BuildDocument(UsdStage stage)");
-        await Assert.That(models).Contains("IReadOnlyList<UsdPrim> prims = stage.Traverse();");
         await Assert.That(models).Contains(
-            "entries[index] = new ViewerHierarchySourceEntry(prims[index].Path, prims[index].TypeName);");
+            "foreach (UsdPrim root in stage.Traverse().Where(static prim => GetPrimDepth(prim.Path) == 0))");
+        await Assert.That(models).Contains("foreach (UsdPrim child in prim.GetChildren())");
+        await Assert.That(models).Contains("ViewerVariantSetSnapshot[] variantSets = BuildVariantSets(prim);");
         await Assert.That(models).Contains("stage.StartTimeCode");
         await Assert.That(models).Contains("stage.EndTimeCode");
         await Assert.That(models).Contains("stage.FramesPerSecond");
@@ -31,7 +32,6 @@ public sealed class ViewerSourceContractTests
         await Assert.That(models).Contains("layer.IsMuted");
         await Assert.That(models).DoesNotContain("stage.IsLayerMuted(");
         await Assert.That(models).Contains("stage.EditTargetLayerIdentifier");
-        await Assert.That(models).DoesNotContain("GetChildren()");
         await Assert.That(window).Contains("private readonly SemaphoreSlim _documentGate");
         await Assert.That(window).Contains("await StopCurrentDocumentAsync();");
         await Assert.That(window).Contains("await StopTimelineAsync();");
@@ -59,6 +59,10 @@ public sealed class ViewerSourceContractTests
         await Assert.That(markup).Contains("x:Name=\"ReloadStageButton\"");
         await Assert.That(markup).Contains("x:Name=\"RecentStagesMenu\"");
         await Assert.That(markup).Contains("x:Name=\"HierarchyFilter\"");
+        await Assert.That(markup).Contains("x:Name=\"ShowInactivePrimsCheckBox\"");
+        await Assert.That(markup).Contains("x:Name=\"ShowUndefinedPrimsCheckBox\"");
+        await Assert.That(markup).Contains("x:Name=\"ShowAbstractPrimsCheckBox\"");
+        await Assert.That(markup).Contains("x:Name=\"ShowPrototypePrimsCheckBox\"");
         await Assert.That(markup).Contains("x:Name=\"StageHierarchy\"");
         await Assert.That(markup).Contains("x:Name=\"InspectorRows\"");
         await Assert.That(markup).Contains("x:Name=\"ValueRows\"");
@@ -73,6 +77,9 @@ public sealed class ViewerSourceContractTests
         await Assert.That(window).Contains("StorageProvider.OpenFilePickerAsync");
         await Assert.That(window).Contains("DragDrop.AddDropHandler");
         await Assert.That(window).Contains("ViewerStageSnapshotBuilder.BuildInspector");
+        await Assert.That(window).Contains("CreateHierarchyVariantSelector");
+        await Assert.That(window).Contains("CreateHierarchyContextMenu");
+        await Assert.That(window).Contains("RunHierarchyPrimCommandAsync");
         await Assert.That(window).Contains("await StartInspectorLoadAsync(selectedPrimPath, cancellationToken);");
         await Assert.That(window).Contains("state => state.WithTime(new StageTime(timeCode))");
         await Assert.That(window).Contains("state => state.WithSelection(selection)");

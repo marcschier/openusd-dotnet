@@ -105,6 +105,7 @@ public sealed class ViewerSessionModelTests
             ViewerPrimCommand.SetVariantSelection,
             TokenValue: "blue",
             VariantSetName: "look",
+            PrimPath: "/World/Model",
             AvailableVariantNames: ["red", "blue"]).Validate();
         await Assert.That(() => new ViewerPrimCommandRequest(
             ViewerPrimCommand.SetVariantSelection,
@@ -126,6 +127,11 @@ public sealed class ViewerSessionModelTests
             AttributeName: "visibility").Validate();
         await Assert.That(() => new ViewerPrimCommandRequest(
             ViewerPrimCommand.BlockAttributeValue).Validate())
+            .Throws<InvalidOperationException>();
+        await Assert.That(() => new ViewerPrimCommandRequest(
+            ViewerPrimCommand.SetLoaded,
+            BooleanValue: true,
+            PrimPath: "World").Validate())
             .Throws<InvalidOperationException>();
     }
 
