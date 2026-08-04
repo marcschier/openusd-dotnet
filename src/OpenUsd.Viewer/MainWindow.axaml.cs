@@ -230,6 +230,7 @@ public sealed partial class MainWindow : Window, IDisposable
             UseSelectedCameraMenuItem.Click += OnUseSelectedCameraClick;
             FrameSelectedButton.Click += OnFrameSelectedClick;
             FrameSelectedMenuItem.Click += OnFrameSelectedClick;
+            ShortcutsMenuItem.Click += OnShortcutsClick;
             KeyDown += OnWindowKeyDown;
             KeyUp += OnWindowKeyUp;
             Deactivated += OnWindowDeactivated;
@@ -1693,6 +1694,14 @@ public sealed partial class MainWindow : Window, IDisposable
         _ = sender;
         _ = e;
         _ = FrameSelectedAsync();
+    }
+
+    private void OnShortcutsClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        var shortcuts = new ShortcutsWindow();
+        _ = shortcuts.ShowDialog(this);
     }
 
     private async Task FrameSelectedAsync()

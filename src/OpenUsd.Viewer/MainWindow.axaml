@@ -84,6 +84,14 @@
                 Header="_Frame Selected"
                 IsEnabled="False" />
           </MenuItem>
+          <MenuItem Header="_Help">
+            <MenuItem
+                x:Name="ShortcutsMenuItem"
+                AutomationProperties.Name="Show keyboard and mouse shortcuts"
+                Header="Keyboard _Shortcuts"
+                InputGesture="F1"
+                ToolTip.Tip="List the camera and navigation bindings (F1)." />
+          </MenuItem>
         </Menu>
         <Button
             x:Name="OpenStageButton"

@@ -1,0 +1,61 @@
+<Window
+    x:Class="OpenUsd.Viewer.ShortcutsWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenUsd.Viewer"
+    AutomationProperties.Name="Keyboard and mouse shortcuts"
+    Title="Keyboard and Mouse Shortcuts"
+    Width="660"
+    Height="540"
+    MinWidth="480"
+    MinHeight="320"
+    WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="16">
+    <TextBlock
+        DockPanel.Dock="Top"
+        Text="Camera"
+        FontSize="18"
+        FontWeight="SemiBold"
+        Margin="0,0,0,4" />
+    <TextBlock
+        DockPanel.Dock="Top"
+        Text="Hold Alt and drag inside the viewport to move the camera. The mouse wheel zooms without Alt."
+        TextWrapping="Wrap"
+        Opacity="0.75"
+        Margin="0,0,0,12" />
+    <Button
+        x:Name="CloseButton"
+        DockPanel.Dock="Bottom"
+        AutomationProperties.Name="Close shortcuts"
+        Content="Close"
+        IsCancel="True"
+        IsDefault="True"
+        HorizontalAlignment="Right"
+        MinWidth="88"
+        Margin="0,12,0,0" />
+    <ScrollViewer>
+      <ItemsControl x:Name="ShortcutItems" AutomationProperties.Name="Shortcut list">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="local:ViewerShortcut">
+            <Grid ColumnDefinitions="200,*" Margin="0,0,0,10">
+              <TextBlock
+                  Grid.Column="0"
+                  Text="{Binding Gesture}"
+                  FontFamily="Consolas,Menlo,monospace"
+                  TextWrapping="Wrap"
+                  VerticalAlignment="Top" />
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="{Binding Action}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock
+                    Text="{Binding Detail}"
+                    TextWrapping="Wrap"
+                    Opacity="0.75"
+                    Margin="0,2,0,0" />
+              </StackPanel>
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</Window>
