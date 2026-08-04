@@ -120,6 +120,40 @@ public sealed class CoverageCacheKeyContractTests
                 "installed binary, so a build without an install runs stale");
     }
 
+    [Test]
+    public async Task TheNativePipelineIsNotCancelledOnMain()
+    {
+        string root = FindRepositoryRoot();
+        string native = await ReadWorkflowAsync(root, NativeWorkflow);
+
+        // Producing the cache is necessary but not sufficient: a run that is
+        // cancelled before it finishes writes nothing. Six consecutive runs
+        // were cancelled by successive pushes while landing the schema wave,
+        // so the coverage gate stayed red for reasons unrelated to its key.
+        Match concurrency = Regex.Match(
+            native,
+            @"concurrency:.*?cancel-in-progress:\s*(?<value>[^\r\n]+)",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(5));
+
+        await Assert.That(concurrency.Success)
+            .IsTrue()
+            .Because($"{NativeWorkflow} should declare its concurrency policy");
+
+        await Assert.That(concurrency.Groups["value"].Value.Trim())
+            .IsNotEqualTo("true")
+            .Because(
+                "an unconditional cancel starves the coverage gate, because " +
+                $"{NativeWorkflow} is the only producer of the install cache " +
+                "and a full run takes about ninety minutes");
+
+        await Assert.That(concurrency.Groups["value"].Value)
+            .Contains("refs/heads/main")
+            .Because(
+                "cancelling is still correct on branches; only main needs the " +
+                "pipeline to be allowed to finish");
+    }
+
     private static async Task<string> ReadWorkflowAsync(string root, string relative)
     {
         string full = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));

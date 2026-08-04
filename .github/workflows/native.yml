@@ -49,7 +49,18 @@ permissions:
 
 concurrency:
   group: native-${{ github.ref }}
-  cancel-in-progress: true
+  # Not cancelled on main. This pipeline is the only producer of the OpenUSD
+  # install cache that ci.yml's coverage gate restores, and a full run takes
+  # about ninety minutes. Cancelling on every push starves that gate
+  # permanently whenever main is being pushed to faster than the pipeline can
+  # finish, which is exactly what happened while landing the schema wave: six
+  # consecutive runs were cancelled and the cache was never written.
+  #
+  # Cancelling is still right on branches, where runs are superseded quickly
+  # and no cache consumer depends on them. The key is content-addressed over
+  # the lock and the build scripts, so a run that completes for an older commit
+  # still produces a cache valid for every later commit with the same lock.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
