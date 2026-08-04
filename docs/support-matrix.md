@@ -231,9 +231,9 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | PreviewSurface diffuse and roughness constants | `material-normals-uv`, `light-dome-ambient`, direct-light scenes |
 | PreviewSurface specular workflow | `light-distant-specular` |
 | PreviewSurface texture-backed diffuse colour | `materials-textures` |
-| Texture wrap modes | `materials-textures` |
-| Texture colour spaces | `materials-textures` |
-| Texture scale, bias, and fallback | None |
+| Texture wrap modes | `materials-textures`, `texture-wrap-*-self-consistency` |
+| Texture colour spaces | `materials-textures`, `texture-colorspace-auto-self-consistency` |
+| Texture scale, bias, and fallback | `texture-scale-bias-fallback-self-consistency` |
 | Texture slots beyond diffuse | None |
 | Metallic workflow with non-zero `metallic` | `material-metallic-workflow` |
 | MaterialX standard-surface authored graph | None |
@@ -247,7 +247,7 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | Points | `points-asymmetric` |
 | Basis curves / draw-mode generated lines | `bounds-draw-mode`, `origin-draw-mode` |
 | Draw modes | `cards-draw-mode`, `bounds-draw-mode`, `origin-draw-mode` |
-| Double-sided/culling | `single-sided-winding` |
+| Double-sided/culling | `single-sided-winding`, `cull-style-back-self-consistency` |
 | Time-varying transform/display colour | `time-varying-transform-primvar` |
 | UsdSkel CPU skinning | `skinned-pennant` |
 | Subdivision surfaces | None |
@@ -267,6 +267,22 @@ produce a usable reference image for the authored feature.
   Storm's coarse/control-cage-like output, so it remains measured and not gated.
 - **Shadows:** `light-distant-shadow` is byte-identical with shadows disabled
   (`disabledAdjustedIoU=1.000000`), so it remains registered, measured, and not gated.
+
+Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
+
+- `texture-wrap-clamp-self-consistency`, `texture-wrap-mirror-self-consistency`, and
+  `texture-wrap-use-metadata-self-consistency` compare `repeat` against the candidate wrap mode with UVs
+  confined to `[0,1]`, where every wrap mode is mathematically equivalent. Each measured
+  `maxChannelDelta=2` / `meanChannelDelta=0.116`.
+- `texture-colorspace-auto-self-consistency` compares diffuse `sourceColorSpace=sRGB` with `auto`, which
+  resolves to the same sRGB decode for diffuse textures. It measured `maxChannelDelta=2` /
+  `meanChannelDelta=0.117`.
+- `texture-scale-bias-fallback-self-consistency` compares a constant PreviewSurface diffuse colour with a
+  missing texture's fallback after non-identity scale and bias compose to the same colour. It measured
+  `maxChannelDelta=2` / `meanChannelDelta=0.088`; zeroing the bias fails with `maxChannelDelta=49` /
+  `meanChannelDelta=7.451`.
+- `cull-style-back-self-consistency` compares explicit `cullStyle=back` with `backUnlessDoubleSided` on a
+  single-sided mesh viewed from the outside. It measured `maxChannelDelta=2` / `meanChannelDelta=0.095`.
 
 At the parity harness complexity, Storm renders the Catmull-Clark probe as a
 coarse/control-cage-like surface rather than full refinement. An eager

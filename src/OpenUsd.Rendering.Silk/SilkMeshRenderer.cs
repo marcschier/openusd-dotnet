@@ -949,7 +949,13 @@ public sealed class SilkMeshRenderer :
     }
 
     private static SilkCullMode GetCullMode(SilkMeshData mesh) =>
-        mesh.DoubleSided ? SilkCullMode.None : SilkCullMode.Back;
+        mesh.CullStyle switch
+        {
+            SilkMeshCullStyle.Nothing => SilkCullMode.None,
+            SilkMeshCullStyle.Back => SilkCullMode.Back,
+            SilkMeshCullStyle.BackUnlessDoubleSided => mesh.DoubleSided ? SilkCullMode.None : SilkCullMode.Back,
+            _ => mesh.DoubleSided ? SilkCullMode.None : SilkCullMode.Back,
+        };
 
     // Lines and points carry no facing, so those batches always use the
     // unculled pipeline for their topology regardless of authored cull style.
