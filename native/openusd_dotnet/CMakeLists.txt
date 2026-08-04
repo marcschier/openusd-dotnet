@@ -18,8 +18,13 @@ set(OPENUSD_DOTNET_SOURCES
     src/usdGeom.cpp
     src/usdLux.cpp
     src/usdPhysics.cpp
+    src/usdMedia.cpp
+    src/usdProc.cpp
+    src/usdRender.cpp
     src/usdShade.cpp
-    src/usdSkel.cpp)
+    src/usdSkel.cpp
+    src/usdUI.cpp
+    src/usdVol.cpp)
 
 add_library(openusd_dotnet SHARED ${OPENUSD_DOTNET_SOURCES})
 

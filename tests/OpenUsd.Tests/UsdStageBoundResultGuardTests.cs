@@ -3,8 +3,13 @@
 using System.Runtime.CompilerServices;
 using OpenUsd.Geom;
 using OpenUsd.Lux;
+using OpenUsd.Media;
+using OpenUsd.Proc;
+using OpenUsd.Render;
 using OpenUsd.Shade;
 using OpenUsd.Skel;
+using OpenUsd.UI;
+using OpenUsd.Vol;
 
 namespace OpenUsd.Tests;
 
@@ -64,7 +69,25 @@ public sealed class UsdStageBoundResultGuardTests
             typeof(UsdSkelBinding),
             typeof(UsdSkelBlendShape),
             typeof(UsdSkelRoot),
-            typeof(UsdSkelSkeleton)
+            typeof(UsdSkelSkeleton),
+            typeof(UsdMediaAssetPreviews),
+            typeof(UsdMediaSpatialAudio),
+            typeof(UsdProcGenerativeProcedural),
+            typeof(UsdRenderPass),
+            typeof(UsdRenderProduct),
+            typeof(UsdRenderSettings),
+            typeof(UsdRenderSettingsBase),
+            typeof(UsdRenderVar),
+            typeof(UsdUIBackdrop),
+            typeof(UsdUINodeGraphNode),
+            typeof(UsdUISceneGraphPrim),
+            typeof(UsdVolField3DAsset),
+            typeof(UsdVolFieldAsset),
+            typeof(UsdVolFieldBase),
+            typeof(UsdVolOpenVDBAsset),
+            typeof(UsdVolVolume),
+            typeof(UsdVolVolumeFieldAsset),
+            typeof(UsdVolVolumeFieldBase)
         ];
 
         foreach (Type type in stageBoundTypes)

@@ -15,9 +15,11 @@
 #include "pxr/base/gf/range2d.h"
 #include "pxr/base/gf/range3d.h"
 #include "pxr/base/gf/vec2f.h"
+#include "pxr/base/gf/vec2i.h"
 #include "pxr/base/gf/vec3d.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/vec3h.h"
+#include "pxr/base/gf/vec4f.h"
 #include "pxr/base/plug/registry.h"
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/tf/errorMark.h"
@@ -98,6 +100,24 @@
 #include "pxr/usd/usdSkel/root.h"
 #include "pxr/usd/usdSkel/skeleton.h"
 #include "pxr/usd/usdSkel/topology.h"
+#include "pxr/usd/usdMedia/assetPreviewsAPI.h"
+#include "pxr/usd/usdMedia/spatialAudio.h"
+#include "pxr/usd/usdProc/generativeProcedural.h"
+#include "pxr/usd/usdRender/pass.h"
+#include "pxr/usd/usdRender/product.h"
+#include "pxr/usd/usdRender/settings.h"
+#include "pxr/usd/usdRender/settingsBase.h"
+#include "pxr/usd/usdRender/var.h"
+#include "pxr/usd/usdUI/backdrop.h"
+#include "pxr/usd/usdUI/nodeGraphNodeAPI.h"
+#include "pxr/usd/usdUI/sceneGraphPrimAPI.h"
+#include "pxr/usd/usdVol/field3DAsset.h"
+#include "pxr/usd/usdVol/fieldAsset.h"
+#include "pxr/usd/usdVol/fieldBase.h"
+#include "pxr/usd/usdVol/openVDBAsset.h"
+#include "pxr/usd/usdVol/volume.h"
+#include "pxr/usd/usdVol/volumeFieldAsset.h"
+#include "pxr/usd/usdVol/volumeFieldBase.h"
 
 #include <algorithm>
 #include <atomic>
@@ -236,7 +256,7 @@ struct openusd_payload_arc_list
 
 namespace
 {
-constexpr uint32_t DataAbiVersion = 13;
+constexpr uint32_t DataAbiVersion = 14;
 constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_STRING_LIST_V2 |
     OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -252,7 +272,8 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_USD_VALIDATION_QUERY |
     OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE |
     OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA |
-    OPENUSD_CAPABILITY_USD_SHADE_SKEL;
+    OPENUSD_CAPABILITY_USD_SHADE_SKEL |
+    OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));

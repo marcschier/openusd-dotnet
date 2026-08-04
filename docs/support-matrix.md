@@ -309,6 +309,11 @@ The complete API examples and native ownership rules are in [Data API](data-api.
 | `Ts` | Double-valued spline knots, tangents, extrapolation, evaluation | Focused read-only |
 | `UsdValidation` | Registry enumeration and stage/prim validation results | Focused read-only |
 | `UsdPhysics` | Scene, body, collision, material, joints, limits/drives, filtering | Authoring only |
+| `UsdVol` | Volume, field assets, OpenVDBAsset schema, Field3DAsset | Authoring only; no OpenVDB runtime/rendering |
+| `UsdRender` | SettingsBase, Settings, Product, Var, Pass | Data API; no RenderDenoisePass in pinned OpenUSD |
+| `UsdMedia` | SpatialAudio, AssetPreviewsAPI | Data API |
+| `UsdProc` | GenerativeProcedural | Data API |
+| `UsdUI` | Backdrop, NodeGraphNodeAPI, SceneGraphPrimAPI | Focused API-schema coverage |
 
 Complete generated bindings for every OpenUSD schema are not a current claim.
 UsdShade binding coverage includes purpose, strength, and collection bindings. UsdSkel blend-shape
