@@ -167,7 +167,7 @@
         <ColumnDefinition Width="340" />
       </Grid.ColumnDefinitions>
       <Border x:Name="StagePanel" Grid.Column="0" Padding="8">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
           <TextBlock FontSize="16" FontWeight="SemiBold" Text="Stage" />
           <TextBlock
               x:Name="StageIdentity"
@@ -187,19 +187,35 @@
               x:Name="HierarchyFilter"
               Grid.Row="3"
               Margin="0,8,0,0"
-              AutomationProperties.Name="Filter stage hierarchy"
+              AutomationProperties.Name="Filter stage hierarchy by name"
               PlaceholderText="Filter paths or names"
               ToolTip.Tip="Matching prims and their ancestors remain visible" />
+          <TextBox
+              x:Name="HierarchyTypeFilter"
+              Grid.Row="4"
+              Margin="0,6,0,0"
+              AutomationProperties.Name="Filter stage hierarchy by type"
+              PlaceholderText="Filter by prim type"
+              ToolTip.Tip="Filter by composed prim type, such as Xform, Mesh, or Scope" />
+          <StackPanel Grid.Row="5" Margin="0,6,0,0" Orientation="Horizontal" Spacing="6">
+            <TextBlock VerticalAlignment="Center" Text="Expand depth" />
+            <TextBox
+                x:Name="HierarchyExpandDepthInput"
+                Width="60"
+                AutomationProperties.Name="Expand stage hierarchy to depth"
+                Text="0"
+                ToolTip.Tip="Enter 0 for lazy roots, or a non-negative depth to expand descendants" />
+          </StackPanel>
           <TextBlock
               x:Name="HierarchyState"
-              Grid.Row="4"
+              Grid.Row="6"
               Margin="0,8,0,0"
               AutomationProperties.Name="Stage hierarchy state"
               Text="Open or drop a USD stage to inspect its prims."
               TextWrapping="Wrap" />
           <TreeView
               x:Name="StageHierarchy"
-              Grid.Row="5"
+              Grid.Row="7"
               Margin="0,8,0,0"
               AutomationProperties.Name="Stage hierarchy"
               IsVisible="False" />
@@ -242,6 +258,18 @@
                 <TextBlock
                     x:Name="InspectorState"
                     Text="Select a prim to inspect metadata and attributes."
+                    TextWrapping="Wrap" />
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+          <TabItem x:Name="CompositionTab" Header="_Composition">
+            <ScrollViewer Margin="0,8,0,0">
+              <StackPanel
+                  x:Name="CompositionRows"
+                  AutomationProperties.Name="Selected prim Pcp composition"
+                  Spacing="6">
+                <TextBlock
+                    Text="Select a prim to inspect its Pcp prim index."
                     TextWrapping="Wrap" />
               </StackPanel>
             </ScrollViewer>

@@ -9,9 +9,18 @@ namespace OpenUsd.Viewer;
 internal sealed record ViewerHierarchyEntry(
     string Path,
     string Name,
+    string TypeName,
     string? ParentPath,
     int Depth,
     int ChildCount) : IUsdDetachedResult;
+
+internal sealed record ViewerHierarchySourceEntry(
+    string Path,
+    string TypeName);
+
+internal sealed record ViewerHierarchyFilter(
+    string? NameQuery,
+    string? TypeQuery);
 
 internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
 {
@@ -37,30 +46,38 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
     internal static ViewerHierarchySnapshot Build(IEnumerable<string> traversalPaths)
     {
         ArgumentNullException.ThrowIfNull(traversalPaths);
-        string[] paths = traversalPaths
-            .Where(path => !string.IsNullOrWhiteSpace(path) && path[0] == '/')
-            .Distinct(StringComparer.Ordinal)
+        return Build(traversalPaths.Select(path => new ViewerHierarchySourceEntry(path, string.Empty)));
+    }
+
+    internal static ViewerHierarchySnapshot Build(IEnumerable<ViewerHierarchySourceEntry> traversalEntries)
+    {
+        ArgumentNullException.ThrowIfNull(traversalEntries);
+        ViewerHierarchySourceEntry[] sourceEntries = traversalEntries
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Path) && entry.Path[0] == '/')
+            .GroupBy(entry => entry.Path, StringComparer.Ordinal)
+            .Select(group => group.First())
             .ToArray();
         var childCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (string path in paths)
+        foreach (ViewerHierarchySourceEntry entry in sourceEntries)
         {
-            string? parent = GetParentPath(path);
+            string? parent = GetParentPath(entry.Path);
             if (parent is not null)
             {
                 childCounts[parent] = childCounts.GetValueOrDefault(parent) + 1;
             }
         }
 
-        var entries = new ViewerHierarchyEntry[paths.Length];
-        for (int index = 0; index < paths.Length; index++)
+        var entries = new ViewerHierarchyEntry[sourceEntries.Length];
+        for (int index = 0; index < sourceEntries.Length; index++)
         {
-            string path = paths[index];
+            ViewerHierarchySourceEntry source = sourceEntries[index];
             entries[index] = new ViewerHierarchyEntry(
-                path,
-                GetName(path),
-                GetParentPath(path),
-                GetDepth(path),
-                childCounts.GetValueOrDefault(path));
+                source.Path,
+                GetName(source.Path),
+                source.TypeName,
+                GetParentPath(source.Path),
+                GetDepth(source.Path),
+                childCounts.GetValueOrDefault(source.Path));
         }
         return new ViewerHierarchySnapshot(entries);
     }
@@ -72,9 +89,13 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
             ? children
             : [];
 
-    internal ViewerHierarchySnapshot Filter(string? query)
+    internal ViewerHierarchySnapshot Filter(string? query) => Filter(new ViewerHierarchyFilter(query, null));
+
+    internal ViewerHierarchySnapshot Filter(ViewerHierarchyFilter filter)
     {
-        if (string.IsNullOrWhiteSpace(query))
+        ArgumentNullException.ThrowIfNull(filter);
+        if (string.IsNullOrWhiteSpace(filter.NameQuery) &&
+            string.IsNullOrWhiteSpace(filter.TypeQuery))
         {
             return this;
         }
@@ -82,8 +103,7 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
         var included = new HashSet<string>(StringComparer.Ordinal);
         foreach (ViewerHierarchyEntry entry in Entries)
         {
-            if (!entry.Name.Contains(query, StringComparison.OrdinalIgnoreCase) &&
-                !entry.Path.Contains(query, StringComparison.OrdinalIgnoreCase))
+            if (!Matches(entry, filter))
             {
                 continue;
             }
@@ -94,7 +114,19 @@ internal sealed record ViewerHierarchySnapshot : IUsdDetachedResult
                 path = GetParentPath(path);
             }
         }
-        return Build(Entries.Where(entry => included.Contains(entry.Path)).Select(entry => entry.Path));
+        return Build(Entries
+            .Where(entry => included.Contains(entry.Path))
+            .Select(entry => new ViewerHierarchySourceEntry(entry.Path, entry.TypeName)));
+    }
+
+    private static bool Matches(ViewerHierarchyEntry entry, ViewerHierarchyFilter filter)
+    {
+        bool nameMatches = string.IsNullOrWhiteSpace(filter.NameQuery) ||
+            entry.Name.Contains(filter.NameQuery, StringComparison.OrdinalIgnoreCase) ||
+            entry.Path.Contains(filter.NameQuery, StringComparison.OrdinalIgnoreCase);
+        bool typeMatches = string.IsNullOrWhiteSpace(filter.TypeQuery) ||
+            entry.TypeName.Contains(filter.TypeQuery, StringComparison.OrdinalIgnoreCase);
+        return nameMatches && typeMatches;
     }
 
     private static string GetName(string path)
@@ -329,9 +361,49 @@ internal sealed record ViewerPrimInspectorSnapshot(
     string[] AppliedSchemas,
     ViewerVariantSetSnapshot[] VariantSets,
     ViewerPayloadArcSnapshot[] PayloadArcs,
+    PcpPrimIndex Composition,
     ViewerAttributeSnapshot[] Attributes,
     ViewerRelationshipSnapshot[] Relationships,
     ViewerUnsupportedFeature[] UnsupportedFeatures) : IUsdDetachedResult;
+
+internal static class ViewerHierarchyExpansionPolicy
+{
+    internal static bool ShouldMaterializeChildren(
+        ViewerHierarchyEntry entry,
+        int expandDepth,
+        bool containsSelection)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        if (entry.ChildCount == 0)
+        {
+            return false;
+        }
+        return containsSelection || entry.Depth < Math.Max(0, expandDepth);
+    }
+}
+
+internal static class ViewerCompositionFormatter
+{
+    internal static string FormatSummary(PcpPrimIndex composition)
+    {
+        ArgumentNullException.ThrowIfNull(composition);
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{composition.Nodes.Count} nodes; {composition.Errors.Count} errors");
+    }
+
+    internal static string FormatNode(PcpPrimIndexNode node, int index)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return ViewerScalarFormatter.Bound(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"#{index}: {node.ArcType}; parent={node.ParentIndex}; site={node.SitePath}; " +
+                $"intro={node.IntroPath}; specs={node.HasSpecs}; contributes={node.CanContributeSpecs}; " +
+                $"layers={node.LayerIdentifiers.Count}"),
+            ViewerScalarFormatter.DefaultTextLimit);
+    }
+}
 
 [Flags]
 internal enum ViewerLayerRole
@@ -537,12 +609,12 @@ internal static class ViewerStageSnapshotBuilder
 
     private static ViewerHierarchySnapshot BuildHierarchy(IReadOnlyList<UsdPrim> prims)
     {
-        var paths = new string[prims.Count];
+        var entries = new ViewerHierarchySourceEntry[prims.Count];
         for (int index = 0; index < prims.Count; index++)
         {
-            paths[index] = prims[index].Path;
+            entries[index] = new ViewerHierarchySourceEntry(prims[index].Path, prims[index].TypeName);
         }
-        return ViewerHierarchySnapshot.Build(paths);
+        return ViewerHierarchySnapshot.Build(entries);
     }
 
     internal static ViewerPrimInspectorSnapshot BuildInspector(UsdStage stage, string primPath)
@@ -587,6 +659,7 @@ internal static class ViewerStageSnapshotBuilder
         ViewerVariantSetSnapshot[] variantSets = BuildVariantSets(prim);
         ViewerPayloadArcSnapshot[] payloadArcs =
             ViewerPayloadArcSnapshot.Create(prim.GetPayloadArcs());
+        PcpPrimIndex composition = prim.GetPrimIndex();
         bool isInstance = prim.IsInstance();
         bool isPrototype = prim.IsPrototype();
         bool isImageable = UsdGeomImageable.TryWrap(prim, out UsdGeomImageable imageable);
@@ -620,6 +693,7 @@ internal static class ViewerStageSnapshotBuilder
             prim.GetAppliedSchemas(),
             variantSets,
             payloadArcs,
+            composition,
             attributeSnapshots,
             relationshipSnapshots,
             unsupported.ToArray());
