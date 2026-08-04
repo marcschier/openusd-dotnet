@@ -641,6 +641,53 @@ def Xform "World"
     }
 
     [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        ParityImage image;
+        try
+        {
+            image = CaptureGeneratedMaterialXSelfConsistency(
+                static () => D3D12SilkGraphicsDevice.Create(useWarp: true));
+        }
+        catch (Exception exception) when (exception is
+            DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
+        {
+            SkipOrFail("MaterialX generated D3D12 self-consistency", exception.ToString());
+            return;
+        }
+
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        Console.WriteLine(
+            "materialx-generated-d3d12-self-consistency maxChannelDelta=" +
+            maxChannelDelta.ToString(CultureInfo.InvariantCulture) +
+            " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture));
+        const string pairDescription =
+            "generated side: ND_constant_color3 -> ND_multiply_color3FA -> ND_surface_unlit " +
+            "compiled by VkShaderGenerator/glslang to SPIR-V, translated by SPIRV-Cross to HLSL, " +
+            "compiled by DXC to DXIL, and selected as generated D3D12 shader code; " +
+            "reference side: checked UsdPreviewSurface shader with only emissiveColor set. " +
+            "Breaking generation, SPIRV-Cross translation, DXC, cache keying, or generated shader " +
+            "selection changes only the generated half.";
+        WriteEvidence(
+            "materialx-generated-d3d12-self-consistency.txt",
+            [
+                "materialx-generated-d3d12-self-consistency maxChannelDelta=" +
+                maxChannelDelta.ToString(CultureInfo.InvariantCulture) +
+                " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture),
+                pairDescription,
+            ]);
+
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
     public async Task TextureWrapModesMatchRepeatWithinUnitUvRangeOnVulkan()
     {
         var cases = new[]

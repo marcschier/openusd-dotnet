@@ -1048,6 +1048,7 @@ public sealed class SilkMeshRenderer :
         {
             ReadOnlyMemory<byte> generatedFragment = _shaderFormat switch
             {
+                SilkShaderBinaryFormat.Dxil => material.GeneratedFragmentSpirV,
                 SilkShaderBinaryFormat.SpirV => material.GeneratedFragmentSpirV,
                 SilkShaderBinaryFormat.MetalLibrary => material.GeneratedFragmentMslSource,
                 _ => ReadOnlyMemory<byte>.Empty
@@ -1070,7 +1071,7 @@ public sealed class SilkMeshRenderer :
             material.CreateRuntimeShaderKeyBytes(),
             _shaderFormat,
             material.SurfaceKind == SilkSurfaceKind.MaterialXGenerated
-                ? "MaterialXGeneratedBackendFragment.v1"
+                ? "MaterialXGeneratedBackendFragment.v2"
                 : "MaterialXProjectedPreviewSurface.v1");
 
     private static string GetPipelineShaderIdentity(SilkMaterialShaderRequest? materialShader) =>
