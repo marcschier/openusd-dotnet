@@ -237,7 +237,7 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | Texture wrap modes | `materials-textures`, `texture-wrap-*` equivalence and divergence |
 | Texture colour spaces | `materials-textures`, `texture-colorspace-auto` and `-raw` divergence |
 | Texture scale, bias, and fallback | `texture-scale-bias-fallback` equivalence and divergence |
-| Texture slots beyond diffuse | None |
+| Texture slots beyond diffuse | Emissive, roughness, metallic, and normal self-consistency pairs |
 | Metallic workflow with non-zero `metallic` | `material-metallic-workflow` |
 | MaterialX standard-surface authored graph | None |
 | MaterialX projection arithmetic/equivalent constants | `materialx-standard-surface-preview-equivalent` |
@@ -301,6 +301,14 @@ Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
 - `light-cylinder-zero-length-self-consistency` compares a zero-length cylinder light with a sphere light.
   It measured `maxChannelDelta=10` / `meanChannelDelta=0.550`. Its full-length companion measured
   `maxChannelDelta=25` / `meanChannelDelta=2.039`, so ignoring cylinder length would lose divergence.
+- The non-diffuse texture-slot gates compare an untextured material with neutral one-pixel fallbacks routed
+  through the emissive, roughness, metallic, and normal texture shader variants. They measured:
+  emissive `maxChannelDelta=8` / `meanChannelDelta=0.636`, roughness `maxChannelDelta=11` /
+  `meanChannelDelta=0.810`, metallic `maxChannelDelta=2` / `meanChannelDelta=0.065`, and normal
+  `maxChannelDelta=8` / `meanChannelDelta=0.624`. Their companion non-neutral fallbacks measured:
+  emissive `maxChannelDelta=79` / `meanChannelDelta=7.735`, roughness `maxChannelDelta=41` /
+  `meanChannelDelta=8.278`, metallic `maxChannelDelta=144` / `meanChannelDelta=19.155`, and normal
+  `maxChannelDelta=101` / `meanChannelDelta=14.463`, so silently dropping any slot loses divergence.
 
 At the parity harness complexity, Storm renders the Catmull-Clark probe as a
 coarse/control-cage-like surface rather than full refinement. An eager
@@ -314,9 +322,9 @@ remains measured but ungated until the remaining divergence is eliminated.
 - Other primvar names beyond constant `displayColor` and vertex `st`/normals are not gated.
 - Texture `repeat`, `clamp`, `mirror`, `useMetadata`/black, `sRGB`, diffuse `auto`, and raw/linear colour
   space are gated.
-- Emissive, specular, metallic, roughness, normal, opacity, and occlusion texture slots have no parity scene.
-- `emissiveColor`, `clearcoat`, `clearcoatRoughness`, `opacity`, `opacityThreshold`, `ior`, normal maps,
-  `displacement`, and `occlusion` are not gated.
+- Specular, opacity, and occlusion texture slots have no parity scene.
+- `emissiveColor`, `clearcoat`, `clearcoatRoughness`, `opacity`, `opacityThreshold`, `ior`, `displacement`,
+  and `occlusion` are not gated as authored constant PreviewSurface inputs.
 - MaterialX images, normal maps, emission, non-zero metalness, and arithmetic chains have no Storm parity gate.
 - Sphere-light glossy shaping, dome textures, image-based lighting, and area-light texture inputs are not gated.
 - Multiple point-instancer prototypes/proto-index variation and instanced shadows are not gated.
