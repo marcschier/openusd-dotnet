@@ -9,6 +9,7 @@ public sealed class PublicApiBaselineTests
     private static readonly string[] ExpectedApiProjects =
     [
         "OpenUsd",
+        "OpenUsd.Cesium",
         "OpenUsd.Interop",
         "OpenUsd.Rendering",
         "OpenUsd.Rendering.Silk",

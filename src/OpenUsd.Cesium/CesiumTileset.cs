@@ -80,7 +80,38 @@ public readonly record struct CesiumUpdateResult(
     int LoadedTileCount,
     float LoadProgress);
 
-public sealed record CesiumTileImportResult(string RootPath, int MeshCount, IReadOnlyList<string> PrimPaths);
+public sealed record CesiumTileImportResult(string RootPath, int MeshCount, IReadOnlyList<string> PrimPaths)
+{
+    // A record's synthesized Equals compares IReadOnlyList by reference, so two
+    // imports of the same tile would never compare equal. Same defect the
+    // OpenUsd snapshot records carry a guard for; that guard enumerates the
+    // OpenUsd assembly only, so it does not reach this one.
+    /// <inheritdoc />
+    public bool Equals(CesiumTileImportResult? other) =>
+        other is not null &&
+        RootPath == other.RootPath &&
+        MeshCount == other.MeshCount &&
+        PrimPaths.SequenceEqual(other.PrimPaths);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        HashCode hash = default;
+        hash.Add(RootPath);
+        hash.Add(MeshCount);
+        foreach (string path in PrimPaths)
+        {
+            hash.Add(path);
+        }
+        return hash.ToHashCode();
+    }
+
+    /// <inheritdoc />
+    public override string ToString() =>
+        $"{nameof(CesiumTileImportResult)} {{ {nameof(RootPath)} = {RootPath}, " +
+        $"{nameof(MeshCount)} = {MeshCount}, " +
+        $"{nameof(PrimPaths)} = [{string.Join(", ", PrimPaths)}] }}";
+}
 
 public sealed unsafe partial class CesiumTileset : IDisposable
 {

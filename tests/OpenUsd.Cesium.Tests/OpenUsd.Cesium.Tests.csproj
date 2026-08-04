@@ -11,6 +11,13 @@
     <AssemblyName>OpenUsd.Cesium.Tests</AssemblyName>
     <RootNamespace>OpenUsd.Cesium.Tests</RootNamespace>
     <IsTestProject>true</IsTestProject>
+    <!--
+      These open a real stage, so eng/run-managed-tests.ps1 must skip them
+      loudly rather than fail with DllNotFoundException. They are run by the
+      coverage job through eng/run-native-managed-tests.ps1, which stages the
+      runtime. Only the core shim is needed, not a cesium-native build.
+    -->
+    <OpenUsdRequiresNativeRuntime>true</OpenUsdRequiresNativeRuntime>
   </PropertyGroup>
 
   <ItemGroup>
