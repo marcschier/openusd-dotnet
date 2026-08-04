@@ -145,6 +145,12 @@ HdSilkGenerateMaterialXVulkanFragment(
 {
     HdSilkMaterialXVulkanShader result;
 #if !defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
+    // macOS builds without the Vulkan generator, so both parameters are unused
+    // on that platform and AppleClang fails on -Werror,-Wunused-parameter.
+    // Neither MSVC nor the Linux build sees this, because the Linux build has
+    // the feature enabled and MSVC does not raise the warning.
+    (void)materialPath;
+    (void)networkMap;
     result.error = "hdSilk was built without the Vulkan MaterialX generator.";
     return result;
 #else
