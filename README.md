@@ -156,8 +156,9 @@ The package prefix in the runtime columns is `OpenUsd.Runtime.`.
 
 Curated parity runs on Windows against D3D12 WARP and Vulkan SwiftShader. Two Vulkan composition
 proofs are narrowed on hosted runners and need GPU-equipped self-hosted hardware: hosted Windows has
-no system Vulkan ICD and SwiftShader cannot export to a D3D11 shared handle, and the hosted Linux
-compositor reports no supported image handles.
+no system Vulkan ICD, and SwiftShader lacks the Win32 external-memory and external-semaphore
+extensions needed to export a Vulkan image to a D3D11 shared handle. Hosted Linux reaches lavapipe,
+but the compositor reports no supported image handles, so no external Vulkan image can be imported.
 
 See [Support matrix](docs/support-matrix.md) for the distinction between implemented source,
 workflow-defined gates, and hosted execution evidence.
@@ -354,10 +355,11 @@ Native-backed execution additionally requires the matching locked runtime and sh
 - Direct bindings to the OpenUSD C++ ABI or exposure of C++ object layouts.
 - Per-prim, per-vertex, or per-element P/Invoke on scene and render hot paths.
 - Complete generated coverage of every OpenUSD schema and optional component.
-- A replacement for `usdview`, a full DCC, or a general-purpose game engine.
+- A Python-hosting `usdview` clone, full DCC, or general-purpose game engine. The Viewer can still
+  pursue `usdview`-style inspection parity over the C++ USD and Hydra APIs.
 - Runtime packages for RIDs outside `win-x64`, `linux-x64`, and `osx-arm64` today.
-- Bundling Python, usdview, tutorials, examples, Embree, Alembic, Draco, OpenVDB, or RenderMan in
-  the locked native profile.
+- Bundling Python, usdview, tutorials, examples, Embree, or RenderMan in the locked native profile.
+  OpenVDB, Alembic, Draco, and Ptex are now included in that profile.
 
 ## 🔒 Security
 
