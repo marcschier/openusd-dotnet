@@ -601,6 +601,15 @@ void AppendMaterialUpsert(
     {
         AppendU32(payload, word);
     }
+    AppendU32(
+        payload,
+        CheckedCount(
+            record.generatedFragmentMslSource.size(),
+            "generated MaterialX fragment MSL source byte count"));
+    AppendBytes(
+        payload,
+        record.generatedFragmentMslSource.data(),
+        record.generatedFragmentMslSource.size());
 
     AppendCommand(buffer, OPENUSD_SILK_COMMAND_MATERIAL_UPSERT, payload);
 }

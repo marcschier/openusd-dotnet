@@ -54,7 +54,7 @@ struct ParsedAttribute
     float firstValue = 0.0F;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 4);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 10);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 11);
 
 openusd_render_camera AutomaticCamera()
 {
@@ -621,6 +621,13 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     (generatedFragmentSize % sizeof(uint32_t)) == 0 &&
                     AddSize(&cursor, sizeof(uint32_t)) &&
                     AddSize(&cursor, generatedFragmentSize);
+            }
+            uint32_t generatedMslSourceSize = 0;
+            if (valid)
+            {
+                valid = ReadValue(data, size, offset + cursor, &generatedMslSourceSize) &&
+                    AddSize(&cursor, sizeof(uint32_t)) &&
+                    AddSize(&cursor, generatedMslSourceSize);
             }
             // Requiring the exact size means an unaccounted byte fails here rather
             // than surfacing as a silently mis-read parameter later.
@@ -1711,6 +1718,7 @@ bool VerifyMaterialXBridge()
     }
 
     bool vulkanGenerated = true;
+    bool mslGenerated = true;
 #if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
     const HdSilkMaterialXVulkanShader vulkan =
         HdSilkGenerateMaterialXVulkanFragment(SdfPath("/World/Material"), map);
@@ -1723,8 +1731,20 @@ bool VerifyMaterialXBridge()
         return false;
     }
 #endif
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_MSL)
+    const HdSilkMaterialXVulkanShader msl =
+        HdSilkGenerateMaterialXVulkanFragment(SdfPath("/World/Material"), map);
+    mslGenerated = msl.success &&
+        msl.fragmentMslSource.find("fragment") != std::string::npos;
+    if (!mslGenerated)
+    {
+        std::cerr << "MaterialX Metal generation failed: " << msl.error << "\n";
+        return false;
+    }
+#endif
 
     return vulkanGenerated &&
+        mslGenerated &&
         document.xml.find("standard_surface") != std::string::npos &&
         document.xml.find("image") != std::string::npos &&
         document.xml.find("materialx-basecolor.png") != std::string::npos &&

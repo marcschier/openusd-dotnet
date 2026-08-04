@@ -442,7 +442,8 @@ The documented MaterialX subset is intentionally a projection into that same dat
   `UsdPrimvarReader_float2` select the UV primvar, defaulting to `st` when the graph has no explicit coordinate node.
 - Constant `ND_multiply_*`, `ND_add_*`, `ND_subtract_*`, `ND_clamp_*`, and `ND_mix_*` chains are folded on the CPU for
   supported scalar/vector inputs. Per-pixel arithmetic, mixing two images, UV transform/place2d nodes, ramps, swizzles,
-  procedural noise, transmission, subsurface, coat/sheen, displacement, and UDIM expansion are excluded.
+  procedural noise, transmission, subsurface, coat/sheen, displacement, and UDIM expansion are excluded from
+  projection.
 
 Unsupported MaterialX terminals and unsupported upstream nodes are not approximated. hdSilk publishes an unsupported
 material record or leaves the individual input at its documented default and emits a `TF_WARN` naming the material,
@@ -451,17 +452,18 @@ render.
 
 The native hdSilk layer also contains the input-side bridge from Hydra material networks to MaterialX documents. It
 converts the `HdMaterialNetworkMap` to OpenUSD's `HdMaterialNetwork2` form, runs the upstream `hdMtlx` document builder
-with the MaterialX standard libraries, validates the result, and records texture/primvar nodes. The same native probe
-also exercises the first Vulkan generated-source path: `VkShaderGenerator` emits fragment GLSL for that document and
-shaderc/glslang compiles it to SPIR-V with the expected magic word. This proves the document and Vulkan generator path,
-but not arbitrary MaterialX rendering; the generated SPIR-V is not yet wired into hdSilk's managed runtime shader
-compilation service or draw selection.
+with the MaterialX standard libraries, validates the result, and records texture/primvar nodes. For generated
+MaterialX, Vulkan uses `VkShaderGenerator` plus shaderc/glslang SPIR-V and Metal carries `MslShaderGenerator` source to
+the runtime shader service. The page payload is still content-addressed and asynchronous on the managed side; the
+checked offline shader payload remains authoritative for built-in shaders and supplies the placeholder while generated
+programs compile.
 
 MaterialX 1.39.4 does not ship an HLSL generator or a direct SPIR-V generator. The usable generator
 families for this design are GLSL, Vulkan GLSL, ESSL, WGSL, MSL, OSL, and MDL. Vulkan therefore goes
 through `VkShaderGenerator` and glslang; Metal goes through `MslShaderGenerator`; D3D12 has no direct
 MaterialX-to-HLSL path and must use SPIRV-Cross to HLSL followed by DXC, with MDL documented as the
-fallback route when that translation cannot represent a graph.
+fallback route when that translation cannot represent a graph. The MDL SDK is Apache-2.0 and has HLSL and GLSL
+backends, so it remains the fallback if SPIRV-Cross output proves poor.
 
 D3D12 binds the checked pick shaders through one generation-tagged RGBA8/D32 PSO. `SceneParameters`
 uses root CBV b0 and the mesh token base uses four 32-bit root constants at b1, so a draw does not

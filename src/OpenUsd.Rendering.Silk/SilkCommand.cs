@@ -894,6 +894,8 @@ public readonly ref struct SilkMaterialUpsertCommand
     private readonly int _pathLength;
     private readonly int _generatedFragmentOffset;
     private readonly int _generatedFragmentLength;
+    private readonly int _generatedFragmentMslSourceOffset;
+    private readonly int _generatedFragmentMslSourceLength;
 
     internal SilkMaterialUpsertCommand(ReadOnlySpan<byte> bytes)
     {
@@ -952,6 +954,26 @@ public readonly ref struct SilkMaterialUpsertCommand
                 "The generated MaterialX fragment SPIR-V payload is truncated.");
         }
         offset += _generatedFragmentLength;
+        if (offset + sizeof(uint) > bytes.Length)
+        {
+            throw new InvalidDataException(
+                "The material upsert generated MSL source payload length is truncated.");
+        }
+        uint generatedMslSourceLength = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, sizeof(uint)));
+        if (generatedMslSourceLength > int.MaxValue)
+        {
+            throw new InvalidDataException(
+                "The generated MaterialX fragment MSL source payload exceeds the managed page limit.");
+        }
+        _generatedFragmentMslSourceLength = (int)generatedMslSourceLength;
+        offset += sizeof(uint);
+        _generatedFragmentMslSourceOffset = offset;
+        if (_generatedFragmentMslSourceLength > bytes.Length - offset)
+        {
+            throw new InvalidDataException(
+                "The generated MaterialX fragment MSL source payload is truncated.");
+        }
+        offset += _generatedFragmentMslSourceLength;
         if (offset != bytes.Length)
         {
             throw new InvalidDataException(
@@ -982,6 +1004,12 @@ public readonly ref struct SilkMaterialUpsertCommand
         _generatedFragmentLength == 0
             ? []
             : _bytes.Slice(_generatedFragmentOffset, _generatedFragmentLength);
+
+    /// <summary>Gets generated MaterialX fragment MSL source bytes, if this material carries any.</summary>
+    public ReadOnlySpan<byte> GeneratedFragmentMslSource =>
+        _generatedFragmentMslSourceLength == 0
+            ? []
+            : _bytes.Slice(_generatedFragmentMslSourceOffset, _generatedFragmentMslSourceLength);
 
     /// <summary>Gets one constant input.</summary>
     public SilkMaterialScalarEntry GetScalar(int index)

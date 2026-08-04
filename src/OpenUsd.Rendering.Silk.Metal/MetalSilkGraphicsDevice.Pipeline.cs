@@ -100,7 +100,8 @@ public sealed partial class MetalSilkGraphicsDevice
         program.ThrowIfDisposed();
         SilkCheckedShaderAssets.ValidatePinnedMetalLibrary();
 
-        MTLLibrary library = default;
+        MTLLibrary vertexLibrary = default;
+        MTLLibrary fragmentLibrary = default;
         MTLFunction vertexFunction = default;
         MTLFunction fragmentFunction = default;
         MTLRenderPipelineState pipeline = default;
@@ -115,8 +116,8 @@ public sealed partial class MetalSilkGraphicsDevice
             try
             {
                 NSError error = default;
-                library = _device.NewLibrary(url, ref error);
-                if (library.NativePtr == 0)
+                vertexLibrary = _device.NewLibrary(url, ref error);
+                if (vertexLibrary.NativePtr == 0)
                 {
                     throw new InvalidOperationException(
                         "Could not load the pinned Metal shader library.");
@@ -128,8 +129,9 @@ public sealed partial class MetalSilkGraphicsDevice
                 path.Dispose();
             }
 
-            vertexFunction = library.NewFunction(program.Vertex.Descriptor.EntryPoint);
-            fragmentFunction = library.NewFunction(program.Fragment.Descriptor.EntryPoint);
+            vertexFunction = vertexLibrary.NewFunction(program.Vertex.Descriptor.EntryPoint);
+            fragmentLibrary = LoadFragmentLibrary(program.Fragment.Descriptor);
+            fragmentFunction = fragmentLibrary.NewFunction(program.Fragment.Descriptor.EntryPoint);
             if (vertexFunction.NativePtr == 0 || fragmentFunction.NativePtr == 0)
             {
                 throw new InvalidOperationException(
@@ -202,7 +204,8 @@ public sealed partial class MetalSilkGraphicsDevice
             return new MetalSilkGraphicsPipeline(
                 this,
                 descriptor,
-                library,
+                vertexLibrary,
+                fragmentLibrary,
                 vertexFunction,
                 fragmentFunction,
                 pipeline,
@@ -230,12 +233,59 @@ public sealed partial class MetalSilkGraphicsDevice
                 {
                     vertexFunction.Dispose();
                 }
-                if (library.NativePtr != 0)
+                if (fragmentLibrary.NativePtr != 0)
                 {
-                    library.Dispose();
+                    fragmentLibrary.Dispose();
+                }
+                if (vertexLibrary.NativePtr != 0)
+                {
+                    vertexLibrary.Dispose();
                 }
                 ReleaseDependentObject();
             }
+        }
+    }
+
+    private MTLLibrary LoadFragmentLibrary(SilkShaderModuleDescriptor descriptor)
+    {
+        if (descriptor.EntryPoint == "main")
+        {
+            NSString source = System.Text.Encoding.UTF8.GetString(descriptor.Code.Span);
+            try
+            {
+                NSError error = default;
+                MTLCompileOptions options = default;
+                MTLLibrary library = _device.NewLibrary(source, options, ref error);
+                if (library.NativePtr == 0)
+                {
+                    throw new InvalidOperationException(
+                        "Could not compile the generated Metal material fragment shader.");
+                }
+                return library;
+            }
+            finally
+            {
+                source.Dispose();
+            }
+        }
+
+        NSString path = Path.Combine(AppContext.BaseDirectory, "mesh.metallib");
+        NSURL url = NSURL.FileURLWithPath(path);
+        try
+        {
+            NSError error = default;
+            MTLLibrary library = _device.NewLibrary(url, ref error);
+            if (library.NativePtr == 0)
+            {
+                throw new InvalidOperationException(
+                    "Could not load the pinned Metal shader library.");
+            }
+            return library;
+        }
+        finally
+        {
+            url.Dispose();
+            path.Dispose();
         }
     }
 
@@ -324,7 +374,8 @@ internal sealed class MetalSilkGraphicsShaderProgram(
 internal sealed class MetalSilkGraphicsPipeline(
     MetalSilkGraphicsDevice device,
     SilkGraphicsPipelineDescriptor descriptor,
-    MTLLibrary library,
+    MTLLibrary vertexLibrary,
+    MTLLibrary fragmentLibrary,
     MTLFunction vertexFunction,
     MTLFunction fragmentFunction,
     MTLRenderPipelineState pipeline,
@@ -332,7 +383,8 @@ internal sealed class MetalSilkGraphicsPipeline(
     IDisposable programLease)
     : SilkGraphicsResourceBase, ISilkGraphicsPipeline
 {
-    private MTLLibrary _library = library;
+    private MTLLibrary _vertexLibrary = vertexLibrary;
+    private MTLLibrary _fragmentLibrary = fragmentLibrary;
     private MTLFunction _vertexFunction = vertexFunction;
     private MTLFunction _fragmentFunction = fragmentFunction;
     private MTLRenderPipelineState _pipeline = pipeline;
@@ -364,7 +416,8 @@ internal sealed class MetalSilkGraphicsPipeline(
         _pipeline.Dispose();
         _fragmentFunction.Dispose();
         _vertexFunction.Dispose();
-        _library.Dispose();
+        _fragmentLibrary.Dispose();
+        _vertexLibrary.Dispose();
         Interlocked.Exchange(ref _programLease, null)?.Dispose();
         Device.ReleaseDependentObject();
     }

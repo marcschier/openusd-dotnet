@@ -153,7 +153,7 @@ instead of raw initialization exceptions.
 hdSilk now supports texture-backed `UsdPreviewSurface` map binding on all three RHIs by decoding
 resolved assets through OpenUSD Hio and uploading cached sampled RGBA8 textures. UDIM expansion and
 colour-delta parity with Storm remain outside the current support claim.
-It also supports a documented MaterialX projection rather than arbitrary MaterialX code generation:
+It also supports a documented MaterialX projection plus generated-source paths for graphs outside that projection:
 `ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
 driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are
 reported with `TF_WARN` diagnostics that name the material input and node id. That source support is broader than the
@@ -163,8 +163,11 @@ as black in this harness, so the scene is recorded but not gated.
 The staged runtime includes `usdMtlx`, MaterialX DLLs, `MaterialXGenGlsl`, and the standard libraries, and the
 asset uses the MaterialX `out` terminal; with `UsdImagingGLEngine` scene materials enabled, Storm still covers only
 the 347-pixel PreviewSurface anchor against hdSilk's 4314-pixel MaterialX mesh. Where the two overlap, the colour
-delta remains only 3, so the divergence is capability rather than shading. MaterialX image, normal, emission,
-non-zero metalness, and arithmetic-node parity remain uncovered by a Storm-gated scene.
+delta remains only 3, so the divergence is capability rather than shading. Generated Vulkan MaterialX is gated by
+self-consistency instead: an unlit `ND_constant_color3 -> ND_multiply_color3FA -> ND_surface_unlit` graph renders
+against an emissive PreviewSurface equivalent at `maxChannelDelta=1` and `meanChannelDelta=0.237`, and disabling
+generated shader selection fails at 187 / 19.574. Metal carries generated `MslShaderGenerator` source through the same
+runtime shader cache, but this Windows harness cannot execute a Metal pixel gate.
 
 ## Backend capabilities
 

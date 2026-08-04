@@ -125,6 +125,7 @@ struct HdSilkMaterialRecord
     std::vector<HdSilkMaterialScalar> scalars;
     std::vector<HdSilkMaterialTexture> textures;
     std::vector<uint32_t> generatedFragmentSpirv;
+    std::string generatedFragmentMslSource;
 };
 
 /// One resolved UsdLux light entry. Transforms stay in world space on the wire;

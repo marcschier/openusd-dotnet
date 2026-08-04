@@ -226,7 +226,7 @@ not claim.
 | Primvar interpolation | Constant, vertex, varying, uniform, face-varying | Implemented; constant/vertex gated |
 | `UsdPreviewSurface` | All 14 inputs, both specular and metallic workflows | Implemented; specular workflow gated |
 | Textures | Image decode, GPU cache, `UsdUVTexture` wrap and colour space | Implemented; `repeat`+`sRGB` gated |
-| MaterialX | `ND_standard_surface_surfaceshader` projected onto PreviewSurface | Implemented subset; projection gated |
+| MaterialX | Projection plus generated Vulkan SPIR-V and Metal MSL source | Vulkan generated path gated |
 | `UsdLux` lighting | Distant, sphere, and untextured dome ambient with exposure | Parity-gated |
 | Shadows | Transport exists; Storm produces no offscreen reference to gate against | Measured, ungated |
 | Image-based lighting | Dome textures and IBL | Not implemented |
@@ -241,7 +241,7 @@ not claim.
 | Blend shapes | Direct skinning skips them; Hydra computed points remain a fallback | Not supported |
 | Subdivision | Storm renders the control cage at harness complexity | Measured, ungated |
 | Draw batching | Sorted and batched by pipeline and material | Implemented |
-| Volumes, path tracing, arbitrary MaterialX graphs | — | Out of scope for 1.0 |
+| Volumes, path tracing, full MaterialX coverage | — | Out of scope for 1.0 |
 
 ## 🔬 What "parity with Storm" means here
 
