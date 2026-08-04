@@ -1,0 +1,39 @@
+{
+  "$schemaVersion": 1,
+  "physx": {
+    "version": "5.5.0",
+    "tag": "106.4-physx-5.5.0",
+    "repository": "https://github.com/NVIDIA-Omniverse/PhysX.git",
+    "license": "BSD-3-Clause",
+    "vcpkgPackage": "physx",
+    "vcpkgConfigPackage": "unofficial-omniverse-physx-sdk",
+    "vcpkgTarget": "unofficial::omniverse-physx-sdk::sdk"
+  },
+  "vcpkg": {
+    "repository": "https://github.com/microsoft/vcpkg.git",
+    "baseline": "56bb2411609227288b70117ead2c47585ba07713",
+    "manifestMode": true,
+    "windowsTriplet": "x64-windows-static-md",
+    "linuxTriplet": "x64-linux",
+    "macosTriplet": "arm64-osx"
+  },
+  "profile": {
+    "name": "physx-quarantined",
+    "configuration": "Release",
+    "libraryLinkage": "static",
+    "enabled": [
+      "headers",
+      "static libraries",
+      "separate C ABI shim",
+      "smoke probe"
+    ],
+    "disabled": [
+      "PhysX samples",
+      "PhysX snippets",
+      "shared libraries"
+    ]
+  },
+  "directVcpkgDependencies": [
+    "physx"
+  ]
+}

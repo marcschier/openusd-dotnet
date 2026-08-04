@@ -81,6 +81,30 @@
         "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/cesium/osx-arm64;${sourceDir}/build/cesium/osx-arm64/vcpkg_installed/arm64-osx;${sourceDir}/build/cesium/osx-arm64/vcpkg_installed/arm64-osx/share",
         "OPENUSD_WITH_CESIUM": "ON"
       }
+    },
+    {
+      "name": "win-x64-physx",
+      "inherits": "win-x64",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/physx/win-x64;${sourceDir}/build/physx/win-x64/vcpkg_installed/x64-windows-static-md;${sourceDir}/build/physx/win-x64/vcpkg_installed/x64-windows-static-md/share",
+        "OPENUSD_WITH_PHYSX": "ON"
+      }
+    },
+    {
+      "name": "linux-x64-physx",
+      "inherits": "linux-x64",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/physx/linux-x64;${sourceDir}/build/physx/linux-x64/vcpkg_installed/x64-linux;${sourceDir}/build/physx/linux-x64/vcpkg_installed/x64-linux/share",
+        "OPENUSD_WITH_PHYSX": "ON"
+      }
+    },
+    {
+      "name": "osx-arm64-physx",
+      "inherits": "osx-arm64",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/physx/osx-arm64;${sourceDir}/build/physx/osx-arm64/vcpkg_installed/arm64-osx;${sourceDir}/build/physx/osx-arm64/vcpkg_installed/arm64-osx/share",
+        "OPENUSD_WITH_PHYSX": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -107,6 +131,18 @@
     {
       "name": "osx-arm64-cesium",
       "configurePreset": "osx-arm64-cesium"
+    },
+    {
+      "name": "win-x64-physx",
+      "configurePreset": "win-x64-physx"
+    },
+    {
+      "name": "linux-x64-physx",
+      "configurePreset": "linux-x64-physx"
+    },
+    {
+      "name": "osx-arm64-physx",
+      "configurePreset": "osx-arm64-physx"
     }
   ]
 }

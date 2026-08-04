@@ -1,0 +1,17 @@
+add_executable(openusd_physx_probe main.cpp)
+target_compile_features(openusd_physx_probe PRIVATE cxx_std_17)
+target_link_libraries(openusd_physx_probe PRIVATE openusd_physx)
+if(MSVC)
+    target_compile_options(openusd_physx_probe PRIVATE /W4 /WX /permissive-)
+else()
+    target_compile_options(openusd_physx_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+add_test(NAME openusd_physx_abi_probe COMMAND openusd_physx_probe)
+if(WIN32)
+    set_tests_properties(
+        openusd_physx_abi_probe
+        PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:openusd_physx>")
+endif()
