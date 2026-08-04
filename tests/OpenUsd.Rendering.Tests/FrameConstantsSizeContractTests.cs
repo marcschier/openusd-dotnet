@@ -15,9 +15,9 @@ namespace OpenUsd.Rendering.Tests;
 /// because they exercise the RHI directly without a scene: the offscreen RHI
 /// conformance cases and the NativeAOT RHI probe.
 ///
-/// Page ABI 9 grew that block from 208 to 544 bytes by adding per-frame
-/// lighting, which moved <c>eyeToWorld</c> to offset 480. Both hand-written
-/// copies still allocated 208 and read past the end. D3D12 and Vulkan on
+/// Page ABI 9 grew that block from 208 bytes by adding per-frame lighting, and
+/// the area-light basis vectors grew it again. Both hand-written copies still
+/// allocated 208 and read past the end. D3D12 and Vulkan on
 /// Windows returned values that happened to render correctly, and SwiftShader
 /// on Linux returned zeros, so a lit triangle came back unlit and only the
 /// Linux leg of CI failed — roughly twenty minutes after a push, with

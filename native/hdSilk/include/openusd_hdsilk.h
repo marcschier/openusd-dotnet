@@ -138,7 +138,8 @@ extern "C" {
 ///   repeated 4 times:
 ///     uint32 light_type (OPENUSD_SILK_LIGHT_*)
 ///     uint32 shadow_enabled (diagnostic only)
-///     uint32 reserved[2] (0)
+///     float shape_x
+///     float shape_y
 ///     float color[3]
 ///     float intensity
 ///     double transform[16] (row-major)

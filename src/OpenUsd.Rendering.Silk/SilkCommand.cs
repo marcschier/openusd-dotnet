@@ -144,6 +144,10 @@ public readonly ref struct SilkFrameCommand
 
     internal uint GetLightShadowEnabled(int light) => ReadLightUInt32(light, 4);
 
+    internal float GetLightShapeX(int light) => ReadLightSingle(light, 8);
+
+    internal float GetLightShapeY(int light) => ReadLightSingle(light, 12);
+
     internal float GetLightColor(int light, int component) =>
         ReadLightSingle(light, 16 + (component * 4));
 

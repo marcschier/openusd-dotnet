@@ -244,6 +244,9 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | Distant light direct transport | `light-distant-exposure` |
 | Distant light glossy specular | `light-distant-specular` |
 | Sphere light direct transport | `light-sphere-point` |
+| Rect light direct transport | `light-rect-*-self-consistency`, `light-rect-*-divergence-self-consistency` |
+| Disk light direct transport | `light-disk-*-self-consistency`, `light-disk-*-divergence-self-consistency` |
+| Cylinder light direct transport | `light-cylinder-*-self-consistency`, `light-cylinder-*-divergence-self-consistency` |
 | Dome light ambient | `light-dome-ambient` |
 | Shadows | None |
 | Point instancing | `point-instancer-cluster` |
@@ -263,9 +266,6 @@ produce a usable reference image for the authored feature.
 - **MaterialX standard surface:** Storm shades only the 347-pixel PreviewSurface anchor while hdSilk
   shades 4314 MaterialX pixels. `materialx-standard-surface-constant` is registered, measured, and not
   gated.
-- **Rect, disk, and cylinder area lights:** Storm renders authored area-light scenes black
-  (`referenceCoverage=0`) while hdSilk lights 4662 pixels. The source path is implemented and not
-  Storm-gated.
 - **Catmull-Clark subdivision:** `subdivision-catmull-clark` measures 0.931015 adjusted IoU against
   Storm's coarse/control-cage-like output, so it remains measured and not gated.
 - **Shadows:** `light-distant-shadow` is byte-identical with shadows disabled
@@ -292,6 +292,15 @@ Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
   single-sided mesh viewed from the outside. It measured `maxChannelDelta=2` / `meanChannelDelta=0.095`.
   The double-sided back-face companion measured `maxChannelDelta=172` / `meanChannelDelta=24.072`, so an
   ignored `cullStyle` token or ignored double-sided flag would diverge.
+- `light-rect-zero-area-self-consistency` compares a zero-area rect light with a sphere light. It measured
+  `maxChannelDelta=10` / `meanChannelDelta=0.550`. Its full-area companion measured `maxChannelDelta=28` /
+  `meanChannelDelta=2.355`, so ignoring rect extent would lose the required divergence.
+- `light-disk-edge-on-self-consistency` compares an edge-on disk light with an unlit half. It measured
+  `maxChannelDelta=16` / `meanChannelDelta=0.607`. The face-on companion measured `maxChannelDelta=49` /
+  `meanChannelDelta=4.014`, so ignoring disk orientation would lose the required divergence.
+- `light-cylinder-zero-length-self-consistency` compares a zero-length cylinder light with a sphere light.
+  It measured `maxChannelDelta=10` / `meanChannelDelta=0.550`. Its full-length companion measured
+  `maxChannelDelta=25` / `meanChannelDelta=2.039`, so ignoring cylinder length would lose divergence.
 
 At the parity harness complexity, Storm renders the Catmull-Clark probe as a
 coarse/control-cage-like surface rather than full refinement. An eager
@@ -309,7 +318,7 @@ remains measured but ungated until the remaining divergence is eliminated.
 - `emissiveColor`, `clearcoat`, `clearcoatRoughness`, `opacity`, `opacityThreshold`, `ior`, normal maps,
   `displacement`, and `occlusion` are not gated.
 - MaterialX images, normal maps, emission, non-zero metalness, and arithmetic chains have no Storm parity gate.
-- Sphere-light glossy specular, shaping, dome textures, and image-based lighting are not gated.
+- Sphere-light glossy shaping, dome textures, image-based lighting, and area-light texture inputs are not gated.
 - Multiple point-instancer prototypes/proto-index variation and instanced shadows are not gated.
 - Wide point splats, authored curve widths/ribbons, wire draw mode, and shaded-wire draw mode are not gated.
 - Authored `cullStyle=back` and the default `backUnlessDoubleSided` are gated for a single-sided mesh and
@@ -334,7 +343,7 @@ remains measured but ungated until the remaining divergence is eliminated.
 | `UsdLuxSphereLight` | Implemented subset and parity-gated | Matte point-attenuation scene gates; margin 0.542752 |
 | `UsdLuxDomeLight` | Ambient-only and parity-gated | Untextured dome ambient is gated; image IBL is not implemented |
 | Shadows | Measured, ungated | Offscreen Storm shadows are not a reference |
-| Rect/disk/cylinder area lights | Implemented, ungated | Offscreen Storm renders the reference scenes black |
+| Rect/disk/cylinder area lights | Implemented and self-consistency-gated | Storm renders authored references black |
 | Light linking | Not implemented | No linked-light filtering; no instanced-shadow parity |
 
 `light-distant-shadow` is one of the measured Storm offscreen-harness limits, alongside area lights,

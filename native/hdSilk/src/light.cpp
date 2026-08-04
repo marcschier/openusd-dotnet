@@ -8,6 +8,7 @@
 
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/gf/vec3f.h"
+#include "pxr/base/tf/token.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/imaging/hd/light.h"
@@ -19,6 +20,10 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 namespace
 {
+const TfToken WidthToken("width");
+const TfToken HeightToken("height");
+const TfToken LengthToken("length");
+
 float _ReadFloat(const VtValue& value, float fallback)
 {
     if (value.IsHolding<float>())
@@ -94,6 +99,8 @@ HdSilkLight::Sync(
     else if (_typeId == HdPrimTypeTokens->rectLight)
     {
         record.type = OPENUSD_SILK_LIGHT_RECT;
+        record.shapeX = _ReadFloat(sceneDelegate->GetLightParamValue(GetId(), WidthToken), 1.0f);
+        record.shapeY = _ReadFloat(sceneDelegate->GetLightParamValue(GetId(), HeightToken), 1.0f);
     }
     else if (_typeId == HdPrimTypeTokens->diskLight)
     {
@@ -102,6 +109,7 @@ HdSilkLight::Sync(
     else if (_typeId == HdPrimTypeTokens->cylinderLight)
     {
         record.type = OPENUSD_SILK_LIGHT_CYLINDER;
+        record.shapeX = _ReadFloat(sceneDelegate->GetLightParamValue(GetId(), LengthToken), 1.0f);
     }
     else if (_typeId == HdPrimTypeTokens->domeLight)
     {

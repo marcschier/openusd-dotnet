@@ -72,6 +72,8 @@ struct FrameParameters
     float4 lightDirectionRadius[4];
     float4 lightColorIntensity[4];
     float4 lightControls[4];
+    float4 lightTangentShapeX[4];
+    float4 lightBitangentShapeY[4];
     float4x4 eyeToWorld;
 };
 
@@ -348,47 +350,109 @@ float4 FRAGMENT_ENTRY_POINT(
         float specularScale = lightIndex == 0u && !hasSceneLighting
             ? 1.0
             : frame.lightControls[lightIndex].y;
-        float3 lightEye = lightIndex == 0u && !hasSceneLighting
+        float3 lightTangent = lightIndex == 0u && !hasSceneLighting
+            ? float3(1.0, 0.0, 0.0)
+            : normalize(frame.lightTangentShapeX[lightIndex].xyz);
+        float3 lightBitangent = lightIndex == 0u && !hasSceneLighting
+            ? float3(0.0, 1.0, 0.0)
+            : normalize(frame.lightBitangentShapeY[lightIndex].xyz);
+        float shapeX = lightIndex == 0u && !hasSceneLighting
+            ? 0.0
+            : frame.lightTangentShapeX[lightIndex].w;
+        float shapeY = lightIndex == 0u && !hasSceneLighting
+            ? 0.0
+            : frame.lightBitangentShapeY[lightIndex].w;
+        float lightRadius = lightIndex == 0u && !hasSceneLighting
+            ? 0.0
+            : frame.lightDirectionRadius[lightIndex].w;
+        float3 lightEyeBase = lightIndex == 0u && !hasSceneLighting
             ? eye
             : sceneEye;
-        if (lightType >= 2.0)
+        float3 sampleOffsets[5];
+        sampleOffsets[0] = float3(0.0, 0.0, 0.0);
+        sampleOffsets[1] = float3(0.0, 0.0, 0.0);
+        sampleOffsets[2] = float3(0.0, 0.0, 0.0);
+        sampleOffsets[3] = float3(0.0, 0.0, 0.0);
+        sampleOffsets[4] = float3(0.0, 0.0, 0.0);
+        float sampleCount = 1.0;
+        if (lightType == 3.0)
         {
-            float3 toLight = frame.lightPositionType[lightIndex].xyz - worldPosition;
-            float distanceSquared = max(dot(toLight, toLight), SurfaceEpsilon);
-            lightDirection = toLight * rsqrt(distanceSquared);
-            lightIntensity /= distanceSquared;
+            float3 halfWidth = lightTangent * (shapeX * 0.5);
+            float3 halfHeight = lightBitangent * (shapeY * 0.5);
+            sampleOffsets[1] = halfWidth + halfHeight;
+            sampleOffsets[2] = halfWidth - halfHeight;
+            sampleOffsets[3] = -halfWidth + halfHeight;
+            sampleOffsets[4] = -halfWidth - halfHeight;
+            sampleCount = 5.0;
         }
-        float3 half = normalize(lightDirection + lightEye);
-        float normalDotLight = saturate(dot(normal, lightDirection));
-        float normalDotHalf = saturate(dot(normal, half));
-        float eyeDotHalf = saturate(dot(lightEye, half));
-        float fresnel = SchlickFresnel(eyeDotHalf);
-        float3 directDiffuse =
-            diffuse * (1.0 - lerp(normalIncidence, grazingIncidence, fresnel));
-        float3 directSpecular = EvaluateDirectSpecular(
-            normalIncidence,
-            grazingIncidence,
-            specularRoughness,
-            fresnel,
-            normalDotLight,
-            normalDotEye,
-            normalDotHalf);
-        if (clearcoatAmount > 0.0)
+        else if (lightType == 4.0)
         {
-            directSpecular += clearcoatAmount * EvaluateDirectSpecular(
-                reflectanceRatio * reflectanceRatio * float3(1.0, 1.0, 1.0),
-                float3(1.0, 1.0, 1.0),
-                clearcoatRoughness,
+            sampleOffsets[1] = lightTangent * lightRadius;
+            sampleOffsets[2] = -lightTangent * lightRadius;
+            sampleOffsets[3] = lightBitangent * lightRadius;
+            sampleOffsets[4] = -lightBitangent * lightRadius;
+            sampleCount = 5.0;
+        }
+        else if (lightType == 5.0)
+        {
+            float3 halfLength = lightDirection * (shapeX * 0.5);
+            sampleOffsets[1] = halfLength;
+            sampleOffsets[2] = -halfLength;
+            sampleCount = 3.0;
+        }
+        for (uint sampleIndex = 0u; sampleIndex < 5u; sampleIndex++)
+        {
+            if ((float)sampleIndex >= sampleCount)
+            {
+                continue;
+            }
+            float sampleIntensity = lightIntensity / sampleCount;
+            float emissionScale = 1.0;
+            float3 sampleDirection = lightDirection;
+            if (lightType >= 2.0)
+            {
+                float3 samplePosition = frame.lightPositionType[lightIndex].xyz + sampleOffsets[sampleIndex];
+                float3 toLight = samplePosition - worldPosition;
+                float distanceSquared = max(dot(toLight, toLight), SurfaceEpsilon);
+                sampleDirection = toLight * rsqrt(distanceSquared);
+                sampleIntensity /= distanceSquared;
+                if (lightType == 4.0)
+                {
+                    emissionScale = saturate(dot(lightDirection, -sampleDirection));
+                }
+            }
+            float3 half = normalize(sampleDirection + lightEyeBase);
+            float normalDotLight = saturate(dot(normal, sampleDirection));
+            float normalDotHalf = saturate(dot(normal, half));
+            float eyeDotHalf = saturate(dot(lightEyeBase, half));
+            float fresnel = SchlickFresnel(eyeDotHalf);
+            float3 directDiffuse =
+                diffuse * (1.0 - lerp(normalIncidence, grazingIncidence, fresnel));
+            float3 directSpecular = EvaluateDirectSpecular(
+                normalIncidence,
+                grazingIncidence,
+                specularRoughness,
                 fresnel,
                 normalDotLight,
                 normalDotEye,
                 normalDotHalf);
+            if (clearcoatAmount > 0.0)
+            {
+                directSpecular += clearcoatAmount * EvaluateDirectSpecular(
+                    reflectanceRatio * reflectanceRatio * float3(1.0, 1.0, 1.0),
+                    float3(1.0, 1.0, 1.0),
+                    clearcoatRoughness,
+                    fresnel,
+                    normalDotLight,
+                    normalDotEye,
+                    normalDotHalf);
+            }
+            float3 diffuseIrradiance = lightColor * sampleIntensity * SurfacePi;
+            float3 specularIrradiance = lightColor * sampleIntensity;
+            color += occlusion * emissionScale * normalDotLight *
+                ((directDiffuse * diffuseScale * diffuseIrradiance) +
+                (directSpecular * specularScale * specularIrradiance));
         }
-        float3 diffuseIrradiance = lightColor * lightIntensity * SurfacePi;
-        float3 specularIrradiance = lightColor * lightIntensity;
-        color += occlusion * normalDotLight *
-            ((directDiffuse * diffuseScale * diffuseIrradiance) +
-            (directSpecular * specularScale * specularIrradiance));
     }
     color += emissiveColor;
     return float4(color, opacity);

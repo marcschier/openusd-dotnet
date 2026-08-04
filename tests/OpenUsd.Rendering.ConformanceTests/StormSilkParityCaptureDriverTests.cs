@@ -127,6 +127,7 @@ def Xform "World"
     private const byte MinimumTextureDivergenceChannelDelta = 24;
     private const byte MinimumColorSpaceDivergenceChannelDelta = 24;
     private const byte MinimumCullDivergenceChannelDelta = 96;
+    private const byte MinimumLightDivergenceChannelDelta = 16;
     private static readonly Lazy<nuint> ImagePluginsRegistered = new(
         RegisterImagePlugins,
         LazyThreadSafetyMode.ExecutionAndPublication);
@@ -856,6 +857,82 @@ def Xform "World"
         await Assert.That(maxChannelDelta).IsGreaterThan(MinimumCullDivergenceChannelDelta);
     }
 
+    [Test]
+    public async Task RectLightZeroAreaMatchesSphereLightOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-rect-zero-area",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.RectEquivalent),
+            expectDivergence: false);
+    }
+
+    [Test]
+    public async Task RectLightFullAreaDivergesFromSphereLightOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-rect-full-area",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.RectDivergence),
+            expectDivergence: true);
+    }
+
+    [Test]
+    public async Task DiskLightEdgeOnMatchesUnlitSceneOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-disk-edge-on",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.DiskEquivalent),
+            expectDivergence: false);
+    }
+
+    [Test]
+    public async Task DiskLightFaceOnDivergesFromEdgeOnLightOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-disk-face-on",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.DiskDivergence),
+            expectDivergence: true);
+    }
+
+    [Test]
+    public async Task CylinderLightZeroLengthMatchesSphereLightOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-cylinder-zero-length",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.CylinderEquivalent),
+            expectDivergence: false);
+    }
+
+    [Test]
+    public async Task CylinderLightFullLengthDivergesFromSphereLightOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-cylinder-full-length",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.CylinderDivergence),
+            expectDivergence: true);
+    }
+
+    private static async Task AssertLightSelfConsistency(
+        string name,
+        ParityImage image,
+        bool expectDivergence)
+    {
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        string line = FormatSelfConsistencyMetrics(
+            expectDivergence ? name + "-divergence" : name,
+            maxChannelDelta,
+            meanChannelDelta);
+        Console.WriteLine(line);
+        WriteEvidence(name + (expectDivergence ? "-divergence.txt" : "-self-consistency.txt"), [line]);
+        if (expectDivergence)
+        {
+            await Assert.That(maxChannelDelta).IsGreaterThan(MinimumLightDivergenceChannelDelta);
+            return;
+        }
+
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(2.000);
+    }
+
     private static void WriteEvidence(string fileName, IEnumerable<string> lines)
     {
         string directory = Path.Combine(AppContext.BaseDirectory, "TestResults", "parity-capture");
@@ -1154,6 +1231,16 @@ def Xform "World"
 
     private sealed record SelfConsistencyCase(string Name, SilkTextureWrap TextureWrap);
 
+    private enum AreaLightGate
+    {
+        RectEquivalent,
+        RectDivergence,
+        DiskEquivalent,
+        DiskDivergence,
+        CylinderEquivalent,
+        CylinderDivergence,
+    }
+
     private static string FormatSelfConsistencyMetrics(
         string name,
         byte maxChannelDelta,
@@ -1308,6 +1395,42 @@ def Xform "World"
                 doubleSided,
                 backFacing),
             CreateDisplayMeshCommand(2, "/Back", 0.5f, candidateCullStyle, doubleSided, backFacing));
+        var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
+        _ = renderer.Render(color, depth, options);
+        _ = renderer.Render(color, depth, options);
+        byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+        color.ReadbackForTesting(pixels);
+        return new ParityImage(Width, Height, pixels);
+    }
+
+    private static ParityImage CaptureSyntheticAreaLightSelfConsistency(AreaLightGate gate)
+    {
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                checked((uint)Width),
+                checked((uint)Height),
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(checked((uint)Width), checked((uint)Height)));
+        using var renderer = new SilkMeshRenderer(device);
+        SilkMeshRendererConformance.Apply(
+            renderer,
+            revision: 1,
+            CreateAreaLightFrameCommand(gate),
+            CreateDisplayMeshCommand(
+                1,
+                "/LeftLightMesh",
+                -0.5f,
+                SilkMeshCullStyle.BackUnlessDoubleSided,
+                doubleSided: true),
+            CreateDisplayMeshCommand(
+                2,
+                "/RightLightMesh",
+                0.5f,
+                SilkMeshCullStyle.BackUnlessDoubleSided,
+                doubleSided: true));
         var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
         _ = renderer.Render(color, depth, options);
         _ = renderer.Render(color, depth, options);
@@ -1639,6 +1762,102 @@ def Xform "World"
         BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(44), (uint)cullStyle);
         return mesh;
     }
+
+    private static byte[] CreateAreaLightFrameCommand(AreaLightGate gate)
+    {
+        const int lightingSize = 1272;
+        const int lightCountOffset = 536;
+        const int lightTableOffset = 552;
+        const int lightEntrySize = 176;
+        byte[] bytes = SilkMeshRendererConformance.CreateFrameCommand(
+            checked((uint)Width),
+            checked((uint)Height),
+            IdentityMatrix());
+        Array.Resize(ref bytes, lightingSize);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(lightCountOffset), 2);
+        AreaLightSpec left = CreateLeftAreaLight(gate);
+        AreaLightSpec right = CreateRightAreaLight(gate);
+        WriteAreaLight(bytes, lightTableOffset, left);
+        WriteAreaLight(bytes, lightTableOffset + lightEntrySize, right);
+        return bytes;
+    }
+
+    private static AreaLightSpec CreateLeftAreaLight(AreaLightGate gate) =>
+        gate switch
+        {
+            AreaLightGate.DiskEquivalent =>
+                new(2, 0, 0, 0, 0, new Vector3(0, 1, 0), -0.5f, 0),
+            AreaLightGate.DiskDivergence =>
+                new(4, 0, 0, 0, 0.12f, new Vector3(0, 1, 0), -0.5f, 0),
+            _ => new(2, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), -0.5f, 0),
+        };
+
+    private static AreaLightSpec CreateRightAreaLight(AreaLightGate gate) =>
+        gate switch
+        {
+            AreaLightGate.RectEquivalent =>
+                new(3, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0),
+            AreaLightGate.RectDivergence =>
+                new(3, 0.85f, 0.65f, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0),
+            AreaLightGate.DiskEquivalent =>
+                new(4, 0, 0, 0, 0.12f, new Vector3(0, 1, 0), 0.5f, 0),
+            AreaLightGate.DiskDivergence =>
+                new(4, 0, 0, 0, 0.12f, new Vector3(0, 0, -1), 0.5f, 0),
+            AreaLightGate.CylinderEquivalent =>
+                new(5, 0, 0, 0.16f, 0.12f, new Vector3(1, 0, 0), 0.5f, 0),
+            AreaLightGate.CylinderDivergence =>
+                new(5, 0.95f, 0, 0.16f, 0.12f, new Vector3(1, 0, 0), 0.5f, 0),
+            _ => new(2, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0),
+        };
+
+    private static void WriteAreaLight(byte[] bytes, int offset, AreaLightSpec light)
+    {
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), light.Type);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 8), light.ShapeX);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 12), light.ShapeY);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 16), 1);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 20), 1);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 24), 1);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 28), light.Intensity);
+        double[] transform = AreaLightTransform(light.X, light.Y, 0.70f, light.Direction);
+        for (int index = 0; index < transform.Length; index++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(
+                bytes.AsSpan(offset + 32 + (index * sizeof(double))),
+                transform[index]);
+        }
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 164), 1);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 168), 0);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 172), light.Radius);
+    }
+
+    private static double[] AreaLightTransform(float x, float y, float z, Vector3 direction)
+    {
+        Vector3 zAxis = Vector3.Normalize(direction);
+        Vector3 xAxis = MathF.Abs(Vector3.Dot(zAxis, Vector3.UnitX)) > 0.95f
+            ? Vector3.UnitY
+            : Vector3.UnitX;
+        Vector3 yAxis = Vector3.Normalize(Vector3.Cross(zAxis, xAxis));
+        xAxis = Vector3.Normalize(Vector3.Cross(yAxis, zAxis));
+        return
+        [
+            xAxis.X, xAxis.Y, xAxis.Z, 0,
+            yAxis.X, yAxis.Y, yAxis.Z, 0,
+            zAxis.X, zAxis.Y, zAxis.Z, 0,
+            x, y, z, 1,
+        ];
+    }
+
+    private readonly record struct AreaLightSpec(
+        uint Type,
+        float ShapeX,
+        float ShapeY,
+        float Radius,
+        float Intensity,
+        Vector3 Direction,
+        float X,
+        float Y);
 
     private static byte[] CreateAttribute(
         SilkAttributeSemantic semantic,

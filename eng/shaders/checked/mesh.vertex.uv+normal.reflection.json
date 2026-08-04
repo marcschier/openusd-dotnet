@@ -412,6 +412,48 @@
               }
             },
             {
+              "name": "lightTangentShapeX",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 480,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightBitangentShapeY",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 544,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
               "name": "eyeToWorld",
               "type": {
                 "kind": "matrix",
@@ -423,7 +465,7 @@
                 }
               },
               "layout": {
-                "offset": 480,
+                "offset": 608,
                 "size": 64,
                 "elementStride": 0,
                 "matrixStride": 16,
@@ -432,7 +474,7 @@
             }
           ]
         },
-        "elementStride": 544,
+        "elementStride": 672,
         "size": null
       },
       "vulkanLayout": {
@@ -602,6 +644,48 @@
               }
             },
             {
+              "name": "lightTangentShapeX",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 480,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightBitangentShapeY",
+              "type": {
+                "kind": "array",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 544,
+                "size": 64,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
               "name": "eyeToWorld",
               "type": {
                 "kind": "matrix",
@@ -613,7 +697,7 @@
                 }
               },
               "layout": {
-                "offset": 480,
+                "offset": 608,
                 "size": 64,
                 "elementStride": 0,
                 "matrixStride": 16,
@@ -622,7 +706,7 @@
             }
           ]
         },
-        "elementStride": 544,
+        "elementStride": 672,
         "size": null
       }
     }
