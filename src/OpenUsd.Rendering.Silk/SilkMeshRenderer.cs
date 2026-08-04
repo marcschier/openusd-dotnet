@@ -109,6 +109,8 @@ public sealed class SilkMeshRenderer :
     private readonly ISilkGraphicsPipeline _linePipeline;
     private readonly ISilkGraphicsPipeline _pointPipeline;
     private readonly SilkGraphicsPipelineCache _pipelineCache;
+    private readonly SilkProjectedMaterialShaderGenerator _materialShaderGenerator;
+    private readonly SilkMaterialShaderCompilerService _materialShaderCompiler;
     private readonly SilkShaderBinaryFormat _shaderFormat;
     private readonly ISilkPickingGraphicsDevice? _pickingDevice;
     private readonly ISilkSelectionOutlineGraphicsDevice? _selectionOutlineDevice;
@@ -272,6 +274,8 @@ public sealed class SilkMeshRenderer :
         _linePipeline = linePipeline;
         _pointPipeline = pointPipeline;
         _pipelineCache = new SilkGraphicsPipelineCache(device, shaderFormat);
+        _materialShaderGenerator = new SilkProjectedMaterialShaderGenerator();
+        _materialShaderCompiler = new SilkMaterialShaderCompilerService(_materialShaderGenerator);
         _pickPipeline = pickPipeline;
         _pickReadbacks = pickReadbacks;
         if (pickReadbacks is not null)
@@ -614,6 +618,7 @@ public sealed class SilkMeshRenderer :
             _pickPipeline?.Dispose();
             DisposeSelectionOutlineInfrastructure();
             GpuResources.Dispose();
+            _materialShaderCompiler.Dispose();
             _pipelineCache.Dispose();
             _backCullPipeline.Dispose();
             _pipeline.Dispose();
@@ -677,6 +682,7 @@ public sealed class SilkMeshRenderer :
                     mesh.Geometry,
                     mesh.Mesh.MaterialPath,
                     GetMaterialFeatures(mesh.Mesh),
+                    GetMaterialShaderIdentity(mesh.Mesh),
                     GetCullMode(mesh.Mesh),
                     mesh.Mesh.TopologyKind);
                 if (!_batches.TryGetValue(key, out List<SilkMeshGpuResource>? batch))
@@ -716,19 +722,22 @@ public sealed class SilkMeshRenderer :
         if (singleMesh is not null)
         {
             SilkShaderFeatures features = GetMaterialFeatures(singleMesh.Mesh);
+            SilkMaterialShaderRequest? materialShader = GetMaterialShaderRequest(singleMesh.Mesh, features);
             SilkCullMode cullMode = GetCullMode(singleMesh.Mesh);
             ISilkGraphicsPipeline pipeline = GetPipeline(
                 singleMesh,
                 features,
                 cullMode,
-                singleMesh.Mesh.TopologyKind);
+                singleMesh.Mesh.TopologyKind,
+                materialShader);
             commands.SetGraphicsPipeline(pipeline);
             DisposePipelineLease(pipeline);
             boundPipeline = new PipelineKey(
                 features,
                 cullMode,
                 singleMesh.Mesh.TopologyKind,
-                singleMesh.VertexLayout.Stride);
+                singleMesh.VertexLayout.Stride,
+                GetPipelineShaderIdentity(materialShader));
             commands.SetVertexBuffer(singleMesh.VertexBuffer);
             commands.SetIndexBuffer(singleMesh.IndexBuffer);
             commands.SetUniformBuffer(0, 0, singleMesh.UniformBuffer);
@@ -847,7 +856,8 @@ public sealed class SilkMeshRenderer :
             key.Features,
             key.CullMode,
             key.TopologyKind,
-            mesh.VertexLayout.Stride);
+            mesh.VertexLayout.Stride,
+            key.MaterialShaderIdentity);
         if (boundPipeline == next)
         {
             return;
@@ -857,7 +867,8 @@ public sealed class SilkMeshRenderer :
             mesh,
             key.Features,
             key.CullMode,
-            key.TopologyKind);
+            key.TopologyKind,
+            GetMaterialShaderRequest(mesh.Mesh, key.Features));
         commands.SetGraphicsPipeline(pipeline);
         DisposePipelineLease(pipeline);
         boundPipeline = next;
@@ -908,6 +919,11 @@ public sealed class SilkMeshRenderer :
         {
             return result;
         }
+        result = string.CompareOrdinal(left.MaterialShaderIdentity, right.MaterialShaderIdentity);
+        if (result != 0)
+        {
+            return result;
+        }
         result = string.CompareOrdinal(left.Geometry.Key.Path, right.Geometry.Key.Path);
         if (result != 0)
         {
@@ -926,8 +942,19 @@ public sealed class SilkMeshRenderer :
         SilkMeshGpuResource mesh,
         SilkShaderFeatures features,
         SilkCullMode cullMode,
-        SilkTopologyKind topologyKind)
+        SilkTopologyKind topologyKind,
+        SilkMaterialShaderRequest? materialShader = null)
     {
+        if (materialShader?.Status == SilkMaterialShaderStatus.Ready)
+        {
+            return _pipelineCache.GetOrCreateMaterialPipeline(
+                materialShader.Program,
+                mesh.VertexLayout,
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureFormat.D32Float,
+                cullMode,
+                topologyKind);
+        }
         if (features == SilkShaderFeatures.None &&
             mesh.VertexLayout.Equals(SilkVertexLayoutDescriptor.PositionNormal))
         {
@@ -972,6 +999,44 @@ public sealed class SilkMeshRenderer :
 
     private SilkShaderFeatures GetMaterialFeatures(SilkMeshData mesh) =>
         ResolveMaterial(mesh)?.GetTextureFeatures() ?? SilkShaderFeatures.None;
+
+    private string GetMaterialShaderIdentity(SilkMeshData mesh)
+    {
+        SilkMaterialData? material = ResolveMaterial(mesh);
+        if (material is null || !material.UsesRuntimeMaterialShader)
+        {
+            return string.Empty;
+        }
+
+        SilkMaterialShaderKey key = CreateMaterialShaderKey(material);
+        return key.CacheHash;
+    }
+
+    private SilkMaterialShaderRequest? GetMaterialShaderRequest(
+        SilkMeshData mesh,
+        SilkShaderFeatures features)
+    {
+        SilkMaterialData? material = ResolveMaterial(mesh);
+        if (material is null || !material.UsesRuntimeMaterialShader)
+        {
+            return null;
+        }
+
+        SilkMaterialShaderKey key = CreateMaterialShaderKey(material);
+        _materialShaderGenerator.Register(key, features);
+        return _materialShaderCompiler.GetOrQueue(key);
+    }
+
+    private SilkMaterialShaderKey CreateMaterialShaderKey(SilkMaterialData material) =>
+        SilkMaterialShaderKey.Create(
+            material.CreateRuntimeShaderKeyBytes(),
+            _shaderFormat,
+            "MaterialXProjectedPreviewSurface.v1");
+
+    private static string GetPipelineShaderIdentity(SilkMaterialShaderRequest? materialShader) =>
+        materialShader?.Status == SilkMaterialShaderStatus.Ready
+            ? materialShader.Program.CacheHash
+            : string.Empty;
 
     private void BindMaterialResources(
         ISilkGraphicsCommandList commands,
@@ -1050,6 +1115,7 @@ public sealed class SilkMeshRenderer :
         SilkMeshGpuGeometryResource Geometry,
         string MaterialPath,
         SilkShaderFeatures Features,
+        string MaterialShaderIdentity,
         SilkCullMode CullMode,
         SilkTopologyKind TopologyKind);
 
@@ -1057,7 +1123,8 @@ public sealed class SilkMeshRenderer :
         SilkShaderFeatures Features,
         SilkCullMode CullMode,
         SilkTopologyKind TopologyKind,
-        uint VertexStride);
+        uint VertexStride,
+        string MaterialShaderIdentity);
 
     private void ApplySceneDelta(SilkSceneDelta delta)
     {

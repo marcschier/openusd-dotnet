@@ -256,6 +256,7 @@ extern "C" {
 /// rather than omitted so an unsupported graph is diagnosable.
 #define OPENUSD_SILK_SURFACE_UNSUPPORTED 0u
 #define OPENUSD_SILK_SURFACE_PREVIEW_SURFACE 1u
+#define OPENUSD_SILK_SURFACE_MATERIALX_PROJECTED 2u
 
 /// UsdPreviewSurface inputs carried by the ABI v5 material tables.
 #define OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR 1u

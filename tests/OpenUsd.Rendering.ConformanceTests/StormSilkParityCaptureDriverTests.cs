@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Buffers.Binary;
 using System.ComponentModel;
 using System.Globalization;
 using System.Numerics;
@@ -431,6 +432,37 @@ public sealed class StormSilkParityCaptureDriverTests
             .Because(string.Join(Environment.NewLine, failures));
     }
 
+    [Test]
+    public async Task MaterialXStandardSurfaceMatchesPreviewSelfConsistencyOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureSyntheticMaterialXSelfConsistency();
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("MaterialX Vulkan self-consistency", exception.ToString());
+            return;
+        }
+
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        Console.WriteLine(
+            "materialx-self-consistency maxChannelDelta=" +
+            maxChannelDelta.ToString(CultureInfo.InvariantCulture) +
+            " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture));
+        WriteEvidence(
+            "materialx-self-consistency.txt",
+            [
+                "materialx-self-consistency maxChannelDelta=" +
+                maxChannelDelta.ToString(CultureInfo.InvariantCulture) +
+                " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture),
+            ]);
+
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
     private static void WriteEvidence(string fileName, IEnumerable<string> lines)
     {
         string directory = Path.Combine(AppContext.BaseDirectory, "TestResults", "parity-capture");
@@ -725,6 +757,139 @@ public sealed class StormSilkParityCaptureDriverTests
             new SilkColor(0, 0, 0, 1),
             headlight,
             scene.UseSceneLights);
+    }
+
+    private static ParityImage CaptureSyntheticMaterialXSelfConsistency()
+    {
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                checked((uint)Width),
+                checked((uint)Height),
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(checked((uint)Width), checked((uint)Height)));
+        using var renderer = new SilkMeshRenderer(device);
+        SilkMeshRendererConformance.Apply(
+            renderer,
+            revision: 1,
+            SilkMeshRendererConformance.CreateFrameCommand(
+                checked((uint)Width),
+                checked((uint)Height),
+                IdentityMatrix()),
+            CreateMaterialCommand("/Mtlx", SilkSurfaceKind.MaterialXProjected),
+            CreateMaterialCommand("/Preview", SilkSurfaceKind.PreviewSurface),
+            CreateMaterialMeshCommand(1, "/MtlxMesh", "/Mtlx", -0.5f),
+            CreateMaterialMeshCommand(2, "/PreviewMesh", "/Preview", 0.5f));
+        var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
+        _ = renderer.Render(color, depth, options);
+        _ = renderer.Render(color, depth, options);
+        byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+        color.ReadbackForTesting(pixels);
+        return new ParityImage(Width, Height, pixels);
+    }
+
+    private static byte[] CreateMaterialCommand(string path, SilkSurfaceKind kind)
+    {
+        byte[] pathBytes = Encoding.UTF8.GetBytes(path);
+        var bytes = new byte[32 + pathBytes.Length + 44];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(path));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), (uint)pathBytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)kind);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), 3);
+        pathBytes.CopyTo(bytes.AsSpan(32));
+        int offset = 32 + pathBytes.Length;
+        WriteScalar(bytes, ref offset, SilkMaterialParameter.DiffuseColor, [0.90f, 0.28f, 0.08f]);
+        WriteScalar(bytes, ref offset, SilkMaterialParameter.Roughness, [0.72f]);
+        WriteScalar(bytes, ref offset, SilkMaterialParameter.Metallic, [0.0f]);
+        return bytes;
+    }
+
+    private static byte[] CreateMaterialMeshCommand(ulong id, string path, string materialPath, float x)
+    {
+        byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
+            id,
+            path,
+            [-0.30f, -0.52f, 0.08f, 0.30f, -0.36f, 0.08f, 0.24f, 0.48f, 0.08f, -0.24f, 0.32f, 0.08f],
+            [0, 1, 2, 0, 2, 3],
+            x,
+            0,
+            [0.12f, 0.12f, 0.12f, 1]);
+        byte[] materialBytes = Encoding.UTF8.GetBytes(materialPath);
+        Array.Resize(ref mesh, mesh.Length + materialBytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(4), (uint)mesh.Length);
+        BinaryPrimitives.WriteUInt64LittleEndian(mesh.AsSpan(208), ComputeStableHash(materialPath));
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(216), (uint)materialBytes.Length);
+        materialBytes.CopyTo(mesh.AsSpan(mesh.Length - materialBytes.Length));
+        return mesh;
+    }
+
+    private static void WriteScalar(
+        byte[] bytes,
+        ref int offset,
+        SilkMaterialParameter parameter,
+        ReadOnlySpan<float> values)
+    {
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), (uint)parameter);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 4), (uint)values.Length);
+        offset += 8;
+        foreach (float value in values)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset), value);
+            offset += sizeof(float);
+        }
+    }
+
+    private static ulong ComputeStableHash(string value)
+    {
+        const ulong offset = 14695981039346656037UL;
+        const ulong prime = 1099511628211UL;
+        ulong hash = offset;
+        foreach (byte b in Encoding.UTF8.GetBytes(value))
+        {
+            hash ^= b;
+            hash *= prime;
+        }
+        return hash == 0 ? 1 : hash;
+    }
+
+    private static double[] IdentityMatrix()
+    {
+        double[] matrix = new double[16];
+        matrix[0] = 1;
+        matrix[5] = 1;
+        matrix[10] = 1;
+        matrix[15] = 1;
+        return matrix;
+    }
+
+    private static (byte MaxChannelDelta, double MeanChannelDelta) CompareTranslatedHalves(ParityImage image)
+    {
+        int halfWidth = image.Width / 2;
+        int max = 0;
+        long sum = 0;
+        long count = 0;
+        ReadOnlySpan<byte> pixels = image.Rgba.Span;
+        for (int y = 0; y < image.Height; y++)
+        {
+            for (int x = 0; x < halfWidth; x++)
+            {
+                int left = ((y * image.Width) + x) * ParityImage.BytesPerPixel;
+                int right = ((y * image.Width) + x + halfWidth) * ParityImage.BytesPerPixel;
+                for (int channel = 0; channel < 3; channel++)
+                {
+                    int delta = Math.Abs(pixels[left + channel] - pixels[right + channel]);
+                    max = Math.Max(max, delta);
+                    sum += delta;
+                    count++;
+                }
+            }
+        }
+
+        return ((byte)max, count == 0 ? 0 : (double)sum / count);
     }
 
     private static string ResolvePluginPath()

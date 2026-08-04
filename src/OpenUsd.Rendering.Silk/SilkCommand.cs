@@ -697,7 +697,10 @@ public enum SilkSurfaceKind : uint
     Unsupported = 0,
 
     /// <summary>A UsdPreviewSurface network.</summary>
-    PreviewSurface = 1
+    PreviewSurface = 1,
+
+    /// <summary>A MaterialX standard_surface projected to PreviewSurface-compatible inputs.</summary>
+    MaterialXProjected = 2
 }
 
 /// <summary>

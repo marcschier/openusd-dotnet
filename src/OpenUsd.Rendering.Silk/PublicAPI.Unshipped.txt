@@ -1289,6 +1289,7 @@ OpenUsd.Rendering.Silk.SilkShaderStageVisibility.Fragment = 2 -> OpenUsd.Renderi
 OpenUsd.Rendering.Silk.SilkShaderStageVisibility.Vertex = 1 -> OpenUsd.Rendering.Silk.SilkShaderStageVisibility
 OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.PreviewSurface = 1 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
+OpenUsd.Rendering.Silk.SilkSurfaceKind.MaterialXProjected = 2 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.Unsupported = 0 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkTextureDescriptor
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Deconstruct(out uint Width, out uint Height, out OpenUsd.Rendering.Silk.SilkTextureFormat Format, out OpenUsd.Rendering.Silk.SilkTextureUsage Usage) -> void
@@ -1642,6 +1643,10 @@ OpenUsd.Rendering.Silk.SilkMaterialShaderStatus.Ready = 1 -> OpenUsd.Rendering.S
 OpenUsd.Rendering.Silk.SilkStubMaterialShaderGenerator
 OpenUsd.Rendering.Silk.SilkStubMaterialShaderGenerator.CompileAsync(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.Silk.SilkMaterialShaderProgram>
 OpenUsd.Rendering.Silk.SilkStubMaterialShaderGenerator.SilkStubMaterialShaderGenerator() -> void
+OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator
+OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator.CompileAsync(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<OpenUsd.Rendering.Silk.SilkMaterialShaderProgram>
+OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator.Register(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key, OpenUsd.Rendering.Silk.SilkShaderFeatures features) -> void
+OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator.SilkProjectedMaterialShaderGenerator() -> void
 override OpenUsd.Rendering.Silk.SilkMaterialShaderProgram.GetHashCode() -> int
 static OpenUsd.Rendering.Silk.SilkMaterialShaderCompilerService.CreateCheckedPlaceholder(OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, string! cacheHash) -> OpenUsd.Rendering.Silk.SilkMaterialShaderProgram
 static OpenUsd.Rendering.Silk.SilkMaterialShaderKey.Create(System.ReadOnlySpan<byte> materialNetwork, OpenUsd.Rendering.Silk.SilkShaderBinaryFormat format, string! versionSalt) -> OpenUsd.Rendering.Silk.SilkMaterialShaderKey!
