@@ -95,13 +95,15 @@ public sealed class SilkMaterialData
         ulong stableHash,
         SilkSurfaceKind surfaceKind,
         SilkMaterialScalar[] scalars,
-        SilkMaterialTexture[] textures)
+        SilkMaterialTexture[] textures,
+        byte[] generatedFragmentSpirV)
     {
         Path = path;
         StableHash = stableHash;
         SurfaceKind = surfaceKind;
         Scalars = scalars;
         Textures = textures;
+        GeneratedFragmentSpirV = generatedFragmentSpirV;
     }
 
     /// <summary>Gets the authoritative USD material path.</summary>
@@ -119,16 +121,22 @@ public sealed class SilkMaterialData
     /// <summary>Gets the texture-driven inputs.</summary>
     public IReadOnlyList<SilkMaterialTexture> Textures { get; }
 
+    /// <summary>Gets generated MaterialX fragment SPIR-V bytes for runtime shaders.</summary>
+    public ReadOnlyMemory<byte> GeneratedFragmentSpirV { get; }
+
     /// <summary>
     /// Gets whether this material can be shaded. An unsupported network is
     /// retained rather than dropped so a consumer can report which material it
     /// could not shade instead of silently rendering a default.
     /// </summary>
     public bool IsSupported =>
-        SurfaceKind is SilkSurfaceKind.PreviewSurface or SilkSurfaceKind.MaterialXProjected;
+        SurfaceKind is SilkSurfaceKind.PreviewSurface or
+        SilkSurfaceKind.MaterialXProjected or
+        SilkSurfaceKind.MaterialXGenerated;
 
     /// <summary>Gets whether this material should travel through the runtime MaterialX shader service.</summary>
-    internal bool UsesRuntimeMaterialShader => SurfaceKind == SilkSurfaceKind.MaterialXProjected;
+    internal bool UsesRuntimeMaterialShader =>
+        SurfaceKind is SilkSurfaceKind.MaterialXProjected or SilkSurfaceKind.MaterialXGenerated;
 
     /// <summary>Copies one material upsert command into retained storage.</summary>
     public static SilkMaterialData CopyFrom(SilkMaterialUpsertCommand command)
@@ -175,12 +183,14 @@ public sealed class SilkMaterialData
                 entry.UvPrimvar);
         }
 
+        byte[] generatedFragmentSpirV = command.GeneratedFragmentSpirV.ToArray();
         return new SilkMaterialData(
             command.Path,
             command.StableHash,
             command.SurfaceKind,
             scalars,
-            textures);
+            textures,
+            generatedFragmentSpirV);
     }
 
     /// <summary>
@@ -245,7 +255,7 @@ public sealed class SilkMaterialData
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
-        writer.Write("OpenUsd.Rendering.Silk.MaterialXProjected.v1");
+        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v2");
         writer.Write(Path);
         writer.Write((uint)SurfaceKind);
         writer.Write(Scalars.Count);
@@ -269,6 +279,8 @@ public sealed class SilkMaterialData
             writer.Write((uint)texture.SourceColorSpace);
             writer.Write(texture.ComponentCount);
         }
+        writer.Write(GeneratedFragmentSpirV.Length);
+        writer.Write(GeneratedFragmentSpirV.Span);
         writer.Flush();
         return stream.ToArray();
     }

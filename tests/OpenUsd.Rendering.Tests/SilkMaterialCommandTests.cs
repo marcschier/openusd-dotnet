@@ -279,6 +279,25 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    public async Task RetainsGeneratedMaterialXFragmentShader()
+    {
+        byte[] spirv = [0x03, 0x02, 0x23, 0x07, 1, 0, 0, 0];
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/Generated",
+            SilkSurfaceKind.MaterialXGenerated,
+            scalars: [],
+            textures: [],
+            generatedFragmentSpirV: spirv);
+
+        SilkSceneState state = new();
+        _ = state.Apply(upsert, 1, 1);
+
+        SilkMaterialData material = state.Materials["/World/Materials/Generated"];
+        await Assert.That(material.IsSupported).IsTrue();
+        await Assert.That(material.GeneratedFragmentSpirV.ToArray()).IsEquivalentTo(spirv);
+    }
+
+    [Test]
     public async Task RejectsAMaterialWhoseHashDoesNotMatchItsPath()
     {
         byte[] upsert = CreateMaterialUpsert(
@@ -311,7 +330,8 @@ public sealed class SilkMaterialCommandTests
         string path,
         SilkSurfaceKind kind,
         (SilkMaterialParameter Parameter, float[] Values)[] scalars,
-        TextureSpec[] textures)
+        TextureSpec[] textures,
+        byte[]? generatedFragmentSpirV = null)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         List<byte> payload = [];
@@ -358,6 +378,10 @@ public sealed class SilkMaterialCommandTests
             payload.AddRange(assetBytes);
             payload.AddRange(uvBytes);
         }
+
+        generatedFragmentSpirV ??= [];
+        payload.AddRange(BitConverter.GetBytes((uint)generatedFragmentSpirV.Length));
+        payload.AddRange(generatedFragmentSpirV);
 
         return CreateCommand(4, payload);
     }

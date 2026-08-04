@@ -510,7 +510,8 @@ void AppendMaterialUpsert(
     ValidatePath(record.path);
     if (record.surfaceKind != OPENUSD_SILK_SURFACE_UNSUPPORTED &&
         record.surfaceKind != OPENUSD_SILK_SURFACE_PREVIEW_SURFACE &&
-        record.surfaceKind != OPENUSD_SILK_SURFACE_MATERIALX_PROJECTED)
+        record.surfaceKind != OPENUSD_SILK_SURFACE_MATERIALX_PROJECTED &&
+        record.surfaceKind != OPENUSD_SILK_SURFACE_MATERIALX_GENERATED)
     {
         throw std::invalid_argument("The hdSilk material surface kind is unknown.");
     }
@@ -590,6 +591,15 @@ void AppendMaterialUpsert(
         }
         AppendBytes(payload, texture.asset.data(), texture.asset.size());
         AppendBytes(payload, texture.uvPrimvar.data(), texture.uvPrimvar.size());
+    }
+    AppendU32(
+        payload,
+        CheckedCount(
+            record.generatedFragmentSpirv.size() * sizeof(uint32_t),
+            "generated MaterialX fragment SPIR-V byte count"));
+    for (uint32_t word : record.generatedFragmentSpirv)
+    {
+        AppendU32(payload, word);
     }
 
     AppendCommand(buffer, OPENUSD_SILK_COMMAND_MATERIAL_UPSERT, payload);

@@ -130,6 +130,28 @@ public sealed class SilkMaterialShaderCompilerTests
         await Assert.That(ready.Program.BindingLayout.MaterialSlots.Count).IsEqualTo(3);
     }
 
+    [Test]
+    public async Task GeneratedMaterialGeneratorPublishesRegisteredFragmentSpirV()
+    {
+        var generator = new SilkProjectedMaterialShaderGenerator();
+        SilkMaterialShaderKey key = CreateKey("materialx:generated-unlit", "generated-v1");
+        byte[] fragment = SilkCheckedShaderAssets
+            .LoadMeshFragment(SilkShaderBinaryFormat.SpirV)
+            .Code
+            .ToArray();
+        generator.RegisterGenerated(key, fragment);
+        using var compiler = new SilkMaterialShaderCompilerService(generator, CreateOptions(CreateCacheDirectory()));
+
+        SilkMaterialShaderRequest pending = compiler.GetOrQueue(key);
+        SilkMaterialShaderRequest ready = await WaitForReadyAsync(compiler, key);
+
+        await Assert.That(pending.Status).IsEqualTo(SilkMaterialShaderStatus.Placeholder);
+        await Assert.That(ready.Status).IsEqualTo(SilkMaterialShaderStatus.Ready);
+        await Assert.That(ready.Program.FragmentShader.Code.ToArray()).IsEquivalentTo(fragment);
+        await Assert.That(ready.Program.BindingLayout.MaterialSlots.Count)
+            .IsEqualTo(SilkBindingLayoutDescriptor.SceneParameters.MaterialSlots.Count);
+    }
+
     private static SilkMaterialShaderCompilerService CreateCompiler(ISilkMaterialShaderGenerator generator) =>
         new(generator, CreateOptions(CreateCacheDirectory()));
 

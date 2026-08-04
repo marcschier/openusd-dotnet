@@ -265,6 +265,7 @@ public sealed class SilkProjectedMaterialShaderGenerator : ISilkMaterialShaderGe
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, SilkShaderFeatures> _features = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, byte[]> _generatedFragments = new(StringComparer.Ordinal);
 
     /// <summary>Registers the checked permutation that implements one material hash.</summary>
     public void Register(SilkMaterialShaderKey key, SilkShaderFeatures features)
@@ -276,6 +277,29 @@ public sealed class SilkProjectedMaterialShaderGenerator : ISilkMaterialShaderGe
         }
     }
 
+    /// <summary>Registers generated fragment SPIR-V that implements one material hash.</summary>
+    public void RegisterGenerated(SilkMaterialShaderKey key, ReadOnlyMemory<byte> fragmentSpirV)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        if (key.Format != SilkShaderBinaryFormat.SpirV)
+        {
+            throw new ArgumentException(
+                "Generated MaterialX shaders are currently supported only on Vulkan/SPIR-V.",
+                nameof(key));
+        }
+        if (fragmentSpirV.IsEmpty)
+        {
+            throw new ArgumentException(
+                "Generated MaterialX fragment SPIR-V cannot be empty.",
+                nameof(fragmentSpirV));
+        }
+
+        lock (_gate)
+        {
+            _generatedFragments[key.CacheHash] = fragmentSpirV.ToArray();
+        }
+    }
+
     /// <inheritdoc/>
     public ValueTask<SilkMaterialShaderProgram> CompileAsync(
         SilkMaterialShaderKey key,
@@ -283,9 +307,24 @@ public sealed class SilkProjectedMaterialShaderGenerator : ISilkMaterialShaderGe
     {
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
+        byte[]? generatedFragment;
         SilkShaderFeatures features;
         lock (_gate)
         {
+            if (_generatedFragments.TryGetValue(key.CacheHash, out generatedFragment))
+            {
+                var generatedProgram = new SilkMaterialShaderProgram(
+                    SilkCheckedShaderAssets.LoadMeshVertex(key.Format),
+                    new SilkShaderModuleDescriptor(
+                        SilkShaderStage.Fragment,
+                        key.Format,
+                        "main",
+                        generatedFragment),
+                    SilkBindingLayoutDescriptor.SceneParameters,
+                    key.CacheHash);
+                generatedProgram.Validate();
+                return ValueTask.FromResult(generatedProgram);
+            }
             if (!_features.TryGetValue(key.CacheHash, out features))
             {
                 throw new InvalidDataException(
