@@ -41,8 +41,8 @@ packages for each supported RID:
   Windows includes `openusd_storm_child.dll`; Linux includes the exact ABI-7 Storm child SONAME link
   chain; macOS includes exactly one `libopenusd_storm_child.dylib`.
 
-The current package set requires project-owned data ABI version 12 and native
-capabilities `0x3FFF`. Package-only execution prints and verifies both values
+The current package set requires project-owned data ABI version 14 and native
+capabilities `0xFFFF`. Package-only execution prints and verifies both values
 before exercising stage operations.
 
 The first package matrix covers `win-x64`, `linux-x64`, and `osx-arm64`. Package projects consume
@@ -175,6 +175,13 @@ Canonical evidence is generated with the build it describes:
 - The Linux and macOS Imaging nupkgs embed their platform validation manifest
   under `build/` as `OpenUsd.Runtime.Imaging.<rid>.native-validation.json`.
 
+The expanded native profile adds Ptex, OpenVDB, Alembic, Draco, and Blosc. On the local `win-x64`
+build, the Core package grew from 27.50 MiB to 33.45 MiB compressed and from 78.67 MiB to
+110.87 MiB uncompressed; the Imaging package grew from 0.17 MiB to 0.35 MiB compressed and from
+0.40 MiB to 0.98 MiB uncompressed. OpenVDB is the dominant payload: `openvdb.dll` contributes
+23.65 MiB uncompressed before ZIP compression. Linux and macOS package deltas must be measured by
+the hosted native/package pipeline for the same lock.
+
 The package workflow uploads the platform evidence directory with the nupkg and
 native-source metadata. Run `./eng/validate-linux-package-evidence.ps1` or
 `./eng/validate-macos-package-evidence.ps1` on its matching platform to
@@ -268,7 +275,7 @@ its working directory, and successful output contains:
 ```text
 PACKAGE_EXECUTION_OK
 ABI=12
-CAPABILITIES=0x3FFF
+CAPABILITIES=0xFFFF
 INPUT_OPENED=true
 CAMERA_STATE_QUERY=true
 ROUNDTRIP_SAVED=true
@@ -280,7 +287,7 @@ The process output and generated consumer project must not contain repository so
 `ProjectReference`, or `native/install`.
 A separate clean-feed managed consumer loads only `OpenUsd.Interop` from its
 nupkg and invokes the compatibility validator. Data ABI 11 with the complete
-v12 mask and Data ABI 12 with the former `0x2FFF` mask must both throw the typed
+v14 mask and Data ABI 14 with the former `0x2FFF` mask must both throw the typed
 `OpenUsdNativeException`.
 
 ## Package-only Imaging execution gate
@@ -445,8 +452,8 @@ native source and header files. Generated `native/build`, `native/install`,
 
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
-the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 12 and
-capabilities `0x3FFF`, Storm ABI 6, hdSilk session/page ABI 4/9, and Storm child
+the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 14 and
+capabilities `0xFFFF`, Storm ABI 6, hdSilk session/page ABI 4/9, and Storm child
 ABI 7. Metadata schema 3 records camera-state version 1, Storm-child navigation
 input version 1, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their

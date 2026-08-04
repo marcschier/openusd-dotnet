@@ -96,6 +96,11 @@ artifact instead of a silent pass, and each has a documented route back to full 
 No runtime package is currently defined for Windows arm64, Linux arm64, macOS x64, or mobile/browser
 RIDs.
 
+The locked viewer-standard native profile enables USD validation, Imaging/USD Imaging, Storm,
+MaterialX, OpenImageIO, OpenColorIO, oneTBB, OpenGL, Ptex, OpenVDB, Alembic, and Draco. Python,
+usdview, tests, examples, tutorials, tools, documentation, Embree CPU ray tracing, and RenderMan
+remain out of the native runtime; Python is intentionally not a runtime dependency.
+
 The native toolchain and archive model are in [Native build](native-build.md). Runtime asset layout
 and package-only execution are in [Packaging](packaging.md).
 
@@ -309,7 +314,7 @@ The complete API examples and native ownership rules are in [Data API](data-api.
 | `Ts` | Double-valued spline knots, tangents, extrapolation, evaluation | Focused read-only |
 | `UsdValidation` | Registry enumeration and stage/prim validation results | Focused read-only |
 | `UsdPhysics` | Scene, body, collision, material, joints, limits/drives, filtering | Authoring only |
-| `UsdVol` | Volume, field assets, OpenVDBAsset schema, Field3DAsset | Authoring only; no OpenVDB runtime/rendering |
+| `UsdVol` | Volume, field assets, OpenVDBAsset schema, Field3DAsset | OpenVDB runtime; rendering parity ungated |
 | `UsdRender` | SettingsBase, Settings, Product, Var, Pass | Data API; no RenderDenoisePass in pinned OpenUSD |
 | `UsdMedia` | SpatialAudio, AssetPreviewsAPI | Data API |
 | `UsdProc` | GenerativeProcedural | Data API |

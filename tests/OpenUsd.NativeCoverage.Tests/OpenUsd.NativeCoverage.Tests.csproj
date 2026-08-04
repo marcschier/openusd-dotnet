@@ -18,4 +18,11 @@
     <PackageReference Include="TUnit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\test-assets\native-profile\**\*">
+      <Link>test-assets\native-profile\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

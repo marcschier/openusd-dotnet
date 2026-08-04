@@ -886,9 +886,9 @@ without invoking managed callbacks from OpenUSD threads.
 
 `eng/generate-interop.py` derives the checked-in `[LibraryImport]` declarations from
 `native/openusd_dotnet/include/openusd_dotnet.h`. CI fails if `OpenUsdNativeMethods.g.cs` is stale.
-Data ABI v12 preserves every v11 export and capability and adds
+Data ABI v14 preserves every v11 export and capability and adds
 `OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE` (`0x1000`). Together with the prior physics schema
-capability, the managed required mask is `0x3FFF`. Managed startup rejects an older ABI or a v12
+capability, the managed required mask is `0xFFFF`. Managed startup rejects an older ABI or a v14
 runtime missing required exports. Every status-returning export executes its complete body inside the
 common exception/TfError guard, so C++ exceptions and unconsumed OpenUSD diagnostics never cross C;
 access-end alone performs its already-validated owner-thread `noexcept` commit after the guard.
@@ -940,8 +940,9 @@ P/Invoke on authoring paths.
 ## Focused UsdVol, UsdRender, UsdMedia, UsdProc, and UsdUI facades
 
 The data API now includes focused schema views for volume assets, render settings, spatial media,
-generative procedurals, and selected UI metadata. These are authoring and inspection facades only;
-they do not add OpenVDB runtime support or hdSilk volume rendering.
+generative procedurals, and selected UI metadata. The locked native profile includes OpenVDB runtime
+support for referenced `.vdb` assets; hdSilk volume rendering remains outside the current parity
+claim.
 
 ```csharp
 UsdVolVolume volume = stage.DefineVolume("/World/Volume");
@@ -978,4 +979,3 @@ covers `RenderSettingsBase`, `RenderSettings`, `RenderProduct`, `RenderVar`, and
 OpenUSD version has no generated `RenderDenoisePass` schema. UsdUI covers `Backdrop`,
 `NodeGraphNodeAPI`, and `SceneGraphPrimAPI`; accessibility and hint API schemas remain outside this
 focused surface.
-

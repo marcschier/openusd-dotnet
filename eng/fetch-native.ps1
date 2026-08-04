@@ -98,6 +98,8 @@ if (-not (Test-Path $buildScript))
 $buildScriptHash = (Get-FileHash $buildScript -Algorithm SHA256).Hash
 $knownUnpatchedHashes = @(
     $lock.openUsd.buildScriptSha256,
+    'D1ADFB3E014FF92B5234DD0D3106507CDB5DBABF6DD84EFE6ABEFF130E12F609',
+    '4175A4790F95BD9E1E5AF3B67DB99F63E37679CCAD37139417DB51ED9874AD8B',
     'FFC713F58159AAF18682438FC686BABB47484A3FFA94D16EC016FE33EE367194',
     '328341514C4218AD12D16E9ACF09BBAD289C92FDAF413BF12AB89911E9F71242',
     'F6FD234EE167F2695BA8F62C159B5E29F5073DE64F09D97D426F9850EC9448E9'
@@ -145,6 +147,82 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
             throw 'The expected Boost bootstrap invocation was not found.'
         }
         $content = $content.Replace($runBootstrap, $runBootstrapPatched)
+    }
+
+    $boostDependencyMarker = 'BOOST = Dependency("boost", InstallBoost, *BOOST_VERSION_FILES)'
+    $boostDependencyPatched = @(
+        'class BoostDependency(Dependency):',
+        '    def Exists(self, context):',
+        '        if not Dependency.Exists(self, context):',
+        '            return False',
+        '        if not context.enableOpenVDB:',
+        '            return True',
+        '        return any(os.path.isfile(path) for pattern in [',
+        '            os.path.join(context.instDir, "bin", "*boost_iostreams*"),',
+        '            os.path.join(context.instDir, "lib", "*boost_iostreams*")]',
+        '            for path in glob.glob(pattern))',
+        '',
+        'BOOST = BoostDependency("boost", InstallBoost, *BOOST_VERSION_FILES)'
+    ) -join "`n"
+    if ($content.Contains($boostDependencyMarker))
+    {
+        $content = $content.Replace($boostDependencyMarker, $boostDependencyPatched)
+    }
+    elseif (-not $content.Contains('class BoostDependency(Dependency):'))
+    {
+        throw 'The expected Boost dependency marker was not found.'
+    }
+
+    $dracoMonolithicGuard = @(
+        '# Error out if user is building monolithic library on windows with draco plugin',
+        '# enabled. This currently results in missing symbols.',
+        'if context.buildDraco and context.buildMonolithic and Windows():',
+        '    PrintError("Draco plugin can not be enabled for monolithic build on Windows")',
+        '    sys.exit(1)',
+        ''
+    ) -join "`n"
+    if ($content.Contains($dracoMonolithicGuard))
+    {
+        $content = $content.Replace(
+            $dracoMonolithicGuard,
+            '# The locked .NET native profile verifies Draco with the Windows monolithic build.')
+    }
+
+    $installUsdMarker = @(
+        'def InstallUSD(context, force, buildArgs):',
+        '    with CurrentWorkingDirectory(context.usdSrcDir):',
+        '        extraArgs = []'
+    ) -join "`n"
+    $installUsdPatched = @(
+        'def InstallUSD(context, force, buildArgs):',
+        '    with CurrentWorkingDirectory(context.usdSrcDir):',
+        '        PatchFile("cmake/defaults/Options.cmake",',
+        '                  [("if (${PXR_BUILD_DRACO_PLUGIN} AND ${PXR_BUILD_MONOLITHIC} AND WIN32)\n    message(FATAL_ERROR \n        \"Draco plugin can not be enabled for monolithic builds on Windows\")\nendif()",',
+        '                    "# The locked .NET native profile verifies Draco with the Windows monolithic build.")],',
+        '                  multiLineMatches=True)',
+        '        extraArgs = []'
+    ) -join "`n"
+    if (-not $content.Contains('PatchFile("cmake/defaults/Options.cmake"'))
+    {
+        if (-not $content.Contains($installUsdMarker))
+        {
+            throw 'The expected USD install function marker was not found.'
+        }
+        $content = $content.Replace($installUsdMarker, $installUsdPatched)
+    }
+
+    $alembicUsdMarker = "            extraArgs.append('-DPXR_BUILD_ALEMBIC_PLUGIN=ON')"
+    $alembicUsdPatched = @(
+        "            extraArgs.append('-DPXR_BUILD_ALEMBIC_PLUGIN=ON')",
+        '            extraArgs.append(''-DALEMBIC_DIR="{}"''.format(context.instDir))'
+    ) -join "`n"
+    if ($content.Contains($alembicUsdMarker) -and -not $content.Contains("extraArgs.append('-DALEMBIC_DIR="))
+    {
+        $content = $content.Replace($alembicUsdMarker, $alembicUsdPatched)
+    }
+    elseif (-not $content.Contains("extraArgs.append('-DALEMBIC_DIR="))
+    {
+        throw 'The expected Alembic USD configure marker was not found.'
     }
 
     [System.IO.File]::WriteAllText(

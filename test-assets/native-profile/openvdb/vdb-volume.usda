@@ -1,0 +1,15 @@
+#usda 1.0
+(
+    defaultPrim = "VdbVolume"
+    upAxis = "Y"
+)
+
+def Volume "VdbVolume"
+{
+    rel field:density = </VdbVolume/Density>
+    def OpenVDBAsset "Density"
+    {
+        token fieldName = "density"
+        asset filePath = @smoke_000001.vdb@
+    }
+}

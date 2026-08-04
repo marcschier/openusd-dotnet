@@ -19,10 +19,7 @@
       "name": "win-x64",
       "inherits": "base",
       "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/cesium/win-x64;${sourceDir}/build/cesium/win-x64/vcpkg_installed/x64-windows-static-md;${sourceDir}/build/cesium/win-x64/vcpkg_installed/x64-windows-static-md/share",
-        "ZLIB_INCLUDE_DIR": "${sourceDir}/build/cesium/win-x64/vcpkg_installed/x64-windows-static-md/include",
-        "ZLIB_LIBRARY_RELEASE": "${sourceDir}/build/cesium/win-x64/vcpkg_installed/x64-windows-static-md/lib/zs.lib",
-        "draco_DIR": "${sourceDir}/build/cesium/win-x64/vcpkg_installed/x64-windows-static-md/share/draco",
+        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT}",
         "OPENUSD_WITH_VULKAN": "ON"
       },
       "condition": {
@@ -35,7 +32,7 @@
       "name": "linux-x64",
       "inherits": "base",
       "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/cesium/linux-x64;${sourceDir}/build/cesium/linux-x64/vcpkg_installed/x64-linux;${sourceDir}/build/cesium/linux-x64/vcpkg_installed/x64-linux/share",
+        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT}",
         "OPENUSD_WITH_VULKAN": "ON"
       },
       "condition": {
@@ -53,9 +50,36 @@
         "rhs": "Darwin"
       },
       "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/cesium/osx-arm64;${sourceDir}/build/cesium/osx-arm64/vcpkg_installed/arm64-osx;${sourceDir}/build/cesium/osx-arm64/vcpkg_installed/arm64-osx/share",
+        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT}",
         "CMAKE_OSX_ARCHITECTURES": "arm64",
         "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0"
+      }
+    },
+    {
+      "name": "win-x64-cesium",
+      "inherits": "win-x64",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/cesium/win-x64;${sourceDir}/build/cesium/win-x64/vcpkg_installed/x64-windows-static-md;${sourceDir}/build/cesium/win-x64/vcpkg_installed/x64-windows-static-md/share",
+        "ZLIB_INCLUDE_DIR": "${sourceDir}/build/cesium/win-x64/vcpkg_installed/x64-windows-static-md/include",
+        "ZLIB_LIBRARY_RELEASE": "${sourceDir}/build/cesium/win-x64/vcpkg_installed/x64-windows-static-md/lib/zs.lib",
+        "draco_DIR": "${sourceDir}/build/cesium/win-x64/vcpkg_installed/x64-windows-static-md/share/draco",
+        "OPENUSD_WITH_CESIUM": "ON"
+      }
+    },
+    {
+      "name": "linux-x64-cesium",
+      "inherits": "linux-x64",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/cesium/linux-x64;${sourceDir}/build/cesium/linux-x64/vcpkg_installed/x64-linux;${sourceDir}/build/cesium/linux-x64/vcpkg_installed/x64-linux/share",
+        "OPENUSD_WITH_CESIUM": "ON"
+      }
+    },
+    {
+      "name": "osx-arm64-cesium",
+      "inherits": "osx-arm64",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{OPENUSD_ROOT};${sourceDir}/install/cesium/osx-arm64;${sourceDir}/build/cesium/osx-arm64/vcpkg_installed/arm64-osx;${sourceDir}/build/cesium/osx-arm64/vcpkg_installed/arm64-osx/share",
+        "OPENUSD_WITH_CESIUM": "ON"
       }
     }
   ],
@@ -65,12 +89,24 @@
       "configurePreset": "win-x64"
     },
     {
+      "name": "win-x64-cesium",
+      "configurePreset": "win-x64-cesium"
+    },
+    {
       "name": "linux-x64",
       "configurePreset": "linux-x64"
     },
     {
+      "name": "linux-x64-cesium",
+      "configurePreset": "linux-x64-cesium"
+    },
+    {
       "name": "osx-arm64",
       "configurePreset": "osx-arm64"
+    },
+    {
+      "name": "osx-arm64-cesium",
+      "configurePreset": "osx-arm64-cesium"
     }
   ]
 }
