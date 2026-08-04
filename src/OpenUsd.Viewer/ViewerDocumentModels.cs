@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Diagnostics;
 using System.Globalization;
 using OpenUsd.Geom;
 using OpenUsd.Interop;
@@ -544,9 +545,15 @@ internal sealed record ViewerStageStatisticsSnapshot(
     string SessionLayerIdentifier,
     string DefaultPrimPath,
     int PrimCount,
+    int MeshCount,
+    long CurveVertexCount,
+    long MeshVertexCount,
+    long FaceCount,
     int RootPrimCount,
     int LeafPrimCount,
-    int MaximumDepth) : IUsdDetachedResult
+    int MaximumDepth,
+    UsdBounds3d WorldBounds,
+    TimeSpan BoundsQueryDuration) : IUsdDetachedResult
 {
     internal static ViewerStageStatisticsSnapshot Empty { get; } = new(
         string.Empty,
@@ -555,7 +562,13 @@ internal sealed record ViewerStageStatisticsSnapshot(
         0,
         0,
         0,
-        0);
+        0,
+        0,
+        0,
+        0,
+        0,
+        UsdBounds3d.Empty,
+        TimeSpan.Zero);
 }
 
 internal sealed record ViewerDocumentSnapshot(
@@ -719,6 +732,38 @@ internal static class ViewerStageSnapshotBuilder
         UsdStage stage,
         ViewerHierarchySnapshot hierarchy)
     {
+        int meshCount = 0;
+        long curveVertexCount = 0;
+        long meshVertexCount = 0;
+        long faceCount = 0;
+        foreach (ViewerHierarchyEntry entry in hierarchy.Entries)
+        {
+            UsdPrim prim = stage.GetPrim(entry.Path);
+            if (UsdGeomMesh.TryWrap(prim, out UsdGeomMesh mesh))
+            {
+                meshCount++;
+                meshVertexCount += mesh.GetPoints().LongLength;
+                faceCount += mesh.GetFaceVertexCounts().LongLength;
+            }
+            else if (UsdGeomBasisCurves.TryWrap(prim, out UsdGeomBasisCurves basisCurves))
+            {
+                curveVertexCount += basisCurves.GetPoints().LongLength;
+            }
+            else if (UsdGeomHermiteCurves.TryWrap(prim, out UsdGeomHermiteCurves hermiteCurves))
+            {
+                curveVertexCount += hermiteCurves.GetPoints().LongLength;
+            }
+            else if (UsdGeomNurbsCurves.TryWrap(prim, out UsdGeomNurbsCurves nurbsCurves))
+            {
+                curveVertexCount += nurbsCurves.GetPoints().LongLength;
+            }
+        }
+
+        Stopwatch boundsTimer = Stopwatch.StartNew();
+        UsdBounds3d worldBounds = stage.GetWorldBounds(
+            timeCode: stage.StartTimeCode,
+            purposeMask: UsdGeomPurposeMask.All);
+        boundsTimer.Stop();
         string defaultPrimPath;
         try
         {
@@ -734,11 +779,17 @@ internal static class ViewerStageSnapshotBuilder
             stage.SessionLayerIdentifier,
             defaultPrimPath,
             hierarchy.Entries.Length,
+            meshCount,
+            curveVertexCount,
+            meshVertexCount,
+            faceCount,
             hierarchy.Entries.Count(entry => entry.ParentPath is null),
             hierarchy.Entries.Count(entry => entry.ChildCount == 0),
             hierarchy.Entries.Length == 0
                 ? 0
-                : hierarchy.Entries.Max(entry => entry.Depth));
+                : hierarchy.Entries.Max(entry => entry.Depth),
+            worldBounds,
+            boundsTimer.Elapsed);
     }
 
     private static ViewerLayerStackSnapshot BuildLayerStack(
