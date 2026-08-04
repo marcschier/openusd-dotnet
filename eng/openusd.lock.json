@@ -41,7 +41,7 @@
   },
   "abi": {
     "data": 14,
-    "dataCapabilities": 65535,
+    "dataCapabilities": 131071,
     "storm": 6,
     "renderCommands": 10
   },

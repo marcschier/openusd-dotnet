@@ -116,6 +116,46 @@ public readonly struct UsdPrim : IUsdStageBound
                 UsdBounds3d.ValidateTimeCode(timeCode)));
     }
 
+    /// <summary>Gets this prim's world oriented bounds at default time for the selected purposes.</summary>
+    public UsdOrientedBounds3d GetWorldOrientedBounds(
+        UsdGeomPurposeMask purposeMask = UsdGeomPurposeMask.All)
+    {
+        UsdPath.ValidateAbsolutePrimPath(Path, nameof(Path));
+        return UsdOrientedBounds3d.FromNative(
+            Stage.Native.GetWorldOrientedBounds(
+                Path,
+                UsdOrientedBounds3d.ValidatePurposeMask(purposeMask)));
+    }
+
+    /// <summary>Gets this prim's world oriented bounds at a numeric time for the selected purposes.</summary>
+    public UsdOrientedBounds3d GetWorldOrientedBounds(
+        double timeCode,
+        UsdGeomPurposeMask purposeMask = UsdGeomPurposeMask.All)
+    {
+        UsdPath.ValidateAbsolutePrimPath(Path, nameof(Path));
+        return UsdOrientedBounds3d.FromNative(
+            Stage.Native.GetWorldOrientedBounds(
+                Path,
+                UsdOrientedBounds3d.ValidatePurposeMask(purposeMask),
+                UsdOrientedBounds3d.ValidateTimeCode(timeCode)));
+    }
+
+    /// <summary>Gets the composed defining, abstract, prototype, and specifier classification.</summary>
+    public UsdPrimClassification GetClassification() =>
+        UsdPrimClassification.FromNative(Stage.Native.GetPrimClassification(Path));
+
+    /// <summary>Returns whether this prim is defined.</summary>
+    public bool IsDefined() => GetClassification().IsDefined;
+
+    /// <summary>Returns whether this prim is abstract.</summary>
+    public bool IsAbstract() => GetClassification().IsAbstract;
+
+    /// <summary>Returns whether this prim is inside a prototype.</summary>
+    public bool IsInPrototype() => GetClassification().IsInPrototype;
+
+    /// <summary>Gets this prim's authored specifier.</summary>
+    public UsdPrimSpecifier GetSpecifier() => GetClassification().Specifier;
+
     /// <summary>Sets a custom double attribute at default time.</summary>
     public void SetDouble(string attributeName, double value) =>
         Stage.Native.SetDouble(Path, attributeName, value);

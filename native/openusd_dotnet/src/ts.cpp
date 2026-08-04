@@ -2,15 +2,6 @@
 
 #include "internal/common.h"
 
-#include "pxr/base/tf/type.h"
-#include "pxr/base/ts/spline.h"
-
-struct openusd_ts_spline
-{
-    TsSpline value{TfType::Find<double>()};
-    std::vector<openusd_ts_knot_record> snapshot;
-};
-
 namespace
 {
 TsInterpMode ToInterp(int32_t value)
@@ -290,5 +281,135 @@ openusd_status openusd_ts_spline_eval(
             *has_value = 1;
         }
         return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_stage_attribute_has_spline(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t* has_spline,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(has_spline);
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+            attribute_name == nullptr || attribute_name[0] == '\0' || has_spline == nullptr)
+        {
+            WriteError(error, "A valid stage, prim path, attribute name, and output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+
+        return Guard(error, [&]()
+        {
+            const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+            const UsdAttribute attribute =
+                prim ? prim.GetAttribute(TfToken(attribute_name)) : UsdAttribute();
+            if (!attribute)
+            {
+                WriteError(error, "The requested attribute was not found.");
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+            *has_spline = attribute.HasSpline() ? 1 : 0;
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+openusd_status openusd_stage_attribute_get_spline(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    openusd_ts_spline** spline,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(spline);
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+            attribute_name == nullptr || attribute_name[0] == '\0' || spline == nullptr)
+        {
+            WriteError(error, "A valid stage, prim path, attribute name, and spline output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+
+        return Guard(error, [&]()
+        {
+            const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+            const UsdAttribute attribute =
+                prim ? prim.GetAttribute(TfToken(attribute_name)) : UsdAttribute();
+            if (!attribute)
+            {
+                WriteError(error, "The requested attribute was not found.");
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+            if (!attribute.HasSpline())
+            {
+                WriteError(error, "The requested attribute has no authored spline.");
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+
+            TfErrorMark mark;
+            auto result = std::make_unique<openusd_ts_spline>();
+            result->value = attribute.GetSpline();
+            if (!mark.IsClean())
+            {
+                std::string message = ConsumeErrors(mark);
+                WriteError(error, message.empty() ? "Could not read the attribute spline." : message);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            *spline = result.release();
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+openusd_status openusd_stage_attribute_set_spline(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const openusd_ts_spline* spline,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+            attribute_name == nullptr || attribute_name[0] == '\0' || spline == nullptr)
+        {
+            WriteError(error, "A valid stage, prim path, attribute name, and spline are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+
+        return Guard(error, [&]()
+        {
+            const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+            if (!prim)
+            {
+                WriteError(error, std::string("Prim was not found: ") + prim_path);
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+
+            TfErrorMark mark;
+            const TfToken name(attribute_name);
+            UsdAttribute attribute = prim.GetAttribute(name);
+            if (!attribute)
+            {
+                attribute = prim.CreateAttribute(name, SdfValueTypeNames->Double, true);
+            }
+            const bool set = attribute && attribute.SetSpline(spline->value);
+            if (!set || !mark.IsClean())
+            {
+                std::string message = ConsumeErrors(mark);
+                WriteError(error, message.empty() ? "Could not set the attribute spline." : message);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            return OPENUSD_STATUS_OK;
+        });
     });
 }

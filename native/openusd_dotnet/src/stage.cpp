@@ -1064,6 +1064,154 @@ openusd_status openusd_stage_get_world_bounds(
     });
 }
 
+openusd_status openusd_stage_get_world_oriented_bounds(
+    const openusd_stage* stage,
+    const char* target_prim_path,
+    uint32_t purpose_mask,
+    int32_t time_sampled,
+    double time_code,
+    openusd_oriented_bounds3d* bounds,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        uint32_t struct_size = 0;
+        uint32_t requested_version = 0;
+        if (bounds != nullptr)
+        {
+            std::memcpy(&struct_size, bounds, sizeof(struct_size));
+            if (struct_size >= offsetof(openusd_oriented_bounds3d, version) + sizeof(uint32_t))
+            {
+                std::memcpy(
+                    &requested_version,
+                    reinterpret_cast<const unsigned char*>(bounds) +
+                        offsetof(openusd_oriented_bounds3d, version),
+                    sizeof(requested_version));
+            }
+        }
+
+        // ABI_OUTPUT_INITIALIZATION
+        ResetOrientedBounds3dOutput(bounds);
+        OrientedBounds3dFailureReset failure_reset(bounds);
+        const bool stage_bounds =
+            target_prim_path == nullptr || target_prim_path[0] == '\0';
+        if (stage == nullptr || !stage->value || bounds == nullptr ||
+            !IsAligned(bounds) || struct_size < sizeof(openusd_oriented_bounds3d) ||
+            requested_version != OPENUSD_ORIENTED_BOUNDS3D_VERSION ||
+            (!stage_bounds && !IsValidPrimPath(target_prim_path)) ||
+            (purpose_mask & ~OPENUSD_GEOM_PURPOSE_MASK_ALL) != 0 ||
+            (time_sampled != 0 && time_sampled != 1) ||
+            (time_sampled == 1 && !std::isfinite(time_code)))
+        {
+            WriteError(
+                error,
+                "A valid stage, optional absolute prim path, purpose mask, time, "
+                "and aligned oriented-bounds output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+
+        if (purpose_mask == 0)
+        {
+            bounds->is_valid = 1;
+            failure_reset.Commit();
+            return OPENUSD_STATUS_OK;
+        }
+
+        TfErrorMark mark;
+        const UsdPrim prim = stage_bounds
+            ? stage->value->GetPseudoRoot()
+            : stage->value->GetPrimAtPath(SdfPath(target_prim_path));
+        if (!prim || !prim.IsActive())
+        {
+            if (!mark.IsClean())
+            {
+                std::string message = ConsumeErrors(mark);
+                WriteError(
+                    error,
+                    message.empty()
+                        ? "Could not resolve the requested world oriented-bounds prim."
+                        : message);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            bounds->is_valid = 1;
+            failure_reset.Commit();
+            return OPENUSD_STATUS_OK;
+        }
+
+        TfTokenVector purposes;
+        purposes.reserve(4);
+        if ((purpose_mask & OPENUSD_GEOM_PURPOSE_MASK_DEFAULT) != 0)
+        {
+            purposes.push_back(UsdGeomTokens->default_);
+        }
+        if ((purpose_mask & OPENUSD_GEOM_PURPOSE_MASK_PROXY) != 0)
+        {
+            purposes.push_back(UsdGeomTokens->proxy);
+        }
+        if ((purpose_mask & OPENUSD_GEOM_PURPOSE_MASK_RENDER) != 0)
+        {
+            purposes.push_back(UsdGeomTokens->render);
+        }
+        if ((purpose_mask & OPENUSD_GEOM_PURPOSE_MASK_GUIDE) != 0)
+        {
+            purposes.push_back(UsdGeomTokens->guide);
+        }
+
+        GfBBox3d box;
+        {
+            UsdGeomBBoxCache cache(
+                GetTimeCode(time_sampled, time_code),
+                std::move(purposes),
+                true);
+            box = cache.ComputeWorldBound(prim);
+        }
+        if (!mark.IsClean())
+        {
+            std::string message = ConsumeErrors(mark);
+            WriteError(
+                error,
+                message.empty() ? "Could not compute the requested world oriented bounds." : message);
+            return OPENUSD_STATUS_NATIVE_ERROR;
+        }
+
+        const GfRange3d range = box.GetRange();
+        if (range.IsEmpty())
+        {
+            bounds->is_valid = 1;
+            failure_reset.Commit();
+            return OPENUSD_STATUS_OK;
+        }
+
+        const GfVec3d minimum = range.GetMin();
+        const GfVec3d maximum = range.GetMax();
+        for (size_t index = 0; index < 3; ++index)
+        {
+            if (!std::isfinite(minimum[index]) || !std::isfinite(maximum[index]) ||
+                minimum[index] > maximum[index] ||
+                !std::isfinite(maximum[index] - minimum[index]))
+            {
+                WriteError(error, "The computed oriented bounds are not finite and ordered.");
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            bounds->minimum[index] = minimum[index];
+            bounds->maximum[index] = maximum[index];
+        }
+
+        bounds->matrix = FromMatrix4d(box.GetMatrix());
+        if (!IsFiniteMatrix(bounds->matrix))
+        {
+            WriteError(error, "The computed oriented bounds transform is not finite.");
+            return OPENUSD_STATUS_NATIVE_ERROR;
+        }
+
+        bounds->is_valid = 1;
+        bounds->is_empty = 0;
+        failure_reset.Commit();
+        return OPENUSD_STATUS_OK;
+    });
+}
+
 openusd_status openusd_stage_get_default_prim_path(
     const openusd_stage* stage,
     char* buffer,
@@ -1623,6 +1771,75 @@ openusd_status openusd_stage_get_prim_active(
                 return OPENUSD_STATUS_NOT_FOUND;
             }
             *active = prim.IsActive() ? 1 : 0;
+            return OPENUSD_STATUS_OK;
+        });
+
+    });
+}
+
+openusd_status openusd_stage_get_prim_classification(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_prim_classification* classification,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        uint32_t struct_size = 0;
+        uint32_t requested_version = 0;
+        if (classification != nullptr)
+        {
+            std::memcpy(&struct_size, classification, sizeof(struct_size));
+            if (struct_size >= offsetof(openusd_prim_classification, version) + sizeof(uint32_t))
+            {
+                std::memcpy(
+                    &requested_version,
+                    reinterpret_cast<const unsigned char*>(classification) +
+                        offsetof(openusd_prim_classification, version),
+                    sizeof(requested_version));
+            }
+        }
+
+        // ABI_OUTPUT_INITIALIZATION
+        ResetVersionedAbiOutput(classification);
+        if (classification == nullptr || !IsAligned(classification) ||
+            struct_size < sizeof(openusd_prim_classification) ||
+            requested_version != OPENUSD_PRIM_CLASSIFICATION_VERSION ||
+            stage == nullptr || !stage->value || !IsValidPrimPath(prim_path))
+        {
+            WriteError(error, "A valid stage, prim path, and prim-classification output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+
+        return Guard(error, [&]()
+        {
+            const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+            if (!prim)
+            {
+                WriteError(error, std::string("Prim was not found: ") + prim_path);
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+
+            classification->version = OPENUSD_PRIM_CLASSIFICATION_VERSION;
+            classification->is_defined = prim.IsDefined() ? 1 : 0;
+            classification->is_abstract = prim.IsAbstract() ? 1 : 0;
+            classification->is_in_prototype = prim.IsInPrototype() ? 1 : 0;
+            switch (prim.GetSpecifier())
+            {
+            case SdfSpecifierDef:
+                classification->specifier = OPENUSD_PRIM_SPECIFIER_DEF;
+                break;
+            case SdfSpecifierOver:
+                classification->specifier = OPENUSD_PRIM_SPECIFIER_OVER;
+                break;
+            case SdfSpecifierClass:
+                classification->specifier = OPENUSD_PRIM_SPECIFIER_CLASS;
+                break;
+            default:
+                classification->specifier = OPENUSD_PRIM_SPECIFIER_UNKNOWN;
+                break;
+            }
             return OPENUSD_STATUS_OK;
         });
 

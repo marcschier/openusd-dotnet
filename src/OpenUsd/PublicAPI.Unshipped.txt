@@ -1948,3 +1948,59 @@ OpenUsd.UI.UsdUINodeGraphNode.NodeSize.get -> OpenUsd.UsdVec2f
 OpenUsd.UI.UsdUINodeGraphNode.NodeSize.set -> void
 OpenUsd.UI.UsdUINodeGraphNode.Position.get -> OpenUsd.UsdVec2f
 OpenUsd.UI.UsdUINodeGraphNode.Position.set -> void
+~override OpenUsd.UsdOrientedBounds3d.Equals(object obj) -> bool
+~override OpenUsd.UsdOrientedBounds3d.ToString() -> string
+~override OpenUsd.UsdPrimClassification.Equals(object obj) -> bool
+~override OpenUsd.UsdPrimClassification.ToString() -> string
+OpenUsd.TfDebug
+OpenUsd.UsdAttribute.GetSpline() -> OpenUsd.TsSpline!
+OpenUsd.UsdAttribute.HasSpline() -> bool
+OpenUsd.UsdAttribute.SetSpline(OpenUsd.TsSpline! spline) -> void
+OpenUsd.UsdOrientedBounds3d
+OpenUsd.UsdOrientedBounds3d.Deconstruct(out OpenUsd.UsdBounds3d Range, out OpenUsd.UsdMatrix4d Matrix) -> void
+OpenUsd.UsdOrientedBounds3d.Equals(OpenUsd.UsdOrientedBounds3d other) -> bool
+OpenUsd.UsdOrientedBounds3d.IsEmpty.get -> bool
+OpenUsd.UsdOrientedBounds3d.Matrix.get -> OpenUsd.UsdMatrix4d
+OpenUsd.UsdOrientedBounds3d.Matrix.init -> void
+OpenUsd.UsdOrientedBounds3d.Range.get -> OpenUsd.UsdBounds3d
+OpenUsd.UsdOrientedBounds3d.Range.init -> void
+OpenUsd.UsdOrientedBounds3d.UsdOrientedBounds3d() -> void
+OpenUsd.UsdOrientedBounds3d.UsdOrientedBounds3d(OpenUsd.UsdBounds3d Range, OpenUsd.UsdMatrix4d Matrix) -> void
+OpenUsd.UsdPrim.GetClassification() -> OpenUsd.UsdPrimClassification
+OpenUsd.UsdPrim.GetSpecifier() -> OpenUsd.UsdPrimSpecifier
+OpenUsd.UsdPrim.GetWorldOrientedBounds(double timeCode, OpenUsd.Geom.UsdGeomPurposeMask purposeMask = OpenUsd.Geom.UsdGeomPurposeMask.All) -> OpenUsd.UsdOrientedBounds3d
+OpenUsd.UsdPrim.GetWorldOrientedBounds(OpenUsd.Geom.UsdGeomPurposeMask purposeMask = OpenUsd.Geom.UsdGeomPurposeMask.All) -> OpenUsd.UsdOrientedBounds3d
+OpenUsd.UsdPrim.IsAbstract() -> bool
+OpenUsd.UsdPrim.IsDefined() -> bool
+OpenUsd.UsdPrim.IsInPrototype() -> bool
+OpenUsd.UsdPrimClassification
+OpenUsd.UsdPrimClassification.Deconstruct(out bool IsDefined, out bool IsAbstract, out bool IsInPrototype, out OpenUsd.UsdPrimSpecifier Specifier) -> void
+OpenUsd.UsdPrimClassification.Equals(OpenUsd.UsdPrimClassification other) -> bool
+OpenUsd.UsdPrimClassification.IsAbstract.get -> bool
+OpenUsd.UsdPrimClassification.IsAbstract.init -> void
+OpenUsd.UsdPrimClassification.IsDefined.get -> bool
+OpenUsd.UsdPrimClassification.IsDefined.init -> void
+OpenUsd.UsdPrimClassification.IsInPrototype.get -> bool
+OpenUsd.UsdPrimClassification.IsInPrototype.init -> void
+OpenUsd.UsdPrimClassification.Specifier.get -> OpenUsd.UsdPrimSpecifier
+OpenUsd.UsdPrimClassification.Specifier.init -> void
+OpenUsd.UsdPrimClassification.UsdPrimClassification() -> void
+OpenUsd.UsdPrimClassification.UsdPrimClassification(bool IsDefined, bool IsAbstract, bool IsInPrototype, OpenUsd.UsdPrimSpecifier Specifier) -> void
+OpenUsd.UsdPrimSpecifier
+OpenUsd.UsdPrimSpecifier.Class = 3 -> OpenUsd.UsdPrimSpecifier
+OpenUsd.UsdPrimSpecifier.Def = 1 -> OpenUsd.UsdPrimSpecifier
+OpenUsd.UsdPrimSpecifier.Over = 2 -> OpenUsd.UsdPrimSpecifier
+OpenUsd.UsdPrimSpecifier.Unknown = 0 -> OpenUsd.UsdPrimSpecifier
+OpenUsd.UsdStage.GetWorldOrientedBounds(double timeCode, OpenUsd.Geom.UsdGeomPurposeMask purposeMask = OpenUsd.Geom.UsdGeomPurposeMask.All) -> OpenUsd.UsdOrientedBounds3d
+OpenUsd.UsdStage.GetWorldOrientedBounds(OpenUsd.Geom.UsdGeomPurposeMask purposeMask = OpenUsd.Geom.UsdGeomPurposeMask.All) -> OpenUsd.UsdOrientedBounds3d
+override OpenUsd.UsdOrientedBounds3d.GetHashCode() -> int
+override OpenUsd.UsdPrimClassification.GetHashCode() -> int
+static OpenUsd.TfDebug.GetSymbolDescription(string! name) -> string!
+static OpenUsd.TfDebug.GetSymbolEnabled(string! name) -> bool
+static OpenUsd.TfDebug.GetSymbolNames() -> System.Collections.Generic.IReadOnlyList<string!>!
+static OpenUsd.TfDebug.SetSymbolEnabled(string! name, bool enabled) -> bool
+static OpenUsd.UsdOrientedBounds3d.Empty.get -> OpenUsd.UsdOrientedBounds3d
+static OpenUsd.UsdOrientedBounds3d.operator !=(OpenUsd.UsdOrientedBounds3d left, OpenUsd.UsdOrientedBounds3d right) -> bool
+static OpenUsd.UsdOrientedBounds3d.operator ==(OpenUsd.UsdOrientedBounds3d left, OpenUsd.UsdOrientedBounds3d right) -> bool
+static OpenUsd.UsdPrimClassification.operator !=(OpenUsd.UsdPrimClassification left, OpenUsd.UsdPrimClassification right) -> bool
+static OpenUsd.UsdPrimClassification.operator ==(OpenUsd.UsdPrimClassification left, OpenUsd.UsdPrimClassification right) -> bool

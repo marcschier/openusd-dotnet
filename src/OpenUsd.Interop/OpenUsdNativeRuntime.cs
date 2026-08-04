@@ -1360,6 +1360,53 @@ public static unsafe partial class OpenUsdNativeRuntime
         }
     }
 
+    internal static OpenUsdNativeOrientedBounds3d GetWorldOrientedBounds(
+        OpenUsdNativeStage stage,
+        string? targetPrimPath,
+        uint purposeMask,
+        double? timeCode)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        NativeStringValidation.ThrowIfInvalidOptionalAbsolutePrimPath(
+            targetPrimPath,
+            nameof(targetPrimPath));
+        if ((purposeMask & ~0xFU) != 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(purposeMask),
+                "The purpose mask contains unsupported bits.");
+        }
+        if (timeCode.HasValue && !double.IsFinite(timeCode.GetValueOrDefault()))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeCode),
+                "The time code must be finite.");
+        }
+
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            var bounds = new OpenUsdNativeOrientedBounds3d
+            {
+                StructSize = (uint)sizeof(OpenUsdNativeOrientedBounds3d),
+                Version = OpenUsdNativeOrientedBounds3d.CurrentVersion
+            };
+            OpenUsdNativeStatus status = NativeMethods.StageGetWorldOrientedBounds(
+                lease.Handle,
+                targetPrimPath,
+                purposeMask,
+                timeCode.HasValue ? 1 : 0,
+                timeCode.GetValueOrDefault(),
+                ref bounds,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            ValidateWorldOrientedBoundsResult(bounds);
+            return bounds;
+        }
+    }
+
     private static void ValidateWorldBoundsResult(OpenUsdNativeBounds3d bounds)
     {
         bool finite =
@@ -1398,6 +1445,65 @@ public static unsafe partial class OpenUsdNativeRuntime
                 "The native world-bounds result violated the data ABI contract.");
         }
     }
+
+    private static void ValidateWorldOrientedBoundsResult(OpenUsdNativeOrientedBounds3d bounds)
+    {
+        bool finite =
+            double.IsFinite(bounds.MinimumX) &&
+            double.IsFinite(bounds.MinimumY) &&
+            double.IsFinite(bounds.MinimumZ) &&
+            double.IsFinite(bounds.MaximumX) &&
+            double.IsFinite(bounds.MaximumY) &&
+            double.IsFinite(bounds.MaximumZ) &&
+            IsFiniteMatrix(bounds.Matrix);
+        bool validFlags =
+            bounds.StructSize == sizeof(OpenUsdNativeOrientedBounds3d) &&
+            bounds.Version == OpenUsdNativeOrientedBounds3d.CurrentVersion &&
+            bounds.IsValid == 1 &&
+            (bounds.IsEmpty == 0 || bounds.IsEmpty == 1);
+        bool validEmpty =
+            bounds.IsEmpty == 0 ||
+            (bounds.MinimumX == 0 &&
+             bounds.MinimumY == 0 &&
+             bounds.MinimumZ == 0 &&
+             bounds.MaximumX == 0 &&
+             bounds.MaximumY == 0 &&
+             bounds.MaximumZ == 0);
+        bool ordered =
+            bounds.IsEmpty != 0 ||
+            (bounds.MinimumX <= bounds.MaximumX &&
+             bounds.MinimumY <= bounds.MaximumY &&
+             bounds.MinimumZ <= bounds.MaximumZ);
+        bool finiteExtents =
+            double.IsFinite(bounds.MaximumX - bounds.MinimumX) &&
+            double.IsFinite(bounds.MaximumY - bounds.MinimumY) &&
+            double.IsFinite(bounds.MaximumZ - bounds.MinimumZ);
+        if (!finite || !validFlags || !validEmpty || !ordered || !finiteExtents)
+        {
+            throw new OpenUsdNativeException(
+                OpenUsdNativeStatus.NativeError,
+                "The native world oriented-bounds result violated the data ABI contract.");
+        }
+
+    }
+
+    private static bool IsFiniteMatrix(OpenUsdNativeMatrix4d value) =>
+        double.IsFinite(value.M00) &&
+        double.IsFinite(value.M01) &&
+        double.IsFinite(value.M02) &&
+        double.IsFinite(value.M03) &&
+        double.IsFinite(value.M10) &&
+        double.IsFinite(value.M11) &&
+        double.IsFinite(value.M12) &&
+        double.IsFinite(value.M13) &&
+        double.IsFinite(value.M20) &&
+        double.IsFinite(value.M21) &&
+        double.IsFinite(value.M22) &&
+        double.IsFinite(value.M23) &&
+        double.IsFinite(value.M30) &&
+        double.IsFinite(value.M31) &&
+        double.IsFinite(value.M32) &&
+        double.IsFinite(value.M33);
 
     internal static bool IsGeomSchema(
         OpenUsdNativeStage stage,
@@ -2804,6 +2910,43 @@ public static unsafe partial class OpenUsdNativeRuntime
                 ref error);
             ThrowIfFailed(status, errorBytes, error);
             return active != 0;
+        }
+    }
+
+    internal static OpenUsdNativePrimClassification GetPrimClassification(
+        OpenUsdNativeStage stage,
+        string primPath)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            var classification = new OpenUsdNativePrimClassification
+            {
+                StructSize = (uint)sizeof(OpenUsdNativePrimClassification),
+                Version = OpenUsdNativePrimClassification.CurrentVersion
+            };
+            OpenUsdNativeStatus status = NativeMethods.StageGetPrimClassification(
+                lease.Handle,
+                primPath,
+                ref classification,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            if (classification.StructSize != sizeof(OpenUsdNativePrimClassification) ||
+                classification.Version != OpenUsdNativePrimClassification.CurrentVersion ||
+                classification.IsDefined is not (0 or 1) ||
+                classification.IsAbstract is not (0 or 1) ||
+                classification.IsInPrototype is not (0 or 1) ||
+                classification.Specifier is < 0 or > 3)
+            {
+                throw new OpenUsdNativeException(
+                    OpenUsdNativeStatus.NativeError,
+                    "The native prim-classification result violated the data ABI contract.");
+            }
+            return classification;
         }
     }
 
@@ -4308,6 +4451,171 @@ public static unsafe partial class OpenUsdNativeRuntime
             ThrowIfFailed(status, errorBytes, error);
         }
         return hasValue == 0 ? null : value;
+    }
+
+    internal static bool AttributeHasSpline(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeName);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StageAttributeHasSpline(
+                lease.Handle,
+                primPath,
+                attributeName,
+                out int hasSpline,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return hasSpline != 0;
+        }
+    }
+
+    internal static nint GetAttributeSpline(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeName);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StageAttributeGetSpline(
+                lease.Handle,
+                primPath,
+                attributeName,
+                out nint spline,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return spline;
+        }
+    }
+
+    internal static void SetAttributeSpline(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        nint spline)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeName);
+        if (spline == 0)
+        {
+            throw new ArgumentException("A valid native Ts spline handle is required.", nameof(spline));
+        }
+
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StageAttributeSetSpline(
+                lease.Handle,
+                primPath,
+                attributeName,
+                spline,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    internal static string[] GetTfDebugSymbolNames()
+    {
+        var view = new NativeStringListView
+        {
+            StructSize = (uint)sizeof(NativeStringListView)
+        };
+        nint list = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.TfDebugGetSymbolNames(
+                out list,
+                ref view,
+                ref error);
+            ThrowIfFailedAndReleaseStringList(status, errorBytes, error, ref list);
+        }
+
+        try
+        {
+            return DecodeStringListView(view);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.StringListRelease(list);
+            }
+        }
+    }
+
+    internal static string GetTfDebugSymbolDescription(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return GetString((byte* buffer, nuint capacity, out nuint required) =>
+        {
+            Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+            fixed (byte* errorPointer = errorBytes)
+            {
+                var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+                OpenUsdNativeStatus status = NativeMethods.TfDebugGetSymbolDescription(
+                    name,
+                    buffer,
+                    capacity,
+                    out required,
+                    ref error);
+                if (status != OpenUsdNativeStatus.BufferTooSmall)
+                {
+                    ThrowIfFailed(status, errorBytes, error);
+                }
+                return status;
+            }
+        });
+    }
+
+    internal static bool SetTfDebugSymbol(string name, bool enabled)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.TfDebugSetSymbol(
+                name,
+                enabled ? 1 : 0,
+                out int changed,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return changed != 0;
+        }
+    }
+
+    internal static bool GetTfDebugSymbolEnabled(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.TfDebugGetSymbolEnabled(
+                name,
+                out int enabled,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return enabled != 0;
+        }
     }
 
     internal static OpenUsdNativeValidationMetadata[] GetValidationMetadata()

@@ -102,6 +102,24 @@ public sealed class UsdStage : IDisposable, IUsdStageBound
                 UsdBounds3d.ValidatePurposeMask(purposeMask),
                 UsdBounds3d.ValidateTimeCode(timeCode)));
 
+    /// <summary>Gets stage world oriented bounds at default time for the selected purposes.</summary>
+    public UsdOrientedBounds3d GetWorldOrientedBounds(
+        UsdGeomPurposeMask purposeMask = UsdGeomPurposeMask.All) =>
+        UsdOrientedBounds3d.FromNative(
+            Native.GetWorldOrientedBounds(
+                null,
+                UsdOrientedBounds3d.ValidatePurposeMask(purposeMask)));
+
+    /// <summary>Gets stage world oriented bounds at a numeric time for the selected purposes.</summary>
+    public UsdOrientedBounds3d GetWorldOrientedBounds(
+        double timeCode,
+        UsdGeomPurposeMask purposeMask = UsdGeomPurposeMask.All) =>
+        UsdOrientedBounds3d.FromNative(
+            Native.GetWorldOrientedBounds(
+                null,
+                UsdOrientedBounds3d.ValidatePurposeMask(purposeMask),
+                UsdOrientedBounds3d.ValidateTimeCode(timeCode)));
+
     /// <summary>Gets an owned root-layer view.</summary>
     public UsdLayer GetRootLayer() => new(Native.GetRootLayer());
 
