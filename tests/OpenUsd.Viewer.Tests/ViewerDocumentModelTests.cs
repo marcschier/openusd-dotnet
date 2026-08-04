@@ -100,11 +100,48 @@ public sealed class ViewerDocumentModelTests
     }
 
     [Test]
+    public async Task FilteringTogglesInactiveUndefinedAbstractAndPrototypePrims()
+    {
+        ViewerHierarchySnapshot snapshot = ViewerHierarchySnapshot.Build(
+        [
+            new ViewerHierarchySourceEntry("/World", "Xform"),
+            new ViewerHierarchySourceEntry("/World/Inactive", "Mesh", IsActive: false),
+            new ViewerHierarchySourceEntry("/World/Over", string.Empty, IsDefined: false),
+            new ViewerHierarchySourceEntry("/_Class", string.Empty, IsAbstract: true),
+            new ViewerHierarchySourceEntry("/__Prototype_1", "Xform", IsPrototype: true)
+        ]);
+
+        ViewerHierarchySnapshot hidden = snapshot.Filter(new ViewerHierarchyFilter(null, null));
+        ViewerHierarchySnapshot shown = snapshot.Filter(new ViewerHierarchyFilter(
+            NameQuery: null,
+            TypeQuery: null,
+            ShowInactive: true,
+            ShowUndefined: true,
+            ShowAbstract: true,
+            ShowPrototypes: true));
+
+        await Assert.That(hidden.Entries.Select(entry => entry.Path))
+            .IsEquivalentTo(["/World"]);
+        await Assert.That(shown.Entries.Select(entry => entry.Path))
+            .IsEquivalentTo([
+                "/World",
+                "/World/Inactive",
+                "/World/Over",
+                "/_Class",
+                "/__Prototype_1"
+            ]);
+        await Assert.That(shown.Entries[1].IsActive).IsFalse();
+        await Assert.That(shown.Entries[2].IsDefined).IsFalse();
+        await Assert.That(shown.Entries[3].IsAbstract).IsTrue();
+        await Assert.That(shown.Entries[^1].IsPrototype).IsTrue();
+    }
+
+    [Test]
     public async Task ExpandDepthMaterializesOnlyRequestedDepthUnlessSelectionNeedsAncestors()
     {
-        ViewerHierarchyEntry root = new("/World", "World", "Xform", null, Depth: 0, ChildCount: 2);
-        ViewerHierarchyEntry child = new("/World/Geom", "Geom", "Scope", "/World", Depth: 1, ChildCount: 1);
-        ViewerHierarchyEntry leaf = new("/World/Geom/Cube", "Cube", "Mesh", "/World/Geom", Depth: 2, ChildCount: 0);
+        ViewerHierarchyEntry root = new("/World", "World", "Xform", null, depth: 0, childCount: 2);
+        ViewerHierarchyEntry child = new("/World/Geom", "Geom", "Scope", "/World", depth: 1, childCount: 1);
+        ViewerHierarchyEntry leaf = new("/World/Geom/Cube", "Cube", "Mesh", "/World/Geom", depth: 2, childCount: 0);
 
         await Assert.That(ViewerHierarchyExpansionPolicy.ShouldMaterializeChildren(
             root,
@@ -174,6 +211,14 @@ public sealed class ViewerDocumentModelTests
         await Assert.That(options[1].Selection).IsEqualTo("warm");
         await Assert.That(options[2].DisplayName).IsEqualTo("<empty variant name>");
         await Assert.That(options[3].Selection).IsEqualTo("cool");
+        await Assert.That(ViewerVariantSetSnapshot.ValueComparer.Equals(
+            snapshot,
+            ViewerVariantSetSnapshot.Create("look", ["warm", string.Empty, "cool"], selection: null)))
+            .IsTrue();
+        await Assert.That(ViewerVariantSetSnapshot.ValueComparer.Equals(
+            snapshot,
+            ViewerVariantSetSnapshot.Create("look", ["warm", "cool"], selection: null)))
+            .IsFalse();
     }
 
     [Test]

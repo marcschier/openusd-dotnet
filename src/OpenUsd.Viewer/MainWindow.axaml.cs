@@ -191,6 +191,10 @@ public sealed partial class MainWindow : Window, IDisposable
             HierarchyFilter.TextChanged += OnHierarchyFilterChanged;
             HierarchyTypeFilter.TextChanged += OnHierarchyFilterChanged;
             HierarchyExpandDepthInput.TextChanged += OnHierarchyExpandDepthChanged;
+            ShowInactivePrimsCheckBox.IsCheckedChanged += OnHierarchyVisibilityFilterChanged;
+            ShowUndefinedPrimsCheckBox.IsCheckedChanged += OnHierarchyVisibilityFilterChanged;
+            ShowAbstractPrimsCheckBox.IsCheckedChanged += OnHierarchyVisibilityFilterChanged;
+            ShowPrototypePrimsCheckBox.IsCheckedChanged += OnHierarchyVisibilityFilterChanged;
             StageHierarchy.SelectionChanged += OnHierarchySelectionChanged;
             PlayPauseButton.Click += OnPlayPauseClick;
             CurrentTimeInput.KeyDown += OnCurrentTimeInputKeyDown;
@@ -3156,6 +3160,9 @@ public sealed partial class MainWindow : Window, IDisposable
     private void OnHierarchyFilterChanged(object? sender, TextChangedEventArgs e) =>
         RenderHierarchy();
 
+    private void OnHierarchyVisibilityFilterChanged(object? sender, RoutedEventArgs e) =>
+        RenderHierarchy();
+
     private void OnHierarchyExpandDepthChanged(object? sender, TextChangedEventArgs e)
     {
         string? text = HierarchyExpandDepthInput.Text;
@@ -3189,7 +3196,11 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         ViewerHierarchySnapshot filtered = _hierarchy.Filter(new ViewerHierarchyFilter(
             HierarchyFilter.Text,
-            HierarchyTypeFilter.Text));
+            HierarchyTypeFilter.Text,
+            ShowInactivePrimsCheckBox.IsChecked == true,
+            ShowUndefinedPrimsCheckBox.IsChecked == true,
+            ShowAbstractPrimsCheckBox.IsChecked == true,
+            ShowPrototypePrimsCheckBox.IsChecked == true));
         var source = new ViewerHierarchyTreeSource(filtered);
         TreeViewItem? selectedItem = null;
         _rebuildingHierarchy = true;
@@ -3615,7 +3626,8 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         var item = new TreeViewItem
         {
-            Header = node.Entry.Name,
+            Header = CreateHierarchyItemHeader(node.Entry),
+            ContextMenu = CreateHierarchyContextMenu(node.Entry),
             Tag = node
         };
         AutomationProperties.SetName(item, $"Prim {node.Entry.Path}");
@@ -3648,6 +3660,128 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         return item;
     }
+
+    private StackPanel CreateHierarchyItemHeader(ViewerHierarchyEntry entry)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 6
+        };
+        row.Children.Add(new TextBlock
+        {
+            Text = entry.Name,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+        });
+        string state = FormatHierarchyEntryState(entry);
+        if (state.Length != 0)
+        {
+            row.Children.Add(new TextBlock
+            {
+                Text = state,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Foreground = Brushes.Gray
+            });
+        }
+        foreach (ViewerVariantSetSnapshot variantSet in entry.VariantSets)
+        {
+            row.Children.Add(CreateHierarchyVariantSelector(entry, variantSet));
+        }
+        return row;
+    }
+
+    private ComboBox CreateHierarchyVariantSelector(
+        ViewerHierarchyEntry entry,
+        ViewerVariantSetSnapshot variantSet)
+    {
+        ViewerVariantSelectionOption[] options = ViewerVariantSelectionOption.Create(variantSet);
+        var request = new ViewerPrimCommandRequest(
+            ViewerPrimCommand.SetVariantSelection,
+            TokenValue: variantSet.Selection,
+            VariantSetName: variantSet.Name,
+            PrimPath: entry.Path,
+            AvailableVariantNames: variantSet.VariantNames.ToArray());
+        var selector = new ComboBox
+        {
+            MinWidth = 96,
+            ItemsSource = options,
+            SelectedItem = options.FirstOrDefault(option =>
+                string.Equals(option.Selection, variantSet.Selection, StringComparison.Ordinal)),
+            Tag = request,
+            IsEnabled = CanRunHierarchyPrimCommand(entry) &&
+                !string.IsNullOrWhiteSpace(variantSet.Name) &&
+                (variantSet.VariantNames.Count != 0 || variantSet.Selection is not null)
+        };
+        AutomationProperties.SetName(
+            selector,
+            $"Variant set {variantSet.Name} selection for prim {entry.Path}");
+        ToolTip.SetTip(selector, $"Choose a variant for {entry.Path}");
+        selector.SelectionChanged += OnHierarchyVariantSelectionChanged;
+        return selector;
+    }
+
+    private ContextMenu? CreateHierarchyContextMenu(ViewerHierarchyEntry entry)
+    {
+        if (!entry.HasPayloads)
+        {
+            return null;
+        }
+
+        var loadItem = new MenuItem
+        {
+            Header = entry.IsLoaded ? "Unload payloads" : "Load payloads",
+            Tag = new ViewerPrimCommandRequest(
+                ViewerPrimCommand.SetLoaded,
+                BooleanValue: !entry.IsLoaded,
+                PrimPath: entry.Path),
+            IsEnabled = CanRunHierarchyPrimCommand(entry)
+        };
+        AutomationProperties.SetName(
+            loadItem,
+            $"{(entry.IsLoaded ? "Unload" : "Load")} payloads for prim {entry.Path}");
+        loadItem.Click += OnHierarchyPrimCommandClick;
+        return new ContextMenu
+        {
+            ItemsSource = new[] { loadItem }
+        };
+    }
+
+    private static string FormatHierarchyEntryState(ViewerHierarchyEntry entry)
+    {
+        var states = new List<string>(capacity: 6);
+        if (!entry.IsActive)
+        {
+            states.Add("inactive");
+        }
+        if (!entry.IsLoaded)
+        {
+            states.Add("unloaded");
+        }
+        if (!entry.IsDefined)
+        {
+            states.Add("undefined");
+        }
+        if (entry.IsAbstract)
+        {
+            states.Add("abstract");
+        }
+        if (entry.IsPrototype)
+        {
+            states.Add("prototype");
+        }
+        if (entry.HasPayloads)
+        {
+            states.Add("payload");
+        }
+        return states.Count == 0 ? string.Empty : $"[{string.Join(", ", states)}]";
+    }
+
+    private bool CanRunHierarchyPrimCommand(ViewerHierarchyEntry entry) =>
+        _coordinator is not null &&
+        !_documentBusy &&
+        !_primCommandBusy &&
+        !IsAutomatedViewerRun() &&
+        !entry.IsPrototype;
 
     private TreeViewItem[] CreateTreeItems(
         IReadOnlyList<ViewerHierarchyTreeNode> nodes,
@@ -4533,6 +4667,75 @@ public sealed partial class MainWindow : Window, IDisposable
         _ = StageHierarchy.Focus();
     }
 
+    private async void OnHierarchyVariantSelectionChanged(
+        object? sender,
+        SelectionChangedEventArgs e)
+    {
+        if (_rebuildingHierarchy ||
+            sender is not ComboBox
+            {
+                Tag: ViewerPrimCommandRequest request,
+                SelectedItem: ViewerVariantSelectionOption selected,
+                ItemsSource: IEnumerable<ViewerVariantSelectionOption> options
+            } selector ||
+            request.Command != ViewerPrimCommand.SetVariantSelection)
+        {
+            return;
+        }
+
+        string? current = request.TokenValue;
+        _rebuildingHierarchy = true;
+        try
+        {
+            selector.SelectedItem = options.FirstOrDefault(option =>
+                string.Equals(option.Selection, current, StringComparison.Ordinal));
+        }
+        finally
+        {
+            _rebuildingHierarchy = false;
+        }
+        if (string.Equals(current, selected.Selection, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            await RunHierarchyPrimCommandAsync(
+                request with { TokenValue = selected.Selection },
+                _viewerLifetime.Token);
+        }
+        catch (OperationCanceledException) when (_viewerLifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            ShowError($"Could not change the variant selection: {exception.Message}");
+            RenderHierarchy();
+        }
+    }
+
+    private async void OnHierarchyPrimCommandClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: ViewerPrimCommandRequest request })
+        {
+            return;
+        }
+
+        try
+        {
+            await RunHierarchyPrimCommandAsync(request, _viewerLifetime.Token);
+        }
+        catch (OperationCanceledException) when (_viewerLifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            ShowError($"Could not edit the hierarchy prim: {exception.Message}");
+            RenderHierarchy();
+        }
+    }
+
     private async Task RunPrimCommandAsync(
         ViewerPrimCommandRequest request,
         CancellationToken cancellationToken)
@@ -4630,6 +4833,75 @@ public sealed partial class MainWindow : Window, IDisposable
                 {
                     FocusVariantSelector(request.VariantSetName);
                 }
+            }
+        }
+        finally
+        {
+            _documentGate.Release();
+        }
+    }
+
+    private async Task RunHierarchyPrimCommandAsync(
+        ViewerPrimCommandRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        request.Validate();
+        string targetPrimPath = request.PrimPath ??
+            throw new InvalidOperationException("Hierarchy prim commands require a target prim path.");
+        await _documentGate.WaitAsync(cancellationToken);
+        try
+        {
+            ViewerRenderCoordinator? coordinator = _coordinator;
+            CancellationToken documentToken =
+                _documentLifetime?.Token ?? cancellationToken;
+            ViewerHierarchyEntry? targetEntry = _hierarchy.Entries.FirstOrDefault(entry =>
+                string.Equals(entry.Path, targetPrimPath, StringComparison.Ordinal));
+            if (coordinator is null ||
+                targetEntry is null ||
+                !CanRunHierarchyPrimCommand(targetEntry))
+            {
+                return;
+            }
+
+            _primCommandBusy = true;
+            RenderHierarchy();
+            ViewerLayerStackSnapshot previousLayers = _layers;
+            ViewerSessionEditTarget target = ViewerSessionCommandPolicy.ResolveEditTarget(
+                _rootLayerEditsExplicitlyEnabled);
+            string? selectedPrimPath = _selectionState.PrimPath;
+            try
+            {
+                ViewerDocumentSnapshot document = await coordinator.Scheduler.EditAsync(
+                    stage =>
+                    {
+                        string previousTarget = stage.EditTargetLayerIdentifier;
+                        try
+                        {
+                            SetSessionCommandEditTarget(stage, target);
+                            ApplyPrimCommand(stage.GetPrim(targetPrimPath), request);
+                            return ViewerStageSnapshotBuilder.BuildDocument(
+                                stage,
+                                previousLayers,
+                                selectedPrimPath);
+                        }
+                        catch
+                        {
+                            RestoreEditTarget(stage, previousTarget);
+                            throw;
+                        }
+                    },
+                    ViewerSessionCommandPolicy.GetInvalidation(request.Command),
+                    documentToken);
+                await ApplyDocumentRefreshAsync(coordinator, document, documentToken);
+                ViewerStatus.Text = request.Command == ViewerPrimCommand.SetLoaded
+                    ? "Stage load rules changed from the hierarchy context menu."
+                    : $"Variant selection changed for {targetPrimPath}.";
+            }
+            finally
+            {
+                _primCommandBusy = false;
+                RenderHierarchy();
             }
         }
         finally

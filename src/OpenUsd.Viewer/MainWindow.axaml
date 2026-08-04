@@ -175,7 +175,7 @@
         <ColumnDefinition Width="340" />
       </Grid.ColumnDefinitions>
       <Border x:Name="StagePanel" Grid.Column="0" Padding="8">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
           <TextBlock FontSize="16" FontWeight="SemiBold" Text="Stage" />
           <TextBlock
               x:Name="StageIdentity"
@@ -214,16 +214,41 @@
                 Text="0"
                 ToolTip.Tip="Enter 0 for lazy roots, or a non-negative depth to expand descendants" />
           </StackPanel>
+          <WrapPanel Grid.Row="6" Margin="0,6,0,0">
+            <CheckBox
+                x:Name="ShowInactivePrimsCheckBox"
+                Content="Inactive"
+                AutomationProperties.Name="Show inactive prims in hierarchy"
+                ToolTip.Tip="Show inactive prims that are present in the composed hierarchy" />
+            <CheckBox
+                x:Name="ShowUndefinedPrimsCheckBox"
+                Margin="8,0,0,0"
+                Content="Undefined"
+                AutomationProperties.Name="Show undefined prims in hierarchy"
+                ToolTip.Tip="Show prims without a composed type name" />
+            <CheckBox
+                x:Name="ShowAbstractPrimsCheckBox"
+                Margin="8,0,0,0"
+                Content="Abstract"
+                AutomationProperties.Name="Show abstract prims in hierarchy"
+                ToolTip.Tip="Reserved for native abstract-prim classification when available" />
+            <CheckBox
+                x:Name="ShowPrototypePrimsCheckBox"
+                Margin="8,0,0,0"
+                Content="Prototypes"
+                AutomationProperties.Name="Show prototype prims in hierarchy"
+                ToolTip.Tip="Show prototype roots produced by instancing" />
+          </WrapPanel>
           <TextBlock
               x:Name="HierarchyState"
-              Grid.Row="6"
+              Grid.Row="7"
               Margin="0,8,0,0"
               AutomationProperties.Name="Stage hierarchy state"
               Text="Open or drop a USD stage to inspect its prims."
               TextWrapping="Wrap" />
           <TreeView
               x:Name="StageHierarchy"
-              Grid.Row="7"
+              Grid.Row="8"
               Margin="0,8,0,0"
               AutomationProperties.Name="Stage hierarchy"
               IsVisible="False" />
