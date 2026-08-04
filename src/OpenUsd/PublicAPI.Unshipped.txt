@@ -1263,6 +1263,7 @@ OpenUsd.Physics.UsdPhysicsScene.Path.get -> string!
 OpenUsd.Physics.UsdPhysicsScene.Prim.get -> OpenUsd.UsdPrim
 OpenUsd.Physics.UsdPhysicsScene.UsdPhysicsScene() -> void
 OpenUsd.Physics.UsdPhysicsScene.Xformable.get -> OpenUsd.Geom.UsdGeomXformable
+OpenUsd.Physics.UsdPhysicsSimulation
 OpenUsd.Physics.UsdPhysicsSphericalJoint
 OpenUsd.Physics.UsdPhysicsSphericalJoint.Axis.get -> OpenUsd.Physics.UsdPhysicsAxis
 OpenUsd.Physics.UsdPhysicsSphericalJoint.Axis.set -> void
@@ -1316,6 +1317,8 @@ static OpenUsd.Physics.UsdPhysicsRigidBodyAPI.Has(OpenUsd.UsdPrim prim) -> bool
 static OpenUsd.Physics.UsdPhysicsRigidBodyAPI.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsRigidBodyAPI
 static OpenUsd.Physics.UsdPhysicsScene.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Physics.UsdPhysicsScene value) -> bool
 static OpenUsd.Physics.UsdPhysicsScene.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsScene
+static OpenUsd.Physics.UsdPhysicsSimulation.PhysxVersion.get -> string!
+static OpenUsd.Physics.UsdPhysicsSimulation.Step(OpenUsd.UsdStage! stage, float timeStep, uint stepCount = 1) -> void
 static OpenUsd.Physics.UsdPhysicsSphericalJoint.TryWrap(OpenUsd.UsdPrim prim, out OpenUsd.Physics.UsdPhysicsSphericalJoint value) -> bool
 static OpenUsd.Physics.UsdPhysicsSphericalJoint.Wrap(OpenUsd.UsdPrim prim) -> OpenUsd.Physics.UsdPhysicsSphericalJoint
 static OpenUsd.Physics.UsdPhysicsStageExtensions.DefinePhysicsCollisionGroup(this OpenUsd.UsdStage! stage, string! path) -> OpenUsd.Physics.UsdPhysicsCollisionGroup
