@@ -8,6 +8,8 @@ namespace OpenUsd.Rendering.Tests;
 
 public sealed class SilkPickIdentityTableTests
 {
+    private const int LookupIterations = 1000;
+
     /// <summary>
     /// Page ABI 3 publishes one record per resolved instance of a prototype, so identity is
     /// (path, instance index). Keying by path alone made the second instance look like the
@@ -498,8 +500,21 @@ public sealed class SilkPickIdentityTableTests
             triangleSubprims: [3]));
         _ = table.TryResolve(range.FirstToken, out _);
 
+        // Warm the loop before measuring. This is the only allocation test in
+        // the suite whose measured region contains a long-running loop, and at
+        // a thousand iterations the JIT performs on-stack replacement partway
+        // through -- which allocates, on the measured thread, and is counted.
+        // That made the assertion fail intermittently on hosted runners while
+        // passing on a rerun of the identical commit. Running the loop first
+        // moves the recompilation outside the measurement instead of loosening
+        // the assertion, which stays at exactly zero.
+        for (int warmup = 0; warmup < LookupIterations; warmup++)
+        {
+            _ = table.TryResolve(range.FirstToken, out _);
+        }
+
         long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int iteration = 0; iteration < 1000; iteration++)
+        for (int iteration = 0; iteration < LookupIterations; iteration++)
         {
             if (!table.TryResolve(range.FirstToken, out SilkPickIdentity identity) ||
                 identity.SubprimIndex != 3)
