@@ -111,6 +111,36 @@ public sealed class ViewerRenderBackendTests
     }
 
     [Test]
+    public async Task ViewportDisplayStateIsForwardedToActiveRendererSession()
+    {
+        var host = new FakeHost();
+        StageRenderState initial = StageRenderState.Create(new StageIdentity("stage.usda"));
+        await using var manager = CreateManager(host);
+        _ = await manager.InitializeAsync(initial, RenderBackendKind.D3D12);
+        StageRenderState revised = ViewerViewportStateMutation.WithDrawMode(
+            initial,
+            RenderDrawMode.Points);
+        revised = ViewerViewportStateMutation.WithPurpose(
+            revised,
+            RenderPurpose.Guide,
+            enabled: true);
+        revised = ViewerViewportStateMutation.WithBackground(
+            revised,
+            ViewerBackgroundPreset.White);
+
+        RenderBackendManagerResult result = await manager.UpdateStateAsync(revised);
+
+        FakeSession d3d12 = host.Sessions[RenderBackendKind.D3D12];
+        await Assert.That(result.IsSuccess).IsTrue();
+        await Assert.That(manager.CurrentState).IsSameReferenceAs(revised);
+        await Assert.That(d3d12.CurrentState).IsSameReferenceAs(revised);
+        await Assert.That(d3d12.CurrentState.Display.DrawMode).IsEqualTo(RenderDrawMode.Points);
+        await Assert.That((d3d12.CurrentState.Display.Purposes & RenderPurpose.Guide) != 0).IsTrue();
+        await Assert.That(d3d12.CurrentState.RenderSettings.ClearColor)
+            .IsEqualTo(ViewerViewportStateMutation.ToColor(ViewerBackgroundPreset.White));
+    }
+
+    [Test]
     public async Task DeviceLossDisposesLostHostAndContinuesWithVulkan()
     {
         var host = new FakeHost();
