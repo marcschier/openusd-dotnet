@@ -672,6 +672,13 @@ jobs:
               '--treenode-filter',
               '/*/*/MetalCompositionPresentationTests/*')
           ./eng/run-managed-tests.ps1 `
+            -Project $conformanceProject `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/StormSilkParityCaptureDriverTests/MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnMetal')
+          ./eng/run-managed-tests.ps1 `
             -Project $viewerProject `
             -Framework net10.0 `
             -Configuration Release `

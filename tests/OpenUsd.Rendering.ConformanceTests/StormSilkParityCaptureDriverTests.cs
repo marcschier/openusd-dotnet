@@ -573,7 +573,7 @@ def Xform "World"
         ParityImage image;
         try
         {
-            image = CaptureGeneratedMaterialXSelfConsistency();
+            image = CaptureGeneratedMaterialXSelfConsistency(VulkanSilkGraphicsDevice.Create);
         }
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
@@ -605,6 +605,36 @@ def Xform "World"
         {
             WriteCapture("materialx-generated-self-consistency", "mismatch", image);
         }
+
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    public async Task MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnMetal()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        ParityImage image;
+        try
+        {
+            image = CaptureGeneratedMaterialXSelfConsistency(MetalSilkGraphicsDevice.Create);
+        }
+        catch (Exception exception) when (exception is
+            DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
+        {
+            SkipOrFail("MaterialX generated Metal self-consistency", exception.ToString());
+            return;
+        }
+
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        Console.WriteLine(
+            "materialx-generated-metal-self-consistency maxChannelDelta=" +
+            maxChannelDelta.ToString(CultureInfo.InvariantCulture) +
+            " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture));
 
         await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
         await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
@@ -1367,7 +1397,8 @@ def Xform "World"
         return new ParityImage(Width, Height, pixels);
     }
 
-    private static ParityImage CaptureGeneratedMaterialXSelfConsistency()
+    private static ParityImage CaptureGeneratedMaterialXSelfConsistency(
+        Func<ISilkGraphicsDevice> createDevice)
     {
         string stagePath = WriteGeneratedMaterialXSelfConsistencyStage();
         string pluginPath = ResolvePluginPath();
@@ -1379,7 +1410,7 @@ def Xform "World"
             TimeCode,
             new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
         EnsureGeneratedMaterialPublished(page);
-        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        using ISilkGraphicsDevice device = createDevice();
         using ISilkGraphicsTexture color = device.CreateTexture2D(
             new SilkTextureDescriptor(
                 checked((uint)Width),
@@ -1465,7 +1496,7 @@ def Xform "World"
         ReadOnlySpan<float> diffuseColor = default)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
-        var bytes = new byte[32 + pathBytes.Length + 44 + sizeof(uint)];
+        var bytes = new byte[32 + pathBytes.Length + 44 + (2 * sizeof(uint))];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(path));
@@ -1482,6 +1513,7 @@ def Xform "World"
         WriteScalar(bytes, ref offset, SilkMaterialParameter.Roughness, [0.72f]);
         WriteScalar(bytes, ref offset, SilkMaterialParameter.Metallic, [0.0f]);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + sizeof(uint)), 0);
         return bytes;
     }
 

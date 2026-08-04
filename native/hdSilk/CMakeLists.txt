@@ -37,6 +37,11 @@ if(TARGET Vulkan::shaderc_combined)
         Vulkan::shaderc_combined)
 endif()
 
+set(OPENUSD_HDSILK_MATERIALX_MSL_LIBS)
+if(TARGET MaterialXGenMsl)
+    list(APPEND OPENUSD_HDSILK_MATERIALX_MSL_LIBS MaterialXGenMsl)
+endif()
+
 function(configure_openusd_hdsilk_target target_name core_target)
     target_compile_features(${target_name} PRIVATE cxx_std_17)
     target_compile_definitions(${target_name} PRIVATE OPENUSD_HDSILK_BUILD)
@@ -44,6 +49,11 @@ function(configure_openusd_hdsilk_target target_name core_target)
         target_compile_definitions(
             ${target_name}
             PRIVATE OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
+    endif()
+    if(OPENUSD_HDSILK_MATERIALX_MSL_LIBS)
+        target_compile_definitions(
+            ${target_name}
+            PRIVATE OPENUSD_HDSILK_WITH_MATERIALX_MSL)
     endif()
     target_include_directories(${target_name}
         PUBLIC
@@ -61,7 +71,8 @@ function(configure_openusd_hdsilk_target target_name core_target)
             ${core_target}
             usd_m
             MaterialXFormat
-            ${OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS})
+            ${OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS}
+            ${OPENUSD_HDSILK_MATERIALX_MSL_LIBS})
     if(MSVC)
         target_compile_options(${target_name} PRIVATE /W4 /WX /permissive-)
     else()

@@ -1046,11 +1046,17 @@ public sealed class SilkMeshRenderer :
         SilkMaterialShaderKey key = CreateMaterialShaderKey(material);
         if (material.SurfaceKind == SilkSurfaceKind.MaterialXGenerated)
         {
-            if (_shaderFormat != SilkShaderBinaryFormat.SpirV || material.GeneratedFragmentSpirV.IsEmpty)
+            ReadOnlyMemory<byte> generatedFragment = _shaderFormat switch
+            {
+                SilkShaderBinaryFormat.SpirV => material.GeneratedFragmentSpirV,
+                SilkShaderBinaryFormat.MetalLibrary => material.GeneratedFragmentMslSource,
+                _ => ReadOnlyMemory<byte>.Empty
+            };
+            if (generatedFragment.IsEmpty)
             {
                 return null;
             }
-            _materialShaderGenerator.RegisterGenerated(key, material.GeneratedFragmentSpirV);
+            _materialShaderGenerator.RegisterGenerated(key, generatedFragment);
         }
         else
         {
@@ -1064,7 +1070,7 @@ public sealed class SilkMeshRenderer :
             material.CreateRuntimeShaderKeyBytes(),
             _shaderFormat,
             material.SurfaceKind == SilkSurfaceKind.MaterialXGenerated
-                ? "MaterialXGeneratedVkSpirV.v1"
+                ? "MaterialXGeneratedBackendFragment.v1"
                 : "MaterialXProjectedPreviewSurface.v1");
 
     private static string GetPipelineShaderIdentity(SilkMaterialShaderRequest? materialShader) =>

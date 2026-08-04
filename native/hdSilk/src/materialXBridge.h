@@ -26,6 +26,7 @@ struct HdSilkMaterialXVulkanShader
     bool success = false;
     std::string fragmentSource;
     std::vector<uint32_t> fragmentSpirv;
+    std::string fragmentMslSource;
     std::string error;
 };
 

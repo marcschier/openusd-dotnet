@@ -96,7 +96,8 @@ public sealed class SilkMaterialData
         SilkSurfaceKind surfaceKind,
         SilkMaterialScalar[] scalars,
         SilkMaterialTexture[] textures,
-        byte[] generatedFragmentSpirV)
+        byte[] generatedFragmentSpirV,
+        byte[] generatedFragmentMslSource)
     {
         Path = path;
         StableHash = stableHash;
@@ -104,6 +105,7 @@ public sealed class SilkMaterialData
         Scalars = scalars;
         Textures = textures;
         GeneratedFragmentSpirV = generatedFragmentSpirV;
+        GeneratedFragmentMslSource = generatedFragmentMslSource;
     }
 
     /// <summary>Gets the authoritative USD material path.</summary>
@@ -123,6 +125,9 @@ public sealed class SilkMaterialData
 
     /// <summary>Gets generated MaterialX fragment SPIR-V bytes for runtime shaders.</summary>
     public ReadOnlyMemory<byte> GeneratedFragmentSpirV { get; }
+
+    /// <summary>Gets generated MaterialX fragment MSL source bytes for runtime shaders.</summary>
+    public ReadOnlyMemory<byte> GeneratedFragmentMslSource { get; }
 
     /// <summary>
     /// Gets whether this material can be shaded. An unsupported network is
@@ -184,13 +189,15 @@ public sealed class SilkMaterialData
         }
 
         byte[] generatedFragmentSpirV = command.GeneratedFragmentSpirV.ToArray();
+        byte[] generatedFragmentMslSource = command.GeneratedFragmentMslSource.ToArray();
         return new SilkMaterialData(
             command.Path,
             command.StableHash,
             command.SurfaceKind,
             scalars,
             textures,
-            generatedFragmentSpirV);
+            generatedFragmentSpirV,
+            generatedFragmentMslSource);
     }
 
     /// <summary>
@@ -281,6 +288,8 @@ public sealed class SilkMaterialData
         }
         writer.Write(GeneratedFragmentSpirV.Length);
         writer.Write(GeneratedFragmentSpirV.Span);
+        writer.Write(GeneratedFragmentMslSource.Length);
+        writer.Write(GeneratedFragmentMslSource.Span);
         writer.Flush();
         return stream.ToArray();
     }

@@ -10,22 +10,24 @@
 #include "pxr/imaging/hdMtlx/hdMtlx.h"
 
 #include <MaterialXFormat/XmlIo.h>
-#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
-#include <MaterialXGenGlsl/VkShaderGenerator.h>
 #include <MaterialXGenShader/GenContext.h>
 #include <MaterialXGenShader/Shader.h>
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN) || \
+    defined(OPENUSD_HDSILK_WITH_MATERIALX_MSL)
+#include <MaterialXGenGlsl/VkShaderGenerator.h>
 
 #include <shaderc/shaderc.hpp>
 #endif
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_MSL)
+#include <MaterialXGenMsl/MslShaderGenerator.h>
+#endif
 
-#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
 #include <cctype>
 #include <cstdlib>
 #include <iomanip>
 #include <memory>
 #include <optional>
 #include <sstream>
-#endif
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -312,6 +314,7 @@ _InlineNetworkConstants(
             break;
         }
     }
+
     if (surfaceNode == nullptr)
     {
         return;
@@ -372,6 +375,51 @@ _InlineNetworkConstants(
             source,
             relationship.outputId.GetName() + "_" + relationship.outputName.GetString(),
             _ToGlslLiteral(value->second));
+    }
+}
+
+void
+_InlineNetworkConstantsMsl(
+    std::string& source,
+    const HdMaterialNetworkMap& networkMap)
+{
+    const auto surface = networkMap.map.find(HdMaterialTerminalTokens->surface);
+    if (surface == networkMap.map.end())
+    {
+        return;
+    }
+    const HdMaterialNetwork& network = surface->second;
+    const HdMaterialNode* surfaceNode = nullptr;
+    for (const HdMaterialNode& node : network.nodes)
+    {
+        if (node.identifier == TfToken("ND_surface_unlit"))
+        {
+            surfaceNode = &node;
+            break;
+        }
+    }
+    if (surfaceNode == nullptr)
+    {
+        return;
+    }
+
+    if (const std::optional<GfVec3f> emission = _EvaluateUnlitEmission(network, *surfaceNode))
+    {
+        std::ostringstream replacement;
+        replacement << "#include <metal_stdlib>\n"
+            << "using namespace metal;\n"
+            << "struct HdSilkMaterialXColorOut\n{\n"
+            << "    float4 color [[color(0)]];\n"
+            << "};\n"
+            << "fragment HdSilkMaterialXColorOut main()\n{\n"
+            << "    HdSilkMaterialXColorOut out;\n"
+            << "    out.color = float4("
+            << _ToGlslFloat((*emission)[0]) << ", "
+            << _ToGlslFloat((*emission)[1]) << ", "
+            << _ToGlslFloat((*emission)[2]) << ", 1.0);\n"
+            << "    return out;\n"
+            << "}\n";
+        source = replacement.str();
     }
 }
 #endif
@@ -468,16 +516,6 @@ HdSilkGenerateMaterialXVulkanFragment(
     HdMaterialNetworkMap const& networkMap)
 {
     HdSilkMaterialXVulkanShader result;
-#if !defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
-    // macOS builds without the Vulkan generator, so both parameters are unused
-    // on that platform and AppleClang fails on -Werror,-Wunused-parameter.
-    // Neither MSVC nor the Linux build sees this, because the Linux build has
-    // the feature enabled and MSVC does not raise the warning.
-    (void)materialPath;
-    (void)networkMap;
-    result.error = "hdSilk was built without the Vulkan MaterialX generator.";
-    return result;
-#else
     _DocumentBuild build = _CreateDocument(materialPath, networkMap);
     if (!build.document)
     {
@@ -498,6 +536,7 @@ HdSilkGenerateMaterialXVulkanFragment(
         return result;
     }
 
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
     try
     {
         MaterialX::ShaderGeneratorPtr generator = MaterialX::VkShaderGenerator::create();
@@ -537,7 +576,39 @@ HdSilkGenerateMaterialXVulkanFragment(
     }
 
     result.fragmentSpirv.assign(spirv.cbegin(), spirv.cend());
-    result.success = !result.fragmentSpirv.empty();
+#endif
+
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_MSL)
+    try
+    {
+        MaterialX::ShaderGeneratorPtr generator = MaterialX::MslShaderGenerator::create();
+        MaterialX::GenContext context(generator);
+        _RegisterStandardLibrarySearchPaths(context);
+        MaterialX::ShaderPtr shader = generator->generate(
+            "HdSilkMaterialX",
+            materials.front(),
+            context);
+        result.fragmentMslSource = shader->getSourceCode(MaterialX::Stage::PIXEL);
+        _InlineNetworkConstantsMsl(result.fragmentMslSource, networkMap);
+    }
+    catch (const std::exception& ex)
+    {
+        result.error = ex.what();
+        return result;
+    }
+    if (result.fragmentMslSource.empty())
+    {
+        result.error = "MaterialX MslShaderGenerator emitted empty fragment source.";
+        return result;
+    }
+#endif
+
+#if !defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN) && \
+    !defined(OPENUSD_HDSILK_WITH_MATERIALX_MSL)
+    result.error = "hdSilk was built without MaterialX shader generators.";
+    return result;
+#else
+    result.success = !result.fragmentSpirv.empty() || !result.fragmentMslSource.empty();
     return result;
 #endif
 }

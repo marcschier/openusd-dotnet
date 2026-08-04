@@ -152,6 +152,34 @@ public sealed class SilkMaterialShaderCompilerTests
             .IsEqualTo(SilkBindingLayoutDescriptor.SceneParameters.MaterialSlots.Count);
     }
 
+    [Test]
+    public async Task GeneratedMaterialGeneratorPublishesRegisteredFragmentMsl()
+    {
+        if (!SilkCheckedShaderAssets.HasPinnedMetalLibrary)
+        {
+            return;
+        }
+
+        var generator = new SilkProjectedMaterialShaderGenerator();
+        SilkMaterialShaderKey key = CreateKey(
+            "materialx:generated-unlit-metal",
+            "generated-metal-v1",
+            SilkShaderBinaryFormat.MetalLibrary);
+        byte[] fragment = Encoding.UTF8.GetBytes(
+            "#include <metal_stdlib>\nfragment float4 main() { return float4(1); }\n");
+        generator.RegisterGenerated(key, fragment);
+        using var compiler = new SilkMaterialShaderCompilerService(generator, CreateOptions(CreateCacheDirectory()));
+
+        SilkMaterialShaderRequest pending = compiler.GetOrQueue(key);
+        SilkMaterialShaderRequest ready = await WaitForReadyAsync(compiler, key);
+
+        await Assert.That(pending.Status).IsEqualTo(SilkMaterialShaderStatus.Placeholder);
+        await Assert.That(ready.Status).IsEqualTo(SilkMaterialShaderStatus.Ready);
+        await Assert.That(ready.Program.FragmentShader.Code.ToArray()).IsEquivalentTo(fragment);
+        await Assert.That(ready.Program.FragmentShader.EntryPoint).IsEqualTo("main");
+        await Assert.That(ready.Program.FragmentShader.Format).IsEqualTo(SilkShaderBinaryFormat.MetalLibrary);
+    }
+
     private static SilkMaterialShaderCompilerService CreateCompiler(ISilkMaterialShaderGenerator generator) =>
         new(generator, CreateOptions(CreateCacheDirectory()));
 
@@ -163,8 +191,11 @@ public sealed class SilkMaterialShaderCompilerTests
             MaxMemoryEntries = 4
         };
 
-    private static SilkMaterialShaderKey CreateKey(string graph, string salt) =>
-        SilkMaterialShaderKey.Create(Encoding.UTF8.GetBytes(graph), SilkShaderBinaryFormat.SpirV, salt);
+    private static SilkMaterialShaderKey CreateKey(
+        string graph,
+        string salt,
+        SilkShaderBinaryFormat format = SilkShaderBinaryFormat.SpirV) =>
+        SilkMaterialShaderKey.Create(Encoding.UTF8.GetBytes(graph), format, salt);
 
     private static string CreateCacheDirectory()
     {

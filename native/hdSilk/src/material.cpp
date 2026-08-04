@@ -675,6 +675,7 @@ HdSilkMaterial::Resolve(
         }
         record.surfaceKind = OPENUSD_SILK_SURFACE_MATERIALX_GENERATED;
         record.generatedFragmentSpirv = shader.fragmentSpirv;
+        record.generatedFragmentMslSource = shader.fragmentMslSource;
         return record;
     }
 

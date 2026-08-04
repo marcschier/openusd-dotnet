@@ -282,12 +282,14 @@ public sealed class SilkMaterialCommandTests
     public async Task RetainsGeneratedMaterialXFragmentShader()
     {
         byte[] spirv = [0x03, 0x02, 0x23, 0x07, 1, 0, 0, 0];
+        byte[] msl = Encoding.UTF8.GetBytes("fragment float4 main() { return float4(1); }");
         byte[] upsert = CreateMaterialUpsert(
             "/World/Materials/Generated",
             SilkSurfaceKind.MaterialXGenerated,
             scalars: [],
             textures: [],
-            generatedFragmentSpirV: spirv);
+            generatedFragmentSpirV: spirv,
+            generatedFragmentMslSource: msl);
 
         SilkSceneState state = new();
         _ = state.Apply(upsert, 1, 1);
@@ -295,6 +297,7 @@ public sealed class SilkMaterialCommandTests
         SilkMaterialData material = state.Materials["/World/Materials/Generated"];
         await Assert.That(material.IsSupported).IsTrue();
         await Assert.That(material.GeneratedFragmentSpirV.ToArray()).IsEquivalentTo(spirv);
+        await Assert.That(material.GeneratedFragmentMslSource.ToArray()).IsEquivalentTo(msl);
     }
 
     [Test]
@@ -331,7 +334,8 @@ public sealed class SilkMaterialCommandTests
         SilkSurfaceKind kind,
         (SilkMaterialParameter Parameter, float[] Values)[] scalars,
         TextureSpec[] textures,
-        byte[]? generatedFragmentSpirV = null)
+        byte[]? generatedFragmentSpirV = null,
+        byte[]? generatedFragmentMslSource = null)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         List<byte> payload = [];
@@ -382,6 +386,9 @@ public sealed class SilkMaterialCommandTests
         generatedFragmentSpirV ??= [];
         payload.AddRange(BitConverter.GetBytes((uint)generatedFragmentSpirV.Length));
         payload.AddRange(generatedFragmentSpirV);
+        generatedFragmentMslSource ??= [];
+        payload.AddRange(BitConverter.GetBytes((uint)generatedFragmentMslSource.Length));
+        payload.AddRange(generatedFragmentMslSource);
 
         return CreateCommand(4, payload);
     }

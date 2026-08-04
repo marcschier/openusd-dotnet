@@ -42,7 +42,7 @@ public sealed class RuntimePackageTests
 
     private const int RequiredStormAbiVersion = 6;
     private const int RequiredSilkSessionAbiVersion = 4;
-    private const int RequiredSilkPageAbiVersion = 10;
+    private const int RequiredSilkPageAbiVersion = 11;
     private const int RequiredStormChildAbiVersion = 7;
     private const int RequiredStormChildNavigationInputVersion = 1;
 

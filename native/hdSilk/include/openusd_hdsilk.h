@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 10u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 11u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 4u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -197,6 +197,8 @@ extern "C" {
 ///        *    *          textures[texture_count]
 ///        *    4 uint32   generated_fragment_spirv_byte_count
 ///        *    * uint8    generated_fragment_spirv_bytes
+///        *    4 uint32   generated_fragment_msl_source_byte_count
+///        *    * uint8    generated_fragment_msl_source_bytes
 ///
 /// Each scalar entry is:
 ///        0    4 uint32   parameter (OPENUSD_SILK_MATERIAL_*)

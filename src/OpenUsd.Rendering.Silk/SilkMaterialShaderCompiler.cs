@@ -277,26 +277,26 @@ public sealed class SilkProjectedMaterialShaderGenerator : ISilkMaterialShaderGe
         }
     }
 
-    /// <summary>Registers generated fragment SPIR-V that implements one material hash.</summary>
-    public void RegisterGenerated(SilkMaterialShaderKey key, ReadOnlyMemory<byte> fragmentSpirV)
+    /// <summary>Registers generated fragment shader code that implements one material hash.</summary>
+    public void RegisterGenerated(SilkMaterialShaderKey key, ReadOnlyMemory<byte> fragmentCode)
     {
         ArgumentNullException.ThrowIfNull(key);
-        if (key.Format != SilkShaderBinaryFormat.SpirV)
+        if (key.Format is not (SilkShaderBinaryFormat.SpirV or SilkShaderBinaryFormat.MetalLibrary))
         {
             throw new ArgumentException(
-                "Generated MaterialX shaders are currently supported only on Vulkan/SPIR-V.",
+                "Generated MaterialX shaders are currently supported only on Vulkan/SPIR-V and Metal/MSL.",
                 nameof(key));
         }
-        if (fragmentSpirV.IsEmpty)
+        if (fragmentCode.IsEmpty)
         {
             throw new ArgumentException(
-                "Generated MaterialX fragment SPIR-V cannot be empty.",
-                nameof(fragmentSpirV));
+                "Generated MaterialX fragment shader code cannot be empty.",
+                nameof(fragmentCode));
         }
 
         lock (_gate)
         {
-            _generatedFragments[key.CacheHash] = fragmentSpirV.ToArray();
+            _generatedFragments[key.CacheHash] = fragmentCode.ToArray();
         }
     }
 
