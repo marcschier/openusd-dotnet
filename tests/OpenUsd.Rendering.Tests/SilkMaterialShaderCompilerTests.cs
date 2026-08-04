@@ -98,6 +98,38 @@ public sealed class SilkMaterialShaderCompilerTests
         await Assert.That(generator.CompileCount).IsEqualTo(1);
     }
 
+    [Test]
+    public async Task ProjectedMaterialGeneratorRequiresRegisteredMaterialHash()
+    {
+        var generator = new SilkProjectedMaterialShaderGenerator();
+        SilkMaterialShaderKey key = CreateKey("materialx:missing", "projected-v1");
+        using var compiler = new SilkMaterialShaderCompilerService(generator, CreateOptions(CreateCacheDirectory()));
+
+        SilkMaterialShaderRequest pending = compiler.GetOrQueue(key);
+        SilkMaterialShaderRequest failed = await WaitForTerminalAsync(compiler, key);
+
+        await Assert.That(pending.Status).IsEqualTo(SilkMaterialShaderStatus.Placeholder);
+        await Assert.That(failed.Status).IsEqualTo(SilkMaterialShaderStatus.Failed);
+        await Assert.That(failed.CompilationError).IsTypeOf<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task ProjectedMaterialGeneratorPublishesCheckedPermutationThroughRuntimeCache()
+    {
+        var generator = new SilkProjectedMaterialShaderGenerator();
+        SilkMaterialShaderKey key = CreateKey("materialx:constant-standard-surface", "projected-v1");
+        generator.Register(key, SilkShaderFeatures.None);
+        using var compiler = new SilkMaterialShaderCompilerService(generator, CreateOptions(CreateCacheDirectory()));
+
+        SilkMaterialShaderRequest pending = compiler.GetOrQueue(key);
+        SilkMaterialShaderRequest ready = await WaitForReadyAsync(compiler, key);
+
+        await Assert.That(pending.Status).IsEqualTo(SilkMaterialShaderStatus.Placeholder);
+        await Assert.That(ready.Status).IsEqualTo(SilkMaterialShaderStatus.Ready);
+        await Assert.That(ready.Program.CacheHash).IsEqualTo(key.CacheHash);
+        await Assert.That(ready.Program.BindingLayout.MaterialSlots.Count).IsEqualTo(3);
+    }
+
     private static SilkMaterialShaderCompilerService CreateCompiler(ISilkMaterialShaderGenerator generator) =>
         new(generator, CreateOptions(CreateCacheDirectory()));
 
@@ -136,6 +168,22 @@ public sealed class SilkMaterialShaderCompilerTests
             if (request.Status == SilkMaterialShaderStatus.Failed)
             {
                 throw request.CompilationError ?? new InvalidOperationException("Material shader compilation failed.");
+            }
+            await Task.Delay(10);
+        }
+        throw new TimeoutException("Timed out waiting for material shader compilation.");
+    }
+
+    private static async Task<SilkMaterialShaderRequest> WaitForTerminalAsync(
+        SilkMaterialShaderCompilerService compiler,
+        SilkMaterialShaderKey key)
+    {
+        for (int attempt = 0; attempt < 100; attempt++)
+        {
+            SilkMaterialShaderRequest request = compiler.GetOrQueue(key);
+            if (request.Status is SilkMaterialShaderStatus.Ready or SilkMaterialShaderStatus.Failed)
+            {
+                return request;
             }
             await Task.Delay(10);
         }

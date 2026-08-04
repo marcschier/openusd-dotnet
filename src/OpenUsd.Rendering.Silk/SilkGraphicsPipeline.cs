@@ -793,6 +793,52 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         }
     }
 
+    /// <summary>Gets or creates a runtime material pipeline from compiled shader descriptors.</summary>
+    internal ISilkGraphicsPipeline GetOrCreateMaterialPipeline(
+        SilkMaterialShaderProgram materialProgram,
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkTextureFormat colorFormat,
+        SilkTextureFormat depthFormat,
+        SilkCullMode cullMode = SilkCullMode.None,
+        SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList)
+    {
+        materialProgram.Validate();
+        DeviceGenerationKey generation = ReadDeviceGeneration(_device);
+        PipelineCacheKey key = new(
+            materialProgram.CacheHash,
+            CreateVertexLayoutKey(vertexLayout),
+            colorFormat,
+            depthFormat,
+            cullMode,
+            topologyKind,
+            _shaderFormat,
+            generation);
+
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (generation != _generation)
+            {
+                DisposeEntries();
+                _generation = generation;
+            }
+
+            if (!_entries.TryGetValue(key, out CachedPipelineEntry? entry))
+            {
+                entry = CreateEntry(
+                    materialProgram,
+                    vertexLayout,
+                    colorFormat,
+                    depthFormat,
+                    cullMode,
+                    topologyKind);
+                _entries.Add(key, entry);
+            }
+
+            return entry.AcquireLease();
+        }
+    }
+
     /// <inheritdoc/>
     public void Dispose()
     {
@@ -829,6 +875,53 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
                 SilkCheckedShaderAssets.LoadMeshFragment(_shaderFormat, permutation));
             bindingLayout = _device.CreateBindingLayout(
                 permutation.CreateMeshBindingLayout());
+            program = _device.CreateShaderProgram(new SilkShaderProgramDescriptor(
+                vertexShader,
+                fragmentShader,
+                bindingLayout));
+            pipeline = _device.CreateGraphicsPipeline(new SilkGraphicsPipelineDescriptor(
+                program,
+                vertexLayout,
+                colorFormat,
+                depthFormat,
+                cullMode,
+                topologyKind));
+            return new CachedPipelineEntry(
+                vertexShader,
+                fragmentShader,
+                bindingLayout,
+                program,
+                pipeline);
+        }
+        catch
+        {
+            pipeline?.Dispose();
+            program?.Dispose();
+            bindingLayout?.Dispose();
+            fragmentShader?.Dispose();
+            vertexShader?.Dispose();
+            throw;
+        }
+    }
+
+    private CachedPipelineEntry CreateEntry(
+        SilkMaterialShaderProgram materialProgram,
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkTextureFormat colorFormat,
+        SilkTextureFormat depthFormat,
+        SilkCullMode cullMode,
+        SilkTopologyKind topologyKind)
+    {
+        ISilkGraphicsShaderModule? vertexShader = null;
+        ISilkGraphicsShaderModule? fragmentShader = null;
+        ISilkGraphicsBindingLayout? bindingLayout = null;
+        ISilkGraphicsShaderProgram? program = null;
+        ISilkGraphicsPipeline? pipeline = null;
+        try
+        {
+            vertexShader = _device.CreateShaderModule(materialProgram.VertexShader);
+            fragmentShader = _device.CreateShaderModule(materialProgram.FragmentShader);
+            bindingLayout = _device.CreateBindingLayout(materialProgram.BindingLayout);
             program = _device.CreateShaderProgram(new SilkShaderProgramDescriptor(
                 vertexShader,
                 fragmentShader,
@@ -904,7 +997,7 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         ulong SelectionOutlineGeneration);
 
     private readonly record struct PipelineCacheKey(
-        SilkShaderPermutationId Permutation,
+        object ShaderIdentity,
         string VertexLayout,
         SilkTextureFormat ColorFormat,
         SilkTextureFormat DepthFormat,

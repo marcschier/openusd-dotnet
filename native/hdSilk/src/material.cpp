@@ -584,6 +584,7 @@ HdSilkMaterial::Resolve(
 
     if (surface->identifier == _tokens->MtlxStandardSurface)
     {
+        record.surfaceKind = OPENUSD_SILK_SURFACE_MATERIALX_PROJECTED;
         for (const _InputBinding& input : _MaterialXStandardSurfaceInputs())
         {
             const HdMaterialNode* upstream =

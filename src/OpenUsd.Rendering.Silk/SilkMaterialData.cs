@@ -124,7 +124,11 @@ public sealed class SilkMaterialData
     /// retained rather than dropped so a consumer can report which material it
     /// could not shade instead of silently rendering a default.
     /// </summary>
-    public bool IsSupported => SurfaceKind == SilkSurfaceKind.PreviewSurface;
+    public bool IsSupported =>
+        SurfaceKind is SilkSurfaceKind.PreviewSurface or SilkSurfaceKind.MaterialXProjected;
+
+    /// <summary>Gets whether this material should travel through the runtime MaterialX shader service.</summary>
+    internal bool UsesRuntimeMaterialShader => SurfaceKind == SilkSurfaceKind.MaterialXProjected;
 
     /// <summary>Copies one material upsert command into retained storage.</summary>
     public static SilkMaterialData CopyFrom(SilkMaterialUpsertCommand command)
@@ -218,6 +222,7 @@ public sealed class SilkMaterialData
         {
             features |= SilkShaderFeatures.BaseColorMap;
         }
+
         if (GetTexture(SilkMaterialParameter.Normal) is not null)
         {
             features |= SilkShaderFeatures.NormalMap;
@@ -234,6 +239,38 @@ public sealed class SilkMaterialData
         return features == SilkShaderFeatures.None
             ? features
             : features | SilkShaderFeatures.Uv;
+    }
+
+    internal byte[] CreateRuntimeShaderKeyBytes()
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
+        writer.Write("OpenUsd.Rendering.Silk.MaterialXProjected.v1");
+        writer.Write(Path);
+        writer.Write((uint)SurfaceKind);
+        writer.Write(Scalars.Count);
+        foreach (SilkMaterialScalar scalar in Scalars.OrderBy(s => s.Parameter))
+        {
+            writer.Write((uint)scalar.Parameter);
+            writer.Write(scalar.Values.Count);
+            foreach (float value in scalar.Values)
+            {
+                writer.Write(value);
+            }
+        }
+        writer.Write(Textures.Count);
+        foreach (SilkMaterialTexture texture in Textures.OrderBy(t => t.Parameter))
+        {
+            writer.Write((uint)texture.Parameter);
+            writer.Write(texture.Asset);
+            writer.Write(texture.UvPrimvar);
+            writer.Write((uint)texture.WrapS);
+            writer.Write((uint)texture.WrapT);
+            writer.Write((uint)texture.SourceColorSpace);
+            writer.Write(texture.ComponentCount);
+        }
+        writer.Flush();
+        return stream.ToArray();
     }
 
     internal string GetPrimaryUvPrimvar()

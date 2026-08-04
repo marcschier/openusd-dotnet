@@ -257,6 +257,53 @@ public sealed class SilkStubMaterialShaderGenerator : ISilkMaterialShaderGenerat
     }
 }
 
+/// <summary>
+/// Runtime generator for MaterialX standard_surface networks that have been
+/// projected to the renderer's PreviewSurface-compatible parameter block.
+/// </summary>
+public sealed class SilkProjectedMaterialShaderGenerator : ISilkMaterialShaderGenerator
+{
+    private readonly object _gate = new();
+    private readonly Dictionary<string, SilkShaderFeatures> _features = new(StringComparer.Ordinal);
+
+    /// <summary>Registers the checked permutation that implements one material hash.</summary>
+    public void Register(SilkMaterialShaderKey key, SilkShaderFeatures features)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        lock (_gate)
+        {
+            _features[key.CacheHash] = features;
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<SilkMaterialShaderProgram> CompileAsync(
+        SilkMaterialShaderKey key,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        cancellationToken.ThrowIfCancellationRequested();
+        SilkShaderFeatures features;
+        lock (_gate)
+        {
+            if (!_features.TryGetValue(key.CacheHash, out features))
+            {
+                throw new InvalidDataException(
+                    "No projected MaterialX shader permutation was registered for the material hash.");
+            }
+        }
+
+        var permutation = new SilkShaderPermutationId(features);
+        var program = new SilkMaterialShaderProgram(
+            SilkCheckedShaderAssets.LoadMeshVertex(key.Format, permutation),
+            SilkCheckedShaderAssets.LoadMeshFragment(key.Format, permutation),
+            permutation.CreateMeshBindingLayout(),
+            key.CacheHash);
+        program.Validate();
+        return ValueTask.FromResult(program);
+    }
+}
+
 /// <summary>Default runtime material shader compiler with memory and disk caches.</summary>
 public sealed class SilkMaterialShaderCompilerService : ISilkMaterialShaderCompiler
 {
