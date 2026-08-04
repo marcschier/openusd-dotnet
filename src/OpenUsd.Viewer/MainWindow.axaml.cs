@@ -72,6 +72,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private ViewerStageTimingSnapshot _timing = ViewerStageTimingSnapshot.Empty;
     private ViewerLayerStackSnapshot _layers = ViewerLayerStackSnapshot.Empty;
     private ViewerStageStatisticsSnapshot _statistics = ViewerStageStatisticsSnapshot.Empty;
+    private ViewerValidationSnapshot _validation = ViewerValidationSnapshot.Empty;
     private ViewerPrimInspectorSnapshot? _currentInspector;
     private ViewerDiagnosticsSnapshot _latestDiagnostics = ViewerDiagnosticsSnapshot.Empty;
     private ViewerSettings _settings = ViewerSettings.Default;
@@ -84,6 +85,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private bool _rebuildingHierarchy;
     private bool _rebuildingLayers;
     private bool _rebuildingInspector;
+    private bool _validationBusy;
     private bool _layerCommandBusy;
     private bool _primCommandBusy;
     private bool _rootLayerEditsExplicitlyEnabled;
@@ -207,6 +209,7 @@ public sealed partial class MainWindow : Window, IDisposable
             CopyDiagnosticsButton.Click += OnCopyDiagnosticsClick;
             ExportDiagnosticsButton.Click += OnExportDiagnosticsClick;
             IncludeDiagnosticPathsCheckBox.Click += OnDiagnosticPathSettingChanged;
+            RefreshValidationButton.Click += OnRefreshValidationClick;
             ViewportDrawModeSelector.SelectionChanged += OnViewportDrawModeChanged;
             PurposeDefaultCheckBox.Click += OnViewportPurposeChanged;
             PurposeProxyCheckBox.Click += OnViewportPurposeChanged;
@@ -2027,10 +2030,77 @@ public sealed partial class MainWindow : Window, IDisposable
             : "Diagnostics are sampled from normal rendering at a bounded cadence.";
         CopyDiagnosticsButton.IsEnabled = hasSample;
         ExportDiagnosticsButton.IsEnabled = hasSample;
+        ShowStageSummary();
     }
 
     private void OnDiagnosticPathSettingChanged(object? sender, RoutedEventArgs e) =>
         RenderDiagnostics();
+
+    private async void OnRefreshValidationClick(object? sender, RoutedEventArgs e)
+    {
+        if (_coordinator is null || _documentLifetime is null)
+        {
+            return;
+        }
+
+        await RefreshValidationAsync(_coordinator, _documentLifetime.Token);
+    }
+
+    private async Task RefreshValidationAsync(
+        ViewerRenderCoordinator coordinator,
+        CancellationToken cancellationToken)
+    {
+        if (_validationBusy)
+        {
+            return;
+        }
+
+        _validationBusy = true;
+        RenderValidation();
+        try
+        {
+            ValidationState.Text = "Running UsdValidation...";
+            _validation = await coordinator.Scheduler.InvokeAsync(
+                static stage =>
+                {
+                    Stopwatch timer = Stopwatch.StartNew();
+                    IReadOnlyList<UsdValidationValidatorInfo> validators =
+                        UsdValidation.GetRegisteredValidators();
+                    IReadOnlyList<UsdValidationError> errors = UsdValidation.Validate(stage);
+                    timer.Stop();
+                    return ViewerValidationSnapshot.Create(validators, errors, timer.Elapsed);
+                },
+                cancellationToken);
+            RenderValidation();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            ValidationState.Text =
+                $"UsdValidation failed: {ViewerPackageErrorFormatter.Format(exception)}";
+            ValidationText.Text = exception.ToString();
+        }
+        finally
+        {
+            _validationBusy = false;
+            RefreshValidationButton.IsEnabled = _coordinator is not null && !_documentBusy;
+        }
+    }
+
+    private void RenderValidation()
+    {
+        ValidationState.Text = _validationBusy
+            ? "Running UsdValidation..."
+            : ViewerValidationFormatter.FormatState(_validation);
+        ValidationText.Text = ViewerValidationFormatter.FormatDetails(_validation);
+        RefreshValidationButton.IsEnabled =
+            _coordinator is not null &&
+            !_documentBusy &&
+            !_validationBusy;
+    }
 
     private async void OnViewportDrawModeChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -2770,6 +2840,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 ReloadStageMenuItem.IsEnabled = true;
                 RenderHierarchy();
                 RenderLayers();
+                RenderValidation();
                 SetActiveBackendStatus();
                 CaptureDiagnostics(
                     _coordinator,
@@ -2779,6 +2850,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     _coordinator,
                     _timing,
                     _documentLifetime.Token);
+                await RefreshValidationAsync(_coordinator, _documentLifetime.Token);
                 await UpdateViewportStateAsync(_coordinator, _documentLifetime.Token);
                 if (ViewerStartupOptions.IsCleanupRetryEvidenceScenario ||
                     ViewerStartupOptions.IsRetiredKindQuarantineEvidenceScenario ||
@@ -3097,19 +3169,11 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void ShowStageSummary()
     {
-        StageIdentity.Text = string.IsNullOrEmpty(_statistics.RootLayerIdentifier)
-            ? "Identity: —"
-            : $"Root: {ViewerScalarFormatter.Bound(_statistics.RootLayerIdentifier, 256)}" +
-                Environment.NewLine +
-                $"Session: {ViewerScalarFormatter.Bound(_statistics.SessionLayerIdentifier, 256)}" +
-                Environment.NewLine +
-                $"Default prim: " +
-                $"{(string.IsNullOrEmpty(_statistics.DefaultPrimPath) ? "<none>" : _statistics.DefaultPrimPath)}";
-        StageStatistics.Text = _statistics.PrimCount == 0
-            ? "Statistics: no traversable prims"
-            : $"Traversable prims: {_statistics.PrimCount}; roots: " +
-                $"{_statistics.RootPrimCount}; leaves: {_statistics.LeafPrimCount}; " +
-                $"maximum depth: {_statistics.MaximumDepth}";
+        StageIdentity.Text = ViewerStageHudFormatter.FormatIdentity(_statistics);
+        StageStatistics.Text = ViewerStageHudFormatter.FormatStatistics(
+            _statistics,
+            _timing,
+            _latestDiagnostics);
     }
 
     private void RenderHierarchy()
@@ -3518,6 +3582,7 @@ public sealed partial class MainWindow : Window, IDisposable
         RenderHierarchy();
         RenderLayers();
         ShowStageSummary();
+        await RefreshValidationAsync(coordinator, cancellationToken);
         if (_selectionState.PrimPath is { } selectedPrimPath)
         {
             if (document.SelectedPrim is { } selectedPrim &&
@@ -4484,6 +4549,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
         UpdateViewportDisplayAvailability();
+        RenderValidation();
         if (_currentInspector is { } inspector)
         {
             ShowInspector(inspector);
@@ -4503,6 +4569,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
         ApplyViewportDisplayState(_coordinator?.CurrentState ?? StageRenderState.Default);
+        RenderValidation();
         if (_currentInspector is { } inspector)
         {
             ShowInspector(inspector);
@@ -4523,6 +4590,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
         UpdateViewportDisplayAvailability();
+        RenderValidation();
         if (_currentInspector is { } inspector)
         {
             ShowInspector(inspector);
@@ -4534,6 +4602,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         StageStatus.Text = "No stage loaded";
         _statistics = ViewerStageStatisticsSnapshot.Empty;
+        _validation = ViewerValidationSnapshot.Empty;
         _currentInspector = null;
         _rootLayerEditsExplicitlyEnabled = false;
         ShowStageSummary();
@@ -4551,6 +4620,7 @@ public sealed partial class MainWindow : Window, IDisposable
         ResetInspector();
         RenderLayers();
         RenderDiagnostics();
+        RenderValidation();
     }
 
     private void ResetTimelineUi()
