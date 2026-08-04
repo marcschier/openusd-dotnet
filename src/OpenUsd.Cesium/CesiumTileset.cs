@@ -234,6 +234,7 @@ public sealed unsafe partial class CesiumTileset : IDisposable
             UsdGeomMesh usdMesh = stage.DefineMesh(path);
             usdMesh.SetPoints(mesh.Points);
             usdMesh.SetTopology(mesh.FaceVertexCounts, mesh.FaceVertexIndices);
+            AuthorOptionalAttributes(usdMesh, mesh);
             usdMesh.Xformable.SetLocalTransform(Rebase(mesh.Transform, origin));
             primPaths.Add(path);
         }
@@ -281,6 +282,7 @@ public sealed unsafe partial class CesiumTileset : IDisposable
             UsdGeomMesh mesh = stage.DefineMesh(path);
             mesh.SetPoints(meshes[i].Points);
             mesh.SetTopology(meshes[i].FaceVertexCounts, meshes[i].FaceVertexIndices);
+            AuthorOptionalAttributes(mesh, meshes[i]);
             mesh.Xformable.SetLocalTransform(Rebase(meshes[i].Transform, origin));
             paths.Add(path);
         }
@@ -291,7 +293,9 @@ public sealed unsafe partial class CesiumTileset : IDisposable
         UsdMatrix4d Transform,
         UsdVec3f[] Points,
         int[] FaceVertexCounts,
-        int[] FaceVertexIndices);
+        int[] FaceVertexIndices,
+        UsdVec3f[] Normals,
+        UsdVec2f[] TexCoords0);
 
     private void CaptureMesh(NativeMeshPrimitive* primitive)
     {
@@ -309,7 +313,19 @@ public sealed unsafe partial class CesiumTileset : IDisposable
         int[] indices = new ReadOnlySpan<int>(
             primitive->FaceVertexIndices,
             checked((int)primitive->FaceVertexIndexCount)).ToArray();
-        _pendingMeshes.Enqueue(new CapturedMesh(ToManaged(*primitive->Transform), points, counts, indices));
+        UsdVec3f[] normals = primitive->Normals == null || primitive->NormalCount == 0
+            ? []
+            : new ReadOnlySpan<UsdVec3f>(primitive->Normals, checked((int)primitive->NormalCount)).ToArray();
+        UsdVec2f[] texCoords0 = primitive->TexCoords0 == null || primitive->TexCoord0Count == 0
+            ? []
+            : new ReadOnlySpan<UsdVec2f>(primitive->TexCoords0, checked((int)primitive->TexCoord0Count)).ToArray();
+        _pendingMeshes.Enqueue(new CapturedMesh(
+            ToManaged(*primitive->Transform),
+            points,
+            counts,
+            indices,
+            normals,
+            texCoords0));
     }
 
     private CesiumAssetResponse RequestAsset(string method, string url, ReadOnlySpan<byte> body) =>
@@ -320,6 +336,22 @@ public sealed unsafe partial class CesiumTileset : IDisposable
         value.M10, value.M11, value.M12, value.M13,
         value.M20, value.M21, value.M22, value.M23,
         value.M30 - origin.X, value.M31 - origin.Y, value.M32 - origin.Z, value.M33);
+
+    private static void AuthorOptionalAttributes(UsdGeomMesh mesh, CapturedMesh captured)
+    {
+        if (captured.Normals.Length != 0)
+        {
+            mesh.SetNormals(captured.Normals, UsdGeomInterpolation.Vertex);
+        }
+        if (captured.TexCoords0.Length != 0)
+        {
+            UsdGeomPrimvar st = new UsdGeomPrimvarsAPI(mesh.Prim).CreatePrimvar(
+                "st",
+                UsdGeomInterpolation.Vertex,
+                elementSize: 2);
+            st.SetVec2fArray(captured.TexCoords0);
+        }
+    }
 
     private static NativeVec3d ToNative(UsdVec3d value) => new(value.X, value.Y, value.Z);
 
@@ -500,6 +532,10 @@ public sealed unsafe partial class CesiumTileset : IDisposable
         public nuint FaceCount;
         public int* FaceVertexIndices;
         public nuint FaceVertexIndexCount;
+        public UsdVec3f* Normals;
+        public nuint NormalCount;
+        public UsdVec2f* TexCoords0;
+        public nuint TexCoord0Count;
     }
 
     [StructLayout(LayoutKind.Sequential)]
