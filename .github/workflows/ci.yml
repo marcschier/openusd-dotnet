@@ -237,6 +237,7 @@ jobs:
         run: |
           dotnet build tests/OpenUsd.Tests/OpenUsd.Tests.csproj -c Release -f net10.0
           dotnet build tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj -c Release -f net10.0
+          dotnet build tests/OpenUsd.Cesium.Tests/OpenUsd.Cesium.Tests.csproj -c Release -f net10.0
       - name: Test managed-only coverage
         shell: pwsh
         run: |
