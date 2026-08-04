@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Globalization;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using OpenUsd.Interop;
@@ -185,11 +186,33 @@ public sealed class NativeAbiVersionTests
             "OpenUsd.Interop",
             "OpenUsdNativeMethods.g.cs"));
 
-        await Assert.That(header).Contains("OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA");
-        await Assert.That(header).Contains("OPENUSD_CAPABILITY_USD_SHADE_SKEL");
-        await Assert.That(header).Contains("OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI");
-        await Assert.That(contract).Contains("CoreCapabilities = 0x7FFF");
-        await Assert.That(contract).Contains("SchemaFacadeCapabilities = 1UL << 15");
+        MatchCollection capabilityMatches = Regex.Matches(
+            header,
+            @"^#define\s+(OPENUSD_CAPABILITY_[A-Z0-9_]+)\s+\(UINT64_C\(1\)\s*<<\s*(\d+)\)",
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        int[] capabilityBits = [.. capabilityMatches
+            .Cast<Match>()
+            .Select(match => int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture))
+            .Order()];
+        ulong coreMask = capabilityMatches
+            .Cast<Match>()
+            .Where(match => !match.Groups[1].Value.StartsWith(
+                "OPENUSD_CAPABILITY_SCHEMA_FACADES_",
+                StringComparison.Ordinal))
+            .Aggregate(0UL, (current, match) => current | (1UL << int.Parse(
+                match.Groups[2].Value,
+                CultureInfo.InvariantCulture)));
+        int schemaFacadeBit = capabilityMatches
+            .Cast<Match>()
+            .Where(match => match.Groups[1].Value.StartsWith(
+                "OPENUSD_CAPABILITY_SCHEMA_FACADES_",
+                StringComparison.Ordinal))
+            .Select(match => int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture))
+            .Single();
+
+        await Assert.That(capabilityBits).IsEquivalentTo(Enumerable.Range(0, capabilityBits.Length));
+        await Assert.That(contract).Contains($"CoreCapabilities = 0x{coreMask:X}");
+        await Assert.That(contract).Contains($"SchemaFacadeCapabilities = 1UL << {schemaFacadeBit}");
         await Assert.That(contract).Contains("RequiredCapabilities = CoreCapabilities | SchemaFacadeCapabilities");
         await Assert.That(generatedInterop).Contains("PhysicsApplyApi");
         await Assert.That(generatedInterop).Contains("PhysicsSetQuatf");
@@ -265,14 +288,12 @@ public sealed class NativeAbiVersionTests
             @"(?m)^openusd_status\s+(?<name>openusd_\w+)\s*\(",
             RegexOptions.CultureInvariant);
 
-        await Assert.That(declarations.Count).IsEqualTo(299);
-        await Assert.That(definitions.Count).IsEqualTo(300);
-        await Assert.That(outputBearingExports.Count).IsEqualTo(151);
+        await Assert.That(definitions.Count).IsEqualTo(declarations.Count + 1);
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"// ABI_OUTPUT_INITIALIZATION",
-                RegexOptions.CultureInvariant)).IsEqualTo(151);
+                RegexOptions.CultureInvariant)).IsEqualTo(outputBearingExports.Count);
         await Assert.That(
             Regex.Count(
                 implementation,

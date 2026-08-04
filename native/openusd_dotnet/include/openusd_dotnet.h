@@ -260,6 +260,7 @@ typedef struct openusd_image_info
     uint32_t height;
 } openusd_image_info;
 
+#define OPENUSD_DATA_ABI_VERSION 14
 #define OPENUSD_CAPABILITY_STRING_LIST_V2 (UINT64_C(1) << 0)
 #define OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS (UINT64_C(1) << 1)
 #define OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES (UINT64_C(1) << 2)
