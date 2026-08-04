@@ -19,7 +19,7 @@ namespace OpenUsd.Rendering.Tests;
 /// end to end through real hdSilk pages in the parity harness.
 ///
 /// That is the same shape as the defect that shipped with the lighting work
-/// itself: the GPU frame constants buffer grew from 208 to 544 bytes and two
+/// itself: the GPU frame constants buffer grew from 208 bytes and two
 /// hand-written copies still allocated 208, which Windows tolerated by
 /// returning values that happened to work while SwiftShader on Linux returned
 /// zeros. Only the Linux leg of CI failed. A managed round trip catches an

@@ -182,8 +182,8 @@ void AppendLight(
 
     AppendU32(payload, record->type);
     AppendU32(payload, record->shadowEnabled);
-    AppendU32(payload, 0);
-    AppendU32(payload, 0);
+    AppendF32(payload, record->shapeX);
+    AppendF32(payload, record->shapeY);
     AppendF32(payload, record->color[0]);
     AppendF32(payload, record->color[1]);
     AppendF32(payload, record->color[2]);

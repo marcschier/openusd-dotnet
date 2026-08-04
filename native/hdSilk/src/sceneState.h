@@ -134,6 +134,8 @@ struct HdSilkLightRecord
     std::string path;
     uint32_t type = 0;
     uint32_t shadowEnabled = 0;
+    float shapeX = 0.0f;
+    float shapeY = 0.0f;
     float color[3] = {1.0f, 1.0f, 1.0f};
     float intensity = 1.0f;
     double transform[16] = {

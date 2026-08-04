@@ -403,6 +403,8 @@ public sealed class SilkFrameState
 internal readonly record struct SilkFrameLight(
     uint Type,
     uint ShadowEnabled,
+    float ShapeX,
+    float ShapeY,
     Vector3 Color,
     float Intensity,
     Matrix4x4 Transform,
@@ -415,6 +417,8 @@ internal readonly record struct SilkFrameLight(
         new(
             command.GetLightType(light),
             command.GetLightShadowEnabled(light),
+            command.GetLightShapeX(light),
+            command.GetLightShapeY(light),
             new Vector3(
                 command.GetLightColor(light, 0),
                 command.GetLightColor(light, 1),
@@ -451,7 +455,7 @@ internal readonly record struct SilkFrameLight(
 
 internal static class SilkFrameUniformWriter
 {
-    internal const int ByteSize = 544;
+    internal const int ByteSize = 672;
 
     internal static void Write(
         SilkFrameState frame,
@@ -510,7 +514,7 @@ internal static class SilkFrameUniformWriter
         {
             WriteLight(destination, i, lights[i]);
         }
-        WriteMatrixTranspose(destination, 480, eyeToWorld);
+        WriteMatrixTranspose(destination, 608, eyeToWorld);
     }
 
     private static void WriteLight(
@@ -522,18 +526,26 @@ internal static class SilkFrameUniformWriter
         int directionOffset = 288 + (index * 16);
         int colorOffset = 352 + (index * 16);
         int controlOffset = 416 + (index * 16);
+        int tangentOffset = 480 + (index * 16);
+        int bitangentOffset = 544 + (index * 16);
         if (light.Type == 0)
         {
             WriteVector4(destination, positionOffset, 0, 0, 0, 0);
             WriteVector4(destination, directionOffset, 0, 0, 1, 0);
             WriteVector4(destination, colorOffset, 0, 0, 0, 0);
             WriteVector4(destination, controlOffset, 0, 0, 0, 0);
+            WriteVector4(destination, tangentOffset, 1, 0, 0, 0);
+            WriteVector4(destination, bitangentOffset, 0, 1, 0, 0);
             return;
         }
 
         Vector3 position = new(light.Transform.M41, light.Transform.M42, light.Transform.M43);
         Vector3 direction = Vector3.TransformNormal(Vector3.UnitZ, light.Transform);
         direction = Normalize(direction, Vector3.UnitZ);
+        Vector3 tangent = Vector3.TransformNormal(Vector3.UnitX, light.Transform);
+        tangent = Normalize(tangent, Vector3.UnitX);
+        Vector3 bitangent = Vector3.TransformNormal(Vector3.UnitY, light.Transform);
+        bitangent = Normalize(bitangent, Vector3.UnitY);
         float exposed = light.Intensity * MathF.Pow(2.0f, light.Exposure);
         WriteVector4(destination, positionOffset, position.X, position.Y, position.Z, light.Type);
         WriteVector4(destination, directionOffset, direction.X, direction.Y, direction.Z, light.Radius);
@@ -551,6 +563,8 @@ internal static class SilkFrameUniformWriter
             light.Specular,
             light.ShadowEnabled,
             0);
+        WriteVector4(destination, tangentOffset, tangent.X, tangent.Y, tangent.Z, light.ShapeX);
+        WriteVector4(destination, bitangentOffset, bitangent.X, bitangent.Y, bitangent.Z, light.ShapeY);
     }
 
     private static Vector3 Normalize(Vector3 value, Vector3 fallback)

@@ -49,6 +49,8 @@ struct FrameParameters_natural_0
     _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightDirectionRadius_0;
     _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightColorIntensity_0;
     _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightControls_0;
+    _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightTangentShapeX_0;
+    _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightBitangentShapeY_0;
     _MatrixStorage_float4x4natural_0 eyeToWorld_0;
 };
 
