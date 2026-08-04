@@ -231,9 +231,9 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | PreviewSurface diffuse and roughness constants | `material-normals-uv`, `light-dome-ambient`, direct-light scenes |
 | PreviewSurface specular workflow | `light-distant-specular` |
 | PreviewSurface texture-backed diffuse colour | `materials-textures` |
-| Texture wrap modes | `materials-textures`, `texture-wrap-*-self-consistency` |
-| Texture colour spaces | `materials-textures`, `texture-colorspace-auto-self-consistency` |
-| Texture scale, bias, and fallback | `texture-scale-bias-fallback-self-consistency` |
+| Texture wrap modes | `materials-textures`, `texture-wrap-*-self-consistency`, `texture-wrap-*-divergence-self-consistency` |
+| Texture colour spaces | `materials-textures`, `texture-colorspace-auto-self-consistency`, `texture-colorspace-raw-divergence-self-consistency` |
+| Texture scale, bias, and fallback | `texture-scale-bias-fallback-self-consistency`, `texture-scale-bias-fallback-divergence-self-consistency` |
 | Texture slots beyond diffuse | None |
 | Metallic workflow with non-zero `metallic` | `material-metallic-workflow` |
 | MaterialX standard-surface authored graph | None |
@@ -247,7 +247,7 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | Points | `points-asymmetric` |
 | Basis curves / draw-mode generated lines | `bounds-draw-mode`, `origin-draw-mode` |
 | Draw modes | `cards-draw-mode`, `bounds-draw-mode`, `origin-draw-mode` |
-| Double-sided/culling | `single-sided-winding`, `cull-style-back-self-consistency` |
+| Double-sided/culling | `single-sided-winding`, `cull-style-back-self-consistency`, `cull-style-back-divergence-self-consistency` |
 | Time-varying transform/display colour | `time-varying-transform-primvar` |
 | UsdSkel CPU skinning | `skinned-pennant` |
 | Subdivision surfaces | None |
@@ -273,16 +273,22 @@ Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
 - `texture-wrap-clamp-self-consistency`, `texture-wrap-mirror-self-consistency`, and
   `texture-wrap-use-metadata-self-consistency` compare `repeat` against the candidate wrap mode with UVs
   confined to `[0,1]`, where every wrap mode is mathematically equivalent. Each measured
-  `maxChannelDelta=2` / `meanChannelDelta=0.116`.
+  `maxChannelDelta=2` / `meanChannelDelta=0.082`. The companion outside-`[0,1]` UV divergence cases require
+  the sampler address mode to differ: clamp and `useMetadata`/black each measured `maxChannelDelta=203` /
+  `meanChannelDelta=14.950`, and mirror measured `maxChannelDelta=127` / `meanChannelDelta=7.135`.
 - `texture-colorspace-auto-self-consistency` compares diffuse `sourceColorSpace=sRGB` with `auto`, which
   resolves to the same sRGB decode for diffuse textures. It measured `maxChannelDelta=2` /
-  `meanChannelDelta=0.117`.
+  `meanChannelDelta=0.082`. The raw/linear companion compares the same texture as `sRGB` versus `raw`;
+  it measured `maxChannelDelta=71` / `meanChannelDelta=14.780`, so the colour-space token reaches decode.
 - `texture-scale-bias-fallback-self-consistency` compares a constant PreviewSurface diffuse colour with a
   missing texture's fallback after non-identity scale and bias compose to the same colour. It measured
-  `maxChannelDelta=2` / `meanChannelDelta=0.088`; zeroing the bias fails with `maxChannelDelta=49` /
-  `meanChannelDelta=7.451`.
+  `maxChannelDelta=2` / `meanChannelDelta=0.088`. Its companion removes the bias and measures
+  `maxChannelDelta=26` / `meanChannelDelta=5.637`; the prior red proof that zeroing the bias fails with
+  `maxChannelDelta=49` / `meanChannelDelta=7.451` shows the low-delta assertion is live.
 - `cull-style-back-self-consistency` compares explicit `cullStyle=back` with `backUnlessDoubleSided` on a
   single-sided mesh viewed from the outside. It measured `maxChannelDelta=2` / `meanChannelDelta=0.095`.
+  The double-sided back-face companion measured `maxChannelDelta=172` / `meanChannelDelta=24.072`, so an
+  ignored `cullStyle` token or ignored double-sided flag would diverge.
 
 At the parity harness complexity, Storm renders the Catmull-Clark probe as a
 coarse/control-cage-like surface rather than full refinement. An eager
@@ -294,8 +300,8 @@ remains measured but ungated until the remaining divergence is eliminated.
 - `depth-overlap-multiprim` has the thinnest accepted perturbation margin at 0.184333.
 - Varying, uniform, and face-varying primvar interpolation modes have no parity scene.
 - Other primvar names beyond constant `displayColor` and vertex `st`/normals are not gated.
-- Texture `repeat` and `sRGB` are gated; `clamp`, `mirror`, `useMetadata`, `raw`, and linear/auto are not.
-- Texture scale, bias, and fallback are authored as identity or not exercised; removing them would still pass.
+- Texture `repeat`, `clamp`, `mirror`, `useMetadata`/black, `sRGB`, diffuse `auto`, and raw/linear colour
+  space are gated.
 - Emissive, specular, metallic, roughness, normal, opacity, and occlusion texture slots have no parity scene.
 - `emissiveColor`, `clearcoat`, `clearcoatRoughness`, `opacity`, `opacityThreshold`, `ior`, normal maps,
   `displacement`, and `occlusion` are not gated.
@@ -303,7 +309,8 @@ remains measured but ungated until the remaining divergence is eliminated.
 - Sphere-light glossy specular, shaping, dome textures, and image-based lighting are not gated.
 - Multiple point-instancer prototypes/proto-index variation and instanced shadows are not gated.
 - Wide point splats, authored curve widths/ribbons, wire draw mode, and shaded-wire draw mode are not gated.
-- Authored `cullStyle` tokens have no parity scene.
+- Authored `cullStyle=back` and the default `backUnlessDoubleSided` are gated for a single-sided mesh and
+  a double-sided back-face divergence companion. `front`, `frontUnlessDoubleSided`, and `nothing` remain ungated.
 - Animated materials, textures, lights, and topology have no parity scene.
 - GPU skinning is not gated.
 

@@ -8,6 +8,7 @@ using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using OpenUsd.Interop;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
 using OpenUsd.Rendering.Silk.Metal;
@@ -123,6 +124,12 @@ def Xform "World"
     }
 }
 """;
+    private const byte MinimumTextureDivergenceChannelDelta = 24;
+    private const byte MinimumColorSpaceDivergenceChannelDelta = 24;
+    private const byte MinimumCullDivergenceChannelDelta = 96;
+    private static readonly Lazy<nuint> ImagePluginsRegistered = new(
+        RegisterImagePlugins,
+        LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>
     /// Largest single-channel difference tolerated on a scene that binds a real
@@ -631,6 +638,44 @@ def Xform "World"
     }
 
     [Test]
+    public async Task TextureWrapModesDivergeOutsideUnitUvRangeOnVulkan()
+    {
+        var cases = new[]
+        {
+            new SelfConsistencyCase("texture-wrap-clamp", SilkTextureWrap.Clamp),
+            new SelfConsistencyCase("texture-wrap-mirror", SilkTextureWrap.Mirror),
+            new SelfConsistencyCase("texture-wrap-use-metadata", SilkTextureWrap.Black),
+        };
+        var evidence = new List<string>();
+        foreach (SelfConsistencyCase testCase in cases)
+        {
+            ParityImage image;
+            try
+            {
+                image = CaptureSyntheticTextureWrapSelfConsistency(
+                    testCase.TextureWrap,
+                    OutsideUnitTextureCoordinates());
+            }
+            catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+            {
+                SkipOrFail(testCase.Name + " Vulkan divergence", exception.ToString());
+                return;
+            }
+
+            (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+            string line = FormatSelfConsistencyMetrics(
+                testCase.Name + "-divergence",
+                maxChannelDelta,
+                meanChannelDelta);
+            Console.WriteLine(line);
+            evidence.Add(line);
+            await Assert.That(maxChannelDelta).IsGreaterThan(MinimumTextureDivergenceChannelDelta);
+        }
+
+        WriteEvidence("texture-wrap-divergence.txt", evidence);
+    }
+
+    [Test]
     public async Task TextureAutoColorSpaceMatchesSrgbOnDiffuseTextureOnVulkan()
     {
         ParityImage image;
@@ -653,6 +698,30 @@ def Xform "World"
         WriteEvidence("texture-colorspace-auto-self-consistency.txt", [line]);
         await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
         await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+    }
+
+    [Test]
+    public async Task TextureRawColorSpaceDivergesFromSrgbOnDiffuseTextureOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureSyntheticTextureRawColorSpaceDivergence();
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("texture-colorspace-raw Vulkan divergence", exception.ToString());
+            return;
+        }
+
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        string line = FormatSelfConsistencyMetrics(
+            "texture-colorspace-raw-divergence",
+            maxChannelDelta,
+            meanChannelDelta);
+        Console.WriteLine(line);
+        WriteEvidence("texture-colorspace-raw-divergence.txt", [line]);
+        await Assert.That(maxChannelDelta).IsGreaterThan(MinimumColorSpaceDivergenceChannelDelta);
     }
 
     [Test]
@@ -681,6 +750,30 @@ def Xform "World"
     }
 
     [Test]
+    public async Task TextureScaleBiasFallbackDivergesWhenBiasIsRemovedOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureSyntheticTextureScaleBiasFallbackDivergence();
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("texture-scale-bias-fallback Vulkan divergence", exception.ToString());
+            return;
+        }
+
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        string line = FormatSelfConsistencyMetrics(
+            "texture-scale-bias-fallback-divergence",
+            maxChannelDelta,
+            meanChannelDelta);
+        Console.WriteLine(line);
+        WriteEvidence("texture-scale-bias-fallback-divergence.txt", [line]);
+        await Assert.That(maxChannelDelta).IsGreaterThan(MinimumTextureDivergenceChannelDelta);
+    }
+
+    [Test]
     public async Task CullStyleBackMatchesBackUnlessDoubleSidedForSingleSidedMeshOnVulkan()
     {
         ParityImage image;
@@ -700,6 +793,30 @@ def Xform "World"
         WriteEvidence("cull-style-back-self-consistency.txt", [line]);
         await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
         await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+    }
+
+    [Test]
+    public async Task CullStyleBackDivergesFromBackUnlessDoubleSidedForDoubleSidedBackFacesOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureSyntheticCullStyleSelfConsistency(
+                SilkMeshCullStyle.Back,
+                doubleSided: true,
+                backFacing: true);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("cull-style-back Vulkan divergence", exception.ToString());
+            return;
+        }
+
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        string line = FormatSelfConsistencyMetrics("cull-style-back-divergence", maxChannelDelta, meanChannelDelta);
+        Console.WriteLine(line);
+        WriteEvidence("cull-style-back-divergence.txt", [line]);
+        await Assert.That(maxChannelDelta).IsGreaterThan(MinimumCullDivergenceChannelDelta);
     }
 
     private static void WriteEvidence(string fileName, IEnumerable<string> lines)
@@ -1008,7 +1125,9 @@ def Xform "World"
         maxChannelDelta.ToString(CultureInfo.InvariantCulture) +
         " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture);
 
-    private static ParityImage CaptureSyntheticTextureWrapSelfConsistency(SilkTextureWrap candidateWrap) =>
+    private static ParityImage CaptureSyntheticTextureWrapSelfConsistency(
+        SilkTextureWrap candidateWrap,
+        ReadOnlySpan<float> textureCoordinates = default) =>
         CaptureSyntheticMaterialPair(
             CreateTexturedMaterialCommand(
                 "/Repeat",
@@ -1029,7 +1148,8 @@ def Xform "World"
                 [1, 1, 1, 1],
                 [0, 0, 0, 0],
                 [1, 0, 1, 1],
-                "st"));
+                "st"),
+            textureCoordinates);
 
     private static ParityImage CaptureSyntheticTextureColorSpaceSelfConsistency() =>
         CaptureSyntheticMaterialPair(
@@ -1049,6 +1169,29 @@ def Xform "World"
                 SilkMaterialParameter.DiffuseColor,
                 SilkTextureWrap.Repeat,
                 SilkColorSpace.Auto,
+                [1, 1, 1, 1],
+                [0, 0, 0, 0],
+                [1, 0, 1, 1],
+                "st"));
+
+    private static ParityImage CaptureSyntheticTextureRawColorSpaceDivergence() =>
+        CaptureSyntheticMaterialPair(
+            CreateTexturedMaterialCommand(
+                "/Repeat",
+                TextureAssetPath(),
+                SilkMaterialParameter.DiffuseColor,
+                SilkTextureWrap.Repeat,
+                SilkColorSpace.Srgb,
+                [1, 1, 1, 1],
+                [0, 0, 0, 0],
+                [1, 0, 1, 1],
+                "st"),
+            CreateTexturedMaterialCommand(
+                "/Candidate",
+                TextureAssetPath(),
+                SilkMaterialParameter.DiffuseColor,
+                SilkTextureWrap.Repeat,
+                SilkColorSpace.Raw,
                 [1, 1, 1, 1],
                 [0, 0, 0, 0],
                 [1, 0, 1, 1],
@@ -1080,7 +1223,28 @@ def Xform "World"
                 "st"));
     }
 
-    private static ParityImage CaptureSyntheticCullStyleSelfConsistency(SilkMeshCullStyle candidateCullStyle)
+    private static ParityImage CaptureSyntheticTextureScaleBiasFallbackDivergence()
+    {
+        float[] target = [77f / 255f, 90f / 255f, 102f / 255f];
+        float[] source = [0.40f, 0.50f, 0.60f, 1];
+        return CaptureSyntheticMaterialPair(
+            CreateMaterialCommand("/Repeat", SilkSurfaceKind.PreviewSurface, target),
+            CreateTexturedMaterialCommand(
+                "/Candidate",
+                Path.Combine(FindRepositoryRoot() ?? AppContext.BaseDirectory, "test-assets", "parity", "missing.png"),
+                SilkMaterialParameter.DiffuseColor,
+                SilkTextureWrap.Repeat,
+                SilkColorSpace.Srgb,
+                [0.50f, 0.50f, 0.50f, 1],
+                [0, 0, 0, 0],
+                source,
+                "st"));
+    }
+
+    private static ParityImage CaptureSyntheticCullStyleSelfConsistency(
+        SilkMeshCullStyle candidateCullStyle,
+        bool doubleSided = false,
+        bool backFacing = false)
     {
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
         using ISilkGraphicsTexture color = device.CreateTexture2D(
@@ -1099,8 +1263,14 @@ def Xform "World"
                 checked((uint)Width),
                 checked((uint)Height),
                 IdentityMatrix()),
-            CreateDisplayMeshCommand(1, "/BackUnlessDoubleSided", -0.5f, SilkMeshCullStyle.BackUnlessDoubleSided),
-            CreateDisplayMeshCommand(2, "/Back", 0.5f, candidateCullStyle));
+            CreateDisplayMeshCommand(
+                1,
+                "/BackUnlessDoubleSided",
+                -0.5f,
+                SilkMeshCullStyle.BackUnlessDoubleSided,
+                doubleSided,
+                backFacing),
+            CreateDisplayMeshCommand(2, "/Back", 0.5f, candidateCullStyle, doubleSided, backFacing));
         var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
         _ = renderer.Render(color, depth, options);
         _ = renderer.Render(color, depth, options);
@@ -1109,8 +1279,12 @@ def Xform "World"
         return new ParityImage(Width, Height, pixels);
     }
 
-    private static ParityImage CaptureSyntheticMaterialPair(byte[] leftMaterial, byte[] rightMaterial)
+    private static ParityImage CaptureSyntheticMaterialPair(
+        byte[] leftMaterial,
+        byte[] rightMaterial,
+        ReadOnlySpan<float> textureCoordinates = default)
     {
+        _ = ImagePluginsRegistered.Value;
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
         using ISilkGraphicsTexture color = device.CreateTexture2D(
             new SilkTextureDescriptor(
@@ -1130,8 +1304,8 @@ def Xform "World"
                 IdentityMatrix()),
             leftMaterial,
             rightMaterial,
-            CreateTexturedMeshCommand(1, "/LeftMesh", "/Repeat", -0.5f),
-            CreateTexturedMeshCommand(2, "/RightMesh", "/Candidate", 0.5f));
+            CreateTexturedMeshCommand(1, "/LeftMesh", "/Repeat", -0.5f, textureCoordinates),
+            CreateTexturedMeshCommand(2, "/RightMesh", "/Candidate", 0.5f, textureCoordinates));
         var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
         _ = renderer.Render(color, depth, options);
         _ = renderer.Render(color, depth, options);
@@ -1146,6 +1320,14 @@ def Xform "World"
             "test-assets",
             "parity",
             "parity-texture-asymmetric.png");
+
+    private static float[] OutsideUnitTextureCoordinates() =>
+    [
+        1.18f, -0.27f,
+        1.86f, 0.21f,
+        1.72f, 1.34f,
+        1.24f, 1.12f,
+    ];
 
     private static ParityImage CaptureSyntheticMaterialXSelfConsistency()
     {
@@ -1310,7 +1492,8 @@ def Xform "World"
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         byte[] assetBytes = Encoding.UTF8.GetBytes(asset);
         byte[] uvBytes = Encoding.UTF8.GetBytes(uvPrimvar);
-        var bytes = new byte[32 + pathBytes.Length + 12 + 76 + assetBytes.Length + uvBytes.Length];
+        var bytes = new byte[
+            32 + pathBytes.Length + 12 + 76 + assetBytes.Length + uvBytes.Length + sizeof(uint)];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(path));
@@ -1333,6 +1516,7 @@ def Xform "World"
         WriteVector4(bytes.AsSpan(offset + 60), fallback);
         assetBytes.CopyTo(bytes.AsSpan(offset + 76));
         uvBytes.CopyTo(bytes.AsSpan(offset + 76 + assetBytes.Length));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(bytes.Length - sizeof(uint)), 0);
         return bytes;
     }
 
@@ -1344,8 +1528,23 @@ def Xform "World"
         }
     }
 
-    private static byte[] CreateTexturedMeshCommand(ulong id, string path, string materialPath, float x)
+    private static byte[] CreateTexturedMeshCommand(
+        ulong id,
+        string path,
+        string materialPath,
+        float x,
+        ReadOnlySpan<float> textureCoordinates = default)
     {
+        float[] defaultTextureCoordinates =
+        [
+            0.08f, 0.12f,
+            0.86f, 0.16f,
+            0.72f, 0.82f,
+            0.22f, 0.78f,
+        ];
+        ReadOnlySpan<float> resolvedTextureCoordinates = textureCoordinates.IsEmpty
+            ? defaultTextureCoordinates
+            : textureCoordinates;
         byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
             id,
             path,
@@ -1363,7 +1562,7 @@ def Xform "World"
             2,
             SilkAttributeInterpolation.Vertex,
             "st",
-            [0.08f, 0.12f, 0.86f, 0.16f, 0.72f, 0.82f, 0.22f, 0.78f]);
+            resolvedTextureCoordinates);
         Array.Resize(ref mesh, mesh.Length + materialBytes.Length + attributes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(4), (uint)mesh.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(mesh.AsSpan(208), ComputeStableHash(materialPath));
@@ -1379,8 +1578,13 @@ def Xform "World"
         ulong id,
         string path,
         float x,
-        SilkMeshCullStyle cullStyle)
+        SilkMeshCullStyle cullStyle,
+        bool doubleSided = false,
+        bool backFacing = false)
     {
+        uint[] indices = backFacing
+            ? [2, 1, 0, 3, 2, 0]
+            : [0, 1, 2, 0, 2, 3];
         byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
             id,
             path,
@@ -1388,11 +1592,11 @@ def Xform "World"
                 -0.30f, -0.52f, 0.08f, 0.30f, -0.36f, 0.08f,
                 0.24f, 0.48f, 0.08f, -0.24f, 0.32f, 0.08f,
             ],
-            [0, 1, 2, 0, 2, 3],
+            indices,
             x,
             0,
             [0.70f, 0.42f, 0.18f, 1]);
-        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(40), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(40), doubleSided ? 1u : 0u);
         BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(44), (uint)cullStyle);
         return mesh;
     }
@@ -1530,6 +1734,40 @@ def Xform "World"
 
         throw new DirectoryNotFoundException(
             $"No OpenUSD plugin path was found under '{packaged}' or OPENUSD_PLUGIN_PATH.");
+    }
+
+    private static nuint RegisterImagePlugins()
+    {
+        string pluginPath = ResolveImagePluginPath();
+        return OpenUsdNativeRuntime.RegisterPlugins(pluginPath);
+    }
+
+    private static string ResolveImagePluginPath()
+    {
+        string packaged = Path.Combine(AppContext.BaseDirectory, "usd");
+        if (File.Exists(Path.Combine(packaged, "plugInfo.json")))
+        {
+            return packaged;
+        }
+
+        string? openUsdRoot = Environment.GetEnvironmentVariable("OPENUSD_ROOT");
+        if (!string.IsNullOrWhiteSpace(openUsdRoot))
+        {
+            string installed = Path.Combine(openUsdRoot, "plugin", "usd");
+            if (File.Exists(Path.Combine(installed, "plugInfo.json")))
+            {
+                return installed;
+            }
+        }
+
+        string? configured = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH");
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(Path.Combine(configured, "plugInfo.json")))
+        {
+            return configured;
+        }
+
+        throw new DirectoryNotFoundException(
+            $"No OpenUSD image plugin path was found under '{packaged}', OPENUSD_ROOT, or OPENUSD_PLUGIN_PATH.");
     }
 
     private static bool TryPrepareLocalPluginRuntime(out string pluginPath)
