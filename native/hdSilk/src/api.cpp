@@ -489,21 +489,36 @@ openusd_status InitializeSilkSession(
     }
 
     auto* context = static_cast<SilkInitializationContext*>(renderer_context);
-    TfErrorMark mark;
     PlugRegistry& registry = PlugRegistry::GetInstance();
-    registry.RegisterPlugins(context->plugin_path);
-    const PlugPluginPtr silkPlugin = registry.GetPluginWithName("hdSilk");
-    if (!silkPlugin)
+    static std::mutex plugin_mutex;
+    static bool plugin_loaded = false;
     {
-        WriteError(error, "The hdSilk plugin metadata was not registered.");
-        return OPENUSD_STATUS_NOT_FOUND;
-    }
-    if (!silkPlugin->Load())
-    {
-        WriteError(error, "The hdSilk renderer plugin could not be loaded.");
-        return OPENUSD_STATUS_NATIVE_ERROR;
+        std::lock_guard<std::mutex> plugin_lock(plugin_mutex);
+        if (!plugin_loaded)
+        {
+            TfErrorMark plugin_mark;
+            registry.RegisterPlugins(context->plugin_path);
+            const PlugPluginPtr silkPlugin = registry.GetPluginWithName("hdSilk");
+            if (!silkPlugin)
+            {
+                WriteError(error, "The hdSilk plugin metadata was not registered.");
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+            if (!silkPlugin->Load())
+            {
+                WriteError(error, "The hdSilk renderer plugin could not be loaded.");
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            if (!plugin_mark.IsClean())
+            {
+                WriteError(error, ConsumeErrors(plugin_mark));
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            plugin_loaded = true;
+        }
     }
 
+    TfErrorMark mark;
     const TfTokenVector rendererPlugins = UsdImagingGLEngine::GetRendererPlugins();
     if (std::find(rendererPlugins.begin(), rendererPlugins.end(), SilkRendererPluginId()) ==
         rendererPlugins.end())
@@ -728,6 +743,29 @@ openusd_status openusd_silk_session_sync(
     openusd_silk_page_view* view,
     openusd_error_buffer* error)
 {
+    return openusd_silk_session_sync_with_complexity(
+        session,
+        width,
+        height,
+        time_code,
+        camera,
+        OPENUSD_SILK_COMPLEXITY_LOW,
+        page,
+        view,
+        error);
+}
+
+openusd_status openusd_silk_session_sync_with_complexity(
+    openusd_silk_session* session,
+    int32_t width,
+    int32_t height,
+    double time_code,
+    const openusd_render_camera* camera,
+    uint32_t complexity,
+    openusd_silk_page** page,
+    openusd_silk_page_view* view,
+    openusd_error_buffer* error)
+{
     if (page != nullptr)
     {
         *page = nullptr;
@@ -742,6 +780,11 @@ openusd_status openusd_silk_session_sync(
     if (!openusd_render_camera_detail::Validate(camera, camera_error))
     {
         WriteError(error, camera_error);
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (complexity > OPENUSD_SILK_COMPLEXITY_VERY_HIGH)
+    {
+        WriteError(error, "A valid hdSilk complexity level is required.");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
     return Guard(error, [&]()
@@ -823,6 +866,7 @@ openusd_status openusd_silk_session_sync(
                     camera->clip_planes[plane][2],
                     camera->clip_planes[plane][3]);
             }
+            state->sceneState->SetComplexity(complexity);
             HdSilkBeginUsdSkelEvaluation(state->stage, UsdTimeCode(time_code));
             try
             {

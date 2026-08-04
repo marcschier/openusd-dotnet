@@ -27,7 +27,8 @@ public sealed class OpenUsdSilkSession : IDisposable
         int width,
         int height,
         double timeCode = 0,
-        CameraState camera = default)
+        CameraState camera = default,
+        RenderComplexity complexity = RenderComplexity.Low)
     {
         lock (_gate)
         {
@@ -37,7 +38,8 @@ public sealed class OpenUsdSilkSession : IDisposable
                 width,
                 height,
                 timeCode,
-                camera);
+                camera,
+                complexity);
         }
     }
 
