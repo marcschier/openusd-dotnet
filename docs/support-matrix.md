@@ -12,6 +12,9 @@ workflow is currently green.
 | Workflow-gated | A repository workflow defines required automated execution |
 | Compile-only | The host compiles the path but does not execute it in the ordinary CI job |
 | Pending hosted proof | Source/contracts exist, but current docs still mark hosted execution pending |
+| Implemented, not gated | Source exists, but no accepted automated reference gate proves the behavior |
+| Excluded | Deliberately outside the locked runtime or project scope |
+| Unreachable | A closed, unavailable, or incompatible upstream path cannot be implemented here |
 | Not supported | The current API rejects or does not expose the capability |
 
 Workflow badges in the [root README](../README.md) provide the current run status for the default
@@ -91,7 +94,11 @@ The narrowed render proofs are the Windows WGL soak, the Windows Avalonia Vulkan
 the Linux X11 and Wayland Vulkan import smokes, and the macOS Storm child probe. Each needs a
 graphics capability a hosted runner does not provide, each records a `status: skipped` evidence
 artifact instead of a silent pass, and each has a documented route back to full coverage in
-[Testing](testing.md#render-gate-capability-limits).
+[Testing](testing.md#render-gate-capability-limits). The two Vulkan composition limits are hardware
+limits, not implementation gaps: hosted Windows has no system Vulkan ICD and SwiftShader implements
+neither `VK_KHR_external_memory_win32` nor `VK_KHR_external_semaphore_win32`, so it cannot export a
+Vulkan image to a D3D11 shared handle; hosted Linux reaches lavapipe, but the X11/Wayland compositor
+reports `supported image handles: (none)`, so no external Vulkan image can be imported.
 
 No runtime package is currently defined for Windows arm64, Linux arm64, macOS x64, or mobile/browser
 RIDs.
@@ -100,6 +107,29 @@ The locked viewer-standard native profile enables USD validation, Imaging/USD Im
 MaterialX, OpenImageIO, OpenColorIO, oneTBB, OpenGL, Ptex, OpenVDB, Alembic, and Draco. Python,
 usdview, tests, examples, tutorials, tools, documentation, Embree CPU ray tracing, and RenderMan
 remain out of the native runtime; Python is intentionally not a runtime dependency.
+
+### Permanent reachability boundaries
+
+The project pursues `usdview` and Omniverse parity where the necessary APIs are open and reachable.
+The limits below distinguish that from work that is merely not built yet.
+
+- **Omniverse RTX, Carbonite, omni.ui, Kit, Nucleus, and OptiX are unreachable.** They are closed
+  NVIDIA platform pieces, not open standards this runtime can ship or reimplement.
+- **MDL SDK is reachable but not integrated.** It is an Apache-2.0 SDK with HLSL and GLSL backends.
+- **PhysX, `UsdPhysics`, and MaterialX are reachable.** `UsdPhysics` authoring and a MaterialX subset
+  already exist in this repository.
+- **Cesium for Omniverse's Fabric path is unreachable.** It bypasses Hydra and writes tiles through
+  `omni::fabric::StageReaderWriter`.
+- **No Cesium Hydra delegate or scene index is available.** None exists in this repository or the
+  locked dependencies.
+- **`cesium-native` is reachable but quarantined.** It is an Apache-2.0 standalone C++17 library, and
+  this project owns the required C ABI shim.
+- **The `usdview` embedded Python REPL is excluded.** It requires Python, which the locked native
+  profile never enables.
+- **The `usdview` Python plugin container, plugin dot py, is excluded.** This is the same hard Python
+  rule, not a current preference.
+- **Other `usdview` UI features are reachable.** They wrap C++ USD and Hydra APIs; many equivalents
+  are already built.
 
 The native toolchain and archive model are in [Native build](native-build.md). Runtime asset layout
 and package-only execution are in [Packaging](packaging.md).
@@ -172,7 +202,8 @@ See [Rendering](rendering.md) for request binding, stale results, GPU passes, an
 The 1.0 rendering-parity claim is intentionally narrower than "everything hdSilk can parse".
 `eng/run-parity-capture.ps1` registers 22 curated scenes. Nineteen are hard gates at
 `1.000000` adjusted IoU against D3D12 WARP and Vulkan SwiftShader; three are
-measured but deliberately ungated. Hosted Mesa/llvmpipe Storm runs only 18 registered scenes,
+measured but deliberately ungated. macOS Metal has only one completed native pipeline probe and has
+not run the 22 curated parity scenes. Hosted Mesa/llvmpipe Storm runs only 18 registered scenes,
 excluding `single-sided-winding`, `bounds-draw-mode`, `origin-draw-mode`, and
 `subdivision-catmull-clark` because Mesa Storm differs from conformant-driver Storm.
 The render workflow now wires the curated capture into the macOS arm64 job with a CGL Storm
@@ -204,7 +235,7 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | Texture colour spaces | `materials-textures` |
 | Texture scale, bias, and fallback | None |
 | Texture slots beyond diffuse | None |
-| Metallic workflow with non-zero `metallic` | `material-metallic-workflow` (coverage only, shading unproven) |
+| Metallic workflow with non-zero `metallic` | `material-metallic-workflow` |
 | MaterialX standard-surface authored graph | None |
 | MaterialX projection arithmetic/equivalent constants | `materialx-standard-surface-preview-equivalent` |
 | Distant light direct transport | `light-distant-exposure` |
@@ -221,38 +252,52 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | UsdSkel CPU skinning | `skinned-pennant` |
 | Subdivision surfaces | None |
 
-Uncovered or deliberately ungated features:
+### Ungated because Storm cannot be the reference
 
-- `depth-overlap-multiprim` has the thinnest accepted perturbation margin at 0.184333.
-- Varying, uniform, and face-varying primvar interpolation modes have no parity scene.
-- Other primvar names beyond constant `displayColor` and vertex `st`/normals are not gated.
-- Metallic workflow with non-zero `metallic` now has a scene, but only its coverage is gated. Colour
-  measures max 25 / mean 14.112 against a 10-16 max calibration on the other material scenes: Storm
-  renders the metal near black `(3,5,4)` where hdSilk renders dim gold `(15..25,13..20,7..10)`,
-  consistent with hdSilk's residual `(1 - metallic)` diffuse surviving where Storm suppresses it.
-  The metallic shading path is therefore reachable and still unproven.
-- Texture `repeat` and `sRGB` are gated; `clamp`, `mirror`, `useMetadata`, `raw`, and linear/auto are not.
-- Texture scale, bias, and fallback are authored as identity or not exercised; removing them would still pass.
-- Emissive, specular, metallic, roughness, normal, opacity, and occlusion texture slots have no parity scene.
-- `emissiveColor`, `clearcoat`, `clearcoatRoughness`, `opacity`, `opacityThreshold`, `ior`, normal maps,
-  `displacement`, and `occlusion` are not gated.
-- `materialx-standard-surface-constant` is registered but ungated because Storm renders it black in this harness.
-- MaterialX images, normal maps, emission, non-zero metalness, and arithmetic chains have no Storm parity gate.
-- Sphere-light glossy specular, soft shadows, shaping, dome textures, and image-based lighting are not gated.
-- `light-distant-shadow` is registered but ungated; Storm is byte-identical with shadows disabled.
-- Multiple point-instancer prototypes/proto-index variation and instanced shadows are not gated.
-- Wide point splats, authored curve widths/ribbons, wire draw mode, and shaded-wire draw mode are not gated.
-- Authored `cullStyle` tokens have no parity scene.
-- Animated materials, textures, lights, and topology have no parity scene.
-- GPU skinning and blend-shape rendering are not gated. The data API can author and inspect
-  `UsdSkelBlendShape` data, but hdSilk still does not evaluate it in this parity matrix.
-- `subdivision-catmull-clark` is measured at 0.931015 and remains ungated. Full Catmull-Clark/Loop/bilinear
-  subdivision, creases, and subdivision primvar refinement are not part of the 1.0 parity claim.
+These are not hdSilk implementation gaps. They are cases where the Storm offscreen harness does not
+produce a usable reference image for the authored feature.
+
+- **MaterialX standard surface:** Storm shades only the 347-pixel PreviewSurface anchor while hdSilk
+  shades 4314 MaterialX pixels. `materialx-standard-surface-constant` is registered, measured, and not
+  gated.
+- **Rect, disk, and cylinder area lights:** Storm renders authored area-light scenes black
+  (`referenceCoverage=0`) while hdSilk lights 4662 pixels. The source path is implemented and not
+  Storm-gated.
+- **Catmull-Clark subdivision:** `subdivision-catmull-clark` measures 0.931015 adjusted IoU against
+  Storm's coarse/control-cage-like output, so it remains measured and not gated.
+- **Shadows:** `light-distant-shadow` is byte-identical with shadows disabled
+  (`disabledAdjustedIoU=1.000000`), so it remains registered, measured, and not gated.
 
 At the parity harness complexity, Storm renders the Catmull-Clark probe as a
 coarse/control-cage-like surface rather than full refinement. An eager
 OpenSubdiv refinement experiment moved hdSilk away from Storm, so subdivision
 remains measured but ungated until the remaining divergence is eliminated.
+
+### Implemented or reachable but not yet parity-gated
+
+- `depth-overlap-multiprim` has the thinnest accepted perturbation margin at 0.184333.
+- Varying, uniform, and face-varying primvar interpolation modes have no parity scene.
+- Other primvar names beyond constant `displayColor` and vertex `st`/normals are not gated.
+- Texture `repeat` and `sRGB` are gated; `clamp`, `mirror`, `useMetadata`, `raw`, and linear/auto are not.
+- Texture scale, bias, and fallback are authored as identity or not exercised; removing them would still pass.
+- Emissive, specular, metallic, roughness, normal, opacity, and occlusion texture slots have no parity scene.
+- `emissiveColor`, `clearcoat`, `clearcoatRoughness`, `opacity`, `opacityThreshold`, `ior`, normal maps,
+  `displacement`, and `occlusion` are not gated.
+- MaterialX images, normal maps, emission, non-zero metalness, and arithmetic chains have no Storm parity gate.
+- Sphere-light glossy specular, shaping, dome textures, and image-based lighting are not gated.
+- Multiple point-instancer prototypes/proto-index variation and instanced shadows are not gated.
+- Wide point splats, authored curve widths/ribbons, wire draw mode, and shaded-wire draw mode are not gated.
+- Authored `cullStyle` tokens have no parity scene.
+- Animated materials, textures, lights, and topology have no parity scene.
+- GPU skinning is not gated.
+
+### Unimplemented or deliberately excluded from the 1.0 parity claim
+
+- Full Catmull-Clark/Loop/bilinear subdivision, creases, and subdivision primvar refinement are not part of the
+  1.0 parity claim.
+- Blend-shape rendering is not implemented in hdSilk. The data API can author and inspect
+  `UsdSkelBlendShape` data, but hdSilk still does not evaluate it in this parity matrix.
+- Light linking is not implemented.
 
 ## hdSilk lighting parity
 
@@ -263,10 +308,11 @@ remains measured but ungated until the remaining divergence is eliminated.
 | `UsdLuxSphereLight` | Implemented subset and parity-gated | Matte point-attenuation scene gates; margin 0.542752 |
 | `UsdLuxDomeLight` | Ambient-only and parity-gated | Untextured dome ambient is gated; image IBL is not implemented |
 | Shadows | Measured, ungated | Offscreen Storm shadows are not a reference |
+| Rect/disk/cylinder area lights | Implemented, ungated | Offscreen Storm renders the reference scenes black |
 | Light linking | Not implemented | No linked-light filtering; no instanced-shadow parity |
 
-`light-distant-shadow` is the third measured Storm offscreen-harness limit, alongside subdivision and
-MaterialX. Storm's authored-shadow and shadow-disabled captures are byte-identical
+`light-distant-shadow` is one of the measured Storm offscreen-harness limits, alongside area lights,
+subdivision, and MaterialX. Storm's authored-shadow and shadow-disabled captures are byte-identical
 (`disabledAdjustedIoU=1.000000`, Storm hash
 `E0713BDEA4E1D9B817A367160F13B3B23D6A06DCC6AC04858D985B8497024B03`). Forcing the candidate shadow
 setup in the native shim (`GlfSimpleLight::SetHasShadow(true)`, a 1024x1024 `GlfSimpleShadowArray`,

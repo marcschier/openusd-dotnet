@@ -457,6 +457,12 @@ shaderc/glslang compiles it to SPIR-V with the expected magic word. This proves 
 but not arbitrary MaterialX rendering; the generated SPIR-V is not yet wired into hdSilk's managed runtime shader
 compilation service or draw selection.
 
+MaterialX 1.39.4 does not ship an HLSL generator or a direct SPIR-V generator. The usable generator
+families for this design are GLSL, Vulkan GLSL, ESSL, WGSL, MSL, OSL, and MDL. Vulkan therefore goes
+through `VkShaderGenerator` and glslang; Metal goes through `MslShaderGenerator`; D3D12 has no direct
+MaterialX-to-HLSL path and must use SPIRV-Cross to HLSL followed by DXC, with MDL documented as the
+fallback route when that translation cannot represent a graph.
+
 D3D12 binds the checked pick shaders through one generation-tagged RGBA8/D32 PSO. `SceneParameters`
 uses root CBV b0 and the mesh token base uses four 32-bit root constants at b1, so a draw does not
 allocate a token upload buffer. D3D12 keeps three persistently mapped 256-byte readback slots; each

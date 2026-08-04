@@ -63,6 +63,11 @@ OpenSSL, Draco, KTX, SQLite, Blend2D, asmjit, s2geometry/abseil, spdlog, meshopt
 zstd, and other support libraries. Keeping it in `native/install/cesium/<rid>` prevents a user who
 only needs USD authoring or rendering from receiving the Cesium dependency set.
 
+This reachable path is `cesium-native` itself, not Cesium for Omniverse. The Omniverse extension
+bypasses Hydra and writes tiles into NVIDIA Fabric through `omni::fabric::StageReaderWriter`, which
+is not an open Hydra delegate or scene index this project can consume. cesium-native ships no C
+bindings, so the repository hand-writes and versions its own quarantined C ABI shim.
+
 Inspect the locked Cesium plan:
 
 ```shell
