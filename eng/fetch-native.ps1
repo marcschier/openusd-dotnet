@@ -225,6 +225,28 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
         throw 'The expected Alembic USD configure marker was not found.'
     }
 
+    $alembicPolicyMarker = @(
+        'def InstallAlembic(context, force, buildArgs):',
+        '    with CurrentWorkingDirectory(DownloadURL(ALEMBIC_URL, context, force)):',
+        "        cmakeOptions = ['-DUSE_BINARIES=OFF', '-DUSE_TESTS=OFF', '-DUSE_HDF5=OFF']"
+    ) -join "`n"
+    $alembicPolicyPatched = @(
+        'def InstallAlembic(context, force, buildArgs):',
+        '    with CurrentWorkingDirectory(DownloadURL(ALEMBIC_URL, context, force)):',
+        '        PatchFile("CMakeLists.txt",',
+        '                  [("CMAKE_POLICY(SET CMP0042 OLD)",',
+        '                    "CMAKE_POLICY(SET CMP0042 NEW)")])',
+        "        cmakeOptions = ['-DUSE_BINARIES=OFF', '-DUSE_TESTS=OFF', '-DUSE_HDF5=OFF']"
+    ) -join "`n"
+    if (-not $content.Contains('CMAKE_POLICY(SET CMP0042 NEW)'))
+    {
+        if (-not $content.Contains($alembicPolicyMarker))
+        {
+            throw 'The expected Alembic install marker was not found.'
+        }
+        $content = $content.Replace($alembicPolicyMarker, $alembicPolicyPatched)
+    }
+
     [System.IO.File]::WriteAllText(
         $buildScript,
         $content,

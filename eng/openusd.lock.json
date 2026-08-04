@@ -10,7 +10,7 @@
     "extractDirectory": "OpenUSD-2095fafafd033fa23386d7ec6d58c7cc33974518",
     "buildScript": "build_scripts/build_usd.py",
     "buildScriptSha256": "258C2BD80974154C00B8CB7D6CA19257D6E1878BDBDCE6501DDF18A5E230C629",
-    "patchedBuildScriptSha256": "98837C137EE106E958B63A24EB30DC488B89D8EE697C4006311BAB84DBF3FE17",
+    "patchedBuildScriptSha256": "58874A95818876A9F1A6145D9C73F5A499C907A6C621542C7D449F34B6819E42",
     "patches": [
       {
         "id": "windows-python-3.13-batch-launch",
@@ -27,6 +27,10 @@
       {
         "id": "boost-openvdb-iostreams-existence",
         "description": "Require the Boost iostreams binary when OpenVDB is enabled so an existing lean Boost install is rebuilt instead of being reused."
+      },
+      {
+        "id": "alembic-macos-cmp0042",
+        "description": "Set Alembic 1.8.5 CMP0042 to NEW instead of OLD; modern CMake removed OLD for that policy, so the macOS Alembic configure fails outright. The policy is MACOSX_RPATH, which is why only osx-arm64 is affected, and the locked build already passes -DCMAKE_MACOSX_RPATH=ON."
       },
       {
         "id": "alembic-root-for-usd-configure",
