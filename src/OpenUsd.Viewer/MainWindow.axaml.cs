@@ -214,6 +214,8 @@ public sealed partial class MainWindow : Window, IDisposable
             PurposeGuideCheckBox.Click += OnViewportPurposeChanged;
             SceneLightingCheckBox.Click += OnViewportLightingChanged;
             SceneShadowsCheckBox.Click += OnViewportShadowsChanged;
+            BackfaceCullingCheckBox.Click += OnViewportBackfaceCullingChanged;
+            SceneMaterialsCheckBox.Click += OnViewportSceneMaterialsChanged;
             BackgroundColorSelector.SelectionChanged += OnViewportBackgroundChanged;
             ResetCameraAutomaticButton.Click += OnResetCameraAutomaticClick;
             ResetCameraAutomaticMenuItem.Click += OnResetCameraAutomaticClick;
@@ -2086,6 +2088,32 @@ public sealed partial class MainWindow : Window, IDisposable
             enabled ? "Viewport shadows enabled." : "Viewport shadows disabled.");
     }
 
+    private async void OnViewportBackfaceCullingChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_applyingViewportDisplay)
+        {
+            return;
+        }
+
+        bool enabled = BackfaceCullingCheckBox.IsChecked == true;
+        await ApplyViewportStateAsync(
+            state => ViewerViewportStateMutation.WithBackfaceCulling(state, enabled),
+            enabled ? "Viewport backface culling enabled." : "Viewport backface culling disabled.");
+    }
+
+    private async void OnViewportSceneMaterialsChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_applyingViewportDisplay)
+        {
+            return;
+        }
+
+        bool enabled = SceneMaterialsCheckBox.IsChecked == true;
+        await ApplyViewportStateAsync(
+            state => ViewerViewportStateMutation.WithSceneMaterials(state, enabled),
+            enabled ? "Viewport scene materials enabled." : "Viewport scene materials disabled.");
+    }
+
     private async void OnViewportBackgroundChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_applyingViewportDisplay ||
@@ -2148,6 +2176,8 @@ public sealed partial class MainWindow : Window, IDisposable
             PurposeGuideCheckBox.IsChecked = (state.Display.Purposes & RenderPurpose.Guide) != 0;
             SceneLightingCheckBox.IsChecked = state.RenderSettings.EnableLighting;
             SceneShadowsCheckBox.IsChecked = state.RenderSettings.EnableShadows;
+            BackfaceCullingCheckBox.IsChecked = state.RenderSettings.BackfaceCulling;
+            SceneMaterialsCheckBox.IsChecked = state.RenderSettings.UseSceneMaterials;
             SelectComboBoxTag(BackgroundColorSelector, GetBackgroundPreset(state).ToString());
         }
         finally
@@ -2167,6 +2197,8 @@ public sealed partial class MainWindow : Window, IDisposable
         PurposeGuideCheckBox.IsEnabled = enabled;
         SceneLightingCheckBox.IsEnabled = enabled;
         SceneShadowsCheckBox.IsEnabled = enabled;
+        BackfaceCullingCheckBox.IsEnabled = enabled;
+        SceneMaterialsCheckBox.IsEnabled = enabled;
         BackgroundColorSelector.IsEnabled = enabled;
     }
 
