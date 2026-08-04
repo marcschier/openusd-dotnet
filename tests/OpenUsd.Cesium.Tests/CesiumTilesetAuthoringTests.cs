@@ -21,6 +21,12 @@ public sealed class CesiumTilesetAuthoringTests
         await Assert.That(authored.FaceVertexIndices[0]).IsEqualTo(0);
         await Assert.That(authored.FaceVertexIndices[authored.FaceVertexIndices.Length / 2]).IsEqualTo(2);
         await Assert.That(authored.FaceVertexIndices[^1]).IsEqualTo(4);
+        await Assert.That(authored.Normals[0]).IsEqualTo(new UsdVec3f(0, 0, 1));
+        await Assert.That(authored.Normals[authored.Normals.Length / 2]).IsEqualTo(new UsdVec3f(0, 1, 0));
+        await Assert.That(authored.Normals[^1]).IsEqualTo(new UsdVec3f(1, 0, 0));
+        await Assert.That(authored.TexCoords[0]).IsEqualTo(new UsdVec2f(0, 0));
+        await Assert.That(authored.TexCoords[authored.TexCoords.Length / 2]).IsEqualTo(new UsdVec2f(1, 1));
+        await Assert.That(authored.TexCoords[^1]).IsEqualTo(new UsdVec2f(0.5f, 0.5f));
     }
 
     [Test]
@@ -55,7 +61,21 @@ public sealed class CesiumTilesetAuthoringTests
                 new UsdVec3f(5, 5, 2)
             ],
             [3, 3, 3, 3],
-            [0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4]);
+            [0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4],
+            [
+                new UsdVec3f(0, 0, 1),
+                new UsdVec3f(0, 0, 1),
+                new UsdVec3f(0, 1, 0),
+                new UsdVec3f(0, 1, 0),
+                new UsdVec3f(1, 0, 0)
+            ],
+            [
+                new UsdVec2f(0, 0),
+                new UsdVec2f(1, 0),
+                new UsdVec2f(1, 1),
+                new UsdVec2f(0, 1),
+                new UsdVec2f(0.5f, 0.5f)
+            ]);
 
         CesiumTileImportResult result = CesiumTileset.AuthorCapturedMeshes(stage, "/CesiumTiles", [captured]);
         UsdGeomXform georeference = UsdGeomXform.Wrap(stage.GetPrim("/CesiumTiles"));
@@ -67,7 +87,9 @@ public sealed class CesiumTilesetAuthoringTests
             mesh.Xformable.GetLocalTransform(),
             mesh.GetPoints(),
             mesh.GetFaceVertexCounts(),
-            mesh.GetFaceVertexIndices());
+            mesh.GetFaceVertexIndices(),
+            mesh.GetNormals(),
+            new UsdGeomPrimvarsAPI(mesh.Prim).GetPrimvar("st").GetVec2fArray());
     }
 
     private static float MaxAbsComponent(UsdVec3f value) =>
@@ -80,7 +102,9 @@ public sealed class CesiumTilesetAuthoringTests
         UsdMatrix4d LocalTransform,
         UsdVec3f[] Points,
         int[] FaceVertexCounts,
-        int[] FaceVertexIndices) : IDisposable
+        int[] FaceVertexIndices,
+        UsdVec3f[] Normals,
+        UsdVec2f[] TexCoords) : IDisposable
     {
         public void Dispose() => Stage.Dispose();
     }

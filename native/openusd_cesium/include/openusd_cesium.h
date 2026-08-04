@@ -41,6 +41,7 @@ typedef struct openusd_cesium_tileset openusd_cesium_tileset;
 typedef struct openusd_cesium_task openusd_cesium_task;
 
 typedef struct openusd_cesium_vec2d { double x; double y; } openusd_cesium_vec2d;
+typedef struct openusd_cesium_vec2f { float x; float y; } openusd_cesium_vec2f;
 typedef struct openusd_cesium_vec3d { double x; double y; double z; } openusd_cesium_vec3d;
 typedef struct openusd_cesium_vec3f { float x; float y; float z; } openusd_cesium_vec3f;
 typedef struct openusd_cesium_matrix4d { double values[16]; } openusd_cesium_matrix4d;
@@ -173,6 +174,10 @@ typedef struct openusd_cesium_mesh_primitive
     size_t face_count;
     const int32_t* face_vertex_indices;
     size_t face_vertex_index_count;
+    const openusd_cesium_vec3f* normals;
+    size_t normal_count;
+    const openusd_cesium_vec2f* texcoords_0;
+    size_t texcoord_0_count;
 } openusd_cesium_mesh_primitive;
 
 typedef void (*openusd_cesium_mesh_primitive_fn)(

@@ -16,7 +16,6 @@
 #include <CesiumAsync/ITaskProcessor.h>
 #include <CesiumGltf/AccessorView.h>
 #include <CesiumGltf/Model.h>
-#include <CesiumGltfReader/GltfReader.h>
 #include <CesiumRasterOverlays/RasterOverlayTile.h>
 
 #include <algorithm>
@@ -26,7 +25,6 @@
 #include <cstring>
 #include <exception>
 #include <functional>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -191,7 +189,8 @@ public:
         const std::vector<THeader>& headers,
         const std::span<const std::byte>& contentPayload) override {
         static_cast<void>(headers);
-        return asyncSystem.runInWorkerThread([callbacks = _callbacks, verb, url, payload = std::vector<std::byte>(contentPayload.begin(), contentPayload.end())]() mutable {
+        return asyncSystem.runInWorkerThread([callbacks = _callbacks, verb, url,
+            payload = std::vector<std::byte>(contentPayload.begin(), contentPayload.end())]() mutable {
             if (callbacks.request == nullptr) {
                 return std::shared_ptr<CesiumAsync::IAssetRequest>{};
             }
@@ -307,31 +306,6 @@ const CesiumGltf::Accessor* GetAccessor(const CesiumGltf::Model& model, int64_t 
     return &model.accessors[static_cast<size_t>(index)];
 }
 
-const CesiumGltf::BufferView* GetBufferView(const CesiumGltf::Model& model, int64_t index) noexcept {
-    if (index < 0 || static_cast<size_t>(index) >= model.bufferViews.size()) {
-        return nullptr;
-    }
-    return &model.bufferViews[static_cast<size_t>(index)];
-}
-
-const CesiumGltf::Buffer* GetBuffer(const CesiumGltf::Model& model, int64_t index) noexcept {
-    if (index < 0 || static_cast<size_t>(index) >= model.buffers.size()) {
-        return nullptr;
-    }
-    return &model.buffers[static_cast<size_t>(index)];
-}
-
-bool CheckedRange(size_t sourceSize, size_t offset, size_t count, size_t stride) noexcept {
-    if (count == 0) {
-        return true;
-    }
-    if (stride == 0 || offset > sourceSize) {
-        return false;
-    }
-    const size_t last = count - 1;
-    return last <= (sourceSize - offset) / stride && stride <= sourceSize - offset - last * stride;
-}
-
 bool TryReadPositions(
     const CesiumGltf::Model& model,
     int64_t accessorIndex,
@@ -345,6 +319,40 @@ bool TryReadPositions(
     for (size_t index = 0; index < count; ++index) {
         const glm::vec3& position = view[static_cast<int64_t>(index)];
         positions[index] = openusd_cesium_vec3f{position.x, position.y, position.z};
+    }
+    return true;
+}
+
+bool TryReadVec3Attribute(
+    const CesiumGltf::Model& model,
+    int64_t accessorIndex,
+    std::vector<openusd_cesium_vec3f>& values) {
+    CesiumGltf::AccessorView<glm::vec3> view(model, static_cast<int32_t>(accessorIndex));
+    if (view.status() != CesiumGltf::AccessorViewStatus::Valid || view.size() < 0) {
+        return false;
+    }
+    const size_t count = static_cast<size_t>(view.size());
+    values.resize(count);
+    for (size_t index = 0; index < count; ++index) {
+        const glm::vec3& value = view[static_cast<int64_t>(index)];
+        values[index] = openusd_cesium_vec3f{value.x, value.y, value.z};
+    }
+    return true;
+}
+
+bool TryReadVec2Attribute(
+    const CesiumGltf::Model& model,
+    int64_t accessorIndex,
+    std::vector<openusd_cesium_vec2f>& values) {
+    CesiumGltf::AccessorView<glm::vec2> view(model, static_cast<int32_t>(accessorIndex));
+    if (view.status() != CesiumGltf::AccessorViewStatus::Valid || view.size() < 0) {
+        return false;
+    }
+    const size_t count = static_cast<size_t>(view.size());
+    values.resize(count);
+    for (size_t index = 0; index < count; ++index) {
+        const glm::vec2& value = view[static_cast<int64_t>(index)];
+        values[index] = openusd_cesium_vec2f{value.x, value.y};
     }
     return true;
 }
@@ -401,17 +409,6 @@ void EmitMeshPrimitives(
         return;
     }
     const auto* model = std::get_if<CesiumGltf::Model>(&result.contentKind);
-    std::optional<CesiumGltf::Model> parsedModel;
-    if ((model == nullptr || model->meshes.empty()) && result.pCompletedRequest != nullptr) {
-        if (const CesiumAsync::IAssetResponse* response = result.pCompletedRequest->response()) {
-            CesiumGltfReader::GltfReader reader;
-            CesiumGltfReader::GltfReaderResult readerResult = reader.readGltf(response->data());
-            if (readerResult.model) {
-                parsedModel = std::move(*readerResult.model);
-                model = &*parsedModel;
-            }
-        }
-    }
     if (model == nullptr) {
         return;
     }
@@ -435,6 +432,18 @@ void EmitMeshPrimitives(
                 indices.empty() || (indices.size() % 3) != 0) {
                 continue;
             }
+            std::vector<openusd_cesium_vec3f> normals;
+            const auto normal = primitive.attributes.find("NORMAL");
+            if (normal != primitive.attributes.end() &&
+                !TryReadVec3Attribute(*model, normal->second, normals)) {
+                normals.clear();
+            }
+            std::vector<openusd_cesium_vec2f> texcoords;
+            const auto texcoord = primitive.attributes.find("TEXCOORD_0");
+            if (texcoord != primitive.attributes.end() &&
+                !TryReadVec2Attribute(*model, texcoord->second, texcoords)) {
+                texcoords.clear();
+            }
             std::vector<int32_t> counts(indices.size() / 3, 3);
             openusd_cesium_mesh_primitive meshView{};
             meshView.struct_size = sizeof(meshView);
@@ -448,6 +457,10 @@ void EmitMeshPrimitives(
             meshView.face_count = counts.size();
             meshView.face_vertex_indices = indices.data();
             meshView.face_vertex_index_count = indices.size();
+            meshView.normals = normals.data();
+            meshView.normal_count = normals.size();
+            meshView.texcoords_0 = texcoords.data();
+            meshView.texcoord_0_count = texcoords.size();
             callbacks.mesh_primitive_in_load_thread(callbacks.user_data, &meshView);
         }
     }
