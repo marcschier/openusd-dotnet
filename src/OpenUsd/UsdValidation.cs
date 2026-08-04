@@ -142,6 +142,54 @@ public static class UsdValidation
                 error.Message,
                 Array.AsReadOnly(error.Sites));
         }
+
+        // OpenUSD runs validators in parallel, so the order it reports errors in
+        // is not stable between two runs over the same unchanged stage. These
+        // records are detached snapshots whose entire purpose is to let a caller
+        // diff one poll against the next, and an unstable order makes every poll
+        // look like a change. Ordinal, so the ordering does not vary by culture.
+        Array.Sort(result, CompareErrors);
         return Array.AsReadOnly(result);
+    }
+
+    private static int CompareErrors(UsdValidationError left, UsdValidationError right)
+    {
+        int order = string.CompareOrdinal(left.ValidatorName, right.ValidatorName);
+        if (order != 0)
+        {
+            return order;
+        }
+
+        order = string.CompareOrdinal(left.ErrorName, right.ErrorName);
+        if (order != 0)
+        {
+            return order;
+        }
+
+        order = string.CompareOrdinal(left.Message, right.Message);
+        if (order != 0)
+        {
+            return order;
+        }
+
+        order = left.Severity.CompareTo(right.Severity);
+        if (order != 0)
+        {
+            return order;
+        }
+
+        // Two errors can still differ only by their sites, so order on those
+        // rather than leaving equal-looking entries in parallel-execution order.
+        int count = Math.Min(left.Sites.Count, right.Sites.Count);
+        for (int i = 0; i < count; i++)
+        {
+            order = string.CompareOrdinal(left.Sites[i], right.Sites[i]);
+            if (order != 0)
+            {
+                return order;
+            }
+        }
+
+        return left.Sites.Count.CompareTo(right.Sites.Count);
     }
 }
