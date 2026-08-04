@@ -522,6 +522,10 @@ internal sealed record ViewerPrimInspectorSnapshot(
     string TypeName,
     bool IsActive,
     bool IsLoaded,
+    bool IsDefined,
+    bool IsAbstract,
+    bool IsInPrototype,
+    UsdPrimSpecifier Specifier,
     bool IsInstance,
     bool IsInstanceable,
     bool IsPrototype,
@@ -801,7 +805,12 @@ internal static class ViewerStageSnapshotBuilder
         var entries = new ViewerHierarchySourceEntry[prims.Count];
         for (int index = 0; index < prims.Count; index++)
         {
-            entries[index] = new ViewerHierarchySourceEntry(prims[index].Path, prims[index].TypeName);
+            UsdPrimClassification classification = prims[index].GetClassification();
+            entries[index] = new ViewerHierarchySourceEntry(
+                prims[index].Path,
+                prims[index].TypeName,
+                IsDefined: classification.IsDefined,
+                IsAbstract: classification.IsAbstract);
         }
         return ViewerHierarchySnapshot.Build(entries);
     }
@@ -818,6 +827,7 @@ internal static class ViewerStageSnapshotBuilder
         }
 
         bool isActive = prim.IsActive();
+        UsdPrimClassification classification = prim.GetClassification();
         bool isPrototype = prim.IsPrototype();
         ViewerVariantSetSnapshot[] variantSets = BuildVariantSets(prim);
         entries.Add(new ViewerHierarchySourceEntry(
@@ -825,8 +835,8 @@ internal static class ViewerStageSnapshotBuilder
             prim.TypeName,
             isActive,
             prim.IsLoaded(),
-            IsDefined: !string.IsNullOrEmpty(prim.TypeName),
-            IsAbstract: false,
+            classification.IsDefined,
+            classification.IsAbstract,
             isPrototype,
             prim.GetPayloadArcs().Count != 0,
             variantSets));
@@ -902,6 +912,7 @@ internal static class ViewerStageSnapshotBuilder
             ViewerPayloadArcSnapshot.Create(prim.GetPayloadArcs());
         PcpPrimIndex composition = prim.GetPrimIndex();
         bool isInstance = prim.IsInstance();
+        UsdPrimClassification classification = prim.GetClassification();
         bool isPrototype = prim.IsPrototype();
         bool isImageable = UsdGeomImageable.TryWrap(prim, out UsdGeomImageable imageable);
         bool isCamera = UsdGeomCamera.TryWrap(prim, out _);
@@ -923,6 +934,10 @@ internal static class ViewerStageSnapshotBuilder
             prim.TypeName,
             prim.IsActive(),
             prim.IsLoaded(),
+            classification.IsDefined,
+            classification.IsAbstract,
+            classification.IsInPrototype,
+            classification.Specifier,
             isInstance,
             prim.IsInstanceable(),
             isPrototype,

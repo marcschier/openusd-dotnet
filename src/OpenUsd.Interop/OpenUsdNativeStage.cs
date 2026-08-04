@@ -172,6 +172,15 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
     public double[] GetAttributeTimeSamples(string primPath, string attributeName) =>
         OpenUsdNativeRuntime.GetAttributeTimeSamples(this, primPath, attributeName);
 
+    public bool AttributeHasSpline(string primPath, string attributeName) =>
+        OpenUsdNativeRuntime.AttributeHasSpline(this, primPath, attributeName);
+
+    public nint GetAttributeSpline(string primPath, string attributeName) =>
+        OpenUsdNativeRuntime.GetAttributeSpline(this, primPath, attributeName);
+
+    public void SetAttributeSpline(string primPath, string attributeName, nint spline) =>
+        OpenUsdNativeRuntime.SetAttributeSpline(this, primPath, attributeName, spline);
+
     /// <summary>Clears all authored values for an attribute at the current edit target.</summary>
     public void ClearAttributeValue(string primPath, string attributeName) =>
         OpenUsdNativeRuntime.ClearAttributeValue(this, primPath, attributeName);
@@ -303,6 +312,12 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
         uint purposeMask,
         double? timeCode = null) =>
         OpenUsdNativeRuntime.GetWorldBounds(this, targetPrimPath, purposeMask, timeCode);
+
+    internal OpenUsdNativeOrientedBounds3d GetWorldOrientedBounds(
+        string? targetPrimPath,
+        uint purposeMask,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.GetWorldOrientedBounds(this, targetPrimPath, purposeMask, timeCode);
 
     /// <summary>Returns whether a prim conforms to a focused UsdGeom schema kind.</summary>
     public bool IsGeomSchema(string primPath, int schemaKind) =>
@@ -616,6 +631,9 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
 
     /// <summary>Gets a prim's active state.</summary>
     public bool GetPrimActive(string primPath) => OpenUsdNativeRuntime.GetPrimActive(this, primPath);
+
+    public OpenUsdNativePrimClassification GetPrimClassification(string primPath) =>
+        OpenUsdNativeRuntime.GetPrimClassification(this, primPath);
 
     /// <summary>Creates a relationship at the given prim path.</summary>
     public void CreateRelationship(string primPath, string relationshipName) =>

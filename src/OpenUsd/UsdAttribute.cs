@@ -42,6 +42,20 @@ public readonly struct UsdAttribute : IUsdStageBound
     /// <summary>Gets sorted authored time samples using one bulk native buffer.</summary>
     public double[] GetTimeSamples() => Stage.Native.GetAttributeTimeSamples(PrimPath, Name);
 
+    /// <summary>Returns whether this attribute has an authored Ts spline value.</summary>
+    public bool HasSpline() => Stage.Native.AttributeHasSpline(PrimPath, Name);
+
+    /// <summary>Gets this attribute's authored Ts spline value.</summary>
+    public TsSpline GetSpline() =>
+        TsSpline.FromNativeHandle(Stage.Native.GetAttributeSpline(PrimPath, Name));
+
+    /// <summary>Authors a Ts spline value on this attribute.</summary>
+    public void SetSpline(TsSpline spline)
+    {
+        ArgumentNullException.ThrowIfNull(spline);
+        Stage.Native.SetAttributeSpline(PrimPath, Name, spline.DangerousGetHandle());
+    }
+
     /// <summary>Clears all authored values at the current edit target.</summary>
     public void ClearValue() => Stage.Native.ClearAttributeValue(PrimPath, Name);
 

@@ -5,6 +5,7 @@ set(OPENUSD_DOTNET_SOURCES
     src/collections.cpp
     src/common.cpp
     src/composition.cpp
+    src/debug.cpp
     src/diagnostics.cpp
     src/layer.cpp
     src/metadata.cpp

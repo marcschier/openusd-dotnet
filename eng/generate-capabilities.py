@@ -119,10 +119,15 @@ def generate_common(current: str, abi_version: int, capabilities: list[Capabilit
 
 
 def format_mask(capabilities: list[Capability]) -> str:
-    bits = [capability.bit for capability in capabilities]
-    if bits == list(range(bits[-1] + 1)):
-        return f"0x{((1 << (bits[-1] + 1)) - 1):X}"
-    return " | ".join(f"(1UL << {bit})" for bit in bits)
+    # Always hex. The previous form fell back to a chain of "(1UL << n)"
+    # terms whenever the bits were not contiguous from zero, which happened
+    # the moment a non-schema capability landed above the schema-facade bit:
+    # the emitted line reached 255 characters and broke the 120-column gate,
+    # and no longer matched the hex the ABI contract test asserts.
+    mask = 0
+    for capability in capabilities:
+        mask |= 1 << capability.bit
+    return f"0x{mask:X}"
 
 
 def format_schema_mask(capabilities: list[Capability]) -> str:

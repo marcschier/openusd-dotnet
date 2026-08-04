@@ -22,12 +22,15 @@ public sealed class NativeContractTests
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
 
         await Assert.That(abiVersion).IsEqualTo(14U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0xFFFFUL);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x1FFFFUL);
         await Assert.That(requiredCapabilities & 0xFFFUL).IsEqualTo(0xFFFUL);
         await Assert.That(requiredCapabilities & 0x1000UL).IsEqualTo(0x1000UL);
         await Assert.That(requiredCapabilities & 0x2000UL).IsEqualTo(0x2000UL);
         await Assert.That(requiredCapabilities & 0x4000UL).IsEqualTo(0x4000UL);
         await Assert.That(requiredCapabilities & 0x8000UL).IsEqualTo(0x8000UL);
+
+        // Inspection v2: oriented bounds, prim specifier, Ts splines and TfDebug.
+        await Assert.That(requiredCapabilities & 0x10000UL).IsEqualTo(0x10000UL);
     }
 
     [Test]

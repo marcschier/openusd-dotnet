@@ -86,6 +86,12 @@ public sealed class TsSpline : IDisposable
             SetHandle(OpenUsdNativeRuntime.CreateTsSpline());
         }
 
+        public TsSplineHandle(nint handle)
+            : base(true)
+        {
+            SetHandle(handle);
+        }
+
         protected override bool ReleaseHandle()
         {
             OpenUsdNativeRuntime.ReleaseTsSpline(handle);
@@ -93,7 +99,22 @@ public sealed class TsSpline : IDisposable
         }
     }
 
-    private readonly TsSplineHandle _handle = new();
+    private readonly TsSplineHandle _handle;
+
+    /// <summary>Creates an empty double-valued Ts spline.</summary>
+    public TsSpline()
+    {
+        _handle = new TsSplineHandle();
+    }
+
+    private TsSpline(nint handle)
+    {
+        _handle = new TsSplineHandle(handle);
+    }
+
+    internal nint DangerousGetHandle() => _handle.DangerousGetHandle();
+
+    internal static TsSpline FromNativeHandle(nint handle) => new(handle);
 
     /// <summary>Replaces the spline contents with a bulk knot snapshot.</summary>
     public void SetData(

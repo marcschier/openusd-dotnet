@@ -22,8 +22,11 @@
 #include "pxr/base/gf/vec4f.h"
 #include "pxr/base/plug/registry.h"
 #include "pxr/base/tf/diagnostic.h"
+#include "pxr/base/tf/debug.h"
 #include "pxr/base/tf/errorMark.h"
 #include "pxr/base/tf/notice.h"
+#include "pxr/base/tf/type.h"
+#include "pxr/base/ts/spline.h"
 #include "pxr/base/tf/weakBase.h"
 #include "pxr/base/vt/array.h"
 #include "pxr/base/vt/dictionary.h"
@@ -222,6 +225,12 @@ struct openusd_stage
     std::unique_ptr<StageNoticeListener> listener;
 };
 
+struct openusd_ts_spline
+{
+    TsSpline value{TfType::Find<double>()};
+    std::vector<openusd_ts_knot_record> snapshot;
+};
+
 struct openusd_stage_access
 {
     explicit openusd_stage_access(openusd_stage* retained_stage)
@@ -273,7 +282,8 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE |
     OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA |
     OPENUSD_CAPABILITY_USD_SHADE_SKEL |
-    OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI;
+    OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI |
+    OPENUSD_CAPABILITY_INSPECTION_V2;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));
@@ -327,6 +337,20 @@ static_assert(offsetof(openusd_bounds3d, is_valid) == sizeof(uint32_t) * 2);
 static_assert(offsetof(openusd_bounds3d, is_empty) == sizeof(uint32_t) * 3);
 static_assert(offsetof(openusd_bounds3d, minimum) == 16);
 static_assert(offsetof(openusd_bounds3d, maximum) == 40);
+static_assert(sizeof(openusd_oriented_bounds3d) == 192);
+static_assert(alignof(openusd_oriented_bounds3d) == alignof(double));
+static_assert(offsetof(openusd_oriented_bounds3d, struct_size) == 0);
+static_assert(offsetof(openusd_oriented_bounds3d, version) == sizeof(uint32_t));
+static_assert(offsetof(openusd_oriented_bounds3d, is_valid) == sizeof(uint32_t) * 2);
+static_assert(offsetof(openusd_oriented_bounds3d, is_empty) == sizeof(uint32_t) * 3);
+static_assert(offsetof(openusd_oriented_bounds3d, minimum) == 16);
+static_assert(offsetof(openusd_oriented_bounds3d, maximum) == 40);
+static_assert(offsetof(openusd_oriented_bounds3d, matrix) == 64);
+static_assert(sizeof(openusd_prim_classification) == 24);
+static_assert(offsetof(openusd_prim_classification, struct_size) == 0);
+static_assert(offsetof(openusd_prim_classification, version) == sizeof(uint32_t));
+static_assert(offsetof(openusd_prim_classification, is_defined) == sizeof(uint32_t) * 2);
+static_assert(offsetof(openusd_prim_classification, specifier) == sizeof(uint32_t) * 5);
 static_assert(sizeof(openusd_geom_camera_state) == 120);
 static_assert(alignof(openusd_geom_camera_state) == alignof(double));
 static_assert(offsetof(openusd_geom_camera_state, struct_size) == 0);
@@ -482,6 +506,73 @@ public:
 
 private:
     openusd_bounds3d* _output;
+    bool _committed = false;
+};
+
+inline void ResetOrientedBounds3dOutput(openusd_oriented_bounds3d* output) noexcept
+{
+    if (output == nullptr)
+    {
+        return;
+    }
+
+    uint32_t struct_size = 0;
+    std::memcpy(&struct_size, output, sizeof(struct_size));
+    const size_t writable_size =
+        std::min<size_t>(struct_size, sizeof(openusd_oriented_bounds3d));
+    if (writable_size == 0)
+    {
+        return;
+    }
+
+    std::memset(output, 0, writable_size);
+    if (writable_size >= sizeof(uint32_t))
+    {
+        std::memcpy(output, &struct_size, sizeof(struct_size));
+    }
+    if (writable_size >= offsetof(openusd_oriented_bounds3d, version) + sizeof(uint32_t))
+    {
+        const uint32_t version = OPENUSD_ORIENTED_BOUNDS3D_VERSION;
+        std::memcpy(
+            reinterpret_cast<unsigned char*>(output) +
+                offsetof(openusd_oriented_bounds3d, version),
+            &version,
+            sizeof(version));
+    }
+    if (writable_size >= offsetof(openusd_oriented_bounds3d, is_empty) + sizeof(int32_t))
+    {
+        const int32_t is_empty = 1;
+        std::memcpy(
+            reinterpret_cast<unsigned char*>(output) +
+                offsetof(openusd_oriented_bounds3d, is_empty),
+            &is_empty,
+            sizeof(is_empty));
+    }
+}
+
+class OrientedBounds3dFailureReset final
+{
+public:
+    explicit OrientedBounds3dFailureReset(openusd_oriented_bounds3d* output) noexcept
+        : _output(output)
+    {
+    }
+
+    ~OrientedBounds3dFailureReset()
+    {
+        if (!_committed)
+        {
+            ResetOrientedBounds3dOutput(_output);
+        }
+    }
+
+    void Commit() noexcept
+    {
+        _committed = true;
+    }
+
+private:
+    openusd_oriented_bounds3d* _output;
     bool _committed = false;
 };
 

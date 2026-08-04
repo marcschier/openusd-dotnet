@@ -298,7 +298,7 @@ public sealed class NativeAbiVersionTests
             Regex.Count(
                 implementation,
                 @"\breturn GuardStage\(stage, error",
-                RegexOptions.CultureInvariant)).IsEqualTo(278);
+                RegexOptions.CultureInvariant)).IsEqualTo(283);
 
         for (int index = 0; index < definitions.Count; index++)
         {
@@ -574,7 +574,7 @@ public sealed class NativeAbiVersionTests
         await Assert.That(Regex.Count(
             managed,
             @"\bThrowIfFailedAndReleaseStringList\(",
-            RegexOptions.CultureInvariant)).IsEqualTo(11);
+            RegexOptions.CultureInvariant)).IsEqualTo(12);
         await Assert.That(Regex.Count(
             managed,
             @"\bThrowIfFailedAndReleasePayloadArcList\(",

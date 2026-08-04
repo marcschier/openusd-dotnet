@@ -278,6 +278,7 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_USD_SHADE_SKEL (UINT64_C(1) << 14)
 /* Schema facade allocations: 12 Geom, 13 Physics, 14 Shade/Skel, 15 Vol/Render/Media/Proc/UI. */
 #define OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI (UINT64_C(1) << 15)
+#define OPENUSD_CAPABILITY_INSPECTION_V2 (UINT64_C(1) << 16)
 
 typedef struct openusd_vec3f
 {
@@ -322,6 +323,39 @@ typedef struct openusd_bounds3d
     double minimum[3];
     double maximum[3];
 } openusd_bounds3d;
+
+#define OPENUSD_ORIENTED_BOUNDS3D_VERSION UINT32_C(1)
+
+typedef struct openusd_oriented_bounds3d
+{
+    uint32_t struct_size;
+    uint32_t version;
+    int32_t is_valid;
+    int32_t is_empty;
+    double minimum[3];
+    double maximum[3];
+    openusd_matrix4d matrix;
+} openusd_oriented_bounds3d;
+
+typedef enum openusd_prim_specifier
+{
+    OPENUSD_PRIM_SPECIFIER_UNKNOWN = 0,
+    OPENUSD_PRIM_SPECIFIER_DEF = 1,
+    OPENUSD_PRIM_SPECIFIER_OVER = 2,
+    OPENUSD_PRIM_SPECIFIER_CLASS = 3
+} openusd_prim_specifier;
+
+#define OPENUSD_PRIM_CLASSIFICATION_VERSION UINT32_C(1)
+
+typedef struct openusd_prim_classification
+{
+    uint32_t struct_size;
+    uint32_t version;
+    int32_t is_defined;
+    int32_t is_abstract;
+    int32_t is_in_prototype;
+    int32_t specifier;
+} openusd_prim_classification;
 
 typedef enum openusd_geom_schema_kind
 {
@@ -949,6 +983,15 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_get_world_bounds(
     int32_t time_sampled,
     double time_code,
     openusd_bounds3d* bounds,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_get_world_oriented_bounds(
+    const openusd_stage* stage,
+    const char* target_prim_path,
+    uint32_t purpose_mask,
+    int32_t time_sampled,
+    double time_code,
+    openusd_oriented_bounds3d* bounds,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_stage_get_default_prim_path(
@@ -1655,6 +1698,12 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_get_prim_active(
     const openusd_stage* stage,
     const char* prim_path,
     int32_t* active,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_get_prim_classification(
+    const openusd_stage* stage,
+    const char* prim_path,
+    openusd_prim_classification* classification,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_stage_create_relationship(
@@ -2884,6 +2933,50 @@ OPENUSD_DOTNET_API openusd_status openusd_ts_spline_eval(
     double time,
     double* value,
     int32_t* has_value,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_attribute_has_spline(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t* has_spline,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_attribute_get_spline(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    openusd_ts_spline** spline,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_attribute_set_spline(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const openusd_ts_spline* spline,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_tf_debug_get_symbol_names(
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_tf_debug_get_symbol_description(
+    const char* name,
+    char* buffer,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_tf_debug_set_symbol(
+    const char* name,
+    int32_t enabled,
+    int32_t* changed,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_tf_debug_get_symbol_enabled(
+    const char* name,
+    int32_t* enabled,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_validation_get_registered_validators(
