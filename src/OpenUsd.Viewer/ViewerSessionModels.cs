@@ -9,7 +9,9 @@ internal enum ViewerPrimCommand
     SetInstanceable,
     SetVisibility,
     SetPurpose,
-    SetVariantSelection
+    SetVariantSelection,
+    ClearAttributeValue,
+    BlockAttributeValue
 }
 
 internal enum ViewerSessionEditTarget
@@ -48,7 +50,9 @@ internal static class ViewerSessionCommandPolicy
                 !context.IsInstance && !context.IsPrototype,
             ViewerPrimCommand.SetActive or
             ViewerPrimCommand.SetLoaded or
-            ViewerPrimCommand.SetVariantSelection => true,
+            ViewerPrimCommand.SetVariantSelection or
+            ViewerPrimCommand.ClearAttributeValue or
+            ViewerPrimCommand.BlockAttributeValue => true,
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
     }
@@ -62,6 +66,8 @@ internal static class ViewerSessionCommandPolicy
             ViewerPrimCommand.SetVariantSelection =>
                 UsdStageInvalidationKind.Composition,
             ViewerPrimCommand.SetVisibility or ViewerPrimCommand.SetPurpose =>
+                UsdStageInvalidationKind.Property,
+            ViewerPrimCommand.ClearAttributeValue or ViewerPrimCommand.BlockAttributeValue =>
                 UsdStageInvalidationKind.Property,
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
@@ -92,6 +98,7 @@ internal sealed record ViewerPrimCommandRequest(
     bool? BooleanValue = null,
     string? TokenValue = null,
     string? VariantSetName = null,
+    string? AttributeName = null,
     string[]? AvailableVariantNames = null)
 {
     internal void Validate()
@@ -104,6 +111,7 @@ internal sealed record ViewerPrimCommandRequest(
                 if (BooleanValue is null ||
                     TokenValue is not null ||
                     VariantSetName is not null ||
+                    AttributeName is not null ||
                     AvailableVariantNames is not null)
                 {
                     throw new InvalidOperationException(
@@ -113,6 +121,7 @@ internal sealed record ViewerPrimCommandRequest(
             case ViewerPrimCommand.SetVisibility:
                 if (BooleanValue is not null ||
                     VariantSetName is not null ||
+                    AttributeName is not null ||
                     AvailableVariantNames is not null ||
                     TokenValue is not ("Inherited" or "Invisible"))
                 {
@@ -123,6 +132,7 @@ internal sealed record ViewerPrimCommandRequest(
             case ViewerPrimCommand.SetPurpose:
                 if (BooleanValue is not null ||
                     VariantSetName is not null ||
+                    AttributeName is not null ||
                     AvailableVariantNames is not null ||
                     TokenValue is not ("Default" or "Render" or "Proxy" or "Guide"))
                 {
@@ -132,6 +142,7 @@ internal sealed record ViewerPrimCommandRequest(
                 break;
             case ViewerPrimCommand.SetVariantSelection:
                 if (BooleanValue is not null ||
+                    AttributeName is not null ||
                     string.IsNullOrWhiteSpace(VariantSetName) ||
                     AvailableVariantNames is null ||
                     (TokenValue is not null &&
@@ -140,6 +151,18 @@ internal sealed record ViewerPrimCommandRequest(
                     throw new InvalidOperationException(
                         "Variant selection requires a variant-set name and either an available " +
                         "variant name or the explicit no-selection value.");
+                }
+                break;
+            case ViewerPrimCommand.ClearAttributeValue:
+            case ViewerPrimCommand.BlockAttributeValue:
+                if (BooleanValue is not null ||
+                    TokenValue is not null ||
+                    VariantSetName is not null ||
+                    AvailableVariantNames is not null ||
+                    string.IsNullOrWhiteSpace(AttributeName))
+                {
+                    throw new InvalidOperationException(
+                        $"{Command} requires one attribute name.");
                 }
                 break;
             default:

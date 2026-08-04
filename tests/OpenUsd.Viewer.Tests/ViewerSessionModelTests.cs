@@ -38,6 +38,12 @@ public sealed class ViewerSessionModelTests
             ViewerPrimCommand.SetVariantSelection,
             enabled with { IsAutomated = true })).IsFalse();
         await Assert.That(ViewerSessionCommandPolicy.CanExecute(
+            ViewerPrimCommand.BlockAttributeValue,
+            enabled)).IsTrue();
+        await Assert.That(ViewerSessionCommandPolicy.CanExecute(
+            ViewerPrimCommand.ClearAttributeValue,
+            enabled with { HasSelection = false })).IsFalse();
+        await Assert.That(ViewerSessionCommandPolicy.CanExecute(
             ViewerPrimCommand.SetActive,
             enabled with { IsBusy = true })).IsFalse();
         await Assert.That(ViewerSessionCommandPolicy.CanExecute(
@@ -61,6 +67,10 @@ public sealed class ViewerSessionModelTests
         await Assert.That(ViewerSessionCommandPolicy.GetInvalidation(
             ViewerPrimCommand.SetVariantSelection))
             .IsEqualTo(UsdStageInvalidationKind.Composition);
+        await Assert.That(ViewerSessionCommandPolicy.GetInvalidation(
+            ViewerPrimCommand.ClearAttributeValue)).IsEqualTo(UsdStageInvalidationKind.Property);
+        await Assert.That(ViewerSessionCommandPolicy.GetInvalidation(
+            ViewerPrimCommand.BlockAttributeValue)).IsEqualTo(UsdStageInvalidationKind.Property);
     }
 
     [Test]
@@ -107,6 +117,15 @@ public sealed class ViewerSessionModelTests
             TokenValue: "red",
             VariantSetName: string.Empty,
             AvailableVariantNames: ["red"]).Validate())
+            .Throws<InvalidOperationException>();
+        new ViewerPrimCommandRequest(
+            ViewerPrimCommand.ClearAttributeValue,
+            AttributeName: "displayColor").Validate();
+        new ViewerPrimCommandRequest(
+            ViewerPrimCommand.BlockAttributeValue,
+            AttributeName: "visibility").Validate();
+        await Assert.That(() => new ViewerPrimCommandRequest(
+            ViewerPrimCommand.BlockAttributeValue).Validate())
             .Throws<InvalidOperationException>();
     }
 
