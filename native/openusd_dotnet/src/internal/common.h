@@ -347,7 +347,7 @@ static_assert(offsetof(openusd_scalar_value, int64_value) == 16);
 static_assert(offsetof(openusd_scalar_value, vec3f_value) == 32);
 static_assert(offsetof(openusd_scalar_value, matrix4d_value) == 48);
 
-openusd_status CopyString(
+inline openusd_status CopyString(
     const std::string& value,
     char* buffer,
     size_t capacity,
@@ -368,7 +368,7 @@ openusd_status CopyString(
     return OPENUSD_STATUS_OK;
 }
 
-void WriteError(openusd_error_buffer* error, std::string_view message) noexcept
+inline void WriteError(openusd_error_buffer* error, std::string_view message) noexcept
 {
     if (error == nullptr)
     {
@@ -387,7 +387,7 @@ void WriteError(openusd_error_buffer* error, std::string_view message) noexcept
 }
 
 template <typename TValue>
-void ResetAbiOutput(TValue* output) noexcept
+inline void ResetAbiOutput(TValue* output) noexcept
 {
     if (output != nullptr)
     {
@@ -397,7 +397,7 @@ void ResetAbiOutput(TValue* output) noexcept
 }
 
 template <typename TValue>
-void ResetVersionedAbiOutput(TValue* output) noexcept
+inline void ResetVersionedAbiOutput(TValue* output) noexcept
 {
     if (output == nullptr)
     {
@@ -419,7 +419,7 @@ void ResetVersionedAbiOutput(TValue* output) noexcept
     }
 }
 
-void ResetBounds3dOutput(openusd_bounds3d* output) noexcept
+inline void ResetBounds3dOutput(openusd_bounds3d* output) noexcept
 {
     if (output == nullptr)
     {
@@ -485,7 +485,7 @@ private:
     bool _committed = false;
 };
 
-void ResetCameraStateOutput(openusd_geom_camera_state* output) noexcept
+inline void ResetCameraStateOutput(openusd_geom_camera_state* output) noexcept
 {
     if (output == nullptr)
     {
@@ -544,7 +544,7 @@ private:
     bool _committed = false;
 };
 
-void ResetAbiStringOutput(char* buffer, size_t capacity) noexcept
+inline void ResetAbiStringOutput(char* buffer, size_t capacity) noexcept
 {
     if (buffer != nullptr && capacity != 0)
     {
@@ -553,7 +553,7 @@ void ResetAbiStringOutput(char* buffer, size_t capacity) noexcept
 }
 
 template <typename TValue>
-void ResetAbiWritableBuffer(TValue* buffer, size_t capacity) noexcept
+inline void ResetAbiWritableBuffer(TValue* buffer, size_t capacity) noexcept
 {
     if (buffer == nullptr || capacity == 0 ||
         capacity > std::numeric_limits<size_t>::max() / sizeof(TValue))
@@ -592,7 +592,7 @@ private:
 };
 
 template <typename TValue, typename TAction>
-openusd_status WithAbiWritableBuffer(
+inline openusd_status WithAbiWritableBuffer(
     TValue* buffer,
     size_t capacity,
     TAction&& action)
@@ -607,7 +607,7 @@ openusd_status WithAbiWritableBuffer(
 }
 
 template <typename TFirst, typename TSecond, typename TAction>
-openusd_status WithAbiWritableBuffers(
+inline openusd_status WithAbiWritableBuffers(
     TFirst* first_buffer,
     size_t first_capacity,
     TSecond* second_buffer,
@@ -628,7 +628,7 @@ openusd_status WithAbiWritableBuffers(
 std::string ConsumeErrors(TfErrorMark& mark);
 
 template <typename TAction>
-openusd_status Guard(openusd_error_buffer* error, TAction&& action)
+inline openusd_status Guard(openusd_error_buffer* error, TAction&& action)
 {
     try
     {
@@ -665,7 +665,7 @@ openusd_status Guard(openusd_error_buffer* error, TAction&& action)
     }
 }
 
-bool RetainStageReference(openusd_stage* stage) noexcept
+inline bool RetainStageReference(openusd_stage* stage) noexcept
 {
     if (stage == nullptr)
     {
@@ -687,7 +687,7 @@ bool RetainStageReference(openusd_stage* stage) noexcept
     return false;
 }
 
-void ReleaseStageReference(openusd_stage* stage) noexcept
+inline void ReleaseStageReference(openusd_stage* stage) noexcept
 {
     if (stage == nullptr)
     {
@@ -719,7 +719,7 @@ void ReleaseStageReference(openusd_stage* stage) noexcept
     }
 }
 
-bool IsStageAccessBeginFailpoint(const char* name) noexcept
+inline bool IsStageAccessBeginFailpoint(const char* name) noexcept
 {
 #if !defined(OPENUSD_DOTNET_ENABLE_TEST_HOOKS)
     static_cast<void>(name);
@@ -743,7 +743,7 @@ bool IsStageAccessBeginFailpoint(const char* name) noexcept
 #endif
 }
 
-bool IsCompositionEnumerationFailpoint(const char* name) noexcept
+inline bool IsCompositionEnumerationFailpoint(const char* name) noexcept
 {
 #if !defined(OPENUSD_DOTNET_ENABLE_TEST_HOOKS)
     static_cast<void>(name);
@@ -767,7 +767,7 @@ bool IsCompositionEnumerationFailpoint(const char* name) noexcept
 #endif
 }
 
-bool IsWorldTransformFailpoint(const char* name) noexcept
+inline bool IsWorldTransformFailpoint(const char* name) noexcept
 {
 #if !defined(OPENUSD_DOTNET_ENABLE_TEST_HOOKS)
     static_cast<void>(name);
@@ -791,7 +791,7 @@ bool IsWorldTransformFailpoint(const char* name) noexcept
 #endif
 }
 
-bool IsCameraStateFailpoint(const char* name) noexcept
+inline bool IsCameraStateFailpoint(const char* name) noexcept
 {
 #if !defined(OPENUSD_DOTNET_ENABLE_TEST_HOOKS)
     static_cast<void>(name);
@@ -816,7 +816,7 @@ bool IsCameraStateFailpoint(const char* name) noexcept
 }
 
 template <typename TAction>
-openusd_status GuardStage(
+inline openusd_status GuardStage(
     const openusd_stage* stage,
     openusd_error_buffer* error,
     TAction&& action)
@@ -833,7 +833,7 @@ openusd_status GuardStage(
 }
 
 template <typename TAction>
-openusd_status GuardLayer(
+inline openusd_status GuardLayer(
     const openusd_layer* layer,
     openusd_error_buffer* error,
     TAction&& action)
@@ -849,7 +849,7 @@ openusd_status GuardLayer(
     });
 }
 
-void ReleaseLayer(openusd_layer* layer) noexcept
+inline void ReleaseLayer(openusd_layer* layer) noexcept
 {
     if (layer == nullptr)
     {
@@ -873,7 +873,7 @@ void ReleaseLayer(openusd_layer* layer) noexcept
     ReleaseStageReference(stage);
 }
 
-void FinalizeStageAccess(openusd_stage_access* access) noexcept
+inline void FinalizeStageAccess(openusd_stage_access* access) noexcept
 {
     openusd_stage* stage = access->stage;
     try
@@ -888,7 +888,7 @@ void FinalizeStageAccess(openusd_stage_access* access) noexcept
     ReleaseStageReference(stage);
 }
 
-std::string ConsumeErrors(TfErrorMark& mark)
+inline std::string ConsumeErrors(TfErrorMark& mark)
 {
     std::string message;
     for (const TfError& error : mark)
@@ -903,7 +903,7 @@ std::string ConsumeErrors(TfErrorMark& mark)
     return message;
 }
 
-UsdTimeCode GetTimeCode(int32_t time_sampled, double time_code)
+inline UsdTimeCode GetTimeCode(int32_t time_sampled, double time_code)
 {
     return time_sampled != 0 ? UsdTimeCode(time_code) : UsdTimeCode::Default();
 }
@@ -911,21 +911,21 @@ UsdTimeCode GetTimeCode(int32_t time_sampled, double time_code)
 bool IsValidPrimPath(const char* value);
 
 template <typename TValue>
-bool IsAligned(const TValue* values)
+inline bool IsAligned(const TValue* values)
 {
     return values == nullptr ||
         reinterpret_cast<uintptr_t>(values) % alignof(TValue) == 0;
 }
 
 template <typename TValue>
-bool IsValidArrayBuffer(const TValue* values, size_t count)
+inline bool IsValidArrayBuffer(const TValue* values, size_t count)
 {
     return (values != nullptr || count == 0) &&
         IsAligned(values) &&
         count <= std::numeric_limits<size_t>::max() / sizeof(TValue);
 }
 
-openusd_status ValidateAttributeType(
+inline openusd_status ValidateAttributeType(
     const UsdAttribute& attribute,
     const SdfValueTypeName& expected,
     const char* label,
@@ -940,7 +940,7 @@ openusd_status ValidateAttributeType(
 }
 
 template <typename TNative, typename TUsd, typename TCompatible, typename TConvert>
-openusd_status SetArrayAttribute(
+inline openusd_status SetArrayAttribute(
     const openusd_stage* stage,
     const char* prim_path,
     const char* attribute_name,
@@ -1007,7 +1007,7 @@ openusd_status SetArrayAttribute(
 }
 
 template <typename TNative, typename TUsd, typename TCompatible, typename TConvert>
-openusd_status GetArrayAttribute(
+inline openusd_status GetArrayAttribute(
     const openusd_stage* stage,
     const char* prim_path,
     const char* attribute_name,
@@ -1088,7 +1088,7 @@ openusd_status GetArrayAttribute(
 }
 
 template <typename TSchema>
-openusd_status GetGeomSchema(
+inline openusd_status GetGeomSchema(
     const openusd_stage* stage,
     const char* prim_path,
     const char* schema_name,
@@ -1119,7 +1119,7 @@ openusd_status GetGeomSchema(
     return OPENUSD_STATUS_OK;
 }
 
-bool GetVisibilityToken(int32_t value, TfToken* token)
+inline bool GetVisibilityToken(int32_t value, TfToken* token)
 {
     if (value == OPENUSD_GEOM_VISIBILITY_INHERITED)
     {
@@ -1134,7 +1134,7 @@ bool GetVisibilityToken(int32_t value, TfToken* token)
     return false;
 }
 
-bool GetVisibilityValue(const TfToken& token, int32_t* value)
+inline bool GetVisibilityValue(const TfToken& token, int32_t* value)
 {
     if (token == UsdGeomTokens->inherited)
     {
@@ -1149,7 +1149,7 @@ bool GetVisibilityValue(const TfToken& token, int32_t* value)
     return false;
 }
 
-bool GetPurposeToken(int32_t value, TfToken* token)
+inline bool GetPurposeToken(int32_t value, TfToken* token)
 {
     switch (value)
     {
@@ -1170,7 +1170,7 @@ bool GetPurposeToken(int32_t value, TfToken* token)
     }
 }
 
-bool GetPurposeValue(const TfToken& token, int32_t* value)
+inline bool GetPurposeValue(const TfToken& token, int32_t* value)
 {
     if (token == UsdGeomTokens->default_)
     {
@@ -1195,7 +1195,7 @@ bool GetPurposeValue(const TfToken& token, int32_t* value)
     return false;
 }
 
-bool GetInterpolationToken(int32_t value, TfToken* token)
+inline bool GetInterpolationToken(int32_t value, TfToken* token)
 {
     switch (value)
     {
@@ -1219,7 +1219,7 @@ bool GetInterpolationToken(int32_t value, TfToken* token)
     }
 }
 
-bool GetInterpolationValue(const TfToken& token, int32_t* value)
+inline bool GetInterpolationValue(const TfToken& token, int32_t* value)
 {
     const TfToken tokens[] = {
         UsdGeomTokens->constant,
@@ -1238,7 +1238,7 @@ bool GetInterpolationValue(const TfToken& token, int32_t* value)
     return false;
 }
 
-openusd_status ValidateMeshNormalsCardinality(
+inline openusd_status ValidateMeshNormalsCardinality(
     const UsdGeomMesh& mesh,
     const TfToken& interpolation,
     size_t normal_count,
@@ -1333,7 +1333,7 @@ openusd_status ValidateMeshNormalsCardinality(
     return OPENUSD_STATUS_OK;
 }
 
-bool GetSubdivisionToken(int32_t value, TfToken* token)
+inline bool GetSubdivisionToken(int32_t value, TfToken* token)
 {
     switch (value)
     {
@@ -1354,7 +1354,7 @@ bool GetSubdivisionToken(int32_t value, TfToken* token)
     }
 }
 
-bool GetSubdivisionValue(const TfToken& token, int32_t* value)
+inline bool GetSubdivisionValue(const TfToken& token, int32_t* value)
 {
     if (token == UsdGeomTokens->none)
     {
@@ -1379,7 +1379,7 @@ bool GetSubdivisionValue(const TfToken& token, int32_t* value)
     return false;
 }
 
-bool GetOrientationToken(int32_t value, TfToken* token)
+inline bool GetOrientationToken(int32_t value, TfToken* token)
 {
     if (value == OPENUSD_GEOM_ORIENTATION_RIGHT_HANDED)
     {
@@ -1394,7 +1394,7 @@ bool GetOrientationToken(int32_t value, TfToken* token)
     return false;
 }
 
-bool GetOrientationValue(const TfToken& token, int32_t* value)
+inline bool GetOrientationValue(const TfToken& token, int32_t* value)
 {
     if (token == UsdGeomTokens->rightHanded)
     {
@@ -1409,7 +1409,7 @@ bool GetOrientationValue(const TfToken& token, int32_t* value)
     return false;
 }
 
-bool GetProjectionToken(int32_t value, TfToken* token)
+inline bool GetProjectionToken(int32_t value, TfToken* token)
 {
     if (value == OPENUSD_GEOM_CAMERA_PERSPECTIVE)
     {
@@ -1424,7 +1424,7 @@ bool GetProjectionToken(int32_t value, TfToken* token)
     return false;
 }
 
-bool GetProjectionValue(const TfToken& token, int32_t* value)
+inline bool GetProjectionValue(const TfToken& token, int32_t* value)
 {
     if (token == UsdGeomTokens->perspective)
     {
@@ -1440,7 +1440,7 @@ bool GetProjectionValue(const TfToken& token, int32_t* value)
 }
 
 template <typename TNative, typename TUsd, typename TConvert>
-openusd_status SetSchemaArray(
+inline openusd_status SetSchemaArray(
     const UsdAttribute& attribute,
     const TNative* values,
     size_t count,
@@ -1478,7 +1478,7 @@ openusd_status SetSchemaArray(
 }
 
 template <typename TNative, typename TUsd, typename TConvert>
-openusd_status GetSchemaArray(
+inline openusd_status GetSchemaArray(
     const UsdAttribute& attribute,
     const UsdTimeCode& time,
     TNative* values,
@@ -1533,7 +1533,7 @@ openusd_status GetSchemaArray(
     return OPENUSD_STATUS_OK;
 }
 
-bool IsValidPrimPath(const char* value)
+inline bool IsValidPrimPath(const char* value)
 {
     if (value == nullptr)
     {
@@ -1543,7 +1543,7 @@ bool IsValidPrimPath(const char* value)
     return path.IsAbsolutePath() && path.IsPrimPath();
 }
 
-void FillStringList(
+inline void FillStringList(
     openusd_string_list* result,
     const std::vector<std::string>& values,
     openusd_string_list_view* view)
@@ -1575,7 +1575,7 @@ void FillStringList(
     }
 }
 
-void ResetStringListOutput(
+inline void ResetStringListOutput(
     openusd_string_list** list,
     openusd_string_list_view* view) noexcept
 {
@@ -1583,7 +1583,7 @@ void ResetStringListOutput(
     ResetVersionedAbiOutput(view);
 }
 
-void ResetPayloadArcListOutput(
+inline void ResetPayloadArcListOutput(
     openusd_payload_arc_list** list,
     openusd_payload_arc_list_view* view) noexcept
 {
@@ -1614,7 +1614,7 @@ struct PayloadArcValue
     std::string source_layer_identifier;
 };
 
-void AppendPackedString(
+inline void AppendPackedString(
     openusd_payload_arc_list* result,
     const std::string& value)
 {
@@ -1627,7 +1627,7 @@ void AppendPackedString(
     result->data.push_back('\0');
 }
 
-void FillPayloadArcList(
+inline void FillPayloadArcList(
     openusd_payload_arc_list* result,
     const std::vector<PayloadArcValue>& values,
     openusd_payload_arc_list_view* view)
@@ -1663,7 +1663,7 @@ void FillPayloadArcList(
 }
 
 template <typename TAction>
-openusd_status GuardStringListOutput(
+inline openusd_status GuardStringListOutput(
     openusd_error_buffer* error,
     openusd_string_list** list,
     openusd_string_list_view* view,
@@ -1690,7 +1690,7 @@ openusd_status GuardStringListOutput(
 }
 
 template <typename TAction>
-openusd_status GuardPayloadArcListOutput(
+inline openusd_status GuardPayloadArcListOutput(
     openusd_error_buffer* error,
     openusd_payload_arc_list** list,
     openusd_payload_arc_list_view* view,
@@ -1716,7 +1716,7 @@ openusd_status GuardPayloadArcListOutput(
     return status;
 }
 
-openusd_status ValidateStringListView(
+inline openusd_status ValidateStringListView(
     const openusd_string_list_view* view,
     const char* label,
     openusd_error_buffer* error)
@@ -1774,7 +1774,7 @@ openusd_status ValidateStringListView(
     return OPENUSD_STATUS_OK;
 }
 
-std::vector<SdfPath> ReadPathList(const openusd_string_list_view* targets)
+inline std::vector<SdfPath> ReadPathList(const openusd_string_list_view* targets)
 {
     std::vector<SdfPath> paths;
     if (targets == nullptr || targets->count == 0)
@@ -1796,7 +1796,7 @@ std::vector<SdfPath> ReadPathList(const openusd_string_list_view* targets)
     return paths;
 }
 
-openusd_status ReadMetadataValue(
+inline openusd_status ReadMetadataValue(
     const VtValue& stored,
     int32_t requested_kind,
     openusd_metadata_value* value,
@@ -1854,7 +1854,7 @@ openusd_status ReadMetadataValue(
     }
 }
 
-VtValue MakeMetadataValue(const openusd_metadata_value* value, const char* string_value)
+inline VtValue MakeMetadataValue(const openusd_metadata_value* value, const char* string_value)
 {
     switch (value->kind)
     {
@@ -1871,7 +1871,7 @@ VtValue MakeMetadataValue(const openusd_metadata_value* value, const char* strin
     }
 }
 
-SdfLayerHandle FindLayerInStack(const openusd_stage* stage, const std::string& identifier)
+inline SdfLayerHandle FindLayerInStack(const openusd_stage* stage, const std::string& identifier)
 {
     for (const SdfLayerHandle& layer : stage->value->GetLayerStack(true))
     {
@@ -1883,7 +1883,7 @@ SdfLayerHandle FindLayerInStack(const openusd_stage* stage, const std::string& i
     return {};
 }
 
-bool IsKnownLayerIdentifier(const openusd_stage* stage, const std::string& identifier)
+inline bool IsKnownLayerIdentifier(const openusd_stage* stage, const std::string& identifier)
 {
     if (FindLayerInStack(stage, identifier))
     {
@@ -1893,7 +1893,7 @@ bool IsKnownLayerIdentifier(const openusd_stage* stage, const std::string& ident
     return std::find(mutedLayers.begin(), mutedLayers.end(), identifier) != mutedLayers.end();
 }
 
-openusd_status SetEditTargetLayer(
+inline openusd_status SetEditTargetLayer(
     const openusd_stage* stage,
     const SdfLayerHandle& layer,
     openusd_error_buffer* error)
@@ -1930,7 +1930,7 @@ openusd_status SetEditTargetLayer(
     return OPENUSD_STATUS_OK;
 }
 
-openusd_status ReadAbsolutePrimPaths(
+inline openusd_status ReadAbsolutePrimPaths(
     const openusd_string_list_view* view,
     std::vector<SdfPath>* paths,
     openusd_error_buffer* error)
@@ -1983,7 +1983,7 @@ openusd_status ReadAbsolutePrimPaths(
     return OPENUSD_STATUS_OK;
 }
 
-SdfValueTypeName GetShadeValueType(openusd_shade_value_type value)
+inline SdfValueTypeName GetShadeValueType(openusd_shade_value_type value)
 {
     switch (value)
     {
@@ -2008,7 +2008,7 @@ SdfValueTypeName GetShadeValueType(openusd_shade_value_type value)
     }
 }
 
-openusd_shade_value_type GetShadeValueType(const SdfValueTypeName& value)
+inline openusd_shade_value_type GetShadeValueType(const SdfValueTypeName& value)
 {
     if (value == SdfValueTypeNames->Float)
     {
@@ -2045,7 +2045,7 @@ openusd_shade_value_type GetShadeValueType(const SdfValueTypeName& value)
     return OPENUSD_SHADE_VALUE_INVALID;
 }
 
-bool AreShadeConnectionTypesCompatible(
+inline bool AreShadeConnectionTypesCompatible(
     const SdfValueTypeName& source,
     const SdfValueTypeName& destination)
 {
@@ -2054,7 +2054,7 @@ bool AreShadeConnectionTypesCompatible(
          destination == SdfValueTypeNames->Color3f);
 }
 
-UsdPrim GetRequiredPrim(
+inline UsdPrim GetRequiredPrim(
     const openusd_stage* stage,
     const char* prim_path,
     openusd_error_buffer* error)
@@ -2072,7 +2072,7 @@ UsdPrim GetRequiredPrim(
     return prim;
 }
 
-UsdShadeConnectableAPI GetRequiredConnectable(
+inline UsdShadeConnectableAPI GetRequiredConnectable(
     const openusd_stage* stage,
     const char* prim_path,
     openusd_error_buffer* error)
@@ -2090,7 +2090,7 @@ UsdShadeConnectableAPI GetRequiredConnectable(
     return connectable;
 }
 
-UsdShadeInput GetRequiredShadeInput(
+inline UsdShadeInput GetRequiredShadeInput(
     const openusd_stage* stage,
     const char* prim_path,
     const char* input_name,
@@ -2115,7 +2115,7 @@ UsdShadeInput GetRequiredShadeInput(
     return input;
 }
 
-UsdShadeOutput GetRequiredShadeOutput(
+inline UsdShadeOutput GetRequiredShadeOutput(
     const openusd_stage* stage,
     const char* prim_path,
     const char* output_name,
@@ -2140,7 +2140,7 @@ UsdShadeOutput GetRequiredShadeOutput(
     return output;
 }
 
-openusd_status ValidateShadeInputType(
+inline openusd_status ValidateShadeInputType(
     const UsdShadeInput& input,
     openusd_shade_value_type expected,
     openusd_error_buffer* error)
@@ -2159,7 +2159,7 @@ openusd_status ValidateShadeInputType(
     return OPENUSD_STATUS_OK;
 }
 
-UsdShadeAttributeType GetShadeAttributeType(openusd_shade_attribute_type value)
+inline UsdShadeAttributeType GetShadeAttributeType(openusd_shade_attribute_type value)
 {
     switch (value)
     {
@@ -2172,7 +2172,7 @@ UsdShadeAttributeType GetShadeAttributeType(openusd_shade_attribute_type value)
     }
 }
 
-openusd_shade_attribute_type GetShadeAttributeType(UsdShadeAttributeType value)
+inline openusd_shade_attribute_type GetShadeAttributeType(UsdShadeAttributeType value)
 {
     switch (value)
     {
@@ -2186,7 +2186,7 @@ openusd_shade_attribute_type GetShadeAttributeType(UsdShadeAttributeType value)
 }
 
 template <typename TValue>
-openusd_status SetShadeInputValue(
+inline openusd_status SetShadeInputValue(
     const openusd_stage* stage,
     const char* shader_path,
     const char* input_name,
@@ -2217,7 +2217,7 @@ openusd_status SetShadeInputValue(
 }
 
 template <typename TValue>
-openusd_status GetShadeInputValue(
+inline openusd_status GetShadeInputValue(
     const openusd_stage* stage,
     const char* shader_path,
     const char* input_name,
@@ -2248,7 +2248,7 @@ openusd_status GetShadeInputValue(
 }
 
 template <typename TShadeProperty>
-openusd_status GetConnectedShadeSource(
+inline openusd_status GetConnectedShadeSource(
     const TShadeProperty& property,
     std::unique_ptr<openusd_string_list>& result,
     openusd_string_list_view* view,
@@ -2285,7 +2285,7 @@ openusd_status GetConnectedShadeSource(
 }
 
 template <typename TShadeProperty>
-openusd_status GetConnectedShadeSources(
+inline openusd_status GetConnectedShadeSources(
     const TShadeProperty& property,
     std::unique_ptr<openusd_string_list>& result,
     openusd_string_list_view* view,
@@ -2320,7 +2320,7 @@ openusd_status GetConnectedShadeSources(
 }
 
 template <typename TValue>
-openusd_status SetLuxAttribute(
+inline openusd_status SetLuxAttribute(
     const UsdAttribute& attribute,
     const TValue& value,
     const char* label,
@@ -2338,7 +2338,7 @@ openusd_status SetLuxAttribute(
 }
 
 template <typename TValue>
-openusd_status GetLuxAttribute(
+inline openusd_status GetLuxAttribute(
     const UsdAttribute& attribute,
     TValue* value,
     const char* label,
@@ -2356,7 +2356,7 @@ openusd_status GetLuxAttribute(
     return OPENUSD_STATUS_OK;
 }
 
-bool IsLuxSchema(const UsdPrim& prim, openusd_lux_schema_kind schema_kind)
+inline bool IsLuxSchema(const UsdPrim& prim, openusd_lux_schema_kind schema_kind)
 {
     switch (schema_kind)
     {
@@ -2377,7 +2377,7 @@ bool IsLuxSchema(const UsdPrim& prim, openusd_lux_schema_kind schema_kind)
     }
 }
 
-openusd_status GetLuxLight(
+inline openusd_status GetLuxLight(
     const openusd_stage* stage,
     const char* prim_path,
     UsdPrim* prim,
@@ -2405,7 +2405,7 @@ openusd_status GetLuxLight(
     return OPENUSD_STATUS_OK;
 }
 
-openusd_status GetLuxLight(
+inline openusd_status GetLuxLight(
     const openusd_stage* stage,
     const char* prim_path,
     UsdLuxLightAPI* light,
@@ -2415,7 +2415,7 @@ openusd_status GetLuxLight(
     return GetLuxLight(stage, prim_path, &prim, light, error);
 }
 
-UsdAttribute GetLuxShapeAttribute(
+inline UsdAttribute GetLuxShapeAttribute(
     const UsdPrim& prim,
     openusd_lux_shape_property property,
     bool create,
@@ -2486,7 +2486,7 @@ UsdAttribute GetLuxShapeAttribute(
     return {};
 }
 
-UsdAttribute GetLuxTextureAttribute(
+inline UsdAttribute GetLuxTextureAttribute(
     const UsdPrim& prim,
     openusd_lux_asset_property property,
     bool create,
@@ -2511,7 +2511,7 @@ UsdAttribute GetLuxTextureAttribute(
     return {};
 }
 
-UsdAttribute GetLuxShapingAttribute(
+inline UsdAttribute GetLuxShapingAttribute(
     const UsdLuxShapingAPI& shaping,
     openusd_lux_shaping_property property,
     bool create,
@@ -2537,7 +2537,7 @@ UsdAttribute GetLuxShapingAttribute(
     }
 }
 
-GfMatrix4d ToMatrix4d(const openusd_matrix4d& value)
+inline GfMatrix4d ToMatrix4d(const openusd_matrix4d& value)
 {
     GfMatrix4d matrix(0.0);
     for (int row = 0; row < 4; ++row)
@@ -2550,7 +2550,7 @@ GfMatrix4d ToMatrix4d(const openusd_matrix4d& value)
     return matrix;
 }
 
-openusd_matrix4d FromMatrix4d(const GfMatrix4d& value)
+inline openusd_matrix4d FromMatrix4d(const GfMatrix4d& value)
 {
     openusd_matrix4d matrix{};
     for (int row = 0; row < 4; ++row)
@@ -2563,7 +2563,7 @@ openusd_matrix4d FromMatrix4d(const GfMatrix4d& value)
     return matrix;
 }
 
-bool IsFiniteMatrix(const openusd_matrix4d& value)
+inline bool IsFiniteMatrix(const openusd_matrix4d& value)
 {
     return std::all_of(
         std::begin(value.values),
@@ -2571,7 +2571,7 @@ bool IsFiniteMatrix(const openusd_matrix4d& value)
         [](double component) { return std::isfinite(component); });
 }
 
-openusd_status ReadSkelTokens(
+inline openusd_status ReadSkelTokens(
     const openusd_string_list_view* view,
     bool require_topology,
     VtTokenArray* tokens,
@@ -2640,7 +2640,7 @@ openusd_status ReadSkelTokens(
     return OPENUSD_STATUS_OK;
 }
 
-std::vector<std::string> ToStrings(const VtTokenArray& tokens)
+inline std::vector<std::string> ToStrings(const VtTokenArray& tokens)
 {
     std::vector<std::string> values;
     values.reserve(tokens.size());
@@ -2651,7 +2651,7 @@ std::vector<std::string> ToStrings(const VtTokenArray& tokens)
     return values;
 }
 
-bool IsSkelSchema(const UsdPrim& prim, openusd_skel_schema_kind schema_kind)
+inline bool IsSkelSchema(const UsdPrim& prim, openusd_skel_schema_kind schema_kind)
 {
     switch (schema_kind)
     {
@@ -2668,7 +2668,7 @@ bool IsSkelSchema(const UsdPrim& prim, openusd_skel_schema_kind schema_kind)
     }
 }
 
-openusd_status GetSkelPrim(
+inline openusd_status GetSkelPrim(
     const openusd_stage* stage,
     const char* prim_path,
     UsdPrim* prim,
@@ -2688,7 +2688,7 @@ openusd_status GetSkelPrim(
     return OPENUSD_STATUS_OK;
 }
 
-openusd_status GetSkelSkeleton(
+inline openusd_status GetSkelSkeleton(
     const openusd_stage* stage,
     const char* prim_path,
     UsdSkelSkeleton* skeleton,
@@ -2709,7 +2709,7 @@ openusd_status GetSkelSkeleton(
     return OPENUSD_STATUS_OK;
 }
 
-openusd_status GetSkelAnimation(
+inline openusd_status GetSkelAnimation(
     const openusd_stage* stage,
     const char* prim_path,
     UsdSkelAnimation* animation,
@@ -2730,7 +2730,7 @@ openusd_status GetSkelAnimation(
     return OPENUSD_STATUS_OK;
 }
 
-openusd_status GetSkelBinding(
+inline openusd_status GetSkelBinding(
     const openusd_stage* stage,
     const char* prim_path,
     UsdPrim* prim,
@@ -2752,7 +2752,7 @@ openusd_status GetSkelBinding(
 }
 
 template <typename TValue>
-openusd_status ValidateAuthoredArrayCardinality(
+inline openusd_status ValidateAuthoredArrayCardinality(
     const UsdAttribute& attribute,
     size_t expected,
     const char* label,
@@ -2783,7 +2783,7 @@ openusd_status ValidateAuthoredArrayCardinality(
     return OPENUSD_STATUS_OK;
 }
 
-openusd_status GetSkeletonJointCount(
+inline openusd_status GetSkeletonJointCount(
     const UsdSkelSkeleton& skeleton,
     size_t* count,
     openusd_error_buffer* error)
@@ -2798,7 +2798,7 @@ openusd_status GetSkeletonJointCount(
     return OPENUSD_STATUS_OK;
 }
 
-openusd_status GetAnimationJointCount(
+inline openusd_status GetAnimationJointCount(
     const UsdSkelAnimation& animation,
     size_t* count,
     openusd_error_buffer* error)
@@ -2813,7 +2813,7 @@ openusd_status GetAnimationJointCount(
     return OPENUSD_STATUS_OK;
 }
 
-UsdRelationship GetSkelBindingRelationship(
+inline UsdRelationship GetSkelBindingRelationship(
     const UsdSkelBindingAPI& binding,
     openusd_skel_binding_relationship relationship,
     bool create,
@@ -2833,7 +2833,7 @@ UsdRelationship GetSkelBindingRelationship(
     }
 }
 
-openusd_status ValidateSkelBindingTarget(
+inline openusd_status ValidateSkelBindingTarget(
     const openusd_stage* stage,
     openusd_skel_binding_relationship relationship,
     const SdfPath& target_path,
@@ -2861,7 +2861,7 @@ openusd_status ValidateSkelBindingTarget(
     return OPENUSD_STATUS_OK;
 }
 
-openusd_status GetBoundSkeletonJointCount(
+inline openusd_status GetBoundSkeletonJointCount(
     const UsdSkelBindingAPI& binding,
     size_t* count,
     openusd_error_buffer* error)
