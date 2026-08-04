@@ -855,6 +855,7 @@ def Xform "World"
         WriteEvidence("cull-style-back-divergence.txt", [line]);
         await Assert.That(maxChannelDelta).IsGreaterThan(MinimumCullDivergenceChannelDelta);
     }
+
     private static void WriteEvidence(string fileName, IEnumerable<string> lines)
     {
         string directory = Path.Combine(AppContext.BaseDirectory, "TestResults", "parity-capture");
