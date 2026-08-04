@@ -47,8 +47,8 @@ def Xform "World"
         uniform bool doubleSided = 1
         uniform token subdivisionScheme = "none"
         point3f[] points = [
-            (-0.80, -0.52, 0.08), (-0.20, -0.52, 0.08),
-            (-0.20, 0.48, 0.08), (-0.80, 0.48, 0.08)
+            (-0.925, -0.52, 0.08), (-0.325, -0.52, 0.08),
+            (-0.325, 0.48, 0.08), (-0.925, 0.48, 0.08)
         ]
         int[] faceVertexCounts = [3, 3]
         int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
@@ -67,8 +67,8 @@ def Xform "World"
         uniform bool doubleSided = 1
         uniform token subdivisionScheme = "none"
         point3f[] points = [
-            (0.20, -0.52, 0.08), (0.80, -0.52, 0.08),
-            (0.80, 0.48, 0.08), (0.20, 0.48, 0.08)
+            (0.325, -0.52, 0.08), (0.925, -0.52, 0.08),
+            (0.925, 0.48, 0.08), (0.325, 0.48, 0.08)
         ]
         int[] faceVertexCounts = [3, 3]
         int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
@@ -579,21 +579,28 @@ def Xform "World"
             "materialx-generated-self-consistency maxChannelDelta=" +
             maxChannelDelta.ToString(CultureInfo.InvariantCulture) +
             " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture));
+        const string pairDescription =
+            "generated side: ND_constant_color3 -> ND_multiply_color3FA -> ND_surface_unlit " +
+            "compiled by VkShaderGenerator/glslang and selected as generated SPIR-V; " +
+            "reference side: checked UsdPreviewSurface shader with only emissiveColor set. " +
+            "Breaking generation, cache keying, or generated shader selection changes only the generated half.";
         WriteEvidence(
             "materialx-generated-self-consistency.txt",
             [
                 "materialx-generated-self-consistency maxChannelDelta=" +
                 maxChannelDelta.ToString(CultureInfo.InvariantCulture) +
                 " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture),
+                pairDescription,
             ]);
 
         if (maxChannelDelta > MaximumShadedChannelDelta ||
             meanChannelDelta > MaximumShadedMeanChannelDelta)
         {
-            Console.WriteLine(
-                "materialx-generated-self-consistency is measured but not gated yet: " +
-                "generated Vulkan output does not match the PreviewSurface equivalent.");
+            WriteCapture("materialx-generated-self-consistency", "mismatch", image);
         }
+
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
     }
 
 
