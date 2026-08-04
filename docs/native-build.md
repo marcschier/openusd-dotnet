@@ -55,7 +55,9 @@ that exact vcpkg commit under `native/.cache`, and bootstraps the tool from the 
 then resolves the manifest from that baseline plus cesium-native's overlay ports/triplets, so the
 resolved port versions and port git-tree hashes are reproducible in `vcpkg-manifest-install.log`.
 
-The build is intentionally quarantined and does not feed the Core or Imaging packages.
+The build is intentionally quarantined and does not feed the Core or Imaging packages. The default
+`cmake --preset <rid>` shim presets search only `OPENUSD_ROOT`; use the `*-cesium` presets when
+building the optional Cesium shim so vcpkg libraries cannot leak into the locked OpenUSD runtime.
 cesium-native brings a much larger native surface than the lean OpenUSD runtime, including curl,
 OpenSSL, Draco, KTX, SQLite, Blend2D, asmjit, s2geometry/abseil, spdlog, meshoptimizer, WebP,
 zstd, and other support libraries. Keeping it in `native/install/cesium/<rid>` prevents a user who
