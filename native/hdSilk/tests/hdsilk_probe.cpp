@@ -132,6 +132,7 @@ struct ParsedPage
     std::vector<uint32_t> mesh_point_counts;
     std::vector<uint32_t> mesh_index_counts;
     std::vector<uint32_t> mesh_attribute_counts;
+    std::vector<uint32_t> mesh_cull_styles;
     uint32_t material_upsert_count = 0;
     uint32_t material_remove_count = 0;
     bool material_valid = true;
@@ -410,6 +411,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     result.mesh_point_counts.push_back(pointCount);
                     result.mesh_index_counts.push_back(indexCount);
                     result.mesh_attribute_counts.push_back(attributeCount);
+                    result.mesh_cull_styles.push_back(cullStyle);
                     result.mesh_identities.push_back(
                         ParsedMeshIdentity{
                             path,
@@ -1898,6 +1900,36 @@ int main(int argc, char** argv)
             << " textures=" << initial.material_texture_count
             << " asset='" << initial.material_texture_asset
             << "' binding='" << initial.shared_material_binding << "'\n";
+        return 5;
+    }
+
+    // Cull style must arrive as BACK_UNLESS_DOUBLE_SIDED, the usdview default
+    // hdSilk declares on its render params. UsdImagingGLRenderParams otherwise
+    // defaults to CULL_STYLE_NOTHING, and UsdImaging reports that as the
+    // per-prim value because USD gprims author doubleSided rather than a Hydra
+    // cull style. That made the renderer resolve "do not cull" for every mesh
+    // and silently stop honoring authored single-sidedness. A range check
+    // cannot catch this, because NOTHING is a legal value.
+    for (uint32_t cullStyle : initial.mesh_cull_styles)
+    {
+        if (cullStyle != OPENUSD_SILK_CULL_STYLE_BACK_UNLESS_DOUBLE_SIDED)
+        {
+            openusd_silk_session_release(session);
+            openusd_stage_release(stage);
+            std::cerr
+                << "hdSilk published cull style " << cullStyle
+                << " but the render params policy requires "
+                << OPENUSD_SILK_CULL_STYLE_BACK_UNLESS_DOUBLE_SIDED
+                << " so authored doubleSided is honored.\n";
+            return 5;
+        }
+    }
+    if (initial.mesh_cull_styles.empty())
+    {
+        openusd_silk_session_release(session);
+        openusd_stage_release(stage);
+        std::cerr << "hdSilk published no meshes, so the cull style policy "
+                     "check proved nothing.\n";
         return 5;
     }
 
