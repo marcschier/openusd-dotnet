@@ -814,6 +814,14 @@ openusd_status openusd_silk_session_sync(
             UsdImagingGLRenderParams parameters;
             parameters.frame = UsdTimeCode(time_code);
             parameters.showRender = true;
+            // UsdImagingGLRenderParams defaults cullStyle to CULL_STYLE_NOTHING,
+            // which UsdImaging reports as the per-prim fallback because USD gprims
+            // author doubleSided rather than a Hydra cull style. That made hdSilk
+            // resolve HdCullStyleNothing for every mesh and never cull, while the
+            // Storm reference culls single-sided back faces. Declare the usdview
+            // default explicitly so authored doubleSided is honored.
+            parameters.cullStyle =
+                UsdImagingGLCullStyle::CULL_STYLE_BACK_UNLESS_DOUBLE_SIDED;
             parameters.clipPlanes.reserve(camera->clip_plane_count);
             for (uint32_t plane = 0; plane < camera->clip_plane_count; ++plane)
             {
