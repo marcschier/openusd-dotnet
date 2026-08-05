@@ -2857,6 +2857,54 @@ def Xform "World"
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_028, 948, 262_144)),
             },
             new ParityScene(
+                "primvar-st-varying-texture",
+                Path.Combine(assetRoot, "parity-primvar-st-varying-texture.usda"),
+                "Texture-backed PreviewSurface samples a varying st primvar.",
+                ColorComparisonReady: true,
+                GateEnabled: true,
+                GateReason:
+                    "Varying st interpolation uses the same authored values as the vertex-texture " +
+                    "pennant but travels through Hydra's varying primvar descriptor before hdSilk " +
+                    "emits the vertex attribute. It gates at 1.000000 adjusted IoU, " +
+                    "0.218603 perturbation margin, and colour deltas max 4 / mean 1.717.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_156, 1_076, 262_144)),
+            },
+            new ParityScene(
+                "primvar-st-facevarying-texture",
+                Path.Combine(assetRoot, "parity-primvar-st-facevarying-texture.usda"),
+                "Texture-backed PreviewSurface samples a faceVarying st primvar.",
+                ColorComparisonReady: true,
+                GateEnabled: true,
+                GateReason:
+                    "Face-varying st interpolation forces hdSilk's expanded-topology path: one " +
+                    "texture coordinate per emitted face vertex after HdMeshUtil triangulation. " +
+                    "It gates at 1.000000 adjusted IoU, 0.218603 perturbation margin, and " +
+                    "colour deltas max 4 / mean 1.717.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_284, 1_204, 262_144)),
+            },
+            new ParityScene(
+                "primvar-st-uniform-texture",
+                Path.Combine(assetRoot, "parity-primvar-st-uniform-texture.usda"),
+                "Texture-backed PreviewSurface samples a uniform st primvar.",
+                ColorComparisonReady: true,
+                GateEnabled: true,
+                GateReason:
+                    "Uniform st interpolation forces one sampled coordinate per source face, then " +
+                    "hdSilk expands that value across each emitted triangle before shading. It " +
+                    "gates at 1.000000 adjusted IoU, 0.218603 perturbation margin, and colour " +
+                    "deltas max 4 / mean 1.347.",
+                RecommendedMinimumAdjustedIou: 0.92)
+            {
+                PerformanceBudgets = CurrentBackendBudgets(
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_284, 1_204, 262_144)),
+            },
+            new ParityScene(
                 "material-metallic-workflow",
                 Path.Combine(assetRoot, "parity-material-metallic-workflow.usda"),
                 "PreviewSurface metallic workflow lights a metallic prim beside a dielectric one.",
@@ -3291,6 +3339,9 @@ def Xform "World"
             "test-assets\\parity\\parity-orientation-asymmetric.usda",
             "test-assets\\parity\\parity-depth-overlap-multiprim.usda",
             "test-assets\\parity\\parity-material-normals-uv.usda",
+            "test-assets\\parity\\parity-primvar-st-varying-texture.usda",
+            "test-assets\\parity\\parity-primvar-st-facevarying-texture.usda",
+            "test-assets\\parity\\parity-primvar-st-uniform-texture.usda",
             "test-assets\\parity\\parity-point-instancer-cluster.usda",
             "test-assets\\parity\\parity-single-sided-winding.usda",
             "test-assets\\parity\\parity-clip-plane-asymmetric.usda",

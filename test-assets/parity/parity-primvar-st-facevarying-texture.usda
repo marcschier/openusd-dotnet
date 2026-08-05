@@ -1,0 +1,77 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 1
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "FaceVaryingStPennant" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/TextureMat>
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [
+            (-0.95, -0.50, 0.08), (0.25, -0.32, 0.08),
+            (0.82, 0.06, 0.08), (-0.55, 0.46, 0.08),
+            (-0.90, -0.05, 0.08)
+        ]
+        int[] faceVertexCounts = [3, 3, 3]
+        int[] faceVertexIndices = [0, 1, 4, 1, 2, 4, 2, 3, 4]
+        normal3f[] normals = [
+            (0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)
+        ] (
+            interpolation = "vertex"
+        )
+        texCoord2f[] primvars:st = [
+            (0.08, 0.12), (0.86, 0.16), (0.38, 0.43),
+            (0.86, 0.16), (0.72, 0.82), (0.38, 0.43),
+            (0.72, 0.82), (0.22, 0.78), (0.38, 0.43)
+        ] (
+            interpolation = "faceVarying"
+        )
+        color3f[] primvars:displayColor = [(1, 1, 1)]
+        uniform token primvars:displayColor:interpolation = "constant"
+    }
+    def Scope "Looks"
+    {
+        def Material "TextureMat"
+        {
+            token outputs:surface.connect = </World/Looks/TextureMat/PreviewSurface.outputs:surface>
+            def Shader "PreviewSurface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </World/Looks/TextureMat/BaseColor.outputs:rgb>
+                float inputs:roughness = 0.72
+                token outputs:surface
+            }
+
+            def Shader "BaseColor"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @parity-texture-asymmetric.png@
+                token inputs:sourceColorSpace = "sRGB"
+                token inputs:wrapS = "repeat"
+                token inputs:wrapT = "repeat"
+                float4 inputs:fallback = (1, 0, 1, 1)
+                float4 inputs:scale = (1, 1, 1, 1)
+                float4 inputs:bias = (0, 0, 0, 0)
+                float2 inputs:st.connect = </World/Looks/TextureMat/StReader.outputs:result>
+                float3 outputs:rgb
+            }
+
+            def Shader "StReader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                string inputs:varname = "st"
+                float2 outputs:result
+            }
+        }
+    }
+}
