@@ -71,6 +71,9 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
     internal ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics =>
         _backendRegistry.CaptureFrameDiagnostics();
 
+    internal ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
+        _backendRegistry.CaptureHydraSceneSnapshot();
+
     internal int GetCandidateSelectionCount(RenderBackendKind kind) =>
         _manager.GetCandidateSelectionCount(kind);
 
@@ -263,6 +266,17 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
     {
         ThrowIfDisposed();
         return _pickQueue.PickAsync(pixel, target, options, cancellationToken);
+    }
+
+    internal ValueTask<SilkFrameCaptureResult> CaptureFrameAsync(
+        int width,
+        int height,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        IViewerFrameCaptureBackend backend = _backendRegistry.CaptureFrameCaptureBackend() ??
+            throw new NotSupportedException("The active renderer cannot capture frames.");
+        return backend.CaptureFrameAsync(width, height, cancellationToken);
     }
 
     internal static async ValueTask<RenderBackendManagerResult>

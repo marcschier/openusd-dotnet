@@ -2,6 +2,7 @@
 
 using OpenUsd.Geom;
 using OpenUsd.Interop;
+using OpenUsd.Viewer;
 
 namespace OpenUsd.NativeCoverage.Tests;
 
@@ -120,6 +121,32 @@ public sealed class InspectionV2NativeCoverageTests
             await Assert.That(TfDebug.GetSymbolEnabled(symbol)).IsEqualTo(!before);
             await Assert.That(() => TfDebug.SetSymbolEnabled("__OPENUSD_DOTNET_UNKNOWN_DEBUG_SYMBOL__", true))
                 .Throws<OpenUsdNativeException>();
+        }
+        finally
+        {
+            TfDebug.SetSymbolEnabled(symbol, before);
+        }
+    }
+
+    [Test]
+    public async Task ViewerTfDebugPanelModelTogglesThroughAbiAndReloadsAbiState()
+    {
+        NativeCoverageRuntime.EnsureNativeLoaded();
+
+        const string symbol = "TF_ERROR_MARK_TRACKING";
+        var model = new ViewerTfDebugPanelModel();
+        bool before = TfDebug.GetSymbolEnabled(symbol);
+        try
+        {
+            ViewerTfDebugFlag changed = model.SetEnabled(symbol, !before);
+
+            await Assert.That(changed.Enabled).IsEqualTo(!before);
+            await Assert.That(TfDebug.GetSymbolEnabled(symbol)).IsEqualTo(!before);
+
+            TfDebug.SetSymbolEnabled(symbol, before);
+            ViewerTfDebugFlag reloaded = model.Load()
+                .Single(flag => string.Equals(flag.Name, symbol, StringComparison.Ordinal));
+            await Assert.That(reloaded.Enabled).IsEqualTo(before);
         }
         finally
         {
