@@ -81,6 +81,17 @@ try
         -Rid win-x64 `
         -Activate `
         -StartupHookPath $probe
+    $localNativePaths = @(
+        (Join-Path $repoRoot 'native/install/shim/win-x64/bin'),
+        (Join-Path $repoRoot 'native/install/win-x64/lib'),
+        (Join-Path $repoRoot 'native/install/win-x64/bin')
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Container }
+    if ($localNativePaths.Count -ne 0)
+    {
+        $env:PATH = ($localNativePaths -join [System.IO.Path]::PathSeparator) +
+            [System.IO.Path]::PathSeparator +
+            $env:PATH
+    }
     $driverRegistration = Register-VulkanTestRuntimeDriver `
         -ManifestPath $manifestPath
 

@@ -71,7 +71,7 @@
     },
     {
       "path": "eng/shaders/checked/executed-commands.json",
-      "sha256": "473bef9f1921ac7444d9ec79fe956728b64c2ed3a40fb646134b1cb70f033d07"
+      "sha256": "1ca83bf01ce6e41f5f4a7dc1d55f908594fe96129543f7e4e7b85ae365e7f01f"
     },
     {
       "path": "eng/shaders/expand-verified-archive.ps1",
@@ -95,7 +95,7 @@
     },
     {
       "path": "eng/shaders/scripts/normalize-reflection.py",
-      "sha256": "ccaa6934752757ee39c0ae4950e17488592ec51f842f979b9003bf366fb081c5"
+      "sha256": "6001abcbf957f78d45626d0efc9e3b097ef81623e5d75d79084941f6ada57be1"
     },
     {
       "path": "eng/shaders/scripts/publish-checked.py",
@@ -107,7 +107,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "b4491ee7abf4d2a1d52aebd6226b9d402a548e1c151fd5d3de67fd94385c58e5"
+      "sha256": "749cd4210d5ea4360c1731f972e51423cce74deec2b643b1bd903f4bb0a03dfc"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -123,7 +123,7 @@
     },
     {
       "path": "eng/shaders/shader-manifest.json",
-      "sha256": "8c80b287dd57e8017872b1be18771ef345b93f99e62e0a3a5d8440edb3ca1355"
+      "sha256": "2dec8991a0981e8fe7287384ba08303034f8c7301e715d9e0eb88b4aad0862f9"
     },
     {
       "path": "eng/shaders/sources/compute.slang",
@@ -131,7 +131,7 @@
     },
     {
       "path": "eng/shaders/sources/mesh.slang",
-      "sha256": "24a86e3e045317d0405228b459e0e16438352cbd17855ff71a4a6a2d0206163d"
+      "sha256": "17f4a198601fc90a1af1110c6db7b6e11c62617f9a3939abeb68816a60cd3343"
     },
     {
       "path": "eng/shaders/sources/pick.fragment.slang",
@@ -276,6 +276,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -303,6 +304,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -330,6 +332,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -366,23 +369,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.vertex.dxil",
-          "sha256": "a99443311cb6463302509e3b48cdee6d61884786b0d2ded6c5ab717cd970faa3",
-          "size": 6240
+          "sha256": "f9341dcb50377bccb88b2261df3be5a42dd807b6e9cdb2daad2ab118f32344dc",
+          "size": 6404
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.vertex.spv",
-          "sha256": "f29f0111f1b64eeb5c81ae69f03e0a74374a5d01cd80a60dff38ada06fad1698",
-          "size": 3092
+          "sha256": "a42c3cf3de17f721a89259079d2c8fa312ea3aad82f7759f5e6ec16565ff4105",
+          "size": 3192
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.vertex.metal",
-          "sha256": "159302b992ddb953e3e9c79bba2a992da7ac4d32a0ad9759f10e0bd6fb0d74e5",
-          "size": 4714
+          "sha256": "e85bd8902b070f105bb721b7b36f54b268bc0fca2d253ac5b4245e73dd3ae310",
+          "size": 4903
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.vertex.reflection.json",
-          "sha256": "eddfb8d998d505cbd1a5a82e54eaf1c366c115ec8c2dfeb54680aa2b569b6b2d",
-          "size": 21956
+          "sha256": "d67a812fe7a9611f748414e24ca881084ee9254448bf9996cd40423cd7a5ed07",
+          "size": 22302
         }
       }
     },
@@ -452,6 +455,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -480,6 +484,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -508,6 +513,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -544,23 +550,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.vertex.uv.dxil",
-          "sha256": "0d06437fb249f7ccf8b92d162bef1eddf4ec0cf330a05d21751dc292d3ac30ce",
-          "size": 6544
+          "sha256": "50b1274c4730750f099db161e01b3906ee99014a59df3df3b58606175ffe8424",
+          "size": 6708
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.vertex.uv.spv",
-          "sha256": "c39ec1131cb0792bee9327e590a18d13f7e8a04c3756ba7d7aac93bd0d16448d",
-          "size": 3328
+          "sha256": "5f219c2b2a9cfecad8593ecbde024dcbf07ffcbce67da5fd5b159032ea9c3c2b",
+          "size": 3432
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.vertex.uv.metal",
-          "sha256": "fd8fe023eae27ffdccfe1d12be36c8885fd2762c64021ef5f2bbf261c0378f68",
-          "size": 4923
+          "sha256": "8511fa7720b8f7c86836b18aebb6020e11edff0e364fd8d55fb49db5bf536434",
+          "size": 5112
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.vertex.uv.reflection.json",
-          "sha256": "e251ac795d756ce5a584d49e2b9f04aab8d05a7b187c78a2509069db1b5335da",
-          "size": 22639
+          "sha256": "546e005c3e482e68d29bf27a25cf4ccbd259cbaeffde7f2eb60491cae5ad58ae",
+          "size": 22985
         }
       }
     },
@@ -631,6 +637,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -660,6 +667,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -689,6 +697,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -725,23 +734,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.vertex.uv+normal.dxil",
-          "sha256": "3884ce689aa22c632dfbd9ad01848dff2e2e75e744d47ad7537d7ba4f224c093",
-          "size": 6960
+          "sha256": "fa64c0834dcbda948d6ded8b335b2034464445e2a4e417ec00460fede1d64a37",
+          "size": 7128
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.vertex.uv+normal.spv",
-          "sha256": "95688ccda4d5bdf1452637019e942e65032cf049c3f5a06e58abce1dcd88932a",
-          "size": 3560
+          "sha256": "6400ddcb93d493466dc053d4e6d4d483151cd1ea2b530485f4c6d06b455d7042",
+          "size": 3668
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.vertex.uv+normal.metal",
-          "sha256": "364f8f58b8eec0108b29b98663219bd43376c9643a1f0d818295b3446f2cc464",
-          "size": 5140
+          "sha256": "6c18f948e34bb9eab942346c6db0bf2a64e14b59d18b4c5b83eea8e7e2ee2003",
+          "size": 5329
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.vertex.uv+normal.reflection.json",
-          "sha256": "3a139dea1942ae2fda4ad8d824ab461f91d7477b42cb50daa100743dd9a9b527",
-          "size": 23322
+          "sha256": "cf0ba5de078f2b55e0a7691a72d40be5c11318415b46f35156a80ddaaefcfbd9",
+          "size": 23668
         }
       }
     },
@@ -752,6 +761,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -810,6 +848,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -837,6 +876,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -864,6 +904,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -900,23 +941,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.dxil",
-          "sha256": "e0f0bba4b82d7e88d00780ed3cf65ebd654517224754e3c789235631197c5b69",
-          "size": 10292
+          "sha256": "73231c77b13bf03fa94c53ac4fb12160443e07b89b32fb8e701a4f27aa09b0c1",
+          "size": 10428
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.spv",
-          "sha256": "1b7da2e098fa0bdd8a48e3e394a50fc9c01add64091461efece4b8b5b4725b0a",
-          "size": 14652
+          "sha256": "2671f90c4167c491a00f19577b859bc4e60fce7ee94f72f55b3a741b40447b60",
+          "size": 15844
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.metal",
-          "sha256": "2b8151fb15630a5baaec7986c5c16f46f793119c5fc310d4c9216e6f99dae0db",
-          "size": 17581
+          "sha256": "5fdab846c7037623da59a9437d59616365bee730c468de6aa522ecf7462a01d9",
+          "size": 17631
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.reflection.json",
-          "sha256": "fe3aa83e26c4cb9c92b7f529bebfb9165c651458ff26571818c68e68bef6f648",
-          "size": 27330
+          "sha256": "e9e861e2e6be70e8ee0d6085c96e7a930a16e16a3be8c86f9f78a3c11e0d7bb6",
+          "size": 29095
         }
       }
     },
@@ -927,6 +968,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -986,6 +1056,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -1014,6 +1085,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -1042,6 +1114,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -1078,23 +1151,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv.dxil",
-          "sha256": "8cb773fd5c8ed3fb07cba4744890b88c042b99f64b7f2281892913e68ec214b1",
-          "size": 10420
+          "sha256": "f1c31849139f2c1a13f9f94cdc9506c384266334c64144d2014ae53a93e2c211",
+          "size": 10560
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv.spv",
-          "sha256": "fd37e226f69d8f281de50fb02a33d9566f9286332263d2a693086b6903648a86",
-          "size": 14652
+          "sha256": "1b6c2f2643d2b31a2d40ba527a5007fcaf9126f923d241d294991cc45d574398",
+          "size": 15844
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv.metal",
-          "sha256": "fed5b9f1b751a631b9be47ccb6aee6b14f4a900fde1749c63ad205ea7b11c4d0",
-          "size": 17626
+          "sha256": "ee30d4e447c59177fe3cf5dfdcee6496f8148e03ddef51c33d0f65b947d5f8ef",
+          "size": 17676
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv.reflection.json",
-          "sha256": "556a5a6e21ac307238f9c18bb3261cc40a147b1b263df6b6a4a72ae01c1d4485",
-          "size": 27673
+          "sha256": "c0610cacb745b83cc9fa55cb4249005863cfdae5f1bc579c5096c61d3fe7817f",
+          "size": 29438
         }
       }
     },
@@ -1105,6 +1178,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -1145,19 +1247,6 @@
           }
         },
         {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
-            "set": 0
-          }
-        },
-        {
           "name": "baseColorTexture",
           "access": "read",
           "d3d": {
@@ -1191,6 +1280,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -1220,6 +1310,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -1249,6 +1340,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -1285,23 +1377,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor.dxil",
-          "sha256": "8731fad7e773528e23e2813ac30301dec73e81d605feb57b2daab6f96d6df013",
-          "size": 11192
+          "sha256": "9ee4a2747513031cea0f1b689e632b0472b808ec0eb9c7880a463580a13b687d",
+          "size": 11312
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor.spv",
-          "sha256": "36163c279241097bf1f80a002564e056d1b957eea308fa8b4570cb24c29f047c",
-          "size": 15232
+          "sha256": "011f8d3f20b5136f68dd8f6501a241ce0488b126b5e5981bcfc87507c97fcb6f",
+          "size": 16308
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor.metal",
-          "sha256": "085f3ef4c698dc03d208da922fae17e19f0db5b6d54a90fef1be99509622e3b4",
-          "size": 18231
+          "sha256": "e294f6f07c281d7c4a971e42925bc5461820f293aa0565200e95d3ccef399793",
+          "size": 18281
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor.reflection.json",
-          "sha256": "e754eaa6804bcb1be8dc4b9aa9dcbb436c4784e514b7402f9e3cdd6f1b893aa1",
-          "size": 29298
+          "sha256": "279ab46cb1bb8d082ee65cfa08c65f89e5c35d8212a53cd77c04251bbc3404b1",
+          "size": 30427
         }
       }
     },
@@ -1312,6 +1404,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -1352,19 +1473,6 @@
           }
         },
         {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
-            "set": 0
-          }
-        },
-        {
           "name": "normalTexture",
           "access": "read",
           "d3d": {
@@ -1398,6 +1506,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -1427,6 +1536,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -1456,6 +1566,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -1492,23 +1603,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.dxil",
-          "sha256": "90dadc68328e67746e9500fa1e2281ed434bbcc17f37d96d809fdbb765cedc51",
-          "size": 11616
+          "sha256": "4dfbc1b7042db201bd91c581823837a1193736ff78eae01846896c3f09176a95",
+          "size": 11736
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.spv",
-          "sha256": "c0c0e77ba16961ee39a342aac6527c1e849734f7e94507a5c251ba70a0e76dfa",
-          "size": 15632
+          "sha256": "bf40e98e703ec355d87e11fb003a52eb24b47418b787faa5c6dda849ebb39b3e",
+          "size": 16708
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.metal",
-          "sha256": "6c09937d02f211e09bf2f86355b6c3fbe6bebd6e54050d5bad344d3d42c624cf",
-          "size": 18454
+          "sha256": "7d20d2fbb91fa1863dfccd717b1c2b5f4d54314accd66658b9258a7d7558c08d",
+          "size": 18504
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.reflection.json",
-          "sha256": "514c2f7acd12bcbabee33d4305f40718d24e4aee58849ac06d4adb8e67ab3007",
-          "size": 29630
+          "sha256": "ab5bd80206dde0320b94b880801a936bd58673fc79167f037491b64c0f979c04",
+          "size": 30759
         }
       }
     },
@@ -1519,6 +1630,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -1559,19 +1699,6 @@
           }
         },
         {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
-            "set": 0
-          }
-        },
-        {
           "name": "roughnessMetallicTexture",
           "access": "read",
           "d3d": {
@@ -1605,6 +1732,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -1634,6 +1762,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -1663,6 +1792,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -1699,23 +1829,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+roughmetal.dxil",
-          "sha256": "2a0dcde83b764bb029976d0d88c2a7513ddacf53a92d45b7f7965d2bd0bf6b08",
-          "size": 11244
+          "sha256": "52041a2c0100e7e5fb6f665b2c2a827c7958240c09ffba97b4512c6ca4841173",
+          "size": 11364
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+roughmetal.spv",
-          "sha256": "9886d006162a5cef60de160dfaf11156e20726e2f4c8fbdc46f0ae34d85650ee",
-          "size": 15272
+          "sha256": "e417cc670feefc14bf9df33d1b8057048ae89130fb3cfcaef2954c6beb1f7d1d",
+          "size": 16348
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+roughmetal.metal",
-          "sha256": "de3da9bfd30c62c69e46c463d3cc6b2c586c1eddc0fa5c46b9a70e0f8affb34a",
-          "size": 18264
+          "sha256": "0c62ad0ee27d8ef51a9d0eb605b13b499b4adff4d1f81a08b9896a90bf6ea12c",
+          "size": 18314
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+roughmetal.reflection.json",
-          "sha256": "4c8b5be8bf435f4a87a98c869406ebe4f0c91663c3769b53417c9cb1ef2bfbcc",
-          "size": 29307
+          "sha256": "53aaed60b26ae89556fafa812b8cb4ef99c282808ea12baa96feb970c8c811b0",
+          "size": 30436
         }
       }
     },
@@ -1726,6 +1856,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -1766,19 +1925,6 @@
           }
         },
         {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
-            "set": 0
-          }
-        },
-        {
           "name": "emissiveTexture",
           "access": "read",
           "d3d": {
@@ -1812,6 +1958,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -1841,6 +1988,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -1870,6 +2018,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -1906,23 +2055,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+emissive.dxil",
-          "sha256": "842631aa73b99bfdb0f49304599f7b1537c800604677a7c753914de9bd28ffe4",
-          "size": 11152
+          "sha256": "e7ee6c0b3ee8239a5c382c71fe854836f1f06c47be8325b39362a68450a3165b",
+          "size": 11272
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+emissive.spv",
-          "sha256": "6e26425ca1fb59f6f3b54770577da3389f578e3fed063a4f7c1cea0aa6d483a9",
-          "size": 15116
+          "sha256": "5009ca3e00ed91e8e5830fa7609b5ee2c4582f056de0dfec637031eec0249b72",
+          "size": 16192
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+emissive.metal",
-          "sha256": "e53790e8e2b946504e7eef20c20f802f8a292861ebebeb6e47031aa2ea779711",
-          "size": 18036
+          "sha256": "7e1c9d51bb462571135145b46eebee94e7b8dad11d0c0159a6ba3d3c2d0be498",
+          "size": 18086
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+emissive.reflection.json",
-          "sha256": "5e0626d8f8dcee26a2f2e82292ff6b36880be5e64622afc17a0859e40e76923b",
-          "size": 29296
+          "sha256": "0f88e7ae53fb117d95ec046e5f053af97b47011cd10775a2a8bc64d091862391",
+          "size": 30425
         }
       }
     },
@@ -1933,6 +2082,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -1969,19 +2147,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -2033,6 +2198,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -2063,6 +2229,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -2093,6 +2260,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -2129,23 +2297,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal.dxil",
-          "sha256": "63b27f5957bec3ea9bc5288a728b8ba503986d230ad8f8fdb39087d2b9c4703b",
-          "size": 11764
+          "sha256": "e617449ca9f1fd138ddb41055efd7f6c63e1d5bb56dc73efa0c578229c17f0ad",
+          "size": 11884
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal.spv",
-          "sha256": "c875aa947f2b81f4ce5ca5fbba2161686e4e9d5ff75f58d9c40dfbba9e114a46",
-          "size": 15940
+          "sha256": "a419fc471f8d25f3567fad8d35ea5ff2d981b403d5fb3d8683fb11b7ace48dd9",
+          "size": 17016
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal.metal",
-          "sha256": "2588c8987eea82d7d1d9484a95de6bb2efcb1569a386a8ada9e46dde4fea0bba",
-          "size": 18923
+          "sha256": "3619bba5eadc73e5aa073363d626949ac71cfb035273118aa239ebb89634703f",
+          "size": 18973
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal.reflection.json",
-          "sha256": "88ef65747cca3e9457f842d789d5282e9e3dd5ccf2dd9b14966c0ce37ff3690a",
-          "size": 30619
+          "sha256": "022780f64802ff09c26cff73c60e3dfe3a5c074d1dfba0143a3ab446007c5f38",
+          "size": 31748
         }
       }
     },
@@ -2156,6 +2324,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -2192,19 +2389,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -2256,6 +2440,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -2286,6 +2471,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -2316,6 +2502,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -2352,23 +2539,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+roughmetal.dxil",
-          "sha256": "837c7912fbcb145be9ddafef3826fdcf4dd8d3b376c0a5b50c78542017b23a7c",
-          "size": 11396
+          "sha256": "9a30b8abbbeaa2c33f425faebd700e1fa5bb20f2d1fe2a5d09d76433c166ca49",
+          "size": 11516
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+roughmetal.spv",
-          "sha256": "d362da9f8cfd2c31bdcd5ebb20c323195d655f7b2dea72100102b52ef0a6eac6",
-          "size": 15580
+          "sha256": "a3906b7ae79e8dd0c945f974fbc03ac850f63315aa80e409cfaf8d1be9080589",
+          "size": 16656
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+roughmetal.metal",
-          "sha256": "4cb6917f1c0220d9b45decf368623c0182a2a769889cfb6b47780b982bd22972",
-          "size": 18733
+          "sha256": "9a50dca098380293c9126fb452f871fb5d456c92450bd8168cf27a0470945351",
+          "size": 18783
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+roughmetal.reflection.json",
-          "sha256": "716923eeea446a7c75366279c2a1143fa08ac77733b83632967f728a14a8d52c",
-          "size": 30296
+          "sha256": "d722ddfbb2a9efb7b23d39eed16627bd5277ef23f2d7c0c04e2adb6b0006d4ee",
+          "size": 31425
         }
       }
     },
@@ -2379,6 +2566,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -2415,19 +2631,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -2479,6 +2682,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -2509,6 +2713,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -2539,6 +2744,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -2575,23 +2781,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+emissive.dxil",
-          "sha256": "5ef6d05aa21bdf8be17c188a9c75da4f8d0f438f9dbfa8cb1f9a520124b742b1",
-          "size": 11316
+          "sha256": "1f6fa3337f42c1c0c073e857bf9481dd08bcadacd22c36c61d5b1b2b0d39f467",
+          "size": 11436
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+emissive.spv",
-          "sha256": "1c294fb202992f0b1361bd996340eedf4d70a04022a50f0bb7d7acb59d1dd058",
-          "size": 15416
+          "sha256": "a6ab200279b12306729bec208e128a0830cf8e299ed6dd018e2f07715df0f583",
+          "size": 16492
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+emissive.metal",
-          "sha256": "8a7db97fffbf94e952b59ad794ae46d5c38556d0d91f4271439baba316dc73d4",
-          "size": 18505
+          "sha256": "80e649bae18b2a0f2bb0a72268b88ff11c3bfd83cb68b58c1a649c1cb4f59ba2",
+          "size": 18555
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+emissive.reflection.json",
-          "sha256": "0b103ac09f92a8bf11781bea04b66da544a4a4a49d2b372aac0819c6d0629d32",
-          "size": 30285
+          "sha256": "a8fe469eb72334c91c90bfba474a1649bb0a581b539cc4b0180a8c8e7a83ac83",
+          "size": 31414
         }
       }
     },
@@ -2602,6 +2808,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -2638,19 +2873,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -2702,6 +2924,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -2732,6 +2955,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -2762,6 +2986,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -2798,23 +3023,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+roughmetal.dxil",
-          "sha256": "bacea0b25efab97e2d929df95efae24caedde55546de7f64244f1e9c17820579",
-          "size": 11804
+          "sha256": "f60673c67c4a5ca67e94091d42b6dff6d0daab004d8f003b8530454452337449",
+          "size": 11924
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+roughmetal.spv",
-          "sha256": "995327b30b6f94b95ff606af80caa71000c304ad6bf534a61cf62004d6587c78",
-          "size": 15980
+          "sha256": "91e872a9bcd9a5c32ae95ce0e2b16886bc7b29a34334925dd7e8ce06480904c9",
+          "size": 17056
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+roughmetal.metal",
-          "sha256": "1ad37863c6da0ed0dfa7e2a115259a4e3250140675e03319892834faf1e8a44d",
-          "size": 18956
+          "sha256": "3f0c335c5fb9b4765b330557fe9729b2b6cbee7955e53861a258d85e8ab64e60",
+          "size": 19006
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+roughmetal.reflection.json",
-          "sha256": "57112c21b735951c5635a026c84cc66a41ac83ebe6477d105cb7f379191f2102",
-          "size": 30628
+          "sha256": "45c7926f38e18c71c7a8ea5e943ae4f1d4dfb4f308d6f1f103325f105ba85dd6",
+          "size": 31757
         }
       }
     },
@@ -2825,6 +3050,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -2861,19 +3115,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -2925,6 +3166,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -2955,6 +3197,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -2985,6 +3228,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -3021,23 +3265,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+emissive.dxil",
-          "sha256": "4bcab11973f32407ddd7ef10fdaf50919e698f4d02ca7b5456f3e2dbcba8ffcc",
-          "size": 11732
+          "sha256": "18068986e6feaa72349b4e0e0c532fa3284913c25602161c5148dd024e979d03",
+          "size": 11856
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+emissive.spv",
-          "sha256": "9eb046f75625b98d00b17b8d10f2b788ee4aef21b8e426544094b0e7c61cb33c",
-          "size": 15816
+          "sha256": "4841e5cba7e609f1550f50b16b4d69c10a5552bfb7422c2c3ec7323dadbcad41",
+          "size": 16892
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+emissive.metal",
-          "sha256": "a3fd299f6d0b2c0568a800f272624a6dcf85c263bdd26f2763618908a3f7a483",
-          "size": 18728
+          "sha256": "36b6adde115849f6c2f2ede36fe7f5f17d26d881e57c7340996de7097f10d15c",
+          "size": 18778
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+emissive.reflection.json",
-          "sha256": "0d72c21f63fc8416babcd79fb4448b40788b35a38aa7f1183b9333ec5c68a81b",
-          "size": 30617
+          "sha256": "4c9eea6c64435b9a58956af6fc3154eff99f9229478d11fdeaa85a0403daea74",
+          "size": 31746
         }
       }
     },
@@ -3048,6 +3292,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -3084,19 +3357,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -3148,6 +3408,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -3178,6 +3439,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -3208,6 +3470,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -3244,23 +3507,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+roughmetal+emissive.dxil",
-          "sha256": "69af7b34c1c4150f771b9dbae6b0941bb529b1b6ad6bcb1cc1811f690e0f412b",
-          "size": 11356
+          "sha256": "63552b0d62a4642166f3391d544343f4cf99d2f2e41c74e053eef43b5d32077d",
+          "size": 11480
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+roughmetal+emissive.spv",
-          "sha256": "70f71c10340d668fe59c0c7f56ae2cd94a1024994afeadb5f923619dea45909c",
-          "size": 15456
+          "sha256": "dbcdad49e754493ba47c4db7c246e6955922945be58dd3cfd70c670853772489",
+          "size": 16532
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+roughmetal+emissive.metal",
-          "sha256": "afe774609cc12ccdab0fa76fac97c2382c393eff9e1cbe44f9db19908f95f45c",
-          "size": 18538
+          "sha256": "c88b314d0174d3f1102cb3d1e7c7d1883469b9f2725c503c6483536434f85199",
+          "size": 18588
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+roughmetal+emissive.reflection.json",
-          "sha256": "7fba5773e8859e40dc8f5bc2b5a9bead29e476ebb93c6ceed3e1bfcc4da5211a",
-          "size": 30294
+          "sha256": "770c5d5254d7f47988f02d1068bf413f4ae6d796e39fddb2f1cd491bca7a5c78",
+          "size": 31423
         }
       }
     },
@@ -3271,6 +3534,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -3307,19 +3599,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -3385,6 +3664,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -3416,6 +3696,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -3447,6 +3728,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -3483,23 +3765,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+roughmetal.dxil",
-          "sha256": "d5060b62fd0b1f89f217d5b750d41b91dbe0ea936608173bcfaa0b92915d594b",
-          "size": 11972
+          "sha256": "3beac7ab3dd6f9e4c201436190c23b3de8966ca2faff99818b8a5328a1a21f0e",
+          "size": 12096
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+roughmetal.spv",
-          "sha256": "558e3ad3682b7763f03582bb83d72355b94d5337ea5e284ee6e3d02ae5e46295",
-          "size": 16280
+          "sha256": "46865d8b456f3c3ae4f8059be7775831006b064492e3f0bbae1db83bf8d11070",
+          "size": 17356
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+roughmetal.metal",
-          "sha256": "90ac9b03962396767cce0fa9739eab88e584de0fc1ac12f588e1ffbd15588f5b",
-          "size": 19425
+          "sha256": "94ef9b1185a536699f53802e0dc528ce36b81c06551e899f991a2f8d0bd21324",
+          "size": 19475
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+roughmetal.reflection.json",
-          "sha256": "643c34456e22a05e619c2903f53db6d9d3f3e76312d722f2686ea8980b6699c8",
-          "size": 31617
+          "sha256": "3eca41f9a3e4300e34e0515a209f8a68c92ed16ecdc6feff8bab2d20fdcca8e5",
+          "size": 32746
         }
       }
     },
@@ -3510,6 +3792,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -3546,19 +3857,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -3624,6 +3922,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -3655,6 +3954,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -3686,6 +3986,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -3722,23 +4023,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+emissive.dxil",
-          "sha256": "5d6cc416712a27ff3e549363f3f83cd740e16006ee64a8c85131f8b2f5e9eb40",
-          "size": 11908
+          "sha256": "122058f02b2fb63c6bcd6204981e6308b15e8ea38a5b12ae7f3b6490972c7b28",
+          "size": 12028
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+emissive.spv",
-          "sha256": "2fc56e0f69b8316a1c7fd9aa06fd573636c3277e30ff5d5a006ad9c9e87fc303",
-          "size": 16124
+          "sha256": "505112354b9123ba149914ef12819ad5356213f73085b49dc59a414fa754c2bf",
+          "size": 17200
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+emissive.metal",
-          "sha256": "3ac8761c7cedce635a2663613943ce5bff9452d930d55a7c8957e8c8f0af01bb",
-          "size": 19197
+          "sha256": "79020d494cb525844a7abd230b83945bac5693391556770b4c6ac6b3cf257f31",
+          "size": 19247
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+emissive.reflection.json",
-          "sha256": "45a3c8e838427e612542dd75f91c9d3b8eb5e026124748fc85ca78906feccc6f",
-          "size": 31606
+          "sha256": "bc088005d338c79646f98aea1b0f2cce451454b0fd60632e7923734246119c89",
+          "size": 32735
         }
       }
     },
@@ -3749,6 +4050,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -3785,19 +4115,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -3863,6 +4180,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -3894,6 +4212,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -3925,6 +4244,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -3961,23 +4281,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+roughmetal+emissive.dxil",
-          "sha256": "a538ef36240cb5c0b8911379466d89f75a843a4e5006e50934a0885285c4c30f",
-          "size": 11532
+          "sha256": "90656a24cf16477afccd2e3db5d23be8de7a3b947481b7b4c68b3962ce73c196",
+          "size": 11652
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+roughmetal+emissive.spv",
-          "sha256": "70bad2d17c6b33301ff2168baa25f2dc24c40cabc116c4777bb8d0ebe68b2761",
-          "size": 15764
+          "sha256": "4d4f77f1ee5fb1c8c5214d1536136d23fc583f8f852d5d1ec747c8f034f3a171",
+          "size": 16840
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+roughmetal+emissive.metal",
-          "sha256": "c1d3f083def0d59e5776bd33ab98b5b4cd2bb3d4152b620760eb7c229431400c",
-          "size": 19007
+          "sha256": "86149a6f7ab7ba74bf6eb29ce2de420a2827d0ebf82b59177085f3ba6c882c98",
+          "size": 19057
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+roughmetal+emissive.reflection.json",
-          "sha256": "5aa17c5ca2456a416b24bbbe217955627459876ab56bd77c85b0caa639622f1a",
-          "size": 31283
+          "sha256": "f251882a35a60f424e9dddfcad689fbcdcc891d29682a97fd9678e3ec505e61a",
+          "size": 32412
         }
       }
     },
@@ -3988,6 +4308,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -4024,19 +4373,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -4102,6 +4438,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -4133,6 +4470,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -4164,6 +4502,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -4200,23 +4539,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+roughmetal+emissive.dxil",
-          "sha256": "2c4f1ca7ae7ab97bdc537b7b3193edd83c47f7c74ff9f263acf8bf941d4add9e",
-          "size": 11952
+          "sha256": "9a509c1c189b07d44bf9a0382a75685e007608ad64ea071d8109bf50513c3f07",
+          "size": 12068
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+roughmetal+emissive.spv",
-          "sha256": "8d46b0c44bdd93a64653cd8a13c9c1089fcd6f1f505b6912c00ad70283b787ab",
-          "size": 16164
+          "sha256": "b2c40ba24ddfc315304561f1906bbe6145e8be3a0a12114f15e39d41cd2dabc8",
+          "size": 17240
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+roughmetal+emissive.metal",
-          "sha256": "2533f0f119352c767ddf13c3167aa46a9ec7278ffc296a29b2a19b6af5cbc33e",
-          "size": 19230
+          "sha256": "bdc35f6a244c487e8f91008e05eccf075ec9cc068aace59040d2d7d49df2bfb9",
+          "size": 19280
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal+roughmetal+emissive.reflection.json",
-          "sha256": "2c5e5d655256b2ad8d7a6edf4ec8b82bc48b6a12b65593f0a5686b8ec08e5ce5",
-          "size": 31615
+          "sha256": "d7e81ebb31d81b013a886b35ecd1a5feabbce35d1f46f5798385745f53eb96aa",
+          "size": 32744
         }
       }
     },
@@ -4227,6 +4566,35 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resourceContract": [
+        {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -4263,19 +4631,6 @@
           },
           "vulkan": {
             "binding": 8,
-            "set": 0
-          }
-        },
-        {
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
             "set": 0
           }
         },
@@ -4355,6 +4710,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -4387,6 +4743,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -4419,6 +4776,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -4455,23 +4813,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+roughmetal+emissive.dxil",
-          "sha256": "2725a60d701f7459ec593ea0a6bb177f2a6dfcc33232ebb6697948bb610b36be",
-          "size": 12124
+          "sha256": "33175794e9d25e9a0e1aa89bd114cb0b881c4c53736f0f6e674820189620ac79",
+          "size": 12244
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+roughmetal+emissive.spv",
-          "sha256": "4d9f4c436e3dcb827dd03ad4d5fa93f035db9d239e0b8d437e942de185df87dd",
-          "size": 16472
+          "sha256": "20534bff8e237b61d56526efa694a3673379c39c9e0ac614f5e749742e475761",
+          "size": 17548
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+roughmetal+emissive.metal",
-          "sha256": "35ec35998b74c272ed890450c25d9ed81044eb300ee759b6dbaa49c11cc5f5cc",
-          "size": 19699
+          "sha256": "f0f55987c332a7bdf4c1b2960b07a33182480192df28fe987079761448cf9dc2",
+          "size": 19749
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+basecolor+normal+roughmetal+emissive.reflection.json",
-          "sha256": "eea0470f13bd7db1a4a517aefd700ddbcf0a8cdc48c4c0027d50fe2c09d39979",
-          "size": 32604
+          "sha256": "38cf2fe78d9889dd4025366ec0ad4940f98575d88b294de278d97f2ec3595080",
+          "size": 33733
         }
       }
     },
@@ -4512,6 +4870,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -4537,6 +4896,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -4562,6 +4922,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -4598,7 +4959,7 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/pick.vertex.dxil",
-          "sha256": "0796a8c15c4e8b46927a3d4dffec53246a341876fc5740249062ee444d232077",
+          "sha256": "fb50c77aa9beec49bc2647976ab5811206f0546e107c23e5f0a030f18fab8eb2",
           "size": 4008
         },
         "spv": {
@@ -4655,6 +5016,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -4680,6 +5042,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -4705,6 +5068,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -4741,8 +5105,8 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/pick.fragment.dxil",
-          "sha256": "6f13c55f9a3a1f4cbf27118ad1cc5f59dfeccbee4f9721d30b965ec3ffdfbc7e",
-          "size": 3732
+          "sha256": "f7600ba4f9f179492e152d3e10d07e80fe7f04b3b50095754ea664a01713eeb8",
+          "size": 3736
         },
         "spv": {
           "path": "eng/shaders/checked/pick.fragment.spv",
@@ -4798,6 +5162,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -4823,6 +5188,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -4848,6 +5214,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -4884,7 +5251,7 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/selection.mask.vertex.dxil",
-          "sha256": "ac21f3441e4e80bbfea238591f17a43b14255e767cf07e26d2931ad536a6a84f",
+          "sha256": "c3db626f74b21e8955ee0293e1f253a5b18e1957b58a4c93afdfdc4b3417fe0e",
           "size": 4052
         },
         "spv": {
@@ -4927,6 +5294,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -4952,6 +5320,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -4977,6 +5346,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -5013,7 +5383,7 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/selection.mask.fragment.dxil",
-          "sha256": "682348314c6ef981564dbf7ac7ccd50814009a6f12b51223ac13c3efcdc9b00d",
+          "sha256": "f98b5854fb210c1a1bbf7285ce6605e2de7f4f85f0591e900000b2365e6eb1ff",
           "size": 2752
         },
         "spv": {
@@ -5056,6 +5426,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -5081,6 +5452,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -5106,6 +5478,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -5142,7 +5515,7 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/selection.outline.vertex.dxil",
-          "sha256": "c30d430aa239c608630862a318ffcceb88fd9f62f85d85716a43b91406b9884e",
+          "sha256": "ed50bffbfab61ff24ab6403c82d97695ad2979176c9a6e2e755e1bee48a6770a",
           "size": 3116
         },
         "spv": {
@@ -5238,6 +5611,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -5263,6 +5637,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -5288,6 +5663,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -5324,8 +5700,8 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/selection.outline.fragment.dxil",
-          "sha256": "b2541e30c2efdb46e8fae1f0a71a1ddd9977ddaf327669f8870984680339155a",
-          "size": 5424
+          "sha256": "aefaae9cbb4fe301e7c51586782037c2e6d70cdb1d784fbba63b409e02ed7388",
+          "size": 5420
         },
         "spv": {
           "path": "eng/shaders/checked/selection.outline.fragment.spv",
@@ -5394,6 +5770,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -5419,6 +5796,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -5444,6 +5822,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -5480,8 +5859,8 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/compute.fill.dxil",
-          "sha256": "37693a84ccdef75b372f02981585fbd4a7956af142e39e42c2d9dbd25c6bcbce",
-          "size": 3608
+          "sha256": "f2ff0ed754e96ad5094a527d6f16188892957f76fd49842bff91d8f456828ad9",
+          "size": 3612
         },
         "spv": {
           "path": "eng/shaders/checked/compute.fill.spv",
@@ -5550,6 +5929,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "dxil",
             "-profile",
@@ -5575,6 +5955,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
             "-target",
             "spirv",
             "-profile",
@@ -5600,6 +5981,7 @@
             "-source-embed-style",
             "none",
             "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
             "-target",
             "metal",
             "-profile",
@@ -5636,8 +6018,8 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/compute.scale.dxil",
-          "sha256": "090c7a8ad0b15883401c709f935fe761783ce791f62dde72360507e1e1ed8d05",
-          "size": 3776
+          "sha256": "c6e0b42352f0d14228f1efda92849ec1976a70a59bd65751ce6a157648db1c9c",
+          "size": 3780
         },
         "spv": {
           "path": "eng/shaders/checked/compute.scale.spv",

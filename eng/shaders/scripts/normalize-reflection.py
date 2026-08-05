@@ -256,81 +256,101 @@ def normalize_resources(
 ) -> list[dict[str, Any]]:
     dxil_parameters = parameter_map(dxil, "DXIL")
     spirv_parameters = parameter_map(spirv, "SPIR-V")
-    contract_names = {resource["name"] for resource in contract}
-    if set(dxil_parameters) != contract_names:
+    dxil_contract_names = {
+        resource["name"]
+        for resource in contract
+        if "dxil" in resource.get("targets", ["dxil", "spirv"])
+    }
+    spirv_contract_names = {
+        resource["name"]
+        for resource in contract
+        if "spirv" in resource.get("targets", ["dxil", "spirv"])
+    }
+    if set(dxil_parameters) != dxil_contract_names:
         raise ValueError(
             "DXIL resources do not match the manifest contract: "
-            f"missing={sorted(contract_names - set(dxil_parameters))}, "
-            f"unexpected={sorted(set(dxil_parameters) - contract_names)}"
+            f"missing={sorted(dxil_contract_names - set(dxil_parameters))}, "
+            f"unexpected={sorted(set(dxil_parameters) - dxil_contract_names)}"
         )
-    if set(spirv_parameters) != contract_names:
+    if set(spirv_parameters) != spirv_contract_names:
         raise ValueError(
             "SPIR-V resources do not match the manifest contract: "
-            f"missing={sorted(contract_names - set(spirv_parameters))}, "
-            f"unexpected={sorted(set(spirv_parameters) - contract_names)}"
+            f"missing={sorted(spirv_contract_names - set(spirv_parameters))}, "
+            f"unexpected={sorted(set(spirv_parameters) - spirv_contract_names)}"
         )
 
     resources = []
     for expected in contract:
         name = expected["name"]
-        dxil_parameter = dxil_parameters[name]
-        spirv_parameter = spirv_parameters[name]
-        dxil_binding = require(dxil_parameter, "binding", f"DXIL resource {name}")
-        spirv_binding = require(
-            spirv_parameter,
-            "binding",
-            f"SPIR-V resource {name}",
-        )
-        dxil_kind = require(dxil_binding, "kind", f"DXIL resource {name}")
-        register_class = D3D_REGISTER_CLASSES.get(dxil_kind)
-        if register_class is None:
-            raise ValueError(f"Unsupported DXIL binding kind {dxil_kind}")
-        dxil_index = require(dxil_binding, "index", f"DXIL resource {name}")
-        dxil_space = reflected_space(
-            dxil_binding,
-            expected["d3d"]["space"],
-            f"DXIL resource {name}",
-        )
-        spirv_kind = require(spirv_binding, "kind", f"SPIR-V resource {name}")
-        if spirv_kind != "descriptorTableSlot":
-            raise ValueError(f"Unexpected SPIR-V binding kind {spirv_kind}")
-        spirv_index = require(
-            spirv_binding,
-            "index",
-            f"SPIR-V resource {name}",
-        )
-        spirv_set = reflected_space(
-            spirv_binding,
-            expected["vulkan"]["set"],
-            f"SPIR-V resource {name}",
-        )
-        actual_d3d = {
-            "registerClass": register_class,
-            "register": dxil_index,
-            "space": dxil_space,
-        }
-        actual_vulkan = {
-            "binding": spirv_index,
-            "set": spirv_set,
-        }
-        if actual_d3d != expected["d3d"]:
-            raise ValueError(f"DXIL binding mismatch for resource {name}")
-        if actual_vulkan != expected["vulkan"]:
-            raise ValueError(f"SPIR-V binding mismatch for resource {name}")
+        targets = expected.get("targets", ["dxil", "spirv"])
+        dxil_parameter = dxil_parameters.get(name)
+        spirv_parameter = spirv_parameters.get(name)
+        actual_d3d = expected["d3d"]
+        dxil_shape = None
+        if "dxil" in targets:
+            dxil_binding = require(dxil_parameter, "binding", f"DXIL resource {name}")
+            dxil_kind = require(dxil_binding, "kind", f"DXIL resource {name}")
+            register_class = D3D_REGISTER_CLASSES.get(dxil_kind)
+            if register_class is None:
+                raise ValueError(f"Unsupported DXIL binding kind {dxil_kind}")
+            dxil_index = require(dxil_binding, "index", f"DXIL resource {name}")
+            dxil_space = reflected_space(
+                dxil_binding,
+                expected["d3d"]["space"],
+                f"DXIL resource {name}",
+            )
+            actual_d3d = {
+                "registerClass": register_class,
+                "register": dxil_index,
+                "space": dxil_space,
+            }
+            if actual_d3d != expected["d3d"]:
+                raise ValueError(f"DXIL binding mismatch for resource {name}")
+            dxil_type = require(dxil_parameter, "type", f"DXIL resource {name}")
+            dxil_shape = normalize_resource_shape(
+                dxil_type,
+                require(expected, "access", f"resource contract {name}"),
+                matrix_layout,
+            )
 
-        dxil_type = require(dxil_parameter, "type", f"DXIL resource {name}")
-        spirv_type = require(spirv_parameter, "type", f"SPIR-V resource {name}")
+        actual_vulkan = expected["vulkan"]
+        spirv_shape = None
+        if "spirv" in targets:
+            spirv_binding = require(
+                spirv_parameter,
+                "binding",
+                f"SPIR-V resource {name}",
+            )
+            spirv_kind = require(spirv_binding, "kind", f"SPIR-V resource {name}")
+            if spirv_kind != "descriptorTableSlot":
+                raise ValueError(f"Unexpected SPIR-V binding kind {spirv_kind}")
+            spirv_index = require(
+                spirv_binding,
+                "index",
+                f"SPIR-V resource {name}",
+            )
+            spirv_set = reflected_space(
+                spirv_binding,
+                expected["vulkan"]["set"],
+                f"SPIR-V resource {name}",
+            )
+            actual_vulkan = {
+                "binding": spirv_index,
+                "set": spirv_set,
+            }
+            if actual_vulkan != expected["vulkan"]:
+                raise ValueError(f"SPIR-V binding mismatch for resource {name}")
+            spirv_type = require(spirv_parameter, "type", f"SPIR-V resource {name}")
+            spirv_shape = normalize_resource_shape(
+                spirv_type,
+                require(expected, "access", f"resource contract {name}"),
+                matrix_layout,
+            )
         expected_access = require(expected, "access", f"resource contract {name}")
-        dxil_shape = normalize_resource_shape(
-            dxil_type,
-            expected_access,
-            matrix_layout,
-        )
-        spirv_shape = normalize_resource_shape(
-            spirv_type,
-            expected_access,
-            matrix_layout,
-        )
+        if dxil_shape is None:
+            dxil_shape = spirv_shape
+        if spirv_shape is None:
+            spirv_shape = dxil_shape
         if dxil_shape["kind"] != spirv_shape["kind"]:
             raise ValueError(f"Target resource shape mismatch for {name}")
         resources.append(

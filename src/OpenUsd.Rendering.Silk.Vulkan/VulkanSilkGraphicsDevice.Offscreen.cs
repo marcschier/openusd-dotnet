@@ -136,6 +136,105 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
     }
 
+    ISilkGraphicsTexture ISilkVolumeTextureGraphicsDevice.CreateTexture3D(
+        uint width,
+        uint height,
+        uint depth,
+        SilkTextureFormat format)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentOutOfRangeException.ThrowIfZero(width);
+        ArgumentOutOfRangeException.ThrowIfZero(height);
+        ArgumentOutOfRangeException.ThrowIfZero(depth);
+        if (format != SilkTextureFormat.R32Float)
+        {
+            throw new ArgumentException("Volume textures currently require R32Float.", nameof(format));
+        }
+        RegisterDependentObject();
+
+        var imageInfo = new ImageCreateInfo
+        {
+            SType = StructureType.ImageCreateInfo,
+            ImageType = ImageType.Type3D,
+            Format = Format.R32Sfloat,
+            Extent = new Extent3D(width, height, depth),
+            MipLevels = 1,
+            ArrayLayers = 1,
+            Samples = SampleCountFlags.Count1Bit,
+            Tiling = ImageTiling.Optimal,
+            Usage = ImageUsageFlags.SampledBit | ImageUsageFlags.TransferDstBit,
+            SharingMode = SharingMode.Exclusive,
+            InitialLayout = ImageLayout.Undefined
+        };
+        Image image = default;
+        DeviceMemory memory = default;
+        ImageView imageView = default;
+        bool success = false;
+        try
+        {
+            ThrowIfFailed(_api.CreateImage(_device, &imageInfo, null, &image), "vkCreateImage(3D)");
+            _api.GetImageMemoryRequirements(_device, image, out MemoryRequirements requirements);
+            var allocationInfo = new MemoryAllocateInfo
+            {
+                SType = StructureType.MemoryAllocateInfo,
+                AllocationSize = requirements.Size,
+                MemoryTypeIndex = FindMemoryType(
+                    requirements.MemoryTypeBits,
+                    MemoryPropertyFlags.DeviceLocalBit)
+            };
+            ThrowIfFailed(_api.AllocateMemory(_device, &allocationInfo, null, &memory), "vkAllocateMemory");
+            ThrowIfFailed(_api.BindImageMemory(_device, image, memory, 0), "vkBindImageMemory");
+            var viewInfo = new ImageViewCreateInfo
+            {
+                SType = StructureType.ImageViewCreateInfo,
+                Image = image,
+                ViewType = ImageViewType.Type3D,
+                Format = Format.R32Sfloat,
+                SubresourceRange = new ImageSubresourceRange
+                {
+                    AspectMask = ImageAspectFlags.ColorBit,
+                    BaseMipLevel = 0,
+                    LevelCount = 1,
+                    BaseArrayLayer = 0,
+                    LayerCount = 1
+                }
+            };
+            ThrowIfFailed(_api.CreateImageView(_device, &viewInfo, null, &imageView), "vkCreateImageView(3D)");
+            success = true;
+            return new VulkanSilkGraphicsTexture(
+                this,
+                image,
+                memory,
+                imageView,
+                new SilkTextureDescriptor(
+                    width,
+                    height,
+                    format,
+                    SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination),
+                ownsNativeObjects: true,
+                depth);
+        }
+        finally
+        {
+            if (!success && imageView.Handle != 0)
+            {
+                _api.DestroyImageView(_device, imageView, null);
+            }
+            if (!success && image.Handle != 0)
+            {
+                _api.DestroyImage(_device, image, null);
+            }
+            if (!success && memory.Handle != 0)
+            {
+                _api.FreeMemory(_device, memory, null);
+            }
+            if (!success)
+            {
+                ReleaseDependentObject();
+            }
+        }
+    }
+
     /// <inheritdoc/>
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
     {
@@ -349,6 +448,44 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             ImageLayout.TransferDstOptimal,
                             ImageLayout.TransferSrcOptimal);
                         finalLayouts[uploadTexture] = ImageLayout.TransferSrcOptimal;
+                        break;
+                    case SilkGraphicsCommandKind.UploadTexture3D:
+                        VulkanSilkGraphicsTexture uploadVolume = command.Texture!;
+                        uploadVolume.ThrowIfDisposed();
+                        VulkanUploadResource volumeUpload = CreateTextureUpload(command.Data!);
+                        uploadResources.Add(volumeUpload);
+                        Transition(
+                            nativeCommands,
+                            uploadVolume.Image,
+                            uploadVolume.AspectMask,
+                            GetCurrentLayout(finalLayouts, uploadVolume),
+                            ImageLayout.TransferDstOptimal);
+                        var volumeCopyRegion = new BufferImageCopy
+                        {
+                            ImageSubresource = new ImageSubresourceLayers
+                            {
+                                AspectMask = ImageAspectFlags.ColorBit,
+                                LayerCount = 1
+                            },
+                            ImageExtent = new Extent3D(
+                                uploadVolume.Width,
+                                uploadVolume.Height,
+                                uploadVolume.Depth)
+                        };
+                        _api.CmdCopyBufferToImage(
+                            nativeCommands,
+                            volumeUpload.Buffer,
+                            uploadVolume.Image,
+                            ImageLayout.TransferDstOptimal,
+                            1,
+                            &volumeCopyRegion);
+                        Transition(
+                            nativeCommands,
+                            uploadVolume.Image,
+                            uploadVolume.AspectMask,
+                            ImageLayout.TransferDstOptimal,
+                            ImageLayout.ShaderReadOnlyOptimal);
+                        finalLayouts[uploadVolume] = ImageLayout.ShaderReadOnlyOptimal;
                         break;
                     case SilkGraphicsCommandKind.ClearColor:
                         VulkanSilkGraphicsTexture colorTexture = command.Texture!;
@@ -1900,7 +2037,8 @@ internal sealed class VulkanSilkGraphicsTexture : SilkGraphicsTextureBase
         DeviceMemory memory,
         ImageView imageView,
         SilkTextureDescriptor descriptor,
-        bool ownsNativeObjects)
+        bool ownsNativeObjects,
+        uint depth = 1)
         : base(descriptor)
     {
         _device = device;
@@ -1908,18 +2046,21 @@ internal sealed class VulkanSilkGraphicsTexture : SilkGraphicsTextureBase
         _memory = memory;
         _imageView = imageView;
         _ownsNativeObjects = ownsNativeObjects;
+        Depth = depth;
     }
 
     internal Image Image => _image;
 
     internal ImageView ImageView => _imageView;
 
+    internal uint Depth { get; }
+
     internal VulkanSilkGraphicsDevice Device => _device;
 
     internal ImageAspectFlags AspectMask =>
-        Format == SilkTextureFormat.Rgba8Unorm
-            ? ImageAspectFlags.ColorBit
-            : ImageAspectFlags.DepthBit;
+        Format == SilkTextureFormat.D32Float
+            ? ImageAspectFlags.DepthBit
+            : ImageAspectFlags.ColorBit;
 
     internal ImageSubresourceRange SubresourceRange => new()
     {
@@ -2000,6 +2141,7 @@ internal sealed class VulkanSilkGraphicsSampler(
 
 internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDevice device)
     : ISilkGraphicsCommandList,
+      ISilkVolumeTextureCommandList,
       ISilkPickGraphicsCommandList,
       ISilkSelectionOutlineGraphicsCommandList
 {
@@ -2041,6 +2183,30 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
                 nameof(source));
         }
         _commands.Add(VulkanGraphicsCommand.Upload(vulkanTexture, source.ToArray()));
+    }
+
+    public void UploadTexture3D(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
+    {
+        ThrowIfOutsideRendering();
+        VulkanSilkGraphicsTexture vulkanTexture = ValidateTexture(texture);
+        if (vulkanTexture.Format != SilkTextureFormat.R32Float ||
+            !vulkanTexture.Usage.HasFlag(SilkTextureUsage.CopyDestination))
+        {
+            throw new InvalidOperationException(
+                "UploadTexture3D requires an R32Float 3D texture with CopyDestination usage.");
+        }
+        int requiredLength = checked(
+            (int)(vulkanTexture.Width *
+            vulkanTexture.Height *
+            vulkanTexture.Depth *
+            sizeof(float)));
+        if (source.Length != requiredLength)
+        {
+            throw new ArgumentException(
+                $"The source must contain exactly {requiredLength} bytes.",
+                nameof(source));
+        }
+        _commands.Add(VulkanGraphicsCommand.Upload3D(vulkanTexture, source.ToArray()));
     }
 
     public void ClearColor(ISilkGraphicsTexture texture, SilkColor color)
@@ -2505,6 +2671,14 @@ internal readonly record struct VulkanGraphicsCommand(
         byte[] data) =>
         Create(
             SilkGraphicsCommandKind.UploadTexture,
+            texture: texture,
+            data: data);
+
+    internal static VulkanGraphicsCommand Upload3D(
+        VulkanSilkGraphicsTexture texture,
+        byte[] data) =>
+        Create(
+            SilkGraphicsCommandKind.UploadTexture3D,
             texture: texture,
             data: data);
 

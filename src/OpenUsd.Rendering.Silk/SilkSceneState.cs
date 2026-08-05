@@ -1278,6 +1278,8 @@ public sealed class SilkSceneGpuResources : IDisposable
     private readonly Dictionary<string, SurfaceBuffer> _surfaceBuffers =
         new(StringComparer.Ordinal);
     private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _textures = [];
+    private readonly Dictionary<string, TextureCacheEntry> _volumeTextures =
+        new(StringComparer.Ordinal);
     private readonly Dictionary<SilkSamplerDescriptor, ISilkGraphicsSampler> _samplers = [];
     private ISilkGraphicsBuffer? _defaultSurfaceBuffer;
     private ISilkGraphicsBuffer? _frameBuffer;
@@ -1295,6 +1297,8 @@ public sealed class SilkSceneGpuResources : IDisposable
     {
         internal bool Uploaded { get; set; }
     }
+
+    private readonly record struct VolumeTextureInfo(uint Width, uint Height, uint Depth);
 
     private readonly record struct TextureCacheKey(
         string Asset,
@@ -1531,7 +1535,11 @@ public sealed class SilkSceneGpuResources : IDisposable
         RenderHeadlight light)
     {
         Span<byte> constants = stackalloc byte[SilkSurfaceUniformWriter.ByteSize];
-        SilkSurfaceUniformWriter.Write(material, light, constants);
+        SilkSurfaceUniformWriter.Write(
+            material,
+            light,
+            constants,
+            _device is ISilkVolumeTextureGraphicsDevice);
         WriteTracked(buffer, constants);
     }
 
@@ -1556,6 +1564,61 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
         commands.SetSampler(0, 1, RequireSampler(texture));
         commands.SetTexture(0, binding, entry.Texture);
+    }
+
+    internal void BindVolumeDensityTexture(
+        ISilkGraphicsCommandList commands,
+        SilkMaterialData material)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(material);
+        SilkMaterialTexture texture = material.GetTexture(SilkMaterialParameter.VolumeDensity) ??
+            throw new InvalidDataException(
+                $"Material '{material.Path}' has no sampled density volume.");
+        if (commands is not ISilkVolumeTextureCommandList volumeCommands ||
+            _device is not ISilkVolumeTextureGraphicsDevice)
+        {
+            return;
+        }
+        TextureCacheEntry entry = RequireVolumeTexture(texture);
+        if (!entry.Uploaded)
+        {
+            volumeCommands.UploadTexture3D(entry.Texture, entry.Pixels);
+            _textureUploadBytes += checked((ulong)entry.Pixels.Length);
+            entry.Uploaded = true;
+        }
+        commands.SetSampler(
+            0,
+            SilkBindingLayoutDescriptor.VolumeSamplerBinding,
+            RequireSampler(texture));
+        commands.SetTexture(
+            0,
+            SilkBindingLayoutDescriptor.VolumeDensityTextureBinding,
+            entry.Texture);
+    }
+
+    internal void UploadVolumeDensityTexture(
+        ISilkGraphicsCommandList commands,
+        SilkMaterialData material)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(material);
+        SilkMaterialTexture? texture = material.GetTexture(SilkMaterialParameter.VolumeDensity);
+        if (texture is null ||
+            commands is not ISilkVolumeTextureCommandList volumeCommands ||
+            _device is not ISilkVolumeTextureGraphicsDevice)
+        {
+            return;
+        }
+        TextureCacheEntry entry = RequireVolumeTexture(texture);
+        if (!entry.Uploaded)
+        {
+            volumeCommands.UploadTexture3D(entry.Texture, entry.Pixels);
+            _textureUploadBytes += checked((ulong)entry.Pixels.Length);
+            entry.Uploaded = true;
+        }
     }
 
     internal void UploadMaterialTexture(
@@ -1614,6 +1677,61 @@ public sealed class SilkSceneGpuResources : IDisposable
             gpuTexture?.Dispose();
             throw;
         }
+    }
+
+    private TextureCacheEntry RequireVolumeTexture(SilkMaterialTexture texture)
+    {
+        if (_volumeTextures.TryGetValue(texture.Asset, out TextureCacheEntry? entry))
+        {
+            return entry;
+        }
+        if (_device is not ISilkVolumeTextureGraphicsDevice volumeDevice)
+        {
+            throw new NotSupportedException(
+                "The current backend does not support sampled volume textures.");
+        }
+        VolumeTextureInfo info = ParseVolumeTextureInfo(texture.UvPrimvar);
+        byte[] pixels = File.ReadAllBytes(texture.Asset);
+        int requiredLength =
+            checked((int)(info.Width * info.Height * info.Depth * sizeof(float)));
+        if (pixels.Length != requiredLength)
+        {
+            throw new InvalidDataException(
+                $"Volume texture '{texture.Asset}' contains {pixels.Length} bytes, expected {requiredLength}.");
+        }
+        ISilkGraphicsTexture? gpuTexture = null;
+        try
+        {
+            gpuTexture = volumeDevice.CreateTexture3D(
+                info.Width,
+                info.Height,
+                info.Depth,
+                SilkTextureFormat.R32Float);
+            entry = new TextureCacheEntry(gpuTexture, pixels);
+            _volumeTextures.Add(texture.Asset, entry);
+            return entry;
+        }
+        catch
+        {
+            gpuTexture?.Dispose();
+            throw;
+        }
+    }
+
+    private static VolumeTextureInfo ParseVolumeTextureInfo(string value)
+    {
+        string[] parts = value.Split(',');
+        if (parts.Length != 3 ||
+            !uint.TryParse(parts[0], out uint width) ||
+            !uint.TryParse(parts[1], out uint height) ||
+            !uint.TryParse(parts[2], out uint depth) ||
+            width == 0 ||
+            height == 0 ||
+            depth == 0)
+        {
+            throw new InvalidDataException($"Invalid volume texture dimensions '{value}'.");
+        }
+        return new VolumeTextureInfo(width, height, depth);
     }
 
     private static SilkDecodedImage CreateFallbackImage(SilkMaterialTexture texture)
@@ -1706,6 +1824,11 @@ public sealed class SilkSceneGpuResources : IDisposable
             entry.Texture.Dispose();
         }
         _textures.Clear();
+        foreach (TextureCacheEntry entry in _volumeTextures.Values)
+        {
+            entry.Texture.Dispose();
+        }
+        _volumeTextures.Clear();
     }
 
     /// <inheritdoc/>

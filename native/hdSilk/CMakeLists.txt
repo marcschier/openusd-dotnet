@@ -70,6 +70,7 @@ function(configure_openusd_hdsilk_target target_name core_target)
         PRIVATE
             ${core_target}
             usd_m
+            hio
             MaterialXFormat
             ${OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS}
             ${OPENUSD_HDSILK_MATERIALX_MSL_LIBS})

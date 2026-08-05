@@ -395,6 +395,41 @@ public readonly record struct SilkBindingLayoutDescriptor(
     /// <summary>The binding slot carrying per-frame projection and clip-plane data.</summary>
     public const uint FrameParametersBinding = 8;
 
+    /// <summary>The sampler used by sampled density volumes.</summary>
+    internal const uint VolumeSamplerBinding = 1;
+
+    /// <summary>The sampled 3D density texture used by volumes.</summary>
+    internal const uint VolumeDensityTextureBinding = 9;
+
+    private static IReadOnlyList<SilkBindingSlot> SharedMeshSlots =>
+    [
+        new(
+            0,
+            6,
+            SilkBindingKind.StorageBuffer,
+            0,
+            SilkShaderStageVisibility.Vertex),
+        new(
+            0,
+            SurfaceParametersBinding,
+            SilkBindingKind.StorageBuffer,
+            0,
+            SilkShaderStageVisibility.Fragment),
+        new(
+            0,
+            FrameParametersBinding,
+            SilkBindingKind.StorageBuffer,
+            0,
+            SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment)
+    ];
+
+    private static SilkBindingSlot VolumeDensityTextureSlot => new(
+        0,
+        VolumeDensityTextureBinding,
+        SilkBindingKind.SampledTexture,
+        0,
+        SilkShaderStageVisibility.Fragment);
+
     /// <summary>Creates the checked mesh SceneParameters layout.</summary>
     public static SilkBindingLayoutDescriptor SceneParameters => new(
         0,
@@ -404,32 +439,22 @@ public readonly record struct SilkBindingLayoutDescriptor(
     {
         MaterialSlots =
         [
+            .. SharedMeshSlots
+        ]
+    };
+
+    internal static SilkBindingLayoutDescriptor SampledVolumeParameters => SceneParameters with
+    {
+        MaterialSlots =
+        [
+            .. SharedMeshSlots,
             new(
                 0,
-                6,
-                SilkBindingKind.StorageBuffer,
-                0,
-                SilkShaderStageVisibility.Vertex),
-            // The surface constants and the single deterministic light. A storage
-            // buffer rather than a uniform because that binding path is the one
-            // already proven end to end on all three backends, and because a
-            // uniform slot would need a second backend code path for no gain.
-            new(
-                0,
-                SurfaceParametersBinding,
-                SilkBindingKind.StorageBuffer,
+                VolumeSamplerBinding,
+                SilkBindingKind.Sampler,
                 0,
                 SilkShaderStageVisibility.Fragment),
-            // Per-frame data is deliberately separate from the per-material
-            // surface block: duplicating clip planes into every material buffer
-            // would turn camera state into material churn, while SceneParameters
-            // is pinned at 80 bytes and mirrored by the instance table.
-            new(
-                0,
-                FrameParametersBinding,
-                SilkBindingKind.StorageBuffer,
-                0,
-                SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment)
+            VolumeDensityTextureSlot
         ]
     };
 
@@ -448,7 +473,7 @@ public readonly record struct SilkBindingLayoutDescriptor(
         // same scene constants at the same place as every existing pipeline. The
         // checked mesh shaders also always declare the instance buffer and the
         // surface constants, so both are carried into every material layout.
-        IReadOnlyList<SilkBindingSlot> shared = SceneParameters.MaterialSlots;
+        IReadOnlyList<SilkBindingSlot> shared = SharedMeshSlots;
         var materialSlots = new SilkBindingSlot[slots.Count + shared.Count];
         for (int index = 0; index < shared.Count; index++)
         {
@@ -781,6 +806,51 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
             {
                 entry = CreateEntry(
                     permutation,
+                    permutation.CreateMeshBindingLayout(),
+                    vertexLayout,
+                    colorFormat,
+                    depthFormat,
+                    cullMode,
+                    topologyKind);
+                _entries.Add(key, entry);
+            }
+
+            return entry.AcquireLease();
+        }
+    }
+
+    internal ISilkGraphicsPipeline GetOrCreateSampledVolumePipeline(
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkTextureFormat colorFormat,
+        SilkTextureFormat depthFormat,
+        SilkCullMode cullMode = SilkCullMode.None,
+        SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList)
+    {
+        DeviceGenerationKey generation = ReadDeviceGeneration(_device);
+        PipelineCacheKey key = new(
+            "sampled-volume-density",
+            CreateVertexLayoutKey(vertexLayout),
+            colorFormat,
+            depthFormat,
+            cullMode,
+            topologyKind,
+            _shaderFormat,
+            generation);
+
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (generation != _generation)
+            {
+                DisposeEntries();
+                _generation = generation;
+            }
+
+            if (!_entries.TryGetValue(key, out CachedPipelineEntry? entry))
+            {
+                entry = CreateEntry(
+                    SilkShaderPermutationId.None,
+                    SilkBindingLayoutDescriptor.SampledVolumeParameters,
                     vertexLayout,
                     colorFormat,
                     depthFormat,
@@ -856,6 +926,7 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
 
     private CachedPipelineEntry CreateEntry(
         SilkShaderPermutationId permutation,
+        SilkBindingLayoutDescriptor bindingLayoutDescriptor,
         SilkVertexLayoutDescriptor vertexLayout,
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
@@ -873,8 +944,7 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
                 SilkCheckedShaderAssets.LoadMeshVertex(_shaderFormat, permutation));
             fragmentShader = _device.CreateShaderModule(
                 SilkCheckedShaderAssets.LoadMeshFragment(_shaderFormat, permutation));
-            bindingLayout = _device.CreateBindingLayout(
-                permutation.CreateMeshBindingLayout());
+            bindingLayout = _device.CreateBindingLayout(bindingLayoutDescriptor);
             program = _device.CreateShaderProgram(new SilkShaderProgramDescriptor(
                 vertexShader,
                 fragmentShader,
@@ -1439,9 +1509,21 @@ public static partial class SilkCheckedShaderAssets
     private static SilkSceneParametersReflection ParseReflection(ReadOnlySpan<byte> json)
     {
         using JsonDocument document = JsonDocument.Parse(json.ToArray());
-        JsonElement shape = document.RootElement
-            .GetProperty("resources")[0]
-            .GetProperty("shape");
+        JsonElement shape = default;
+        foreach (JsonElement resource in document.RootElement.GetProperty("resources").EnumerateArray())
+        {
+            if (resource.GetProperty("name").GetString() == "SceneParameters")
+            {
+                shape = resource.GetProperty("shape");
+                break;
+            }
+        }
+
+        if (shape.ValueKind == JsonValueKind.Undefined)
+        {
+            throw new InvalidDataException("Checked shader reflection is missing SceneParameters.");
+        }
+
         JsonElement fields = shape.GetProperty("elementType").GetProperty("fields");
         JsonElement matrixLayout = fields[0].GetProperty("layout");
         JsonElement tintLayout = fields[1].GetProperty("layout");

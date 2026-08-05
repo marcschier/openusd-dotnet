@@ -474,6 +474,7 @@ OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetUniformBuffer = 9 -> OpenUsd.R
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetVertexBuffer = 7 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.SetViewport = 5 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.UploadTexture = 0 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
+OpenUsd.Rendering.Silk.SilkGraphicsCommandKind.UploadTexture3D = 26 -> OpenUsd.Rendering.Silk.SilkGraphicsCommandKind
 OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase
 OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.CancelLifetimeDispose() -> void
 OpenUsd.Rendering.Silk.SilkGraphicsDeviceLifetimeBase.CompleteLifetimeDispose() -> void
@@ -1326,6 +1327,7 @@ OpenUsd.Rendering.Silk.SilkTextureDescriptor.Width.get -> uint
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Width.init -> void
 OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureFormat.D32Float = 1 -> OpenUsd.Rendering.Silk.SilkTextureFormat
+OpenUsd.Rendering.Silk.SilkTextureFormat.R32Float = 2 -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba8Unorm = 0 -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Deconstruct(out uint X, out uint Y) -> void

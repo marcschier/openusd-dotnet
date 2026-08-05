@@ -72,6 +72,20 @@ public interface ISilkGraphicsDevice : IDisposable
     void WaitIdle();
 }
 
+internal interface ISilkVolumeTextureGraphicsDevice
+{
+    ISilkGraphicsTexture CreateTexture3D(
+        uint width,
+        uint height,
+        uint depth,
+        SilkTextureFormat format);
+}
+
+internal interface ISilkVolumeTextureCommandList
+{
+    void UploadTexture3D(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source);
+}
+
 /// <summary>
 /// Common GPU buffer contract.
 /// </summary>
@@ -512,7 +526,10 @@ public enum SilkGraphicsCommandKind
     SetSampler,
 
     /// <summary>Issues an indexed instanced draw.</summary>
-    DrawIndexedInstanced
+    DrawIndexedInstanced,
+
+    /// <summary>Uploads one tightly packed 3D texture image.</summary>
+    UploadTexture3D
 }
 
 /// <summary>
@@ -654,7 +671,10 @@ public enum SilkTextureFormat
     Rgba8Unorm,
 
     /// <summary>One 32-bit floating-point depth channel.</summary>
-    D32Float
+    D32Float,
+
+    /// <summary>One 32-bit floating-point sampled channel.</summary>
+    R32Float
 }
 
 /// <summary>

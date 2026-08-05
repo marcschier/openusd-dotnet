@@ -118,6 +118,35 @@
       ],
       "resources": [
         {
+          "name": "materialSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "targets": [
+            "spirv"
+          ],
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
+        {
           "name": "SceneParameters",
           "access": "constant",
           "d3d": {
@@ -158,25 +187,6 @@
         }
       ],
       "permutationResources": [
-        {
-          "featuresAny": [
-            "MAP_BASE_COLOR",
-            "MAP_NORMAL",
-            "MAP_ROUGHNESS_METALLIC",
-            "MAP_EMISSIVE"
-          ],
-          "name": "materialSampler",
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 0,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 1,
-            "set": 0
-          }
-        },
         {
           "feature": "MAP_BASE_COLOR",
           "name": "baseColorTexture",

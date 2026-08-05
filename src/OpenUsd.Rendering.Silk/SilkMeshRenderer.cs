@@ -671,6 +671,9 @@ public sealed class SilkMeshRenderer :
         SilkCullMode resolveCullMode(SilkMeshData mesh) =>
             options.BackfaceCulling ? GetCullMode(mesh) : SilkCullMode.None;
 
+        bool resolveSampledVolume(SilkMeshData mesh) =>
+            options.UseSceneMaterials && IsSampledVolumeMesh(mesh);
+
         if (singleMesh is not null)
         {
             PrepareMaterialTextures(commands, singleMesh, resolveMaterialFeatures(singleMesh.Mesh));
@@ -694,6 +697,7 @@ public sealed class SilkMeshRenderer :
                     mesh.Mesh.MaterialPath,
                     resolveMaterialFeatures(mesh.Mesh),
                     resolveMaterialShaderIdentity(mesh.Mesh),
+                    resolveSampledVolume(mesh.Mesh),
                     resolveCullMode(mesh.Mesh),
                     mesh.Mesh.TopologyKind);
                 if (!_batches.TryGetValue(key, out List<SilkMeshGpuResource>? batch))
@@ -740,6 +744,7 @@ public sealed class SilkMeshRenderer :
             ISilkGraphicsPipeline pipeline = GetPipeline(
                 singleMesh,
                 features,
+                IsSampledVolumeMesh(singleMesh.Mesh),
                 cullMode,
                 singleMesh.Mesh.TopologyKind,
                 materialShader);
@@ -747,6 +752,7 @@ public sealed class SilkMeshRenderer :
             DisposePipelineLease(pipeline);
             boundPipeline = new PipelineKey(
                 features,
+                IsSampledVolumeMesh(singleMesh.Mesh),
                 cullMode,
                 singleMesh.Mesh.TopologyKind,
                 singleMesh.VertexLayout.Stride,
@@ -867,6 +873,7 @@ public sealed class SilkMeshRenderer :
     {
         PipelineKey next = new(
             key.Features,
+            key.SampledVolume,
             key.CullMode,
             key.TopologyKind,
             mesh.VertexLayout.Stride,
@@ -879,6 +886,7 @@ public sealed class SilkMeshRenderer :
         ISilkGraphicsPipeline pipeline = GetPipeline(
             mesh,
             key.Features,
+            key.SampledVolume,
             key.CullMode,
             key.TopologyKind,
             string.IsNullOrEmpty(key.MaterialShaderIdentity)
@@ -924,6 +932,11 @@ public sealed class SilkMeshRenderer :
         {
             return result;
         }
+        result = left.SampledVolume.CompareTo(right.SampledVolume);
+        if (result != 0)
+        {
+            return result;
+        }
         result = left.Geometry.VertexLayout.Stride.CompareTo(right.Geometry.VertexLayout.Stride);
         if (result != 0)
         {
@@ -962,6 +975,7 @@ public sealed class SilkMeshRenderer :
     private ISilkGraphicsPipeline GetPipeline(
         SilkMeshGpuResource mesh,
         SilkShaderFeatures features,
+        bool sampledVolume,
         SilkCullMode cullMode,
         SilkTopologyKind topologyKind,
         SilkMaterialShaderRequest? materialShader = null)
@@ -977,6 +991,7 @@ public sealed class SilkMeshRenderer :
                 topologyKind);
         }
         if (features == SilkShaderFeatures.None &&
+            !sampledVolume &&
             mesh.VertexLayout.Equals(SilkVertexLayoutDescriptor.PositionNormal))
         {
             return topologyKind switch
@@ -988,6 +1003,15 @@ public sealed class SilkMeshRenderer :
                 _ => throw new InvalidDataException(
                     $"Unsupported Silk topology kind '{topologyKind}'.")
             };
+        }
+        if (features == SilkShaderFeatures.None && sampledVolume)
+        {
+            return _pipelineCache.GetOrCreateSampledVolumePipeline(
+                mesh.VertexLayout,
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureFormat.D32Float,
+                cullMode,
+                topologyKind);
         }
         return _pipelineCache.GetOrCreateMeshPipeline(
             new SilkShaderPermutationId(features),
@@ -1032,6 +1056,11 @@ public sealed class SilkMeshRenderer :
         SilkMaterialShaderKey key = CreateMaterialShaderKey(material);
         return key.CacheHash;
     }
+
+    private bool IsSampledVolumeMesh(SilkMeshData mesh) =>
+        ResolveMaterial(mesh) is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
+        volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null &&
+        _device is ISilkVolumeTextureGraphicsDevice;
 
     private SilkMaterialShaderRequest? GetMaterialShaderRequest(
         SilkMeshData mesh,
@@ -1115,6 +1144,11 @@ public sealed class SilkMeshRenderer :
                 SilkMaterialParameter.EmissiveColor,
                 5);
         }
+        if (ResolveMaterial(mesh.Mesh) is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
+            volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
+        {
+            GpuResources.BindVolumeDensityTexture(commands, volumeMaterial);
+        }
     }
 
     private void PrepareMaterialTextures(
@@ -1150,6 +1184,11 @@ public sealed class SilkMeshRenderer :
                 ResolveMaterial(mesh.Mesh)!,
                 SilkMaterialParameter.EmissiveColor);
         }
+        if (ResolveMaterial(mesh.Mesh) is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
+            volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
+        {
+            GpuResources.UploadVolumeDensityTexture(commands, volumeMaterial);
+        }
     }
 
     private readonly record struct BatchKey(
@@ -1157,11 +1196,13 @@ public sealed class SilkMeshRenderer :
         string MaterialPath,
         SilkShaderFeatures Features,
         string MaterialShaderIdentity,
+        bool SampledVolume,
         SilkCullMode CullMode,
         SilkTopologyKind TopologyKind);
 
     private readonly record struct PipelineKey(
         SilkShaderFeatures Features,
+        bool SampledVolume,
         SilkCullMode CullMode,
         SilkTopologyKind TopologyKind,
         uint VertexStride,

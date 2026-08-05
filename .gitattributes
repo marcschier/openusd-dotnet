@@ -26,4 +26,5 @@ CMakeLists.txt text eol=lf
 *.usd      binary
 *.usdc     binary
 *.usdz     binary
+*.vdb      binary
 *.usda     text eol=lf

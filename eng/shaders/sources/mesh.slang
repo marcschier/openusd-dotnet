@@ -27,6 +27,9 @@
 #ifndef MAP_EMISSIVE
 #define MAP_EMISSIVE 0
 #endif
+#ifndef VOLUME_DENSITY_TEXTURES
+#define VOLUME_DENSITY_TEXTURES 0
+#endif
 
 struct VertexInput
 {
@@ -44,6 +47,7 @@ struct VertexOutput
 {
     float4 position : SV_Position;
     float3 eyePosition : TEXCOORD1;
+    float3 objectPosition : TEXCOORD2;
     float3 normal : NORMAL;
     float4 tint : COLOR0;
 #if HAS_UV
@@ -92,7 +96,7 @@ struct InstanceParameters
 StructuredBuffer<InstanceParameters> instanceParameters : register(t6);
 #endif
 
-#if FRAGMENT_STAGE && (MAP_BASE_COLOR || MAP_NORMAL || MAP_ROUGHNESS_METALLIC || MAP_EMISSIVE)
+#if FRAGMENT_STAGE
 [[vk::binding(1, 0)]]
 SamplerState materialSampler : register(s0);
 #endif
@@ -113,6 +117,11 @@ Texture2D<float4> roughnessMetallicTexture : register(t2);
 Texture2D<float4> emissiveTexture : register(t3);
 #endif
 
+#if FRAGMENT_STAGE && VOLUME_DENSITY_TEXTURES
+[[vk::binding(9, 0)]]
+Texture3D<float> volumeDensityTexture : register(t9);
+#endif
+
 #if VERTEX_STAGE
 [shader("vertex")]
 VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_InstanceID)
@@ -124,6 +133,7 @@ VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_Instance
     float4 eyePosition = mul(frame.clipToEye, clipPosition);
     output.position = clipPosition;
     output.eyePosition = eyePosition.xyz / eyePosition.w;
+    output.objectPosition = input.position;
     output.normal = input.normal;
     output.tint = instance.tint;
 #if HAS_UV
@@ -226,6 +236,22 @@ void DiscardClippedFragment(float3 eyePosition, FrameParameters frame)
         }
     }
 }
+
+#if VOLUME_DENSITY_TEXTURES
+[ForceInline]
+float SampleVolumeDensity(float3 objectPosition)
+{
+    float2 uv = saturate(objectPosition.xy + float2(0.5, 0.5));
+    float density = 0.0;
+    const uint stepCount = 32u;
+    for (uint step = 0u; step < stepCount; step++)
+    {
+        float z = ((float)step + 0.5) / (float)stepCount;
+        density += volumeDensityTexture.Sample(materialSampler, float3(uv, z));
+    }
+    return density / (float)stepCount;
+}
+#endif
 #endif
 
 [shader("fragment")]
@@ -248,7 +274,13 @@ float4 FRAGMENT_ENTRY_POINT(
     float occlusion = surface.emissiveOcclusion.a;
     if (surface.reserved.x >= 0.5)
     {
+#if VOLUME_DENSITY_TEXTURES
+        float density = surface.reserved.w >= 0.5
+            ? SampleVolumeDensity(input.objectPosition) * max(0.0, surface.reserved.y)
+            : max(0.0, surface.reserved.y);
+#else
         float density = max(0.0, surface.reserved.y);
+#endif
         float distance = max(0.0, surface.reserved.z);
         float opacityIntegral = 1.0 - exp(-density * distance);
         return float4(diffuseColor * opacityIntegral, 1.0);

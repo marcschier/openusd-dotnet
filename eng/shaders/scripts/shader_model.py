@@ -610,6 +610,7 @@ def generate_plan(
                         "executable": "slangc",
                         "arguments": [
                             *common,
+                            "-DVOLUME_DENSITY_TEXTURES=0",
                             "-target",
                             "dxil",
                             "-profile",
@@ -624,6 +625,7 @@ def generate_plan(
                         "executable": "slangc",
                         "arguments": [
                             *common,
+                            "-DVOLUME_DENSITY_TEXTURES=1",
                             "-target",
                             "spirv",
                             "-profile",
@@ -640,6 +642,7 @@ def generate_plan(
                         "executable": "slangc",
                         "arguments": [
                             *common,
+                            "-DVOLUME_DENSITY_TEXTURES=0",
                             "-target",
                             "metal",
                             "-profile",

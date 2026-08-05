@@ -796,13 +796,30 @@
       }
     },
     {
+      "name": "objectPosition",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 2,
+        "systemValue": false
+      },
+      "location": 1,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
       "name": "normal",
       "semantic": {
         "name": "NORMAL",
         "index": 0,
         "systemValue": false
       },
-      "location": 1,
+      "location": 2,
       "type": {
         "kind": "vector",
         "elementCount": 3,
@@ -819,7 +836,7 @@
         "index": 0,
         "systemValue": false
       },
-      "location": 2,
+      "location": 3,
       "type": {
         "kind": "vector",
         "elementCount": 4,

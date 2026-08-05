@@ -10,6 +10,7 @@ struct pixelOutput_0
 struct pixelInput_0
 {
     float3 eyePosition_0 [[user(TEXCOORD_1)]];
+    float3 objectPosition_0 [[user(TEXCOORD_2)]];
     float3 normal_0 [[user(NORMAL)]];
     float4 tint_0 [[user(COLOR)]];
     float2 texCoord_0 [[user(TEXCOORD)]];

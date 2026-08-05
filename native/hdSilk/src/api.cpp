@@ -12,6 +12,8 @@
 #include "pxr/base/gf/vec2i.h"
 #include "pxr/base/gf/vec3d.h"
 #include "pxr/base/gf/vec4d.h"
+#include "pxr/imaging/hio/fieldTextureData.h"
+#include "pxr/imaging/hio/types.h"
 #include "pxr/base/plug/plugin.h"
 #include "pxr/base/plug/registry.h"
 #include "pxr/base/tf/errorMark.h"
@@ -35,6 +37,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -458,6 +462,13 @@ bool IsRendererCreateFailpoint(const char* name) noexcept
 #endif
 }
 
+bool IsBenignHdSilkPluginReloadError(const std::string& message)
+{
+    return message.find("HdSilkRendererPlugin") != std::string::npos &&
+        message.find("already has a defined C++ type") != std::string::npos &&
+        message.find("Cannot change the factory") != std::string::npos;
+}
+
 uint64_t ComputeStableHash(const std::string& path)
 {
     uint64_t hash = 14695981039346656037ull;
@@ -493,7 +504,8 @@ void RetirePreviousVolumes(SilkSessionState* state)
 bool ResolveDensityField(
     const UsdStageRefPtr& stage,
     const UsdVolVolume& volume,
-    SdfPath* fieldPath)
+    SdfPath* fieldPath,
+    SdfAssetPath* assetPath)
 {
     static const TfToken densityToken("density");
     const UsdVolVolume::FieldMap fields = volume.GetFieldPaths();
@@ -525,6 +537,7 @@ bool ResolveDensityField(
     }
 
     *fieldPath = iterator->second;
+    *assetPath = filePath;
     return true;
 }
 
@@ -539,9 +552,178 @@ float ReadVolumeDensity(const UsdPrim& prim)
     return density;
 }
 
+std::string SanitizeCacheName(const std::string& value)
+{
+    std::string result;
+    result.reserve(value.size());
+    for (char ch : value)
+    {
+        const bool safe =
+            (ch >= 'a' && ch <= 'z') ||
+            (ch >= 'A' && ch <= 'Z') ||
+            (ch >= '0' && ch <= '9') ||
+            ch == '-' ||
+            ch == '_';
+        result.push_back(safe ? ch : '_');
+    }
+    return result.empty() ? "density" : result;
+}
+
+struct VolumeFieldBuffer
+{
+    std::vector<float> values;
+    int width = 0;
+    int height = 0;
+    int depth = 0;
+};
+
+bool TryReadVolumeWithHio(
+    const std::string& resolvedPath,
+    const std::string& fieldName,
+    VolumeFieldBuffer* buffer)
+{
+    HioFieldTextureDataSharedPtr data = HioFieldTextureData::New(
+        resolvedPath,
+        fieldName,
+        0,
+        std::string(),
+        64ull * 1024ull * 1024ull);
+    if (!data || !data->Read() || !data->HasRawBuffer() ||
+        data->GetFormat() != HioFormatFloat32)
+    {
+        return false;
+    }
+
+    const int width = data->ResizedWidth();
+    const int height = data->ResizedHeight();
+    const int depth = data->ResizedDepth();
+    if (width <= 0 || height <= 0 || depth <= 0)
+    {
+        return false;
+    }
+
+    const GfVec3i dimensions(width, height, depth);
+    const size_t byteCount = HioGetDataSize(HioFormatFloat32, dimensions);
+    if (byteCount == 0)
+    {
+        return false;
+    }
+
+    buffer->width = width;
+    buffer->height = height;
+    buffer->depth = depth;
+    buffer->values.resize(byteCount / sizeof(float));
+    std::memcpy(
+        buffer->values.data(),
+        data->GetRawBuffer(),
+        buffer->values.size() * sizeof(float));
+    return true;
+}
+
+bool TryCreateVolumeTexture(
+    const UsdStageRefPtr& stage,
+    const SdfPath& fieldPath,
+    const SdfAssetPath& assetPath,
+    HdSilkMaterialTexture* texture)
+{
+    const UsdPrim fieldPrim = stage->GetPrimAtPath(fieldPath);
+    const UsdPrim volumePrim = fieldPrim.GetParent();
+    bool sampleDensity = true;
+    const UsdAttribute sampleAttribute =
+        volumePrim.GetAttribute(TfToken("hdsilk:sampleDensity"));
+    if (sampleAttribute && sampleAttribute.Get(&sampleDensity) && !sampleDensity)
+    {
+        return false;
+    }
+
+    std::string resolvedPath = assetPath.GetResolvedPath();
+    if (resolvedPath.empty())
+    {
+        resolvedPath = assetPath.GetAssetPath();
+    }
+    if (resolvedPath.empty())
+    {
+        return false;
+    }
+    if (!std::filesystem::exists(resolvedPath))
+    {
+        return false;
+    }
+
+    const UsdVolOpenVDBAsset asset(fieldPrim);
+    TfToken fieldName("density");
+    asset.GetFieldNameAttr().Get(&fieldName);
+    VolumeFieldBuffer field;
+    if (!TryReadVolumeWithHio(resolvedPath, fieldName.GetString(), &field))
+    {
+        TF_WARN(
+            "hdSilk skipped sampled volume '%s': OpenVDB density grid could not be read.",
+            fieldPath.GetText());
+        return false;
+    }
+
+    const int width = field.width;
+    const int height = field.height;
+    const int depth = field.depth;
+    if (width <= 0 || height <= 0 || depth <= 0)
+    {
+        return false;
+    }
+    const size_t byteCount = field.values.size() * sizeof(float);
+    if (byteCount == 0)
+    {
+        return false;
+    }
+
+    std::filesystem::path anchor;
+    if (const SdfLayerHandle layer = stage->GetRootLayer())
+    {
+        anchor = layer->GetRealPath();
+    }
+    if (anchor.empty())
+    {
+        anchor = std::filesystem::absolute("hdsilk-volume-cache.usda");
+    }
+    std::filesystem::path cacheDirectory =
+        anchor.parent_path() / "hdsilk-volume-cache";
+    std::filesystem::create_directories(cacheDirectory);
+    const std::string cacheName =
+        SanitizeCacheName(fieldPath.GetString()) + "_" +
+        std::to_string(width) + "x" +
+        std::to_string(height) + "x" +
+        std::to_string(depth) + ".r32";
+    const std::filesystem::path cachePath = cacheDirectory / cacheName;
+    std::ofstream output(cachePath, std::ios::binary | std::ios::trunc);
+    if (!output)
+    {
+        return false;
+    }
+    output.write(
+        reinterpret_cast<const char*>(field.values.data()),
+        static_cast<std::streamsize>(byteCount));
+    if (!output)
+    {
+        return false;
+    }
+
+    texture->parameter = OPENUSD_SILK_MATERIAL_VOLUME_DENSITY;
+    texture->wrapS = OPENUSD_SILK_WRAP_CLAMP;
+    texture->wrapT = OPENUSD_SILK_WRAP_CLAMP;
+    texture->sourceColorSpace = OPENUSD_SILK_COLOR_SPACE_RAW;
+    texture->componentCount = 1;
+    texture->asset = cachePath.string();
+    texture->uvPrimvar =
+        std::to_string(width) + "," +
+        std::to_string(height) + "," +
+        std::to_string(depth);
+    return true;
+}
+
 void PublishVolumeProxy(
     SilkSessionState* state,
     const UsdPrim& prim,
+    const SdfPath& fieldPath,
+    const SdfAssetPath& assetPath,
     const GfMatrix4d& transform,
     float density)
 {
@@ -564,6 +746,11 @@ void PublishVolumeProxy(
     densityScalar.value[0] = density;
     material.scalars.push_back(color);
     material.scalars.push_back(densityScalar);
+    HdSilkMaterialTexture volumeTexture;
+    if (TryCreateVolumeTexture(state->stage, fieldPath, assetPath, &volumeTexture))
+    {
+        material.textures.push_back(std::move(volumeTexture));
+    }
     state->sceneState->ReplaceMaterial(std::move(material));
 
     HdSilkMeshRecord mesh;
@@ -618,7 +805,8 @@ void PublishVolumes(SilkSessionState* state, UsdTimeCode time)
         }
 
         SdfPath fieldPath;
-        if (!ResolveDensityField(state->stage, volume, &fieldPath))
+        SdfAssetPath assetPath;
+        if (!ResolveDensityField(state->stage, volume, &fieldPath, &assetPath))
         {
             TF_WARN(
                 "hdSilk skipped volume '%s': no density OpenVDBAsset field.",
@@ -629,6 +817,8 @@ void PublishVolumes(SilkSessionState* state, UsdTimeCode time)
         PublishVolumeProxy(
             state,
             prim,
+            fieldPath,
+            assetPath,
             xformCache.GetLocalToWorldTransform(prim),
             ReadVolumeDensity(prim));
     }
@@ -695,8 +885,12 @@ openusd_status InitializeSilkSession(
             }
             if (!plugin_mark.IsClean())
             {
-                WriteError(error, ConsumeErrors(plugin_mark));
-                return OPENUSD_STATUS_NATIVE_ERROR;
+                std::string errors = ConsumeErrors(plugin_mark);
+                if (!IsBenignHdSilkPluginReloadError(errors))
+                {
+                    WriteError(error, errors);
+                    return OPENUSD_STATUS_NATIVE_ERROR;
+                }
             }
             plugin_loaded = true;
         }
@@ -732,8 +926,12 @@ openusd_status InitializeSilkSession(
     }
     if (!mark.IsClean())
     {
-        WriteError(error, ConsumeErrors(mark));
-        return OPENUSD_STATUS_NATIVE_ERROR;
+        std::string errors = ConsumeErrors(mark);
+        if (!IsBenignHdSilkPluginReloadError(errors))
+        {
+            WriteError(error, errors);
+            return OPENUSD_STATUS_NATIVE_ERROR;
+        }
     }
 
     context->session->stage = *stage_view;
