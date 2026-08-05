@@ -50,6 +50,8 @@ $directoryBuild = Get-Content (
     Join-Path $repoRoot 'Directory.Build.props') -Raw
 $performanceRunner = Get-Content (
     Join-Path $repoRoot 'eng/run-performance.ps1') -Raw
+$parityRunner = Get-Content (
+    Join-Path $repoRoot 'eng/run-parity-capture.ps1') -Raw
 $solution = Get-Content (Join-Path $repoRoot 'OpenUsd.slnx') -Raw
 
 Assert-Contains $ciWorkflow 'dotnet-version: 10.0.301' 'Managed CI workflow'
@@ -63,6 +65,24 @@ Assert-Contains `
     $ciWorkflow `
     './eng/run-vulkan-conformance-tests.ps1' `
     'Managed CI workflow'
+Assert-Contains `
+    $ciWorkflow `
+    './eng/run-parity-capture.ps1 -Rid linux-x64 -Configuration Release' `
+    'Managed CI workflow'
+Assert-Contains `
+    $ciWorkflow `
+    "-R '^hdsilk_probe$' --output-on-failure" `
+    'Managed CI workflow'
+Assert-Contains $ciWorkflow 'OPENUSD_PARITY_CAPTURE_REQUIRED: ''1''' 'Managed CI workflow'
+Assert-Contains $ciWorkflow 'x11-utils xvfb zlib1g-dev' 'Managed CI workflow'
+Assert-Contains `
+    $ciWorkflow `
+    'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4' `
+    'Managed CI workflow'
+Assert-Contains `
+    $parityRunner `
+    "`$env:OPENUSD_PARITY_CAPTURE_REQUIRED = '1'" `
+    'Parity runner'
 Assert-Contains `
     $ciWorkflow `
     "`$_.BaseName -cne 'OpenUsd.Rendering.ConformanceTests'" `
@@ -166,6 +186,7 @@ foreach ($relativePath in @(
     'eng/run-native-fuzz.ps1',
     'eng/run-performance.ps1',
     'eng/run-vulkan-conformance-tests.ps1',
+    'eng/run-parity-capture.ps1',
     'eng/test-vulkan-test-runtime.ps1',
     'eng/test-continuous-safety-workflow.ps1'))
 {
