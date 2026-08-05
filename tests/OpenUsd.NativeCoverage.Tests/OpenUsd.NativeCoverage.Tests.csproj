@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenUsd\OpenUsd.csproj" />
     <ProjectReference Include="..\..\src\OpenUsd.Interop\OpenUsd.Interop.csproj" />
+    <ProjectReference Include="..\..\src\OpenUsd.Viewer\OpenUsd.Viewer.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

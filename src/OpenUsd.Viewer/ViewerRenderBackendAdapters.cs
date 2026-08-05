@@ -48,6 +48,19 @@ internal interface IViewerFrameDiagnosticsSource
     ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics { get; }
 }
 
+internal interface IViewerHydraSceneSnapshotSource
+{
+    ViewerHydraSceneSnapshot? HydraSceneSnapshot { get; }
+}
+
+internal interface IViewerFrameCaptureBackend
+{
+    ValueTask<SilkFrameCaptureResult> CaptureFrameAsync(
+        int width,
+        int height,
+        CancellationToken cancellationToken);
+}
+
 internal sealed class ViewerBackendInitializationException : Exception
 {
     internal ViewerBackendInitializationException(
@@ -149,6 +162,22 @@ internal sealed class ViewerRenderBackendRegistry
             return (_active as IViewerFrameDiagnosticsSource)?.FrameDiagnostics;
         }
     }
+
+    internal ViewerHydraSceneSnapshot? CaptureHydraSceneSnapshot()
+    {
+        lock (_gate)
+        {
+            return (_active as IViewerHydraSceneSnapshotSource)?.HydraSceneSnapshot;
+        }
+    }
+
+    internal IViewerFrameCaptureBackend? CaptureFrameCaptureBackend()
+    {
+        lock (_gate)
+        {
+            return _active as IViewerFrameCaptureBackend;
+        }
+    }
 }
 
 internal sealed class ViewerRenderBackendFactory : IRenderBackendFactory
@@ -178,7 +207,9 @@ internal sealed class ViewerRenderBackend :
     IRenderPickingBackend,
     IViewerRenderedPickStateSource,
     IViewerSelectionOutlineDiagnosticsSource,
-    IViewerFrameDiagnosticsSource
+    IViewerFrameDiagnosticsSource,
+    IViewerHydraSceneSnapshotSource,
+    IViewerFrameCaptureBackend
 {
     private readonly object _disposeGate = new();
     private readonly IViewerRenderBackendHost _host;
@@ -214,6 +245,9 @@ internal sealed class ViewerRenderBackend :
 
     public ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics =>
         (_session as IViewerFrameDiagnosticsSource)?.FrameDiagnostics;
+
+    public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
+        (_session as IViewerHydraSceneSnapshotSource)?.HydraSceneSnapshot;
 
     public ValueTask<RenderBackendProbeResult> ProbeAsync(
         CancellationToken cancellationToken = default)
@@ -303,6 +337,18 @@ internal sealed class ViewerRenderBackend :
                     request,
                     binding.State.Revision,
                     binding.SceneRevision));
+    }
+
+    public ValueTask<SilkFrameCaptureResult> CaptureFrameAsync(
+        int width,
+        int height,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        IViewerRenderBackendSession session = GetSession();
+        return session is IViewerFrameCaptureBackend capture
+            ? capture.CaptureFrameAsync(width, height, cancellationToken)
+            : throw new NotSupportedException("The active renderer cannot capture frames.");
     }
 
     public async ValueTask ActivateAsync(CancellationToken cancellationToken = default)

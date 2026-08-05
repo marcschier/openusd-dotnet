@@ -960,7 +960,9 @@ internal sealed class CompositionHostedBackendSession(
     IRenderPickingBackend,
     IViewerRenderedPickStateSource,
     IViewerSelectionOutlineDiagnosticsSource,
-    IViewerFrameDiagnosticsSource
+    IViewerFrameDiagnosticsSource,
+    IViewerHydraSceneSnapshotSource,
+    IViewerFrameCaptureBackend
 {
     private StageRenderState _state = initialState;
     private ViewerRenderedPickState? _lastRenderedPickState;
@@ -988,6 +990,9 @@ internal sealed class CompositionHostedBackendSession(
                 resources.Renderer.LastDrawCount,
                 resources.Renderer.LastUniformUploads,
                 resources.Renderer.LastGpuStatistics);
+
+    public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
+        resources.Renderer.HydraSceneSnapshot;
 
     public async ValueTask ActivateAsync(CancellationToken cancellationToken)
     {
@@ -1096,6 +1101,28 @@ internal sealed class CompositionHostedBackendSession(
         CancellationToken cancellationToken) =>
         resources.Renderer.PickAsync(request, cancellationToken);
 
+    public ValueTask<SilkFrameCaptureResult> CaptureFrameAsync(
+        int width,
+        int height,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (resources.Device is not ISilkGraphicsDevice device)
+        {
+            throw new NotSupportedException(
+                "Frame capture is available only for hdSilk backends with a managed graphics device.");
+        }
+        SilkFrameCaptureResult capture = SilkFrameCapture.Capture(
+            resources.Session,
+            device,
+            width,
+            height,
+            CurrentState.RenderSettings,
+            CurrentState.Time.TimeCode,
+            CurrentState.Camera);
+        return ValueTask.FromResult(capture);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)
@@ -1138,6 +1165,8 @@ internal interface ISilkStagePresentationRenderer :
     ulong LastStateRevision { get; }
 
     SilkSelectionOutlineDiagnostics SelectionOutlineDiagnostics { get; }
+
+    ViewerHydraSceneSnapshot? HydraSceneSnapshot { get; }
 
     void UpdateState(StageRenderState state);
 }
@@ -1204,6 +1233,7 @@ internal sealed class D3D12StagePresentationRenderer(
     private int _lastUniformUploads;
     private ulong _lastSceneRevision;
     private ulong _lastStateRevision;
+    private ViewerHydraSceneSnapshot? _hydraSceneSnapshot;
 
     public RenderBackendKind Kind => RenderBackendKind.D3D12;
 
@@ -1222,6 +1252,9 @@ internal sealed class D3D12StagePresentationRenderer(
     public SilkSelectionOutlineDiagnostics SelectionOutlineDiagnostics =>
         renderer.SelectionOutlineDiagnostics;
 
+    public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
+        Volatile.Read(ref _hydraSceneSnapshot);
+
     public ViewerRenderedPickState? LastRenderedPickState =>
         Volatile.Read(ref _lastRenderedPickState);
 
@@ -1239,6 +1272,7 @@ internal sealed class D3D12StagePresentationRenderer(
             checked((int)colorTarget.Width),
             checked((int)colorTarget.Height),
             state);
+        Volatile.Write(ref _hydraSceneSnapshot, ViewerHydraSceneSnapshot.FromPage(page));
         renderer.UpdateSelection(
             state.Selection,
             SilkSelectionOutlineSettings.Default);
@@ -1290,6 +1324,7 @@ internal sealed class VulkanStagePresentationRenderer(
     private int _lastUniformUploads;
     private ulong _lastSceneRevision;
     private ulong _lastStateRevision;
+    private ViewerHydraSceneSnapshot? _hydraSceneSnapshot;
 
     public RenderBackendKind Kind => RenderBackendKind.Vulkan;
 
@@ -1308,6 +1343,9 @@ internal sealed class VulkanStagePresentationRenderer(
     public SilkSelectionOutlineDiagnostics SelectionOutlineDiagnostics =>
         Volatile.Read(ref _currentRenderer)?.SelectionOutlineDiagnostics ?? default;
 
+    public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
+        Volatile.Read(ref _hydraSceneSnapshot);
+
     public ViewerRenderedPickState? LastRenderedPickState =>
         Volatile.Read(ref _lastRenderedPickState);
 
@@ -1322,6 +1360,7 @@ internal sealed class VulkanStagePresentationRenderer(
             checked((int)context.ColorTarget.Width),
             checked((int)context.ColorTarget.Height),
             state);
+        Volatile.Write(ref _hydraSceneSnapshot, ViewerHydraSceneSnapshot.FromPage(page));
         context.Renderer.UpdateSelection(
             state.Selection,
             SilkSelectionOutlineSettings.Default);
@@ -1372,6 +1411,7 @@ internal sealed class MetalStagePresentationRenderer(
     private ulong _lastSceneRevision;
     private ulong _lastStateRevision;
     private long _lastReportedRevision;
+    private ViewerHydraSceneSnapshot? _hydraSceneSnapshot;
 
     public RenderBackendKind Kind => RenderBackendKind.Metal;
 
@@ -1392,6 +1432,9 @@ internal sealed class MetalStagePresentationRenderer(
     public SilkSelectionOutlineDiagnostics SelectionOutlineDiagnostics =>
         Volatile.Read(ref _currentRenderer)?.SelectionOutlineDiagnostics ?? default;
 
+    public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
+        Volatile.Read(ref _hydraSceneSnapshot);
+
     public ViewerRenderedPickState? LastRenderedPickState =>
         Volatile.Read(ref _lastRenderedPickState);
 
@@ -1407,6 +1450,7 @@ internal sealed class MetalStagePresentationRenderer(
             checked((int)context.ColorTarget.Width),
             checked((int)context.ColorTarget.Height),
             state);
+        Volatile.Write(ref _hydraSceneSnapshot, ViewerHydraSceneSnapshot.FromPage(page));
         context.Renderer.UpdateSelection(
             state.Selection,
             SilkSelectionOutlineSettings.Default);
@@ -1511,6 +1555,12 @@ internal sealed class SilkCompositionResources(
     internal ISilkStagePresentationRenderer Renderer { get; } = renderer;
 
     internal SilkGraphicsCapabilities Capabilities { get; } = capabilities;
+
+    internal OpenUsdSilkSession Session =>
+        Volatile.Read(ref _session) ??
+        throw new ObjectDisposedException(nameof(SilkCompositionResources));
+
+    internal IDisposable? Device => Volatile.Read(ref _device);
 
     public void Dispose()
     {

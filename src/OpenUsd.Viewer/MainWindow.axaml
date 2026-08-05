@@ -27,6 +27,11 @@
                 AutomationProperties.Name="Reload current stage"
                 Header="_Reload Stage"
                 IsEnabled="False" />
+            <MenuItem
+                x:Name="CaptureFrameMenuItem"
+                AutomationProperties.Name="Capture current frame"
+                Header="_Capture Frame..."
+                IsEnabled="False" />
             <Separator />
             <MenuItem x:Name="RecentStagesMenu" Header="Recent Stages" IsEnabled="False" />
           </MenuItem>
@@ -433,6 +438,56 @@
                   TextWrapping="NoWrap" />
             </Grid>
           </TabItem>
+          <TabItem x:Name="HydraSceneTab" Header="_Hydra">
+            <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    x:Name="RefreshHydraSceneButton"
+                    AutomationProperties.Name="Refresh Hydra scene browser"
+                    Content="_Refresh"
+                    IsEnabled="False" />
+              </StackPanel>
+              <TextBlock
+                  x:Name="HydraSceneState"
+                  Grid.Row="1"
+                  Margin="0,8,0,0"
+                  Text="Render an hdSilk frame to inspect the Hydra scene command snapshot."
+                  TextWrapping="Wrap" />
+              <TextBox
+                  x:Name="HydraSceneText"
+                  Grid.Row="2"
+                  Margin="0,8,0,0"
+                  AutomationProperties.Name="Hydra scene browser"
+                  AcceptsReturn="True"
+                  IsReadOnly="True"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                  Text="No Hydra scene snapshot."
+                  TextWrapping="NoWrap" />
+            </Grid>
+          </TabItem>
+          <TabItem x:Name="TfDebugTab" Header="_TfDebug">
+            <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    x:Name="RefreshTfDebugButton"
+                    AutomationProperties.Name="Refresh TfDebug flags"
+                    Content="_Refresh" />
+              </StackPanel>
+              <TextBlock
+                  x:Name="TfDebugState"
+                  Grid.Row="1"
+                  Margin="0,8,0,0"
+                  Text="Refresh to list OpenUSD TfDebug symbols."
+                  TextWrapping="Wrap" />
+              <ScrollViewer Grid.Row="2" Margin="0,8,0,0">
+                <StackPanel
+                    x:Name="TfDebugRows"
+                    AutomationProperties.Name="TfDebug flags"
+                    Spacing="6" />
+              </ScrollViewer>
+            </Grid>
+          </TabItem>
           <TabItem x:Name="SettingsTab" Header="_Settings">
             <ScrollViewer Margin="0,8,0,0">
               <StackPanel Spacing="8">
@@ -463,6 +518,25 @@
                     x:Name="SnapTimelineCheckBox"
                     AutomationProperties.Name="Snap manual timeline changes to authored frames"
                     Content="Snap manual time changes to authored frames" />
+                <TextBlock
+                    Margin="0,8,0,0"
+                    FontWeight="SemiBold"
+                    Text="Debugging" />
+                <TextBlock Text="Pick mode" />
+                <ComboBox
+                    x:Name="PickModeSelector"
+                    AutomationProperties.Name="usdview pick mode"
+                    SelectedIndex="0">
+                  <ComboBoxItem Content="Prims" Tag="Prims" />
+                  <ComboBoxItem Content="Models" Tag="Models" />
+                  <ComboBoxItem Content="Instances" Tag="Instances" />
+                  <ComboBoxItem Content="Prototypes" Tag="Prototypes" />
+                </ComboBox>
+                <Button
+                    x:Name="CaptureFrameButton"
+                    AutomationProperties.Name="Capture current frame"
+                    Content="Capture _Frame..."
+                    IsEnabled="False" />
                 <TextBlock
                     Margin="0,8,0,0"
                     FontWeight="SemiBold"

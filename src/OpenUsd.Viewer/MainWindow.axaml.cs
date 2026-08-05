@@ -40,6 +40,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private readonly RecentStageStore _recentStageStore;
     private readonly ViewerSettingsStore _settingsStore;
     private readonly ViewerDiagnosticsBuffer _diagnostics = new();
+    private readonly ViewerTfDebugPanelModel _tfDebugModel = new();
     private readonly ViewerDiagnosticsCadence _diagnosticsCadence =
         new(TimeSpan.FromMilliseconds(500));
     private readonly ViewerDiagnosticsFormatter _diagnosticsFormatter =
@@ -73,6 +74,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private ViewerLayerStackSnapshot _layers = ViewerLayerStackSnapshot.Empty;
     private ViewerStageStatisticsSnapshot _statistics = ViewerStageStatisticsSnapshot.Empty;
     private ViewerValidationSnapshot _validation = ViewerValidationSnapshot.Empty;
+    private ViewerHydraSceneSnapshot _hydraScene = ViewerHydraSceneSnapshot.Empty;
     private ViewerPrimInspectorSnapshot? _currentInspector;
     private ViewerDiagnosticsSnapshot _latestDiagnostics = ViewerDiagnosticsSnapshot.Empty;
     private ViewerSettings _settings = ViewerSettings.Default;
@@ -188,6 +190,8 @@ public sealed partial class MainWindow : Window, IDisposable
             OpenStageMenuItem.Click += OnOpenStageClick;
             ReloadStageButton.Click += OnReloadStageClick;
             ReloadStageMenuItem.Click += OnReloadStageClick;
+            CaptureFrameButton.Click += OnCaptureFrameClick;
+            CaptureFrameMenuItem.Click += OnCaptureFrameClick;
             HierarchyFilter.TextChanged += OnHierarchyFilterChanged;
             HierarchyTypeFilter.TextChanged += OnHierarchyFilterChanged;
             HierarchyExpandDepthInput.TextChanged += OnHierarchyExpandDepthChanged;
@@ -214,6 +218,9 @@ public sealed partial class MainWindow : Window, IDisposable
             ExportDiagnosticsButton.Click += OnExportDiagnosticsClick;
             IncludeDiagnosticPathsCheckBox.Click += OnDiagnosticPathSettingChanged;
             RefreshValidationButton.Click += OnRefreshValidationClick;
+            RefreshHydraSceneButton.Click += OnRefreshHydraSceneClick;
+            RefreshTfDebugButton.Click += OnRefreshTfDebugClick;
+            PickModeSelector.SelectionChanged += OnPickModeChanged;
             ViewportDrawModeSelector.SelectionChanged += OnViewportDrawModeChanged;
             PurposeDefaultCheckBox.Click += OnViewportPurposeChanged;
             PurposeProxyCheckBox.Click += OnViewportPurposeChanged;
@@ -427,7 +434,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 ViewerSettings.MaximumPanelWidth,
                 ViewerSettings.Default.InspectorPanelWidth),
             RendererPreference = GetSelectedRendererPreference(),
-            SelectedInspectorTab = Math.Clamp(InspectorTabs.SelectedIndex, 0, 3),
+            SelectedInspectorTab = Math.Clamp(InspectorTabs.SelectedIndex, 0, 9),
             StagePanelVisible = StagePanel.IsVisible,
             InspectorPanelVisible = InspectorPanel.IsVisible,
             TimelineVisible = TimelinePanel.IsVisible,
@@ -1198,6 +1205,7 @@ public sealed partial class MainWindow : Window, IDisposable
         long generation,
         CancellationToken cancellationToken)
     {
+        item = await ResolvePickedItemAsync(coordinator, item, cancellationToken);
         if (!_hierarchy.Contains(item.PrimPath))
         {
             ShowPickStatus(
@@ -1231,6 +1239,35 @@ public sealed partial class MainWindow : Window, IDisposable
             _selectionState.Restore(previousSelection);
             throw;
         }
+    }
+
+    private async Task<SelectionItem> ResolvePickedItemAsync(
+        ViewerRenderCoordinator coordinator,
+        SelectionItem item,
+        CancellationToken cancellationToken)
+    {
+        ViewerPickMode mode = GetSelectedPickMode();
+        if (mode == ViewerPickMode.Prims)
+        {
+            return item;
+        }
+
+        string resolved = await coordinator.Scheduler.InvokeAsync(
+            stage =>
+            {
+                return ViewerPickModeResolver.ResolvePath(
+                    item.PrimPath,
+                    mode,
+                    path => stage.HasPrim(path),
+                    path => UsdGeomModelAPI.TryWrap(stage.GetPrim(path), out _),
+                    path => stage.GetPrim(path).IsInstance(),
+                    path => stage.GetPrim(path).IsPrototype(),
+                    path => stage.GetPrim(path).GetPrototypePath());
+            },
+            cancellationToken);
+        return string.Equals(resolved, item.PrimPath, StringComparison.Ordinal)
+            ? item
+            : new SelectionItem(resolved);
     }
 
     private void ShowPickStatus(string status)
@@ -1939,6 +1976,12 @@ public sealed partial class MainWindow : Window, IDisposable
                     coordinator,
                     result,
                     force: result.DidFailOver || !result.IsSuccess);
+                if (result.Frame is { Status: RenderFrameStatus.Rendered } &&
+                    coordinator.HydraSceneSnapshot is { } hydraScene)
+                {
+                    _hydraScene = hydraScene;
+                    await Dispatcher.UIThread.InvokeAsync(() => RenderHydraScene());
+                }
                 if (result.DidFailOver)
                 {
                     await Dispatcher.UIThread.InvokeAsync(SetActiveBackendStatus);
@@ -2115,6 +2158,95 @@ public sealed partial class MainWindow : Window, IDisposable
             !_validationBusy;
     }
 
+    private void OnRefreshHydraSceneClick(object? sender, RoutedEventArgs e) =>
+        RenderHydraScene(force: true);
+
+    private void RenderHydraScene(bool force = false)
+    {
+        if (_coordinator?.HydraSceneSnapshot is { } snapshot)
+        {
+            _hydraScene = snapshot;
+        }
+        HydraSceneText.Text = _hydraScene.Format();
+        HydraSceneState.Text = _hydraScene.Timestamp == DateTimeOffset.MinValue
+            ? "No hdSilk Hydra command snapshot has been captured yet."
+            : $"Hydra scene captured at {_hydraScene.Timestamp:O}.";
+        RefreshHydraSceneButton.IsEnabled = _coordinator is not null && !_documentBusy;
+        if (force && _hydraScene.Timestamp == DateTimeOffset.MinValue)
+        {
+            ShowError("Hydra scene browser is waiting for an hdSilk frame.");
+        }
+    }
+
+    private void OnRefreshTfDebugClick(object? sender, RoutedEventArgs e) => LoadTfDebugFlags();
+
+    private void LoadTfDebugFlags()
+    {
+        TfDebugRows.Children.Clear();
+        try
+        {
+            ViewerTfDebugFlag[] flags = _tfDebugModel.Load();
+            TfDebugState.Text = ViewerTfDebugFormatter.FormatStatus(flags);
+            foreach (ViewerTfDebugFlag flag in flags)
+            {
+                var checkBox = new CheckBox
+                {
+                    Content = flag.Name,
+                    IsChecked = flag.Enabled,
+                    Tag = flag.Name
+                };
+                ToolTip.SetTip(
+                    checkBox,
+                    string.IsNullOrWhiteSpace(flag.Description) ? flag.Name : flag.Description);
+                checkBox.IsCheckedChanged += OnTfDebugFlagChanged;
+                TfDebugRows.Children.Add(checkBox);
+            }
+        }
+        catch (Exception exception)
+        {
+            TfDebugState.Text =
+                $"TfDebug symbols could not be loaded: {ViewerPackageErrorFormatter.Format(exception)}";
+        }
+    }
+
+    private void OnTfDebugFlagChanged(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox { Tag: string name } checkBox)
+        {
+            return;
+        }
+
+        try
+        {
+            ViewerTfDebugFlag flag = _tfDebugModel.SetEnabled(name, checkBox.IsChecked == true);
+            checkBox.IsChecked = flag.Enabled;
+            TfDebugState.Text = $"TfDebug {name} {(flag.Enabled ? "enabled" : "disabled")}.";
+        }
+        catch (Exception exception)
+        {
+            TfDebugState.Text =
+                $"TfDebug {name} could not be changed: {ViewerPackageErrorFormatter.Format(exception)}";
+        }
+    }
+
+    private void OnPickModeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_selectorReady)
+        {
+            ShowPickStatus($"Pick mode: {GetSelectedPickMode()}.");
+        }
+    }
+
+    private ViewerPickMode GetSelectedPickMode()
+    {
+        if (PickModeSelector.SelectedItem is ComboBoxItem { Tag: string tag } &&
+            Enum.TryParse(tag, out ViewerPickMode mode))
+        {
+            return mode;
+        }
+        return ViewerPickMode.Prims;
+    }
+
     private async void OnViewportDrawModeChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_applyingViewportDisplay ||
@@ -2283,6 +2415,9 @@ public sealed partial class MainWindow : Window, IDisposable
         BackfaceCullingCheckBox.IsEnabled = enabled;
         SceneMaterialsCheckBox.IsEnabled = enabled;
         BackgroundColorSelector.IsEnabled = enabled;
+        CaptureFrameButton.IsEnabled = enabled;
+        CaptureFrameMenuItem.IsEnabled = enabled;
+        RefreshHydraSceneButton.IsEnabled = _coordinator is not null && !_documentBusy;
     }
 
     private static RenderPurpose? GetPurposeForCheckBox(CheckBox checkBox) =>
@@ -2736,6 +2871,61 @@ public sealed partial class MainWindow : Window, IDisposable
         catch (Exception exception)
         {
             ShowError($"Could not reload the stage: {exception.Message}");
+        }
+    }
+
+    private async void OnCaptureFrameClick(object? sender, RoutedEventArgs e)
+    {
+        ViewerRenderCoordinator? coordinator = _coordinator;
+        if (coordinator is null)
+        {
+            ShowError("Open a stage before capturing a frame.");
+            return;
+        }
+
+        try
+        {
+            IStorageFile? file = await StorageProvider.SaveFilePickerAsync(
+                new FilePickerSaveOptions
+                {
+                    Title = "Capture Frame",
+                    SuggestedFileName = "openusd-viewer-frame.bmp",
+                    FileTypeChoices =
+                    [
+                        new FilePickerFileType("Bitmap image")
+                        {
+                            Patterns = ["*.bmp"]
+                        }
+                    ]
+                });
+            string? path = file?.TryGetLocalPath();
+            if (path is null)
+            {
+                return;
+            }
+
+            ViewportDimensions viewport = coordinator.CurrentState.Viewport;
+            if (viewport.Width <= 0 || viewport.Height <= 0)
+            {
+                ShowError("The viewport has no drawable size to capture.");
+                return;
+            }
+
+            SilkFrameCaptureResult capture = await coordinator.CaptureFrameAsync(
+                viewport.Width,
+                viewport.Height,
+                _viewerLifetime.Token);
+            ViewerFrameBitmapWriter.WriteBmp(path, capture.Width, capture.Height, capture.Rgba.Span);
+            ViewerStatus.Text =
+                $"Captured {capture.Width}×{capture.Height} frame to {Path.GetFileName(path)}.";
+        }
+        catch (NotSupportedException exception)
+        {
+            ShowError($"Frame capture is unavailable: {exception.Message}");
+        }
+        catch (Exception exception)
+        {
+            ShowError($"Frame capture failed: {ViewerPackageErrorFormatter.Format(exception)}");
         }
     }
 
@@ -5049,6 +5239,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateLayerAvailability();
         ApplyViewportDisplayState(_coordinator?.CurrentState ?? StageRenderState.Default);
         RenderValidation();
+        RenderHydraScene();
         if (_currentInspector is { } inspector)
         {
             ShowInspector(inspector);
@@ -5070,6 +5261,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateLayerAvailability();
         UpdateViewportDisplayAvailability();
         RenderValidation();
+        RenderHydraScene();
         if (_currentInspector is { } inspector)
         {
             ShowInspector(inspector);
@@ -5082,6 +5274,7 @@ public sealed partial class MainWindow : Window, IDisposable
         StageStatus.Text = "No stage loaded";
         _statistics = ViewerStageStatisticsSnapshot.Empty;
         _validation = ViewerValidationSnapshot.Empty;
+        _hydraScene = ViewerHydraSceneSnapshot.Empty;
         _currentInspector = null;
         _rootLayerEditsExplicitlyEnabled = false;
         ShowStageSummary();
@@ -5089,6 +5282,8 @@ public sealed partial class MainWindow : Window, IDisposable
         OpenStageMenuItem.IsEnabled = !_documentBusy;
         ReloadStageButton.IsEnabled = false;
         ReloadStageMenuItem.IsEnabled = false;
+        CaptureFrameButton.IsEnabled = false;
+        CaptureFrameMenuItem.IsEnabled = false;
         UpdateCameraAvailability();
         StageHierarchy.ItemsSource = null;
         StageHierarchy.IsVisible = false;
@@ -5100,6 +5295,7 @@ public sealed partial class MainWindow : Window, IDisposable
         RenderLayers();
         RenderDiagnostics();
         RenderValidation();
+        RenderHydraScene();
     }
 
     private void ResetTimelineUi()

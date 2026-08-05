@@ -56,7 +56,7 @@ internal sealed record ViewerSettings
         IsInRange(WindowHeight, MinimumWindowHeight, MaximumWindowHeight) &&
         IsInRange(StagePanelWidth, MinimumPanelWidth, MaximumPanelWidth) &&
         IsInRange(InspectorPanelWidth, MinimumPanelWidth, MaximumPanelWidth) &&
-        SelectedInspectorTab is >= 0 and <= 3 &&
+        SelectedInspectorTab is >= 0 and <= 9 &&
         IsRendererPreference(RendererPreference);
 
     internal static bool IsRendererPreference(string value) =>
