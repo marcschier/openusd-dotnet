@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenUsd.Runtime.Core.win-x64/OpenUsd.Runtime.Core.win-x64.csproj" IncludeAssets="all" PrivateAssets="none" />
+    <ProjectReference Include="../OpenUsd.Runtime.Core.linux-x64/OpenUsd.Runtime.Core.linux-x64.csproj" IncludeAssets="all" PrivateAssets="none" />
+    <ProjectReference Include="../OpenUsd.Runtime.Core.osx-arm64/OpenUsd.Runtime.Core.osx-arm64.csproj" IncludeAssets="all" PrivateAssets="none" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackageId>OpenUsd.Runtime.Core</PackageId>
+    <Description>RID-agnostic OpenUSD core native runtime metapackage for win-x64, linux-x64, and osx-arm64.</Description>
+    <PackageTags>openusd;usd;native;runtime;windows;linux;macos;x64;arm64</PackageTags>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+</Project>

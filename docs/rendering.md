@@ -4,6 +4,7 @@ Use this guide to trace renderer-neutral state through Storm or the hdSilk comma
 find the backend selection, fallback, picking, presentation, and platform evidence details.
 
 **On this page:** [Backend flow](#backend-flow) ·
+[Headless CI rendering](#headless-ci-rendering-on-linux) ·
 [hdSilk shader pipeline cache](#hdsilk-shader-pipeline-cache) ·
 [Picking](#renderer-neutral-picking-contract) ·
 [Vulkan composition](#avalonia-vulkan-composition-smoke) ·
@@ -32,8 +33,44 @@ Solid arrows show the active data path. Dotted arrows return clean initializatio
 failures to the platform candidate order; they do not imply recovery from a process-ending driver
 crash.
 
-Hydra/Storm is the primary viewer renderer. The fallback is a custom Hydra renderer that emits dirty scene updates into
-native-owned command pages consumed by managed Silk.NET code.
+Hydra/Storm is the primary viewer renderer. The fallback is a custom Hydra renderer that emits dirty
+scene updates into native-owned command pages consumed by managed Silk.NET code.
+
+## Headless CI rendering on Linux
+
+Linux CI can exercise the rendering path today without an interactive GPU by using the Silk Vulkan
+backend with SwiftShader. The package-only Imaging gate publishes and runs a real consumer with
+these references:
+
+```xml
+<ItemGroup>
+  <PackageReference Include="OpenUsd" Version="0.4.0-alpha" />
+  <PackageReference Include="OpenUsd.Rendering.Silk.Vulkan" Version="0.4.0-alpha" />
+  <PackageReference Include="OpenUsd.Runtime.Imaging" Version="0.4.0-alpha" />
+</ItemGroup>
+```
+
+`OpenUsd.Rendering.Silk.Vulkan` brings Silk.NET's Vulkan loader and the pinned
+`Stride.Dependencies.SwiftShader` package. `OpenUsd.Runtime.Imaging` brings the matching Core
+runtime through the RID-specific Imaging package selected for the published app. Publish for
+`linux-x64`, run from the publish directory, and point the Vulkan loader at the packaged
+SwiftShader ICD:
+
+```bash
+dotnet publish -c Release -r linux-x64 -o artifacts/viewer-smoke
+cd artifacts/viewer-smoke
+export VK_ICD_FILENAMES="$PWD/vk_swiftshader_icd.json"
+export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
+export LD_LIBRARY_PATH="$PWD"
+export LD_PRELOAD="$PWD/libvulkan.so"
+./ViewerSmoke
+```
+
+The package test asserts that this path reports `GPU_BACKEND=VULKAN_SWIFTSHADER`,
+`SOFTWARE_DEVICE=true`, and `INCREMENTAL_GPU_UPLOAD=true` after opening a packaged USDA stage and
+uploading one hdSilk page. Repository CI also runs `eng/run-parity-capture.ps1 -Rid linux-x64`
+under Xvfb so the Storm/GLX side of the parity capture has a display while the managed Vulkan side
+uses the same software Vulkan runtime.
 
 The normal Windows Viewer keeps one Avalonia shell fixed to `Win32RenderingMode.AngleEgl`. Linux keeps one Avalonia
 X11/GLX shell: directly on X11, or as a whole-shell XWayland client in a Wayland session. Storm is hosted in an

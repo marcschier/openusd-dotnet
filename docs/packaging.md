@@ -27,8 +27,18 @@ flowchart LR
     resolve --> output
 ```
 
-Data-only consumers pair the managed API with `OpenUsd.Runtime.Core.<rid>`. Rendering consumers add
-a managed backend and `OpenUsd.Runtime.Imaging.<rid>`, whose exact dependency also brings Core.
+Data-only consumers pair the managed API with `OpenUsd.Runtime.Core`. Rendering consumers add a
+managed backend and `OpenUsd.Runtime.Imaging`, whose RID-specific dependencies also bring Core.
+The metapackages depend on the published `win-x64`, `linux-x64`, and `osx-arm64` runtime packages,
+letting NuGet select the native asset group for the consuming app's `RuntimeIdentifier`.
+
+Projects that need explicit per-RID control can reference the RID packages directly:
+
+| RID | Core package | Imaging package |
+| --- | --- | --- |
+| `win-x64` | `OpenUsd.Runtime.Core.win-x64` | `OpenUsd.Runtime.Imaging.win-x64` |
+| `linux-x64` | `OpenUsd.Runtime.Core.linux-x64` | `OpenUsd.Runtime.Imaging.linux-x64` |
+| `osx-arm64` | `OpenUsd.Runtime.Core.osx-arm64` | `OpenUsd.Runtime.Imaging.osx-arm64` |
 
 Managed libraries target .NET 8, 9, and 10. Native assets are split into two extensible runtime
 packages for each supported RID:
@@ -133,16 +143,18 @@ resource staging arrive when a consumer references only Imaging.
 
 ## Pack
 
-Build the locked native inputs first, then pack the runtime projects:
+Build the locked native inputs first, then pack the runtime projects for the current RID:
 
 ```shell
-dotnet pack src/OpenUsd.Runtime.Core.win-x64/OpenUsd.Runtime.Core.win-x64.csproj -c Release -o artifacts/packages
-dotnet pack src/OpenUsd.Runtime.Imaging.win-x64/OpenUsd.Runtime.Imaging.win-x64.csproj -c Release -o artifacts/packages
+./eng/pack-packages.ps1 -Scope runtime -Rid win-x64 -OutputPath artifacts/packages
 ```
 
-Use the corresponding project names for `linux-x64` and `osx-arm64`. The Linux and macOS projects
-are ready to consume the same locked layout, but require native installs produced on those
-platforms.
+Use `linux-x64` or `osx-arm64` for the platform job that produced that native install. The Linux
+and macOS RID packages are ready to consume the same locked layout, but require native installs
+produced on those platforms. The RID-agnostic metapackages (`OpenUsd.Runtime.Core` and
+`OpenUsd.Runtime.Imaging`) are packed with the managed package scope because they contain no native
+files; they depend on the three RID packages so a consumer can keep one unconditional
+`PackageReference`.
 
 Package archives include repository documentation such as `README.md`, so their
 byte sizes and SHA-256 digests change with packaged inputs. Inspect the current
@@ -201,10 +213,10 @@ generated local feed. After a Release build, run them with:
 
 ## Publish
 
-Fifteen packages are published: the eight managed libraries (`OpenUsd`, `OpenUsd.Interop`,
+Seventeen packages are published: the eight managed libraries (`OpenUsd`, `OpenUsd.Interop`,
 `OpenUsd.Rendering`, `OpenUsd.Rendering.Silk`, the three hdSilk backends, and
-`OpenUsd.Rendering.Storm`), the embeddable `OpenUsd.Viewer` shell, and the six per-RID runtime
-packages. `eng/pack-packages.ps1` is the
+`OpenUsd.Rendering.Storm`), the embeddable `OpenUsd.Viewer` shell, the two runtime metapackages,
+and the six per-RID runtime packages. `eng/pack-packages.ps1` is the
 single source of truth for that set. It enumerates the packages explicitly rather than packing the
 solution, and asserts afterwards that the produced set matches exactly, so adding a project cannot
 silently ship it and a missing native input fails the run instead of publishing a partial release.
@@ -223,8 +235,8 @@ published: the Metal package embeds the macOS-only `mesh.metallib`, and the Linu
 packages run ELF and Mach-O validation that only their own platform can perform and whose evidence
 is embedded in the package. Each job stages its RID from the native archive of the same run, so the
 published bytes are the bytes the gates verified. The platform-neutral libraries are packed once, on
-Linux. A `publish` job then downloads every packed set, requires all fifteen packages to be present,
-and pushes.
+Linux. A `publish` job then downloads every packed set, requires all seventeen packages to be
+present, and pushes.
 
 Both jobs depend on `ci`, `shaders`, `native` and `packages`, which together build, verify and
 execute the exact packages that get pushed, with `packages` running the package-only consumer gates
@@ -257,7 +269,7 @@ When the locked native and shim install for the current host is present,
 `OpenUsd.Package.Tests` performs a NativeAOT execution gate for `win-x64`,
 `linux-x64`, or `osx-arm64`:
 
-1. Pack `OpenUsd.Interop`, `OpenUsd`, and the matching
+1. Pack `OpenUsd.Interop`, `OpenUsd`, `OpenUsd.Runtime.Core`, and the matching
    `OpenUsd.Runtime.Core.<rid>` into an isolated local feed.
 2. Generate a temporary consumer containing only `PackageReference` items.
 3. Restore into an isolated global-packages folder with source mapping that resolves every
@@ -296,9 +308,12 @@ The Imaging consumer has exactly two direct package references:
 
 | RID | Managed backend | Runtime package | GPU gate |
 | --- | --- | --- | --- |
-| `win-x64` | `OpenUsd.Rendering.Silk.D3D12` | `OpenUsd.Runtime.Imaging.win-x64` | D3D12 WARP |
-| `linux-x64` | `OpenUsd.Rendering.Silk.Vulkan` | `OpenUsd.Runtime.Imaging.linux-x64` | Hash-locked Vulkan SwiftShader |
-| `osx-arm64` | `OpenUsd.Rendering.Silk.Metal` | `OpenUsd.Runtime.Imaging.osx-arm64` | Metal |
+| `win-x64` | `OpenUsd.Rendering.Silk.D3D12` | `OpenUsd.Runtime.Imaging` | D3D12 WARP |
+| `linux-x64` | `OpenUsd.Rendering.Silk.Vulkan` | `OpenUsd.Runtime.Imaging` | Hash-locked Vulkan SwiftShader |
+| `osx-arm64` | `OpenUsd.Rendering.Silk.Metal` | `OpenUsd.Runtime.Imaging` | Metal |
+
+The RID-specific Imaging package IDs are still published and can be referenced directly when a
+project deliberately wants a fixed asset package.
 
 The backend brings `OpenUsd.Rendering.Silk`, `OpenUsd.Rendering`, `OpenUsd`,
 and `OpenUsd.Interop` transitively. Imaging brings the exact matching Core

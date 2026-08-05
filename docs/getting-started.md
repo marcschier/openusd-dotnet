@@ -208,7 +208,7 @@ hand.
 | Plugin or schema discovery fails | Use the probe or Viewer staging script; do not flatten resources |
 | `dotnet test` reports zero tests | Use `eng/run-managed-tests.ps1` |
 | Metal package build fails off macOS | Produce Metal packages only on macOS with the locked Xcode |
-| Public package restore fails | No public installation path is currently advertised |
+| Public package restore fails | Use `OpenUsd.Runtime.Core` or `OpenUsd.Runtime.Imaging` plus a supported RID |
 
 For loader, plugin, ABI, platform, NativeAOT, and evidence symptoms, use
 [Troubleshooting](troubleshooting.md).

@@ -9,9 +9,11 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/OpenUsd.Interop/OpenUsd.Interop.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Core/OpenUsd.Runtime.Core.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.linux-x64/OpenUsd.Runtime.Core.linux-x64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.osx-arm64/OpenUsd.Runtime.Core.osx-arm64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.win-x64/OpenUsd.Runtime.Core.win-x64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Imaging/OpenUsd.Runtime.Imaging.csproj" />
     <Project Path="src/OpenUsd.Runtime.Imaging.linux-x64/OpenUsd.Runtime.Imaging.linux-x64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Imaging.osx-arm64/OpenUsd.Runtime.Imaging.osx-arm64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Imaging.win-x64/OpenUsd.Runtime.Imaging.win-x64.csproj" />

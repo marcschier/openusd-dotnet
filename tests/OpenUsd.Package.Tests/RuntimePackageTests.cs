@@ -117,7 +117,12 @@ public sealed class RuntimePackageTests
     public async Task RuntimePackageProjectsCoverSupportedMatrix()
     {
         string repositoryRoot = FindRepositoryRoot();
-        string[] expectedProjects =
+        string[] metapackages =
+        [
+            "OpenUsd.Runtime.Core",
+            "OpenUsd.Runtime.Imaging",
+        ];
+        string[] ridPackages =
         [
             "OpenUsd.Runtime.Core.win-x64",
             "OpenUsd.Runtime.Imaging.win-x64",
@@ -127,27 +132,101 @@ public sealed class RuntimePackageTests
             "OpenUsd.Runtime.Imaging.osx-arm64",
         ];
 
-        foreach (string packageId in expectedProjects)
+        foreach (string packageId in metapackages.Concat(ridPackages))
         {
             string projectPath = Path.Combine(repositoryRoot, "src", packageId, $"{packageId}.csproj");
             await Assert.That(File.Exists(projectPath)).IsTrue();
 
             XDocument project = XDocument.Load(projectPath);
             string? declaredPackageId = project.Descendants("PackageId").SingleOrDefault()?.Value;
-            string? runtimeRid = project.Descendants("RuntimePackageRid").SingleOrDefault()?.Value;
-            string expectedRid = packageId[(packageId.LastIndexOf('.') + 1)..];
-
             await Assert.That(declaredPackageId).IsEqualTo(packageId);
-            await Assert.That(runtimeRid).IsEqualTo(expectedRid);
             await Assert.That(project.Descendants("IncludeBuildOutput").Single().Value).IsEqualTo("false");
 
-            string targetsPath = Path.Combine(
+            if (ridPackages.Contains(packageId, StringComparer.Ordinal))
+            {
+                string? runtimeRid = project.Descendants("RuntimePackageRid").SingleOrDefault()?.Value;
+                string expectedRid = packageId[(packageId.LastIndexOf('.') + 1)..];
+
+                await Assert.That(runtimeRid).IsEqualTo(expectedRid);
+
+                string targetsPath = Path.Combine(
+                    repositoryRoot,
+                    "src",
+                    packageId,
+                    "buildTransitive",
+                    $"{packageId}.targets");
+                await Assert.That(File.Exists(targetsPath)).IsTrue();
+            }
+            else
+            {
+                string[] dependencies = project
+                    .Descendants("ProjectReference")
+                    .Select(element => Path.GetFileNameWithoutExtension(
+                        element.Attribute("Include")?.Value)!)
+                    .ToArray();
+                await Assert.That(dependencies).IsEquivalentTo(
+                    ridPackages
+                        .Where(id => id.StartsWith(packageId + ".", StringComparison.Ordinal))
+                        .ToArray());
+            }
+        }
+    }
+
+    [Test]
+    public async Task ConsumerDocumentationListsRuntimeChoicesAtPackageReferencePoint()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string[] documentPaths =
+        [
+            "README.md",
+            Path.Combine("docs", "packaging.md"),
+            Path.Combine("samples", "README.md"),
+        ];
+
+        foreach (string relativePath in documentPaths)
+        {
+            string text = await File.ReadAllTextAsync(Path.Combine(repositoryRoot, relativePath));
+            foreach (string packageId in AllRuntimePackageIds())
+            {
+                await Assert.That(text).Contains(packageId);
+            }
+        }
+    }
+
+    [Test]
+    public async Task RuntimeMetapackagesDependOnEverySupportedRidPackage()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+
+        try
+        {
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+
+            PackedPackage corePackage = await PackManagedPackageAsync(
                 repositoryRoot,
-                "src",
-                packageId,
-                "buildTransitive",
-                $"{packageId}.targets");
-            await Assert.That(File.Exists(targetsPath)).IsTrue();
+                "OpenUsd.Runtime.Core",
+                packageRoot);
+            PackedPackage imagingPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Imaging",
+                packageRoot);
+
+            await AssertPackageDependenciesAsync(
+                corePackage.Path,
+                corePackage.Version,
+                GetCoreMetaPackageGraph().Where(id => id != "OpenUsd.Runtime.Core").ToArray());
+            await AssertPackageDependenciesAsync(
+                imagingPackage.Path,
+                imagingPackage.Version,
+                AllRuntimePackageIds()
+                    .Where(id => id.StartsWith("OpenUsd.Runtime.Imaging.", StringComparison.Ordinal))
+                    .ToArray());
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
         }
     }
 
@@ -814,6 +893,19 @@ public sealed class RuntimePackageTests
                 "linux-x64",
                 corePackage.Version);
             await Assert.That(imagingPackage.Version).IsEqualTo(corePackage.Version);
+            PackedPackage imagingMetaPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Imaging",
+                packageRoot);
+            await Assert.That(imagingMetaPackage.Version).IsEqualTo(corePackage.Version);
+            await CreateStubRuntimePackagesAsync(
+                workRoot,
+                packageRoot,
+                imagingPackage.Version,
+                [.. GetRuntimeImagingMetaPackageGraph(SupportedExecutionPlatforms.Single(platform => platform.Rid == "linux-x64"))
+                    .Where(id => id != "OpenUsd.Runtime.Imaging")
+                    .Where(id => id != "OpenUsd.Runtime.Imaging.linux-x64")
+                    .Where(id => id != "OpenUsd.Runtime.Core.linux-x64")]);
             await AssertPackageDoesNotContainFileNameOutsideNativeAsync(
                 imagingPackage.Path,
                 "libopenusd_storm_child.so");
@@ -832,10 +924,7 @@ public sealed class RuntimePackageTests
                 publishAot: false);
             AssertPackageOnlyGraph(
                 consumer.AssetsPath,
-                [
-                    "OpenUsd.Runtime.Core.linux-x64",
-                    "OpenUsd.Runtime.Imaging.linux-x64",
-                ]);
+                GetRuntimeImagingMetaPackageGraph(SupportedExecutionPlatforms.Single(platform => platform.Rid == "linux-x64")));
             string consumerProject = await File.ReadAllTextAsync(consumer.ProjectPath);
             await Assert.That(consumerProject).DoesNotContain("ProjectReference");
             await Assert.That(consumerProject).DoesNotContain("OpenUsd.Runtime.Core.linux-x64");
@@ -953,7 +1042,26 @@ public sealed class RuntimePackageTests
                     skipLinuxElfValidation: platform.Rid == "linux-x64");
                 await Assert.That(coreRuntimePackage.Version).IsEqualTo(packageVersion);
                 await Assert.That(imagingRuntimePackage.Version).IsEqualTo(packageVersion);
+            }
 
+            PackedPackage imagingMetaPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Imaging",
+                packageRoot);
+            await Assert.That(imagingMetaPackage.Version).IsEqualTo(packageVersion);
+            await CreateStubRuntimePackagesAsync(
+                workRoot,
+                packageRoot,
+                packageVersion,
+                [.. GetImagingMetaPackageGraph(platforms[0])
+                    .Where(id => id.StartsWith("OpenUsd.Runtime.", StringComparison.Ordinal))
+                    .Where(id => id != "OpenUsd.Runtime.Imaging")
+                    .Where(id => !platforms.Any(platform =>
+                        id == $"OpenUsd.Runtime.Core.{platform.Rid}" ||
+                        id == $"OpenUsd.Runtime.Imaging.{platform.Rid}"))]);
+
+            foreach (ExecutionPlatform platform in platforms)
+            {
                 ExecutionConsumer consumer = await PublishImagingExecutionConsumerAsync(
                     workRoot,
                     packageRoot,
@@ -962,12 +1070,13 @@ public sealed class RuntimePackageTests
                     publishAot: false);
                 AssertPackageOnlyGraph(
                     consumer.AssetsPath,
-                    GetImagingPackageGraph(platform));
+                    GetImagingMetaPackageGraph(platform));
 
                 string consumerProject = await File.ReadAllTextAsync(consumer.ProjectPath);
                 await Assert.That(consumerProject).DoesNotContain("ProjectReference");
                 await Assert.That(consumerProject).Contains(platform.BackendPackageId);
-                await Assert.That(consumerProject).Contains(
+                await Assert.That(consumerProject).Contains("OpenUsd.Runtime.Imaging");
+                await Assert.That(consumerProject).DoesNotContain(
                     $"OpenUsd.Runtime.Imaging.{platform.Rid}");
                 await Assert.That(consumerProject).DoesNotContain(
                     $"OpenUsd.Runtime.Core.{platform.Rid}");
@@ -1025,6 +1134,19 @@ public sealed class RuntimePackageTests
                 imagingPackage.Path,
                 "linux-x64",
                 corePackage.Version);
+            PackedPackage imagingMetaPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Imaging",
+                packageRoot);
+            await Assert.That(imagingMetaPackage.Version).IsEqualTo(corePackage.Version);
+            await CreateStubRuntimePackagesAsync(
+                workRoot,
+                packageRoot,
+                imagingPackage.Version,
+                [.. GetRuntimeImagingMetaPackageGraph(inputs.Platform)
+                    .Where(id => id != "OpenUsd.Runtime.Imaging")
+                    .Where(id => id != "OpenUsd.Runtime.Imaging.linux-x64")
+                    .Where(id => id != "OpenUsd.Runtime.Core.linux-x64")]);
 
             string installedStormChildPath = Path.Combine(
                 inputs.ShimRoot,
@@ -1043,10 +1165,7 @@ public sealed class RuntimePackageTests
                 publishAot: true);
             AssertPackageOnlyGraph(
                 consumer.AssetsPath,
-                [
-                    "OpenUsd.Runtime.Core.linux-x64",
-                    "OpenUsd.Runtime.Imaging.linux-x64",
-                ]);
+                GetRuntimeImagingMetaPackageGraph(inputs.Platform));
 
             CommandResult result = await RunExecutableAsync(
                 GetExecutablePath(consumer.PublishRoot, "Consumer"),
@@ -1168,6 +1287,19 @@ public sealed class RuntimePackageTests
                 imagingPackage.Path,
                 "osx-arm64",
                 corePackage.Version);
+            PackedPackage imagingMetaPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Imaging",
+                packageRoot);
+            await Assert.That(imagingMetaPackage.Version).IsEqualTo(corePackage.Version);
+            await CreateStubRuntimePackagesAsync(
+                workRoot,
+                packageRoot,
+                imagingPackage.Version,
+                [.. GetRuntimeImagingMetaPackageGraph(inputs.Platform)
+                    .Where(id => id != "OpenUsd.Runtime.Imaging")
+                    .Where(id => id != "OpenUsd.Runtime.Imaging.osx-arm64")
+                    .Where(id => id != "OpenUsd.Runtime.Core.osx-arm64")]);
             await AssertMacOsValidationEvidenceAsync(imagingPackage.Path);
             await AssertMetalPackageMatchesStagedLibraryAsync(
                 FindPackage(packageRoot, "OpenUsd.Rendering.Silk.Metal"),
@@ -1191,13 +1323,13 @@ public sealed class RuntimePackageTests
             AssertPackageOnlyGraph(
                 consumer.AssetsPath,
                 [
-                    "OpenUsd.Runtime.Core.osx-arm64",
-                    "OpenUsd.Runtime.Imaging.osx-arm64",
                     "OpenUsd.Rendering.Silk.Metal",
+                    .. GetRuntimeImagingMetaPackageGraph(inputs.Platform),
                 ]);
             string consumerProject = await File.ReadAllTextAsync(consumer.ProjectPath);
             await Assert.That(consumerProject).DoesNotContain("ProjectReference");
-            await Assert.That(consumerProject).Contains("OpenUsd.Runtime.Imaging.osx-arm64");
+            await Assert.That(consumerProject).Contains("OpenUsd.Runtime.Imaging");
+            await Assert.That(consumerProject).DoesNotContain("OpenUsd.Runtime.Imaging.osx-arm64");
             await Assert.That(consumerProject).Contains("OpenUsd.Rendering.Silk.Metal");
             await AssertNoSourcePathLeakageAsync(consumerProject, repositoryRoot);
             await AssertMetalPublishedAssetsAsync(consumer.PublishRoot, repositoryRoot);
@@ -2153,6 +2285,17 @@ public sealed class RuntimePackageTests
                 inputs.ShimRoot,
                 inputs.VulkanRuntimeLibrary,
                 packageRoot);
+            PackedPackage runtimeMetaPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Core",
+                packageRoot);
+            await CreateStubRuntimePackagesAsync(
+                workRoot,
+                packageRoot,
+                runtimePackage.Version,
+                [.. GetCoreMetaPackageGraph().Where(id =>
+                    id != "OpenUsd.Runtime.Core" &&
+                    id != $"OpenUsd.Runtime.Core.{platform.Rid}")]);
             string shimNativeDirectory = platform.Rid == "win-x64" ? "bin" : "lib";
             string installedDataShim = Path.Combine(
                 inputs.ShimRoot,
@@ -2177,6 +2320,7 @@ public sealed class RuntimePackageTests
 
             await Assert.That(openUsdPackage.Version).IsEqualTo(interopPackage.Version);
             await Assert.That(runtimePackage.Version).IsEqualTo(openUsdPackage.Version);
+            await Assert.That(runtimeMetaPackage.Version).IsEqualTo(openUsdPackage.Version);
 
             ExecutionConsumer consumer = await PublishExecutionConsumerAsync(
                 workRoot,
@@ -2188,7 +2332,7 @@ public sealed class RuntimePackageTests
                 [
                     "OpenUsd",
                     "OpenUsd.Interop",
-                    $"OpenUsd.Runtime.Core.{platform.Rid}",
+                    .. GetCoreMetaPackageGraph(),
                 ]);
 
             string inputPath = Path.Combine(consumer.PublishRoot, "input.usda");
@@ -2321,6 +2465,19 @@ public sealed class RuntimePackageTests
                 inputs.ShimRoot,
                 inputs.VulkanRuntimeLibrary,
                 packageRoot);
+            PackedPackage imagingMetaPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Imaging",
+                packageRoot);
+            await CreateStubRuntimePackagesAsync(
+                workRoot,
+                packageRoot,
+                imagingRuntimePackage.Version,
+                [.. GetImagingMetaPackageGraph(platform)
+                    .Where(id => id.StartsWith("OpenUsd.Runtime.", StringComparison.Ordinal))
+                    .Where(id => id != "OpenUsd.Runtime.Imaging")
+                    .Where(id => id != $"OpenUsd.Runtime.Imaging.{platform.Rid}")
+                    .Where(id => id != $"OpenUsd.Runtime.Core.{platform.Rid}")]);
             string shimNativeDirectory = platform.Rid == "win-x64" ? "bin" : "lib";
             string installedHydraPath = Path.Combine(
                 inputs.ShimRoot,
@@ -2350,6 +2507,7 @@ public sealed class RuntimePackageTests
             }
             await Assert.That(coreRuntimePackage.Version).IsEqualTo(packageVersion);
             await Assert.That(imagingRuntimePackage.Version).IsEqualTo(packageVersion);
+            await Assert.That(imagingMetaPackage.Version).IsEqualTo(packageVersion);
             string? installedStormChildPath = null;
             if (platform.Rid == "win-x64")
             {
@@ -2383,7 +2541,7 @@ public sealed class RuntimePackageTests
                 publishAot: true);
             AssertPackageOnlyGraph(
                 consumer.AssetsPath,
-                GetImagingPackageGraph(platform));
+                GetImagingMetaPackageGraph(platform));
             await AssertPlatformBackendAssetsAsync(platform, consumer.PublishRoot);
             if (platform.Rid == "osx-arm64")
             {
@@ -2516,10 +2674,9 @@ public sealed class RuntimePackageTests
             string consumerProject = await File.ReadAllTextAsync(consumer.ProjectPath);
             await Assert.That(consumerProject).DoesNotContain("ProjectReference");
             await Assert.That(consumerProject).Contains(platform.BackendPackageId);
-            await Assert.That(consumerProject).Contains(
-                $"OpenUsd.Runtime.Imaging.{platform.Rid}");
-            await Assert.That(consumerProject).DoesNotContain(
-                $"OpenUsd.Runtime.Core.{platform.Rid}");
+            await Assert.That(consumerProject).Contains("OpenUsd.Runtime.Imaging");
+            await Assert.That(consumerProject).DoesNotContain($"OpenUsd.Runtime.Imaging.{platform.Rid}");
+            await Assert.That(consumerProject).DoesNotContain($"OpenUsd.Runtime.Core.{platform.Rid}");
             await AssertNoSourcePathLeakageAsync(consumerProject, repositoryRoot);
 
             string generatedTargetsPath = Path.Combine(
@@ -2610,6 +2767,20 @@ public sealed class RuntimePackageTests
             }
             await Assert.That(coreRuntimePackage.Version).IsEqualTo(packageVersion);
             await Assert.That(imagingRuntimePackage.Version).IsEqualTo(packageVersion);
+            PackedPackage imagingMetaPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Imaging",
+                packageRoot);
+            await Assert.That(imagingMetaPackage.Version).IsEqualTo(packageVersion);
+            await CreateStubRuntimePackagesAsync(
+                workRoot,
+                packageRoot,
+                packageVersion,
+                [.. GetImagingMetaPackageGraph(inputs.Platform)
+                    .Where(id => id.StartsWith("OpenUsd.Runtime.", StringComparison.Ordinal))
+                    .Where(id => id != "OpenUsd.Runtime.Imaging")
+                    .Where(id => id != "OpenUsd.Runtime.Imaging.win-x64")
+                    .Where(id => id != "OpenUsd.Runtime.Core.win-x64")]);
 
             ExecutionConsumer consumer = await PublishPreviewSurfaceMaterialConsumerAsync(
                 workRoot,
@@ -2625,8 +2796,11 @@ public sealed class RuntimePackageTests
                     "OpenUsd.Rendering.Storm",
                     "OpenUsd.Rendering.Silk",
                     inputs.Platform.BackendPackageId,
-                    "OpenUsd.Runtime.Core.win-x64",
+                    "OpenUsd.Runtime.Imaging",
                     "OpenUsd.Runtime.Imaging.win-x64",
+                    "OpenUsd.Runtime.Imaging.linux-x64",
+                    "OpenUsd.Runtime.Imaging.osx-arm64",
+                    "OpenUsd.Runtime.Core.win-x64",
                 ]);
             string mergedPluginPath = Path.Combine(consumer.PublishRoot, "usd");
             await Assert.That(File.Exists(Path.Combine(
@@ -2749,7 +2923,7 @@ public sealed class RuntimePackageTests
                                   Version="{packageVersion}" />
                 <PackageReference Include="{platform.BackendPackageId}"
                                   Version="{packageVersion}" />
-                <PackageReference Include="OpenUsd.Runtime.Imaging.{platform.Rid}"
+                <PackageReference Include="OpenUsd.Runtime.Imaging"
                                   Version="{packageVersion}" />
               </ItemGroup>
             </Project>
@@ -3223,6 +3397,56 @@ public sealed class RuntimePackageTests
         return new PackedPackage(packagePath, ReadPackageVersion(packagePath));
     }
 
+    private static async Task CreateStubRuntimePackagesAsync(
+        string workRoot,
+        string packageRoot,
+        string packageVersion,
+        IReadOnlyCollection<string> packageIds)
+    {
+        foreach (string packageId in packageIds.Distinct(StringComparer.Ordinal))
+        {
+            string stubRoot = Path.Combine(
+                workRoot,
+                "stub-packages",
+                packageId.Replace('.', '-'));
+            Directory.CreateDirectory(stubRoot);
+            string projectPath = Path.Combine(stubRoot, "Stub.csproj");
+            await File.WriteAllTextAsync(
+                projectPath,
+                $"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net8.0</TargetFramework>
+                    <PackageId>{packageId}</PackageId>
+                    <PackageVersion>{packageVersion}</PackageVersion>
+                    <Description>Restore-only package-test stub for {packageId}.</Description>
+                    <IncludeBuildOutput>false</IncludeBuildOutput>
+                    <IncludeSymbols>false</IncludeSymbols>
+                    <EnablePackageValidation>false</EnablePackageValidation>
+                    <NoWarn>$(NoWarn);NU5128</NoWarn>
+                  </PropertyGroup>
+                </Project>
+                """);
+
+            CommandResult result = await RunDotnetAsync(
+                stubRoot,
+                [
+                    "pack",
+                    projectPath,
+                    "-c",
+                    "Release",
+                    "--nologo",
+                    $"-p:PackageOutputPath={packageRoot}",
+                    "-p:IsPackable=true",
+                ],
+                Path.Combine(workRoot, "stub-global-packages"));
+            if (result.ExitCode != 0)
+            {
+                throw new InvalidOperationException(result.Output);
+            }
+        }
+    }
+
     private static string FindPackage(string packageRoot, string packageId) =>
         Directory
             .GetFiles(packageRoot, "*.nupkg")
@@ -3585,6 +3809,31 @@ public sealed class RuntimePackageTests
     private static string GetFileSha256(string path) =>
         Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
 
+    private static async Task AssertPackageDependenciesAsync(
+        string packagePath,
+        string expectedVersion,
+        IReadOnlyCollection<string> expectedPackageIds)
+    {
+        using ZipArchive package = ZipFile.OpenRead(packagePath);
+        ZipArchiveEntry nuspecEntry = package.Entries.Single(
+            entry => entry.FullName.EndsWith(".nuspec", StringComparison.Ordinal));
+        using Stream nuspecStream = nuspecEntry.Open();
+        XDocument nuspec = XDocument.Load(nuspecStream);
+        XNamespace ns = nuspec.Root!.Name.Namespace;
+        Dictionary<string, string> dependencies = nuspec
+            .Descendants(ns + "dependency")
+            .ToDictionary(
+                element => element.Attribute("id")?.Value ?? string.Empty,
+                element => element.Attribute("version")?.Value ?? string.Empty,
+                StringComparer.Ordinal);
+
+        foreach (string packageId in expectedPackageIds)
+        {
+            await Assert.That(dependencies).ContainsKey(packageId);
+            await Assert.That(dependencies[packageId]).IsEqualTo(expectedVersion);
+        }
+    }
+
     private static async Task AssertImagingDependsOnCoreAsync(
         string packagePath,
         string rid,
@@ -3873,7 +4122,7 @@ public sealed class RuntimePackageTests
               </PropertyGroup>
               <ItemGroup>
                 <PackageReference Include="OpenUsd" Version="{packageVersion}" />
-                <PackageReference Include="OpenUsd.Runtime.Core.{platform.Rid}"
+                <PackageReference Include="OpenUsd.Runtime.Core"
                                   Version="{packageVersion}" />
               </ItemGroup>
             </Project>
@@ -4076,7 +4325,7 @@ public sealed class RuntimePackageTests
                 <OptimizationPreference>Size</OptimizationPreference>
               </PropertyGroup>
               <ItemGroup>
-                <PackageReference Include="OpenUsd.Runtime.Imaging.{platform.Rid}"
+                <PackageReference Include="OpenUsd.Runtime.Imaging"
                                   Version="{packageVersion}" />
             {metalPackageReference}
               </ItemGroup>
@@ -4738,7 +4987,7 @@ public sealed class RuntimePackageTests
               <ItemGroup>
                 <PackageReference Include="{platform.BackendPackageId}"
                                   Version="{packageVersion}" />
-                <PackageReference Include="OpenUsd.Runtime.Imaging.{platform.Rid}"
+                <PackageReference Include="OpenUsd.Runtime.Imaging"
                                   Version="{packageVersion}" />
               </ItemGroup>
               <ItemGroup>
@@ -5271,6 +5520,28 @@ public sealed class RuntimePackageTests
         }
     }
 
+    private static string[] AllRuntimePackageIds() =>
+    [
+        "OpenUsd.Runtime.Core",
+        "OpenUsd.Runtime.Core.win-x64",
+        "OpenUsd.Runtime.Core.linux-x64",
+        "OpenUsd.Runtime.Core.osx-arm64",
+        "OpenUsd.Runtime.Imaging",
+        "OpenUsd.Runtime.Imaging.win-x64",
+        "OpenUsd.Runtime.Imaging.linux-x64",
+        "OpenUsd.Runtime.Imaging.osx-arm64",
+    ];
+
+
+    private static string[] GetRuntimeImagingMetaPackageGraph(ExecutionPlatform platform) =>
+    [
+        "OpenUsd.Runtime.Imaging",
+        "OpenUsd.Runtime.Imaging.win-x64",
+        "OpenUsd.Runtime.Imaging.linux-x64",
+        "OpenUsd.Runtime.Imaging.osx-arm64",
+        $"OpenUsd.Runtime.Core.{platform.Rid}",
+    ];
+
     private static string[] GetImagingPackageGraph(ExecutionPlatform platform) =>
     [
         "OpenUsd",
@@ -5280,6 +5551,28 @@ public sealed class RuntimePackageTests
         platform.BackendPackageId,
         $"OpenUsd.Runtime.Core.{platform.Rid}",
         $"OpenUsd.Runtime.Imaging.{platform.Rid}",
+    ];
+
+    private static string[] GetCoreMetaPackageGraph() =>
+    [
+        "OpenUsd.Runtime.Core",
+        "OpenUsd.Runtime.Core.win-x64",
+        "OpenUsd.Runtime.Core.linux-x64",
+        "OpenUsd.Runtime.Core.osx-arm64",
+    ];
+
+    private static string[] GetImagingMetaPackageGraph(ExecutionPlatform platform) =>
+    [
+        "OpenUsd",
+        "OpenUsd.Interop",
+        "OpenUsd.Rendering",
+        "OpenUsd.Rendering.Silk",
+        platform.BackendPackageId,
+        "OpenUsd.Runtime.Imaging",
+        "OpenUsd.Runtime.Imaging.win-x64",
+        "OpenUsd.Runtime.Imaging.linux-x64",
+        "OpenUsd.Runtime.Imaging.osx-arm64",
+        $"OpenUsd.Runtime.Core.{platform.Rid}",
     ];
 
     private static string GetExecutablePath(string publishRoot, string name) =>
