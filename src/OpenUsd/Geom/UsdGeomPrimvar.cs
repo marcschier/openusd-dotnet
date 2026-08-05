@@ -46,6 +46,11 @@ public readonly struct UsdGeomPrimvar : IUsdStageBound
     public UsdVec2f[] GetVec2fArray() => Prim.GetVec2fArray(AttributeName);
     public void SetVec3fArray(ReadOnlySpan<UsdVec3f> values) => Prim.SetVec3fArray(AttributeName, values);
     public UsdVec3f[] GetVec3fArray() => Prim.GetVec3fArray(AttributeName);
+    public void SetColor3fArray(ReadOnlySpan<UsdVec3f> values) => Prim.SetColor3fArray(AttributeName, values);
+    public void SetColor3fArray(ReadOnlySpan<UsdVec3f> values, double timeCode) =>
+        Prim.SetColor3fArray(AttributeName, values, timeCode);
+    public UsdVec3f[] GetColor3fArray() => Prim.GetColor3fArray(AttributeName);
+    public UsdVec3f[] GetColor3fArray(double timeCode) => Prim.GetColor3fArray(AttributeName, timeCode);
     public void SetIndices(ReadOnlySpan<int> values) => Prim.SetInt32Array(AttributeName + ":indices", values);
     public int[] GetIndices() => Prim.GetInt32Array(AttributeName + ":indices");
 
@@ -61,4 +66,3 @@ public readonly struct UsdGeomPrimvar : IUsdStageBound
         _ => throw new ArgumentOutOfRangeException(nameof(interpolation))
     };
 }
-

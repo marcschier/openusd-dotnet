@@ -2,6 +2,29 @@
 
 #include "internal/common.h"
 
+namespace
+{
+    std::vector<std::string> ReadStringValues(const openusd_string_list_view* values)
+    {
+        std::vector<std::string> result;
+        if (values == nullptr || values->count == 0)
+        {
+            return result;
+        }
+
+        result.reserve(values->count);
+        for (size_t index = 0; index < values->count; ++index)
+        {
+            const size_t offset = values->offsets[index];
+            const char* start = values->data + offset;
+            const auto* end = static_cast<const char*>(
+                std::memchr(start, '\0', values->data_size - offset));
+            result.emplace_back(start, end);
+        }
+        return result;
+    }
+}
+
 openusd_status openusd_stage_get_attribute_type_name(
     const openusd_stage* stage,
     const char* prim_path,
@@ -1249,6 +1272,411 @@ openusd_status openusd_stage_get_vec3f_array(
                     return openusd_vec3f{value[0], value[1], value[2]};
                 },
                 error);
+        });
+
+    });
+}
+
+openusd_status openusd_stage_set_color3f_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const openusd_vec3f* values,
+    size_t count,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        return SetArrayAttribute<openusd_vec3f, GfVec3f>(
+            stage,
+            prim_path,
+            attribute_name,
+            values,
+            count,
+            time_sampled,
+            time_code,
+            SdfValueTypeNames->Color3fArray,
+            "color3f",
+            [](const SdfValueTypeName& type) { return type == SdfValueTypeNames->Color3fArray; },
+            [](const openusd_vec3f& value) { return GfVec3f(value.x, value.y, value.z); },
+            error);
+
+    });
+}
+
+openusd_status openusd_stage_get_color3f_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    openusd_vec3f* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(required);
+        return WithAbiWritableBuffer(values, capacity, [&]()
+        {
+            return GetArrayAttribute<openusd_vec3f, GfVec3f>(
+                stage,
+                prim_path,
+                attribute_name,
+                time_sampled,
+                time_code,
+                values,
+                capacity,
+                required,
+                "color3f",
+                [](const SdfValueTypeName& type) { return type == SdfValueTypeNames->Color3fArray; },
+                [](const GfVec3f& value)
+                {
+                    return openusd_vec3f{value[0], value[1], value[2]};
+                },
+                error);
+        });
+
+    });
+}
+
+openusd_status openusd_stage_set_bool_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const int32_t* values,
+    size_t count,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        return SetArrayAttribute<int32_t, bool>(
+            stage,
+            prim_path,
+            attribute_name,
+            values,
+            count,
+            time_sampled,
+            time_code,
+            SdfValueTypeNames->BoolArray,
+            "bool",
+            [](const SdfValueTypeName& type) { return type == SdfValueTypeNames->BoolArray; },
+            [](int32_t value) { return value != 0; },
+            error);
+
+    });
+}
+
+openusd_status openusd_stage_get_bool_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    int32_t* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(required);
+        return WithAbiWritableBuffer(values, capacity, [&]()
+        {
+            return GetArrayAttribute<int32_t, bool>(
+                stage,
+                prim_path,
+                attribute_name,
+                time_sampled,
+                time_code,
+                values,
+                capacity,
+                required,
+                "bool",
+                [](const SdfValueTypeName& type) { return type == SdfValueTypeNames->BoolArray; },
+                [](bool value) { return value ? 1 : 0; },
+                error);
+        });
+
+    });
+}
+
+openusd_status openusd_stage_set_token_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const openusd_string_list_view* values,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+            attribute_name == nullptr || attribute_name[0] == '\0')
+        {
+            WriteError(error, "A valid stage, prim path, and attribute name are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const openusd_status validation = ValidateStringListView(values, "token-array value list", error);
+        if (validation != OPENUSD_STATUS_OK)
+        {
+            return validation;
+        }
+
+        return Guard(error, [&]()
+        {
+            const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+            if (!prim)
+            {
+                WriteError(error, std::string("Prim was not found: ") + prim_path);
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+
+            TfErrorMark mark;
+            const TfToken name(attribute_name);
+            UsdAttribute attribute = prim.GetAttribute(name);
+            if (attribute && attribute.GetTypeName() != SdfValueTypeNames->TokenArray)
+            {
+                WriteError(error, "The attribute is not a token array.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            if (!attribute)
+            {
+                attribute = prim.CreateAttribute(name, SdfValueTypeNames->TokenArray, true);
+            }
+
+            const std::vector<std::string> strings = ReadStringValues(values);
+            VtTokenArray array(strings.size());
+            for (size_t index = 0; index < strings.size(); ++index)
+            {
+                array[index] = TfToken(strings[index]);
+            }
+            const bool set = attribute && attribute.Set(array, GetTimeCode(time_sampled, time_code));
+            if (!set || !mark.IsClean())
+            {
+                std::string message = ConsumeErrors(mark);
+                WriteError(error, message.empty() ? "Could not set the token array attribute." : message);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            return OPENUSD_STATUS_OK;
+        });
+
+    });
+}
+
+openusd_status openusd_stage_get_token_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetStringListOutput(list, view);
+        if (list == nullptr || view == nullptr || view->struct_size < sizeof(openusd_string_list_view))
+        {
+            WriteError(error, "A valid string-list owner and ABI v2 view are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return GuardStringListOutput(error, list, view, [&](auto& result)
+        {
+            if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+                attribute_name == nullptr || attribute_name[0] == '\0')
+            {
+                WriteError(error, "A valid stage, prim path, and attribute name are required.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+
+            return Guard(error, [&]()
+            {
+                const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+                const UsdAttribute attribute =
+                    prim ? prim.GetAttribute(TfToken(attribute_name)) : UsdAttribute();
+                if (!attribute)
+                {
+                    WriteError(error, "The requested token array was not found.");
+                    return OPENUSD_STATUS_NOT_FOUND;
+                }
+                if (attribute.GetTypeName() != SdfValueTypeNames->TokenArray)
+                {
+                    WriteError(error, "The attribute is not a token array.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+
+                TfErrorMark mark;
+                VtTokenArray array;
+                const bool read = attribute.Get(&array, GetTimeCode(time_sampled, time_code));
+                if (!read || !mark.IsClean())
+                {
+                    const bool hadErrors = !mark.IsClean();
+                    std::string message = ConsumeErrors(mark);
+                    if (message.empty())
+                    {
+                        message = attribute.GetResolveInfo(GetTimeCode(time_sampled, time_code)).ValueIsBlocked()
+                            ? "The attribute value is blocked."
+                            : "The attribute has no readable token array value.";
+                    }
+                    WriteError(error, message);
+                    return hadErrors ? OPENUSD_STATUS_NATIVE_ERROR : OPENUSD_STATUS_NOT_FOUND;
+                }
+                result = std::make_unique<openusd_string_list>();
+                FillStringList(result.get(), ToStrings(array), view);
+                return OPENUSD_STATUS_OK;
+            });
+        });
+
+    });
+}
+
+openusd_status openusd_stage_set_string_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const openusd_string_list_view* values,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+            attribute_name == nullptr || attribute_name[0] == '\0')
+        {
+            WriteError(error, "A valid stage, prim path, and attribute name are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const openusd_status validation = ValidateStringListView(values, "string-array value list", error);
+        if (validation != OPENUSD_STATUS_OK)
+        {
+            return validation;
+        }
+
+        return Guard(error, [&]()
+        {
+            const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+            if (!prim)
+            {
+                WriteError(error, std::string("Prim was not found: ") + prim_path);
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+
+            TfErrorMark mark;
+            const TfToken name(attribute_name);
+            UsdAttribute attribute = prim.GetAttribute(name);
+            if (attribute && attribute.GetTypeName() != SdfValueTypeNames->StringArray)
+            {
+                WriteError(error, "The attribute is not a string array.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            if (!attribute)
+            {
+                attribute = prim.CreateAttribute(name, SdfValueTypeNames->StringArray, true);
+            }
+
+            const std::vector<std::string> strings = ReadStringValues(values);
+            VtArray<std::string> array(strings.size());
+            for (size_t index = 0; index < strings.size(); ++index)
+            {
+                array[index] = strings[index];
+            }
+            const bool set = attribute && attribute.Set(array, GetTimeCode(time_sampled, time_code));
+            if (!set || !mark.IsClean())
+            {
+                std::string message = ConsumeErrors(mark);
+                WriteError(error, message.empty() ? "Could not set the string array attribute." : message);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            return OPENUSD_STATUS_OK;
+        });
+
+    });
+}
+
+openusd_status openusd_stage_get_string_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetStringListOutput(list, view);
+        if (list == nullptr || view == nullptr || view->struct_size < sizeof(openusd_string_list_view))
+        {
+            WriteError(error, "A valid string-list owner and ABI v2 view are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return GuardStringListOutput(error, list, view, [&](auto& result)
+        {
+            if (stage == nullptr || !stage->value || !IsValidPrimPath(prim_path) ||
+                attribute_name == nullptr || attribute_name[0] == '\0')
+            {
+                WriteError(error, "A valid stage, prim path, and attribute name are required.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+
+            return Guard(error, [&]()
+            {
+                const UsdPrim prim = stage->value->GetPrimAtPath(SdfPath(prim_path));
+                const UsdAttribute attribute =
+                    prim ? prim.GetAttribute(TfToken(attribute_name)) : UsdAttribute();
+                if (!attribute)
+                {
+                    WriteError(error, "The requested string array was not found.");
+                    return OPENUSD_STATUS_NOT_FOUND;
+                }
+                if (attribute.GetTypeName() != SdfValueTypeNames->StringArray)
+                {
+                    WriteError(error, "The attribute is not a string array.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+
+                TfErrorMark mark;
+                VtArray<std::string> array;
+                const bool read = attribute.Get(&array, GetTimeCode(time_sampled, time_code));
+                if (!read || !mark.IsClean())
+                {
+                    const bool hadErrors = !mark.IsClean();
+                    std::string message = ConsumeErrors(mark);
+                    if (message.empty())
+                    {
+                        message = attribute.GetResolveInfo(GetTimeCode(time_sampled, time_code)).ValueIsBlocked()
+                            ? "The attribute value is blocked."
+                            : "The attribute has no readable string array value.";
+                    }
+                    WriteError(error, message);
+                    return hadErrors ? OPENUSD_STATUS_NATIVE_ERROR : OPENUSD_STATUS_NOT_FOUND;
+                }
+                result = std::make_unique<openusd_string_list>();
+                FillStringList(result.get(), std::vector<std::string>(array.begin(), array.end()), view);
+                return OPENUSD_STATUS_OK;
+            });
         });
 
     });

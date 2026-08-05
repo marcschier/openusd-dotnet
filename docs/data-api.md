@@ -886,6 +886,11 @@ without invoking managed callbacks from OpenUSD threads.
 
 `eng/generate-interop.py` derives the checked-in `[LibraryImport]` declarations from
 `native/openusd_dotnet/include/openusd_dotnet.h`. CI fails if `OpenUsdNativeMethods.g.cs` is stale.
+Data ABI v15 preserves every v14 export and capability and adds explicit `color3f[]`,
+`bool[]`, `token[]`, and `string[]` attribute array accessors through
+`OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). The managed required mask is
+`0x3FFFF`.
+
 Data ABI v14 preserves every v11 export and capability and adds
 `OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE` (`0x1000`). Together with the prior physics schema
 capability, the managed required mask is `0xFFFF`. Managed startup rejects an older ABI or a v14

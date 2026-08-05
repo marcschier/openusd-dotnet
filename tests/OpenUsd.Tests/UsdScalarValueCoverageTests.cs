@@ -184,6 +184,54 @@ public sealed class UsdScalarValueCoverageTests
         await AssertWrongKindAccessors(value);
     }
 
+    [Test]
+    public async Task Color3fArrayPreservesPayloadIdentityAndRejectsOtherAccessors()
+    {
+        UsdVec3f[] payload = [new(0.1f, 0.2f, 0.3f), new(0.4f, 0.5f, 0.6f)];
+        UsdScalarValue value = UsdScalarValue.FromColor3fArray(payload);
+
+        await Assert.That(value.Kind).IsEqualTo(UsdScalarKind.Color3fArray);
+        await Assert.That(value.Color3fArrayValue).IsSameReferenceAs(payload);
+        await Assert.That(value.Color3fArrayValue[1]).IsEqualTo(new UsdVec3f(0.4f, 0.5f, 0.6f));
+        await AssertWrongKindAccessors(value);
+    }
+
+    [Test]
+    public async Task BooleanArrayPreservesPayloadIdentityAndRejectsOtherAccessors()
+    {
+        bool[] payload = [true, false, true];
+        UsdScalarValue value = UsdScalarValue.FromBoolArray(payload);
+
+        await Assert.That(value.Kind).IsEqualTo(UsdScalarKind.BooleanArray);
+        await Assert.That(value.BoolArrayValue).IsSameReferenceAs(payload);
+        await Assert.That(value.BoolArrayValue[1]).IsFalse();
+        await AssertWrongKindAccessors(value);
+    }
+
+    [Test]
+    public async Task TokenArrayPreservesPayloadIdentityAndRejectsOtherAccessors()
+    {
+        string[] payload = [new(['t', 'o', 'k', 'e', 'n']), new(['u', 's', 'd'])];
+        UsdScalarValue value = UsdScalarValue.FromTokenArray(payload);
+
+        await Assert.That(value.Kind).IsEqualTo(UsdScalarKind.TokenArray);
+        await Assert.That(value.TokenArrayValue).IsSameReferenceAs(payload);
+        await Assert.That(value.TokenArrayValue[0]).IsSameReferenceAs(payload[0]);
+        await AssertWrongKindAccessors(value);
+    }
+
+    [Test]
+    public async Task StringArrayPreservesPayloadIdentityAndRejectsOtherAccessors()
+    {
+        string[] payload = [new(['s', 't', 'r', 'i', 'n', 'g']), new(['v', 'a', 'l', 'u', 'e'])];
+        UsdScalarValue value = UsdScalarValue.FromStringArray(payload);
+
+        await Assert.That(value.Kind).IsEqualTo(UsdScalarKind.StringArray);
+        await Assert.That(value.StringArrayValue).IsSameReferenceAs(payload);
+        await Assert.That(value.StringArrayValue[1]).IsSameReferenceAs(payload[1]);
+        await AssertWrongKindAccessors(value);
+    }
+
     private static async Task AssertWrongKindAccessors(UsdScalarValue value)
     {
         foreach (UsdScalarKind requestedKind in Enum.GetValues<UsdScalarKind>())
@@ -216,6 +264,10 @@ public sealed class UsdScalarValueCoverageTests
         UsdScalarKind.DoubleArray => value.DoubleArrayValue,
         UsdScalarKind.Vec2fArray => value.Vec2fArrayValue,
         UsdScalarKind.Vec3fArray => value.Vec3fArrayValue,
+        UsdScalarKind.Color3fArray => value.Color3fArrayValue,
+        UsdScalarKind.BooleanArray => value.BoolArrayValue,
+        UsdScalarKind.TokenArray => value.TokenArrayValue,
+        UsdScalarKind.StringArray => value.StringArrayValue,
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 

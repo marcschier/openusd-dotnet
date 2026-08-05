@@ -298,7 +298,7 @@ public sealed class NativeAbiVersionTests
             Regex.Count(
                 implementation,
                 @"\breturn GuardStage\(stage, error",
-                RegexOptions.CultureInvariant)).IsEqualTo(283);
+                RegexOptions.CultureInvariant)).IsEqualTo(291);
 
         for (int index = 0; index < definitions.Count; index++)
         {
@@ -444,6 +444,8 @@ public sealed class NativeAbiVersionTests
             "openusd_stage_get_float_array",
             "openusd_stage_get_vec2f_array",
             "openusd_stage_get_vec3f_array",
+            "openusd_stage_get_color3f_array",
+            "openusd_stage_get_bool_array",
             "openusd_geom_mesh_get_points",
             "openusd_geom_mesh_get_face_vertex_counts",
             "openusd_geom_mesh_get_face_vertex_indices",
@@ -477,7 +479,7 @@ public sealed class NativeAbiVersionTests
             Regex.Count(
                 implementation,
                 @"\breturn WithAbiWritableBuffer\(",
-                RegexOptions.CultureInvariant)).IsEqualTo(16);
+                RegexOptions.CultureInvariant)).IsEqualTo(18);
         await Assert.That(
             Regex.Count(
                 implementation,
@@ -548,6 +550,8 @@ public sealed class NativeAbiVersionTests
             "openusd_shade_get_connected_source",
             "openusd_shade_get_connected_sources",
             "openusd_skel_get_joints",
+            "openusd_stage_get_token_array",
+            "openusd_stage_get_string_array",
         ];
 
         foreach (string export in stringListExports)
@@ -574,7 +578,7 @@ public sealed class NativeAbiVersionTests
         await Assert.That(Regex.Count(
             managed,
             @"\bThrowIfFailedAndReleaseStringList\(",
-            RegexOptions.CultureInvariant)).IsEqualTo(12);
+            RegexOptions.CultureInvariant)).IsEqualTo(13);
         await Assert.That(Regex.Count(
             managed,
             @"\bThrowIfFailedAndReleasePayloadArcList\(",

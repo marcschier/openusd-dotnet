@@ -283,6 +283,82 @@ public readonly struct UsdPrim : IUsdStageBound
     public UsdVec3f[] GetVec3fArray(string attributeName, double timeCode) =>
         FromNative(Stage.Native.GetVec3fArray(Path, attributeName, timeCode));
 
+    /// <summary>Sets a color3f-array attribute at default time.</summary>
+    public void SetColor3fArray(string attributeName, ReadOnlySpan<UsdVec3f> values) =>
+        Stage.Native.SetColor3fArray(Path, attributeName, ToNative(values));
+
+    /// <summary>Authors a time sample for a color3f-array attribute.</summary>
+    public void SetColor3fArray(
+        string attributeName,
+        ReadOnlySpan<UsdVec3f> values,
+        double timeCode) =>
+        Stage.Native.SetColor3fArray(Path, attributeName, ToNative(values), timeCode);
+
+    /// <summary>Gets a color3f-array attribute at default time.</summary>
+    public UsdVec3f[] GetColor3fArray(string attributeName) =>
+        FromNative(Stage.Native.GetColor3fArray(Path, attributeName));
+
+    /// <summary>Gets a sampled color3f-array attribute.</summary>
+    public UsdVec3f[] GetColor3fArray(string attributeName, double timeCode) =>
+        FromNative(Stage.Native.GetColor3fArray(Path, attributeName, timeCode));
+
+    /// <summary>Sets a bool-array attribute at default time.</summary>
+    public void SetBoolArray(string attributeName, ReadOnlySpan<bool> values) =>
+        Stage.Native.SetBoolArray(Path, attributeName, values);
+
+    /// <summary>Authors a time sample for a bool-array attribute.</summary>
+    public void SetBoolArray(
+        string attributeName,
+        ReadOnlySpan<bool> values,
+        double timeCode) =>
+        Stage.Native.SetBoolArray(Path, attributeName, values, timeCode);
+
+    /// <summary>Gets a bool-array attribute at default time.</summary>
+    public bool[] GetBoolArray(string attributeName) =>
+        Stage.Native.GetBoolArray(Path, attributeName);
+
+    /// <summary>Gets a sampled bool-array attribute.</summary>
+    public bool[] GetBoolArray(string attributeName, double timeCode) =>
+        Stage.Native.GetBoolArray(Path, attributeName, timeCode);
+
+    /// <summary>Sets a token-array attribute at default time.</summary>
+    public void SetTokenArray(string attributeName, ReadOnlySpan<string> values) =>
+        Stage.Native.SetTokenArray(Path, attributeName, values);
+
+    /// <summary>Authors a time sample for a token-array attribute.</summary>
+    public void SetTokenArray(
+        string attributeName,
+        ReadOnlySpan<string> values,
+        double timeCode) =>
+        Stage.Native.SetTokenArray(Path, attributeName, values, timeCode);
+
+    /// <summary>Gets a token-array attribute at default time.</summary>
+    public string[] GetTokenArray(string attributeName) =>
+        Stage.Native.GetTokenArray(Path, attributeName);
+
+    /// <summary>Gets a sampled token-array attribute.</summary>
+    public string[] GetTokenArray(string attributeName, double timeCode) =>
+        Stage.Native.GetTokenArray(Path, attributeName, timeCode);
+
+    /// <summary>Sets a string-array attribute at default time.</summary>
+    public void SetStringArray(string attributeName, ReadOnlySpan<string> values) =>
+        Stage.Native.SetStringArray(Path, attributeName, values);
+
+    /// <summary>Authors a time sample for a string-array attribute.</summary>
+    public void SetStringArray(
+        string attributeName,
+        ReadOnlySpan<string> values,
+        double timeCode) =>
+        Stage.Native.SetStringArray(Path, attributeName, values, timeCode);
+
+    /// <summary>Gets a string-array attribute at default time.</summary>
+    public string[] GetStringArray(string attributeName) =>
+        Stage.Native.GetStringArray(Path, attributeName);
+
+    /// <summary>Gets a sampled string-array attribute.</summary>
+    public string[] GetStringArray(string attributeName, double timeCode) =>
+        Stage.Native.GetStringArray(Path, attributeName, timeCode);
+
     /// <summary>Sets a custom bool attribute at default time.</summary>
     public void SetBool(string attributeName, bool value) =>
         Stage.Native.SetBool(Path, attributeName, value);
@@ -374,6 +450,22 @@ public readonly struct UsdPrim : IUsdStageBound
     /// <summary>Gets a sampled color3f attribute.</summary>
     public UsdVec3f GetColor3f(string attributeName, double timeCode) =>
         UsdVec3f.FromNative(Stage.Native.GetColor3f(Path, attributeName, timeCode));
+
+    /// <summary>Attempts to author a tagged value on an existing compatible attribute at default time.</summary>
+    public bool TrySetValue(string attributeName, in UsdScalarValue value) =>
+        GetAttribute(attributeName).TrySet(value);
+
+    /// <summary>Attempts to author a tagged value on an existing compatible attribute time sample.</summary>
+    public bool TrySetValue(string attributeName, in UsdScalarValue value, double timeCode) =>
+        GetAttribute(attributeName).TrySet(value, timeCode);
+
+    /// <summary>Attempts to read a tagged value from an existing supported attribute at default time.</summary>
+    public bool TryGetValue(string attributeName, out UsdScalarValue value) =>
+        GetAttribute(attributeName).TryGetValue(out value);
+
+    /// <summary>Attempts to read a tagged value from an existing supported attribute time sample.</summary>
+    public bool TryGetValue(string attributeName, double timeCode, out UsdScalarValue value) =>
+        GetAttribute(attributeName).TryGetValue(timeCode, out value);
 
     /// <summary>Returns whether this prim currently exists on its stage.</summary>
     public bool Exists() => Stage.Native.HasPrim(Path);
