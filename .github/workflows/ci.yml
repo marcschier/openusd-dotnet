@@ -194,7 +194,7 @@ jobs:
           build-essential clang cmake ninja-build pkg-config
           libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxcursor-dev
           libxi-dev libxinerama-dev libxrandr-dev libxt-dev libxtst-dev
-          zlib1g-dev
+          x11-utils xvfb zlib1g-dev
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: openusd-cache
         with:
@@ -235,11 +235,50 @@ jobs:
           } finally {
             Pop-Location
           }
+      - name: Execute hdSilk native probe
+        run: >
+          ctest --test-dir native/build/shim/linux-x64
+          -R '^hdsilk_probe$' --output-on-failure
       - name: Build coverage tests
         run: |
           dotnet build tests/OpenUsd.Tests/OpenUsd.Tests.csproj -c Release -f net10.0
           dotnet build tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj -c Release -f net10.0
           dotnet build tests/OpenUsd.Cesium.Tests/OpenUsd.Cesium.Tests.csproj -c Release -f net10.0
+      - name: Execute Linux GLX Storm-to-hdSilk parity capture
+        shell: pwsh
+        env:
+          OPENUSD_PARITY_CAPTURE_REQUIRED: '1'
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $env:DISPLAY = ':94'
+          $xvfb = Start-Process Xvfb `
+            -ArgumentList @($env:DISPLAY, '-screen', '0', '1280x720x24', '-ac', '-nolisten', 'tcp') `
+            -RedirectStandardOutput artifacts/ci-linux-parity-xvfb.out `
+            -RedirectStandardError artifacts/ci-linux-parity-xvfb.err `
+            -PassThru
+          try {
+            for ($i = 0; $i -lt 100; $i++) {
+              & xdpyinfo -display $env:DISPLAY > $null 2>&1
+              if ($LASTEXITCODE -eq 0) {
+                break
+              }
+              Start-Sleep -Milliseconds 50
+            }
+            ./eng/run-parity-capture.ps1 -Rid linux-x64 -Configuration Release
+          } finally {
+            Stop-Process -Id $xvfb.Id -ErrorAction SilentlyContinue
+          }
+      - name: Upload Linux parity diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-linux-parity-${{ github.run_id }}
+          path: |
+            artifacts/parity-capture/linux-x64
+            artifacts/ci-linux-parity-xvfb.out
+            artifacts/ci-linux-parity-xvfb.err
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults
+          if-no-files-found: warn
       - name: Test managed-only coverage
         shell: pwsh
         run: |
