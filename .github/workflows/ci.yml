@@ -205,9 +205,11 @@ jobs:
           # and path list must stay character-identical to this one: hashFiles
           # over a different file list yields a different digest, so any drift
           # makes this restore miss on every run and fail the gate permanently.
+          # eng/openusd.install.lock.json is the abi-free projection of
+          # eng/openusd.lock.json; ABI bumps do not change the locked install.
           key: >-
             openusd-install-linux-x64-${{ hashFiles(
-              'eng/openusd.lock.json',
+              'eng/openusd.install.lock.json',
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1'
@@ -216,8 +218,8 @@ jobs:
         if: steps.openusd-cache.outputs.cache-hit != 'true'
         run: |
           echo "Coverage needs the verified linux-x64 OpenUSD install cache produced by .github/workflows/native.yml."
-          echo "The expensive cache is keyed by eng/openusd.lock.json and the native fetch/build scripts."
-          echo "If eng/openusd.lock.json changed, run the native artifact pipeline before the coverage gate."
+          echo "The expensive cache is keyed by eng/openusd.install.lock.json and the native fetch/build scripts."
+          echo "If install-affecting inputs changed, run the native artifact pipeline before the coverage gate."
           exit 1
       - name: Build current native shim
         shell: pwsh
