@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace OpenUsd.Native.Tests;
@@ -38,6 +40,8 @@ public sealed class CoverageCacheKeyContractTests
 {
     private const string CiWorkflow = ".github/workflows/ci.yml";
     private const string NativeWorkflow = ".github/workflows/native.yml";
+    private const string FullLock = "eng/openusd.lock.json";
+    private const string InstallLock = "eng/openusd.install.lock.json";
 
     /// <summary>The literal both workflows must key the shared cache on.</summary>
     private const string CacheKeyPrefix = "openusd-install-linux-x64-";
@@ -51,6 +55,8 @@ public sealed class CoverageCacheKeyContractTests
 
         IReadOnlyList<string> ciInputs = ExtractHashFileInputs(ci);
         IReadOnlyList<string> nativeInputs = ExtractHashFileInputs(native);
+        string ciKey = ExtractSharedCacheKeyExpression(ci);
+        string nativeKey = ExtractSharedCacheKeyExpression(native);
 
         // Non-vacuity: if the anchor stops matching, both lists come back empty
         // and comparing them would succeed while checking nothing.
@@ -65,6 +71,12 @@ public sealed class CoverageCacheKeyContractTests
                 $"{NativeWorkflow} must save the same cache, or the coverage " +
                 "gate fails closed on every run");
 
+        await Assert.That(nativeKey)
+            .IsEqualTo(ciKey)
+            .Because(
+                "the shared cache key expressions must stay character-identical; " +
+                $"{CiWorkflow} uses [{ciKey}] and {NativeWorkflow} uses [{nativeKey}]");
+
         await Assert.That(nativeInputs)
             .IsEquivalentTo(ciInputs)
             .Because(
@@ -72,6 +84,56 @@ public sealed class CoverageCacheKeyContractTests
                 $"digest, so the restore in {CiWorkflow} would never hit. " +
                 $"{CiWorkflow} hashes [{string.Join(", ", ciInputs)}]; " +
                 $"{NativeWorkflow} hashes [{string.Join(", ", nativeInputs)}]");
+    }
+
+    [Test]
+    public async Task SharedCoverageCacheHashesTheInstallProjectionNotTheAbiLock()
+    {
+        string root = FindRepositoryRoot();
+        string ci = await ReadWorkflowAsync(root, CiWorkflow);
+        string native = await ReadWorkflowAsync(root, NativeWorkflow);
+        IReadOnlyList<string> ciInputs = ExtractHashFileInputs(ci);
+        IReadOnlyList<string> nativeInputs = ExtractHashFileInputs(native);
+
+        foreach (IReadOnlyList<string> inputs in new[] { ciInputs, nativeInputs })
+        {
+            await Assert.That(inputs)
+                .Contains(InstallLock)
+                .Because(
+                    "the shared expensive cache must be keyed by the install " +
+                    "projection so ABI-only bumps do not invalidate the locked " +
+                    "OpenUSD install");
+            await Assert.That(inputs)
+                .DoesNotContain(FullLock)
+                .Because(
+                    $"{FullLock} carries ABI numbers that do not affect the " +
+                    "locked OpenUSD install restored by the coverage gate");
+        }
+    }
+
+    [Test]
+    public async Task InstallLockProjectionTracksEveryNonAbiLockInput()
+    {
+        string root = FindRepositoryRoot();
+        JsonNode fullLock = JsonNode.Parse(await File.ReadAllTextAsync(
+            Path.Combine(root, FullLock.Replace('/', Path.DirectorySeparatorChar))))!;
+        JsonNode installLock = JsonNode.Parse(await File.ReadAllTextAsync(
+            Path.Combine(root, InstallLock.Replace('/', Path.DirectorySeparatorChar))))!;
+
+        await Assert.That(fullLock["abi"]).IsNotNull();
+        JsonObject expected = (JsonObject)fullLock.DeepClone();
+        expected.Remove("abi");
+
+        string expectedJson = Canonicalize(expected);
+        string actualJson = Canonicalize(installLock);
+
+        await Assert.That(actualJson)
+            .IsEqualTo(expectedJson)
+            .Because(
+                $"{InstallLock} must be exactly {FullLock} with only the top-level " +
+                "abi section removed. If a future lock key affects the install, " +
+                "this test fails until the projection is regenerated instead of " +
+                "silently ignoring that new input.");
     }
 
     [Test]
@@ -86,6 +148,12 @@ public sealed class CoverageCacheKeyContractTests
         // Non-vacuity, for the same reason as above.
         await Assert.That(ciPaths).IsNotEmpty();
         await Assert.That(nativePaths).IsNotEmpty();
+
+        await Assert.That(ExtractCachedPathBlock(native))
+            .IsEqualTo(ExtractCachedPathBlock(ci))
+            .Because(
+                "the shared cache path blocks must stay character-identical; " +
+                "otherwise the coverage gate can restore a partial install");
 
         await Assert.That(nativePaths)
             .IsEquivalentTo(ciPaths)
@@ -185,6 +253,18 @@ public sealed class CoverageCacheKeyContractTests
             .Select(match => match.Groups["file"].Value)];
     }
 
+    private static string ExtractSharedCacheKeyExpression(string workflow)
+    {
+        Match anchor = Regex.Match(
+            workflow,
+            Regex.Escape(CacheKeyPrefix) +
+                @"\$\{\{\s*hashFiles\((?<args>[^)]*)\)\s*\}\}",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(5));
+
+        return anchor.Success ? anchor.Value : string.Empty;
+    }
+
     /// <summary>
     /// Returns the <c>path:</c> block of the cache step that carries the shared
     /// key, in declaration order.
@@ -227,6 +307,51 @@ public sealed class CoverageCacheKeyContractTests
         }
 
         return paths;
+    }
+
+    private static string ExtractCachedPathBlock(string workflow)
+    {
+        return string.Join("\n", ExtractCachedPaths(workflow));
+    }
+
+    private static string Canonicalize(JsonNode node)
+    {
+        JsonNode normalized = Normalize(node);
+        return normalized.ToJsonString(new JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+    }
+
+    private static JsonNode Normalize(JsonNode node)
+    {
+        if (node is JsonObject obj)
+        {
+            JsonObject normalized = [];
+            foreach (KeyValuePair<string, JsonNode?> property in obj.OrderBy(
+                property => property.Key,
+                StringComparer.Ordinal))
+            {
+                normalized[property.Key] = property.Value is null
+                    ? null
+                    : Normalize(property.Value);
+            }
+
+            return normalized;
+        }
+
+        if (node is JsonArray array)
+        {
+            JsonArray normalized = [];
+            foreach (JsonNode? item in array)
+            {
+                normalized.Add(item is null ? null : Normalize(item));
+            }
+
+            return normalized;
+        }
+
+        return node.DeepClone();
     }
 
     private static string FindRepositoryRoot()

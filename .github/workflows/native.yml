@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/native.yml'
       - 'eng/openusd.lock.json'
+      - 'eng/openusd.install.lock.json'
       - 'eng/fetch-native.ps1'
       - 'eng/build-native.ps1'
       - 'eng/physx.lock.json'
@@ -31,6 +32,7 @@ on:
     paths:
       - '.github/workflows/native.yml'
       - 'eng/openusd.lock.json'
+      - 'eng/openusd.install.lock.json'
       - 'eng/fetch-native.ps1'
       - 'eng/build-native.ps1'
       - 'eng/physx.lock.json'
@@ -64,8 +66,9 @@ concurrency:
   #
   # Cancelling is still right on branches, where runs are superseded quickly
   # and no cache consumer depends on them. The key is content-addressed over
-  # the lock and the build scripts, so a run that completes for an older commit
-  # still produces a cache valid for every later commit with the same lock.
+  # the abi-free install lock and the build scripts, so a run that completes for
+  # an older commit still produces a cache valid for every later commit with the
+  # same locked install inputs.
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -172,7 +175,8 @@ jobs:
             ) }}
       # The coverage gate in .github/workflows/ci.yml restores the expensive
       # OpenUSD install on its own, narrower key: it builds the shim fresh from
-      # the commit under test, so it must not depend on the shim inputs above.
+      # the commit under test, so it must not depend on the shim inputs above or
+      # on the ABI section in eng/openusd.lock.json.
       # This key and path list must stay character-identical to the
       # `openusd-cache` step in ci.yml, because hashFiles over a different file
       # list yields a different digest and the restore would silently never hit.
@@ -184,7 +188,7 @@ jobs:
             native/install/vulkan-sdk-1.4.321.0
           key: >-
             openusd-install-linux-x64-${{ hashFiles(
-              'eng/openusd.lock.json',
+              'eng/openusd.install.lock.json',
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1'
