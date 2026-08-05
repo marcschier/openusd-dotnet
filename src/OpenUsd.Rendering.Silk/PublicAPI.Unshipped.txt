@@ -547,6 +547,7 @@ OpenUsd.Rendering.Silk.SilkMaterialParameter.OpacityThreshold = 9 -> OpenUsd.Ren
 OpenUsd.Rendering.Silk.SilkMaterialParameter.Roughness = 5 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialParameter.SpecularColor = 3 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialParameter.UseSpecularWorkflow = 14 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
+OpenUsd.Rendering.Silk.SilkMaterialParameter.VolumeDensity = 15 -> OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand
 OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkMaterialRemoveCommand.SilkMaterialRemoveCommand() -> void
@@ -1308,6 +1309,7 @@ OpenUsd.Rendering.Silk.SilkSurfaceKind.PreviewSurface = 1 -> OpenUsd.Rendering.S
 OpenUsd.Rendering.Silk.SilkSurfaceKind.MaterialXProjected = 2 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.MaterialXGenerated = 3 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.Unsupported = 0 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
+OpenUsd.Rendering.Silk.SilkSurfaceKind.VolumeDensity = 4 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkTextureDescriptor
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Deconstruct(out uint Width, out uint Height, out OpenUsd.Rendering.Silk.SilkTextureFormat Format, out OpenUsd.Rendering.Silk.SilkTextureUsage Usage) -> void
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Equals(OpenUsd.Rendering.Silk.SilkTextureDescriptor other) -> bool

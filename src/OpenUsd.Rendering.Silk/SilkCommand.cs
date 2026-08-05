@@ -707,7 +707,10 @@ public enum SilkSurfaceKind : uint
     MaterialXProjected = 2,
 
     /// <summary>A MaterialX graph compiled to a runtime fragment shader.</summary>
-    MaterialXGenerated = 3
+    MaterialXGenerated = 3,
+
+    /// <summary>A uniform density volume proxy rendered with emission/absorption.</summary>
+    VolumeDensity = 4
 }
 
 /// <summary>
@@ -759,7 +762,10 @@ public enum SilkMaterialParameter : uint
     Occlusion = 13,
 
     /// <summary>useSpecularWorkflow, one component.</summary>
-    UseSpecularWorkflow = 14
+    UseSpecularWorkflow = 14,
+
+    /// <summary>Uniform volume density, one component.</summary>
+    VolumeDensity = 15
 }
 
 /// <summary>UsdUVTexture wrap mode.</summary>

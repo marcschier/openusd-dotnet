@@ -20,11 +20,16 @@
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/prim.h"
 #include "pxr/usd/usd/stage.h"
+#include "pxr/usd/usd/primRange.h"
+#include "pxr/usd/usdGeom/xformCache.h"
+#include "pxr/usd/usdVol/openVDBAsset.h"
+#include "pxr/usd/usdVol/volume.h"
 #include "pxr/usdImaging/usdImagingGL/engine.h"
 #include "pxr/usdImaging/usdImagingGL/renderParams.h"
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
@@ -54,6 +59,8 @@ struct SilkSessionState
     UsdStageRefPtr stage;
     std::unique_ptr<UsdImagingGLEngine> engine;
     std::shared_ptr<HdSilkSceneState> sceneState;
+    std::vector<std::string> volumeProxyPaths;
+    std::vector<std::string> volumeMaterialPaths;
     mutable std::mutex mutex;
     std::mutex lifetime_mutex;
     std::condition_variable lifetime_changed;
@@ -441,6 +448,7 @@ bool IsRendererCreateFailpoint(const char* name) noexcept
     {
         return false;
     }
+
     const bool matches = value != nullptr && std::strcmp(value, name) == 0;
     std::free(value);
     return matches;
@@ -448,6 +456,182 @@ bool IsRendererCreateFailpoint(const char* name) noexcept
     const char* value = std::getenv("OPENUSD_RENDERER_CREATE_FAILPOINT");
     return value != nullptr && std::strcmp(value, name) == 0;
 #endif
+}
+
+uint64_t ComputeStableHash(const std::string& path)
+{
+    uint64_t hash = 14695981039346656037ull;
+    for (unsigned char byte : path)
+    {
+        hash ^= static_cast<uint64_t>(byte);
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+int32_t ComputePrimId(const std::string& path)
+{
+    const uint64_t hash = ComputeStableHash(path);
+    const uint32_t folded = static_cast<uint32_t>(hash ^ (hash >> 32)) & 0x7FFFFFFFu;
+    return static_cast<int32_t>(folded == 0 ? 1 : folded);
+}
+
+void RetirePreviousVolumes(SilkSessionState* state)
+{
+    for (const std::string& path : state->volumeProxyPaths)
+    {
+        state->sceneState->RemoveMesh(path);
+    }
+    for (const std::string& path : state->volumeMaterialPaths)
+    {
+        state->sceneState->RemoveMaterial(path);
+    }
+    state->volumeProxyPaths.clear();
+    state->volumeMaterialPaths.clear();
+}
+
+bool ResolveDensityField(
+    const UsdStageRefPtr& stage,
+    const UsdVolVolume& volume,
+    SdfPath* fieldPath)
+{
+    static const TfToken densityToken("density");
+    const UsdVolVolume::FieldMap fields = volume.GetFieldPaths();
+    const auto iterator = fields.find(densityToken);
+    if (iterator == fields.end())
+    {
+        return false;
+    }
+
+    const UsdPrim fieldPrim = stage->GetPrimAtPath(iterator->second);
+    const UsdVolOpenVDBAsset asset(fieldPrim);
+    if (!asset)
+    {
+        return false;
+    }
+
+    SdfAssetPath filePath;
+    if (!asset.GetFilePathAttr().Get(&filePath) || filePath.GetAssetPath().empty())
+    {
+        return false;
+    }
+
+    TfToken fieldName;
+    if (asset.GetFieldNameAttr().Get(&fieldName) &&
+        !fieldName.IsEmpty() &&
+        fieldName != densityToken)
+    {
+        return false;
+    }
+
+    *fieldPath = iterator->second;
+    return true;
+}
+
+float ReadVolumeDensity(const UsdPrim& prim)
+{
+    float density = 1.0f;
+    const UsdAttribute attribute = prim.GetAttribute(TfToken("hdsilk:density"));
+    if (attribute && attribute.Get(&density) && std::isfinite(density))
+    {
+        return std::max(0.0f, density);
+    }
+    return density;
+}
+
+void PublishVolumeProxy(
+    SilkSessionState* state,
+    const UsdPrim& prim,
+    const GfMatrix4d& transform,
+    float density)
+{
+    const std::string path = prim.GetPath().GetString();
+    const std::string meshPath = path + "/__hdSilkVolumeProxy";
+    const std::string materialPath = path + "/__hdSilkVolumeMaterial";
+
+    HdSilkMaterialRecord material;
+    material.path = materialPath;
+    material.surfaceKind = OPENUSD_SILK_SURFACE_VOLUME_DENSITY;
+    HdSilkMaterialScalar color;
+    color.parameter = OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR;
+    color.componentCount = 3;
+    color.value[0] = 0.90f;
+    color.value[1] = 0.36f;
+    color.value[2] = 0.12f;
+    HdSilkMaterialScalar densityScalar;
+    densityScalar.parameter = OPENUSD_SILK_MATERIAL_VOLUME_DENSITY;
+    densityScalar.componentCount = 1;
+    densityScalar.value[0] = density;
+    material.scalars.push_back(color);
+    material.scalars.push_back(densityScalar);
+    state->sceneState->ReplaceMaterial(std::move(material));
+
+    HdSilkMeshRecord mesh;
+    mesh.path = meshPath;
+    mesh.primId = ComputePrimId(meshPath);
+    mesh.topologyKind = OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST;
+    mesh.topologyRevision = 1;
+    mesh.doubleSided = 1;
+    mesh.cullStyle = OPENUSD_SILK_CULL_STYLE_NOTHING;
+    mesh.materialPath = materialPath;
+    mesh.displayColor[0] = 0.90f;
+    mesh.displayColor[1] = 0.36f;
+    mesh.displayColor[2] = 0.12f;
+    mesh.displayColor[3] = 1.0f;
+    HdSilkFlattenMatrix(transform, mesh.transform);
+    mesh.points = {
+        -0.5f, -0.5f, -0.5f,
+         0.5f, -0.5f, -0.5f,
+         0.5f,  0.5f, -0.5f,
+        -0.5f,  0.5f, -0.5f,
+        -0.5f, -0.5f,  0.5f,
+         0.5f, -0.5f,  0.5f,
+         0.5f,  0.5f,  0.5f,
+        -0.5f,  0.5f,  0.5f};
+    mesh.indices = {
+        0, 2, 1, 0, 3, 2,
+        4, 5, 6, 4, 6, 7,
+        0, 1, 5, 0, 5, 4,
+        1, 2, 6, 1, 6, 5,
+        2, 3, 7, 2, 7, 6,
+        3, 0, 4, 3, 4, 7};
+    mesh.triangleSubprims.resize(12);
+    for (uint32_t index = 0; index < 12; ++index)
+    {
+        mesh.triangleSubprims[index] = index / 2;
+    }
+    state->sceneState->ReplaceMeshInstances(meshPath, {std::move(mesh)});
+    state->volumeProxyPaths.push_back(meshPath);
+    state->volumeMaterialPaths.push_back(materialPath);
+}
+
+void PublishVolumes(SilkSessionState* state, UsdTimeCode time)
+{
+    RetirePreviousVolumes(state);
+    UsdGeomXformCache xformCache(time);
+    for (const UsdPrim& prim : state->stage->Traverse())
+    {
+        const UsdVolVolume volume(prim);
+        if (!volume)
+        {
+            continue;
+        }
+
+        SdfPath fieldPath;
+        if (!ResolveDensityField(state->stage, volume, &fieldPath))
+        {
+            TF_WARN(
+                "hdSilk skipped volume '%s': no density OpenVDBAsset field.",
+                prim.GetPath().GetText());
+            continue;
+        }
+
+        PublishVolumeProxy(
+            state,
+            prim,
+            xformCache.GetLocalToWorldTransform(prim),
+            ReadVolumeDensity(prim));
+    }
 }
 
 openusd_status CopyString(
@@ -913,6 +1097,7 @@ openusd_status openusd_silk_session_sync_with_complexity(
                 camera->clip_planes,
                 sizeof(frame.clipPlanes));
             state->sceneState->SetFrame(frame);
+            PublishVolumes(state.get(), UsdTimeCode(time_code));
 
             auto result = std::make_unique<openusd_silk_page>();
             result->data =

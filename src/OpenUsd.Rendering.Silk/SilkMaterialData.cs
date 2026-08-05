@@ -137,7 +137,8 @@ public sealed class SilkMaterialData
     public bool IsSupported =>
         SurfaceKind is SilkSurfaceKind.PreviewSurface or
         SilkSurfaceKind.MaterialXProjected or
-        SilkSurfaceKind.MaterialXGenerated;
+        SilkSurfaceKind.MaterialXGenerated or
+        SilkSurfaceKind.VolumeDensity;
 
     /// <summary>Gets whether this material should travel through the runtime MaterialX shader service.</summary>
     internal bool UsesRuntimeMaterialShader =>

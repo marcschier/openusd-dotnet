@@ -72,6 +72,8 @@ internal static class SilkSurfaceUniformWriter
             shaded,
             SilkMaterialParameter.ClearcoatRoughness,
             DefaultClearcoatRoughness);
+        bool volumeDensity = shaded?.SurfaceKind == SilkSurfaceKind.VolumeDensity;
+        float density = Scalar(shaded, SilkMaterialParameter.VolumeDensity, 0);
 
         WriteVector4(destination, 0, diffuse.X, diffuse.Y, diffuse.Z, opacity);
         WriteVector4(destination, 16, emissive.X, emissive.Y, emissive.Z, occlusion);
@@ -100,7 +102,7 @@ internal static class SilkSurfaceUniformWriter
             Finite(light.Color.Y, "light green"),
             Finite(light.Color.Z, "light blue"),
             Finite(light.Ambient, "light ambient"));
-        WriteVector4(destination, 112, 0, 0, 0, 0);
+        WriteVector4(destination, 112, volumeDensity ? 1 : 0, density, 2, 0);
     }
 
     private static Vector3 Normalize(Vector3 direction)
