@@ -246,6 +246,13 @@ float4 FRAGMENT_ENTRY_POINT(
     float opacity = shaded ? surface.diffuseOpacity.a : input.tint.a;
     float3 emissiveColor = surface.emissiveOcclusion.rgb;
     float occlusion = surface.emissiveOcclusion.a;
+    if (surface.reserved.x >= 0.5)
+    {
+        float density = max(0.0, surface.reserved.y);
+        float distance = max(0.0, surface.reserved.z);
+        float opacityIntegral = 1.0 - exp(-density * distance);
+        return float4(diffuseColor * opacityIntegral, 1.0);
+    }
     float metallic = saturate(surface.metallicRoughnessThresholdWorkflow.x);
     float roughness = clamp(surface.metallicRoughnessThresholdWorkflow.y, 0.01, 1.0);
     float3 shadingNormal = input.normal;

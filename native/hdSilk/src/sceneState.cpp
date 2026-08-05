@@ -511,7 +511,8 @@ void AppendMaterialUpsert(
     if (record.surfaceKind != OPENUSD_SILK_SURFACE_UNSUPPORTED &&
         record.surfaceKind != OPENUSD_SILK_SURFACE_PREVIEW_SURFACE &&
         record.surfaceKind != OPENUSD_SILK_SURFACE_MATERIALX_PROJECTED &&
-        record.surfaceKind != OPENUSD_SILK_SURFACE_MATERIALX_GENERATED)
+        record.surfaceKind != OPENUSD_SILK_SURFACE_MATERIALX_GENERATED &&
+        record.surfaceKind != OPENUSD_SILK_SURFACE_VOLUME_DENSITY)
     {
         throw std::invalid_argument("The hdSilk material surface kind is unknown.");
     }
