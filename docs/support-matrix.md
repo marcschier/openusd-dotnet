@@ -203,21 +203,21 @@ See [Rendering](rendering.md) for request binding, stale results, GPU passes, an
 ## hdSilk Storm parity sign-off
 
 The 1.0 rendering-parity claim is intentionally narrower than "everything hdSilk can parse".
-`eng/run-parity-capture.ps1` registers 22 curated scenes. Nineteen are hard gates at
+`eng/run-parity-capture.ps1` registers 25 curated scenes. Twenty-two are hard gates at
 `1.000000` adjusted IoU against D3D12 WARP and Vulkan SwiftShader; three are
 measured but deliberately ungated. macOS Metal has only one completed native pipeline probe and has
-not run the 22 curated parity scenes. Hosted Mesa/llvmpipe Storm runs only 18 registered scenes,
+not run the 25 curated parity scenes. Hosted Mesa/llvmpipe Storm runs only 21 registered scenes,
 excluding `single-sided-winding`, `bounds-draw-mode`, `origin-draw-mode`, and
 `subdivision-catmull-clark` because Mesa Storm differs from conformant-driver Storm.
 The render workflow now wires the curated capture into the macOS arm64 job with a CGL Storm
-context and Metal hdSilk backend, asserting all 22 registered scenes unless a named exclusion is
+context and Metal hdSilk backend, asserting all 25 registered scenes unless a named exclusion is
 added. That macOS path is **pending hosted proof** until a workflow run records whether hosted
 macOS can create the required OpenGL context and which Metal scenes gate; it must not be counted
 as observed Storm parity yet. The previous macOS native/Metal single-stage probe remains the only
 completed hosted Metal evidence until that run exists.
 
 The harness is driven by the `render` workflow, **not** by ordinary CI, so a green `ci` badge does
-not mean parity ran. The full 19-gate matrix passes on Windows with a conformant GPU driver. Hosted
+not mean parity ran. The full 22-gate matrix passes on Windows with a conformant GPU driver. Hosted
 Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fails at
 `vkCreateInstance: ErrorIncompatibleDriver` because the runner has no usable Vulkan ICD; that is the
 `render-unblock-vulkan` limitation and needs a GPU-equipped self-hosted runner.
@@ -238,6 +238,7 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | Texture colour spaces | `materials-textures`, `texture-colorspace-auto` and `-raw` divergence |
 | Texture scale, bias, and fallback | `texture-scale-bias-fallback` equivalence and divergence |
 | Texture slots beyond diffuse | Emissive, roughness, metallic, and normal self-consistency pairs |
+| Texture-coordinate primvar interpolation | `primvar-st-varying-texture`, `primvar-st-facevarying-texture`, `primvar-st-uniform-texture` |
 | Metallic workflow with non-zero `metallic` | `material-metallic-workflow` |
 | Remaining PreviewSurface constants | Emissive, occlusion, and opacity-threshold self-consistency pairs |
 | MaterialX standard-surface authored graph | None |
@@ -318,6 +319,12 @@ Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
   `meanChannelDelta=20.611`, and emissive `maxChannelDelta=63` / `meanChannelDelta=6.582`, so dropping
   those inputs loses divergence. IOR and clearcoat were measured but not claimed here: each moved the
   synthetic comparison by only `maxChannelDelta=2`, below the accepted divergence threshold.
+- The texture-coordinate primvar interpolation scenes bind the same asymmetric texture through `st`
+  authored as `varying`, `faceVarying`, and `uniform` primvars. They measured `1.000000` adjusted IoU
+  with a `0.218603` perturbation margin. Colour deltas were max 4 / mean 1.717 for varying,
+  max 4 / mean 1.717 for face-varying, and max 4 / mean 1.347 for uniform. The face-varying and
+  uniform scenes exercise hdSilk's expanded-topology path, so treating those primvars as ordinary
+  point/vertex data is not a passing shortcut.
 
 At the parity harness complexity, Storm renders the Catmull-Clark probe as a
 coarse/control-cage-like surface rather than full refinement. An eager
@@ -327,8 +334,8 @@ remains measured but ungated until the remaining divergence is eliminated.
 ### Implemented or reachable but not yet parity-gated
 
 - `depth-overlap-multiprim` has the thinnest accepted perturbation margin at 0.184333.
-- Varying, uniform, and face-varying primvar interpolation modes have no parity scene.
-- Other primvar names beyond constant `displayColor` and vertex `st`/normals are not gated.
+- Varying, uniform, and face-varying texture-coordinate primvar interpolation modes are gated.
+- Other primvar names beyond constant `displayColor`, normals, and `st` texture coordinates are not gated.
 - Texture `repeat`, `clamp`, `mirror`, `useMetadata`/black, `sRGB`, diffuse `auto`, and raw/linear colour
   space are gated.
 - Specular, opacity, and occlusion texture slots have no parity scene.
@@ -486,7 +493,7 @@ here.
 - The Viewer is an inspector and focused editor, not a `usdview` clone or full DCC.
 - Only `win-x64`, `linux-x64`, and `osx-arm64` runtime packages exist today.
 - The curated Storm/hdSilk parity matrix is gated on D3D12 WARP and Vulkan SwiftShader only; Metal has a
-  single-stage native pipeline probe, not 22-scene parity coverage.
+  single-stage native pipeline probe, not 25-scene parity coverage.
 - Volumes, path tracing, proprietary shaders, arbitrary MaterialX graphs, and third-party Hydra render
   delegates are excluded from the 1.0 support claim.
 
