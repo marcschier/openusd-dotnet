@@ -535,11 +535,13 @@ public sealed class ViewerSourceContractTests
         await Assert.That(window).Contains("ApplyPickedHitAsync(");
         await Assert.That(window).Contains("Subprim element");
         await Assert.That(startup).Contains("OPENUSD_VIEWER_PICK_SMOKE_PATH");
-        await Assert.That(smoke).Contains("CurrentSchemaVersion = 2");
+        await Assert.That(smoke).Contains("CurrentSchemaVersion = 3");
         await Assert.That(smoke).Contains("viewer-picking-short-smoke");
         await Assert.That(smoke).Contains("ViewerSilkOutlineEvidence");
+        await Assert.That(smoke).Contains("ViewerPickingSmokeHostObserver");
         await Assert.That(smokeRunner).Contains("-NativeRuntimeOverridePath");
         await Assert.That(smokeRunner).Contains("selectionPreservedAcrossSwitches");
+        await Assert.That(smokeRunner).Contains("hostPickHitObserved");
         await Assert.That(smokeRunner).Contains("silkOutlines");
         await Assert.That(viewportHost).Contains("ExerciseStormClickAsync(");
         await Assert.That(viewportHost).Contains("ExerciseCompositionClickAsync(");

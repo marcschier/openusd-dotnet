@@ -146,6 +146,17 @@ internal sealed class ViewerRenderBackendRegistry
         }
     }
 
+    internal IRenderPickingBackend? CapturePickingBackend()
+    {
+        lock (_gate)
+        {
+            return _active is not null &&
+                _active.Capabilities.Supports(RenderBackendCapability.Picking)
+                    ? _active
+                    : null;
+        }
+    }
+
     internal SilkSelectionOutlineDiagnostics? CaptureSelectionOutline()
     {
         lock (_gate)

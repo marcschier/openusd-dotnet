@@ -10,11 +10,18 @@ using OpenUsd.Rendering.Storm;
 namespace OpenUsd.Viewer;
 
 [Flags]
-internal enum ViewerPointerButtons
+public enum ViewerPointerButtons
 {
+    /// <summary>No pointer button is pressed.</summary>
     None = 0,
+
+    /// <summary>The primary pointer button is pressed.</summary>
     Left = 1,
+
+    /// <summary>The middle pointer button is pressed.</summary>
     Middle = 2,
+
+    /// <summary>The secondary pointer button is pressed.</summary>
     Right = 4,
 }
 

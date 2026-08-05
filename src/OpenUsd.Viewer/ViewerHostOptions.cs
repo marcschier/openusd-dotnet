@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using OpenUsd.Rendering;
+
 namespace OpenUsd.Viewer;
 
 /// <summary>
@@ -38,6 +40,71 @@ public sealed class ViewerHostOptions
     /// a usable camera, the viewer's automatic framing applies.
     /// </summary>
     public string? StageCameraPath { get; init; }
+
+    /// <summary>
+    /// Invoked after a viewport click resolves through the viewer-owned picking path.
+    /// Misses are reported with <see cref="RenderPickStatus.Miss"/> and a
+    /// <see langword="null"/> prim path so hosts can clear their own state.
+    /// </summary>
+    /// <remarks>
+    /// The callback is dispatched off the UI thread and is not awaited by input handling
+    /// or rendering.
+    /// </remarks>
+    public Func<ViewerPickEventArgs, CancellationToken, Task>? PrimPicked { get; init; }
+
+    /// <summary>
+    /// Gets the renderer target used for host pick callbacks. Defaults to primitive picks.
+    /// </summary>
+    public RenderPickTarget PickTarget { get; init; } = RenderPickTarget.Primitive;
+
+    /// <summary>
+    /// Invoked when the viewport receives a framework-neutral pointer press inside the
+    /// rendered content. Coordinates are already converted to physical pixels.
+    /// </summary>
+    public Func<ViewerViewportPointerEventArgs, CancellationToken, Task>? ViewportPointerPressed
+    {
+        get;
+        init;
+    }
+
+    /// <summary>
+    /// Invoked when the viewport receives a framework-neutral pointer move inside the
+    /// rendered content. Coordinates are already converted to physical pixels.
+    /// </summary>
+    public Func<ViewerViewportPointerEventArgs, CancellationToken, Task>? ViewportPointerMoved
+    {
+        get;
+        init;
+    }
+
+    /// <summary>
+    /// Invoked when the viewport receives a framework-neutral pointer release inside the
+    /// rendered content. Coordinates are already converted to physical pixels.
+    /// </summary>
+    public Func<ViewerViewportPointerEventArgs, CancellationToken, Task>? ViewportPointerReleased
+    {
+        get;
+        init;
+    }
+
+    /// <summary>
+    /// Invoked when viewer selection changes within <see cref="SelectionChangedPrimSubtree"/>.
+    /// </summary>
+    /// <remarks>
+    /// The subtree filter prevents hosts that animate most of the stage from waking for
+    /// unrelated selections. Leave <see cref="SelectionChangedPrimSubtree"/> unset to
+    /// observe every selection change.
+    /// </remarks>
+    public Func<ViewerSelectionChangedEventArgs, CancellationToken, Task>? SelectionChanged
+    {
+        get;
+        init;
+    }
+
+    /// <summary>
+    /// Absolute prim subtree that scopes <see cref="SelectionChanged"/> notifications.
+    /// </summary>
+    public string? SelectionChangedPrimSubtree { get; init; }
 
     /// <summary>
     /// Closes the shell when cancelled, so a host that runs the viewport for a bounded

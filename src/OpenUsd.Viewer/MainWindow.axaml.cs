@@ -116,6 +116,9 @@ public sealed partial class MainWindow : Window, IDisposable
     private string? _displayedCameraPath;
     private bool _stageCameraSelectionBusy;
     private int _cameraStatusUpdatePosted;
+    private ViewerStageSession? _hostSession;
+    private ViewerCameraState _lastHostCamera;
+    private bool _hasLastHostCamera;
 
     private ColumnDefinition StagePanelGridColumn => MainContentGrid.ColumnDefinitions[0];
 
@@ -1022,6 +1025,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void OnPickPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (ReferenceEquals(sender, ViewportHost))
+        {
+            DispatchHostPointerEvent(
+                ViewerStartupOptions.ViewportPointerPressedAsync,
+                e);
+        }
         if (_documentBusy ||
             _coordinator is null ||
             (IsAutomatedViewerRun() && !ViewerStartupOptions.PickSmokeEnabled) ||
@@ -1045,6 +1054,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void OnPickPointerMoved(object? sender, PointerEventArgs e)
     {
+        if (ReferenceEquals(sender, ViewportHost))
+        {
+            DispatchHostPointerEvent(
+                ViewerStartupOptions.ViewportPointerMovedAsync,
+                e);
+        }
         if (!ReferenceEquals(e.Pointer, _pickPointer) || _pickPointerDragged)
         {
             return;
@@ -1064,6 +1079,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void OnPickPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (ReferenceEquals(sender, ViewportHost))
+        {
+            DispatchHostPointerEvent(
+                ViewerStartupOptions.ViewportPointerReleasedAsync,
+                e);
+        }
         if (!ReferenceEquals(e.Pointer, _pickPointer))
         {
             return;
@@ -1129,9 +1150,12 @@ public sealed partial class MainWindow : Window, IDisposable
         bool entered = false;
         try
         {
-            RenderPickResult result = await coordinator
-                .PickAsync(pixel, cancellationToken: cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
+            RenderPickResult result = await ViewerHostInteraction.PickAndDispatchAsync(
+                pixel,
+                ViewerStartupOptions.HostPickTarget,
+                coordinator.PickAsync,
+                ViewerStartupOptions.PrimPickedAsync,
+                cancellationToken);
             await _documentGate.WaitAsync(cancellationToken);
             entered = true;
             if (!ReferenceEquals(_pickLifetime, lifetime) ||
@@ -1222,6 +1246,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 await coordinator.MutateStateAsync(
                     state => state.WithSelection(selection),
                     cancellationToken);
+                DispatchHostSelectionChanged(selection);
             }
             if (generation != Interlocked.Read(ref _pickGeneration))
             {
@@ -1276,6 +1301,99 @@ public sealed partial class MainWindow : Window, IDisposable
         ViewerStatus.Text = bounded;
         ViewerStatus.Foreground = null;
         ViewerStartupOptions.WriteStatus(bounded);
+    }
+
+    private void DispatchHostPointerEvent(
+        Func<ViewerViewportPointerEventArgs, CancellationToken, Task>? callback,
+        PointerEventArgs e)
+    {
+        if (callback is null ||
+            _coordinator is not { } coordinator ||
+            !TryMapPointerToPhysicalPixel(e, out ViewerPhysicalPixel pixel))
+        {
+            return;
+        }
+        PointerPointProperties properties = e.GetCurrentPoint(ViewportHost).Properties;
+        var args = new ViewerViewportPointerEventArgs(
+            pixel.X,
+            pixel.Y,
+            coordinator.CurrentState.Viewport,
+            GetPressedButtons(properties),
+            ToHostModifiers(e.KeyModifiers));
+        CancellationToken cancellationToken =
+            _documentLifetime?.Token ?? _viewerLifetime.Token;
+        _ = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    await callback(args, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                }
+                catch (Exception exception)
+                {
+                    ViewerStartupOptions.WriteStatus(
+                        $"Host viewport pointer callback failed: {exception.Message}");
+                }
+            },
+            CancellationToken.None);
+    }
+
+    private void DispatchHostSelectionChanged(SelectionState selection)
+    {
+        _ = ViewerHostInteraction.DispatchSelectionCallback(
+            selection,
+            ViewerStartupOptions.SelectionChangedPrimSubtree,
+            ViewerStartupOptions.SelectionChangedAsync,
+            _documentLifetime?.Token ?? _viewerLifetime.Token);
+    }
+
+    private static ViewerInputModifiers ToHostModifiers(KeyModifiers modifiers)
+    {
+        ViewerInputModifiers result = ViewerInputModifiers.None;
+        if ((modifiers & KeyModifiers.Alt) != 0)
+        {
+            result |= ViewerInputModifiers.Alt;
+        }
+        if ((modifiers & KeyModifiers.Control) != 0)
+        {
+            result |= ViewerInputModifiers.Control;
+        }
+        if ((modifiers & KeyModifiers.Shift) != 0)
+        {
+            result |= ViewerInputModifiers.Shift;
+        }
+        if ((modifiers & KeyModifiers.Meta) != 0)
+        {
+            result |= ViewerInputModifiers.Meta;
+        }
+        return result;
+    }
+
+    private bool TryMapPointerToPhysicalPixel(
+        PointerEventArgs e,
+        out ViewerPhysicalPixel pixel)
+    {
+        if (_coordinator is not { } coordinator)
+        {
+            pixel = default;
+            return false;
+        }
+        Point logical = e.GetPosition(ViewportHost);
+        var contentBounds = new ViewerLogicalContentBounds(
+            0,
+            0,
+            ViewportHost.Bounds.Width,
+            ViewportHost.Bounds.Height);
+        return ViewerHostInteraction.TryMapViewportClick(
+            logical.X,
+            logical.Y,
+            contentBounds,
+            GetViewportRenderScaling(),
+            coordinator.CurrentState.Viewport,
+            out pixel);
     }
 
     private static string FormatSelectionItem(in SelectionItem item)
@@ -1562,6 +1680,18 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
+    private void OnRenderStateChanged(StageRenderState state)
+    {
+        var camera = new ViewerCameraState(state.Camera, state.Viewport);
+        if (_hasLastHostCamera && camera == _lastHostCamera)
+        {
+            return;
+        }
+        _lastHostCamera = camera;
+        _hasLastHostCamera = true;
+        _hostSession?.NotifyCameraChanged(camera);
+    }
+
     private async ValueTask ApplyStageCameraRefreshAsync(
         ViewerRenderCoordinator coordinator,
         ViewerStageCameraRefreshApplication application,
@@ -1830,6 +1960,70 @@ public sealed partial class MainWindow : Window, IDisposable
         catch (Exception exception)
         {
             ShowError($"Could not frame the selected prim: {exception.Message}");
+        }
+        finally
+        {
+            _documentGate.Release();
+        }
+    }
+
+    private ValueTask FrameHostPrimAsync(
+        ViewerRenderCoordinator coordinator,
+        string primPath,
+        CancellationToken cancellationToken)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            return new ValueTask(Dispatcher.UIThread.InvokeAsync(
+                () => FrameHostPrimAsync(coordinator, primPath, cancellationToken).AsTask()));
+        }
+        return FrameHostPrimCoreAsync(coordinator, primPath, cancellationToken);
+    }
+
+    private async ValueTask FrameHostPrimCoreAsync(
+        ViewerRenderCoordinator coordinator,
+        string primPath,
+        CancellationToken cancellationToken)
+    {
+        if (!ReferenceEquals(_coordinator, coordinator) || !CanNavigateCamera())
+        {
+            return;
+        }
+        if (_cameraNavigation.ExitStageCameraForNavigation())
+        {
+            UpdateCameraStatus();
+            if (!TryPostCameraSnapshot())
+            {
+                ShowError("The camera update worker is unavailable.");
+                return;
+            }
+        }
+
+        await _documentGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!ReferenceEquals(_coordinator, coordinator))
+            {
+                return;
+            }
+            StageRenderState current = coordinator.CurrentState;
+            var source = new ViewerSchedulerSelectedBoundsSource(coordinator.Scheduler);
+            ViewerFrameSelectedResult result = await ViewerFrameSelectedQuery.QueryAsync(
+                source,
+                primPath,
+                current.Time,
+                current.Display.Purposes,
+                cancellationToken);
+            if (result.Outcome != ViewerFrameSelectedOutcome.Ready ||
+                !_cameraNavigation.FrameBounds(result.Bounds))
+            {
+                return;
+            }
+            UpdateCameraStatus();
+            if (!TryPostCameraSnapshot())
+            {
+                ShowError("The camera update worker is unavailable.");
+            }
         }
         finally
         {
@@ -3033,6 +3227,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 _rootLayerEditsExplicitlyEnabled = false;
                 _stagePath = normalizedPath;
                 coordinator.StatusChanged += OnRendererStatusChanged;
+                coordinator.StateChanged += OnRenderStateChanged;
                 InitializeCameraUpdates(coordinator, documentLifetime.Token);
                 coordinator = null;
                 documentLifetime = null!;
@@ -3132,7 +3327,7 @@ public sealed partial class MainWindow : Window, IDisposable
             if (callback is not null)
             {
                 await callback(
-                    new ViewerStageSession(coordinator.Scheduler, stagePath),
+                    CreateHostSession(coordinator, stagePath),
                     cancellationToken);
             }
         }
@@ -3146,6 +3341,29 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             ShowError($"The viewer host failed to start: {exception.Message}");
         }
+    }
+
+    private ViewerStageSession CreateHostSession(
+        ViewerRenderCoordinator coordinator,
+        string stagePath)
+    {
+        var session = new ViewerStageSession(
+            coordinator.Scheduler,
+            stagePath,
+            () => ReferenceEquals(_coordinator, coordinator)
+                ? coordinator.PickingBackend
+                : null,
+            () => ReferenceEquals(_coordinator, coordinator)
+                ? coordinator.CurrentState
+                : StageRenderState.Default,
+            (primPath, cancellationToken) => FrameHostPrimAsync(
+                coordinator,
+                primPath,
+                cancellationToken));
+        _hostSession = session;
+        _lastHostCamera = session.Camera;
+        _hasLastHostCamera = true;
+        return session;
     }
 
     /// <summary>
@@ -3238,6 +3456,7 @@ public sealed partial class MainWindow : Window, IDisposable
         if (_coordinator is { } stageChangeCoordinator)
         {
             stageChangeCoordinator.StageChanged -= OnStageChanged;
+            stageChangeCoordinator.StateChanged -= OnRenderStateChanged;
         }
         ViewerStageCameraRefreshPump? stageCameraRefreshes =
             _stageCameraRefreshes;
@@ -3290,6 +3509,8 @@ public sealed partial class MainWindow : Window, IDisposable
         _diagnosticSequence = null;
         _coordinator = null;
         _backendHost = null;
+        _hostSession = null;
+        _hasLastHostCamera = false;
         _hierarchy = ViewerHierarchySnapshot.Empty;
         _timing = ViewerStageTimingSnapshot.Empty;
         _layers = ViewerLayerStackSnapshot.Empty;
@@ -3771,6 +3992,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 await coordinator.MutateStateAsync(
                     state => state.WithSelection(selection),
                     cancellationToken);
+                DispatchHostSelectionChanged(selection);
             }
             catch
             {
@@ -4034,6 +4256,7 @@ public sealed partial class MainWindow : Window, IDisposable
             await coordinator.MutateStateAsync(
                 state => state.WithSelection(selection),
                 documentToken);
+            DispatchHostSelectionChanged(selection);
             if (string.Equals(
                 _selectionState.PrimPath,
                 node.Entry.Path,
@@ -4080,6 +4303,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 await coordinator.MutateStateAsync(
                     state => state.WithSelection(selection),
                     cancellationToken);
+                DispatchHostSelectionChanged(selection);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -5543,6 +5767,10 @@ public sealed partial class MainWindow : Window, IDisposable
         var clickResults =
             new Dictionary<RenderBackendKind, (bool Hit, bool Miss)>(backends.Length);
         var silkOutlines = new List<ViewerSilkOutlineEvidence>(capacity: 2);
+        bool hostPickHitObserved = false;
+        bool hostPickMissObserved = false;
+        bool hostSelectionHitObserved = false;
+        bool hostSelectionClearObserved = false;
         foreach (RenderBackendKind backend in backends)
         {
             await EnsurePickingSmokeBackendAsync(
@@ -5555,6 +5783,10 @@ public sealed partial class MainWindow : Window, IDisposable
             _selectionState.Synchronize(SelectionState.Empty);
             ViewerPhysicalPixel hitPixel = samples[hitIndices[backend]];
             ViewerPhysicalPixel missPixel = samples[missIndices[backend]];
+            Task<ViewerPickEventArgs> hostHitPick =
+                ViewerPickingSmokeHostObserver.WaitForNextPickAsync(cancellationToken);
+            Task<ViewerSelectionChangedEventArgs> hostHitSelection =
+                ViewerPickingSmokeHostObserver.WaitForNextSelectionAsync(cancellationToken);
             if (backend == RenderBackendKind.Storm)
             {
                 await ViewportHost.ExerciseStormClickAsync(
@@ -5573,11 +5805,19 @@ public sealed partial class MainWindow : Window, IDisposable
             await CompletePickingSmokeUiPickAsync(
                 coordinator,
                 cancellationToken);
+            ViewerPickEventArgs hostHit = await hostHitPick;
+            ViewerSelectionChangedEventArgs hostHitSelectionArgs =
+                await hostHitSelection;
             await WaitForPickingSmokeSelectionAsync(commonPath, cancellationToken);
             bool clickHit = string.Equals(
                 _selectionState.PrimPath,
                 commonPath,
                 StringComparison.Ordinal);
+            hostPickHitObserved |= hostHit.Status == RenderPickStatus.Hit &&
+                string.Equals(hostHit.PrimPath, commonPath, StringComparison.Ordinal);
+            hostSelectionHitObserved |= hostHitSelectionArgs.PrimPaths.Contains(
+                commonPath,
+                StringComparer.Ordinal);
             _ = await RenderUntilPresentedAsync(coordinator, cancellationToken);
             SilkSelectionOutlineDiagnostics? selectedOutline = null;
             if (backend != RenderBackendKind.Storm)
@@ -5597,22 +5837,45 @@ public sealed partial class MainWindow : Window, IDisposable
             }
             if (backend == RenderBackendKind.Storm)
             {
+                Task<ViewerPickEventArgs> hostMissPick =
+                    ViewerPickingSmokeHostObserver.WaitForNextPickAsync(cancellationToken);
+                Task<ViewerSelectionChangedEventArgs> hostMissSelection =
+                    ViewerPickingSmokeHostObserver.WaitForNextSelectionAsync(cancellationToken);
                 await ViewportHost.ExerciseStormClickAsync(
                     this,
                     missPixel,
                     PollStormPickingSmokeInput,
                     cancellationToken);
+                await CompletePickingSmokeUiPickAsync(
+                    coordinator,
+                    cancellationToken);
+                ViewerPickEventArgs hostMiss = await hostMissPick;
+                ViewerSelectionChangedEventArgs hostMissSelectionArgs =
+                    await hostMissSelection;
+                hostPickMissObserved |= hostMiss.Status == RenderPickStatus.Miss &&
+                    hostMiss.PrimPath is null;
+                hostSelectionClearObserved |= hostMissSelectionArgs.PrimPaths.Count == 0;
             }
             else
             {
+                Task<ViewerPickEventArgs> hostMissPick =
+                    ViewerPickingSmokeHostObserver.WaitForNextPickAsync(cancellationToken);
+                Task<ViewerSelectionChangedEventArgs> hostMissSelection =
+                    ViewerPickingSmokeHostObserver.WaitForNextSelectionAsync(cancellationToken);
                 await ViewportHost.ExerciseCompositionClickAsync(
                     this,
                     missPixel,
                     cancellationToken);
+                await CompletePickingSmokeUiPickAsync(
+                    coordinator,
+                    cancellationToken);
+                ViewerPickEventArgs hostMiss = await hostMissPick;
+                ViewerSelectionChangedEventArgs hostMissSelectionArgs =
+                    await hostMissSelection;
+                hostPickMissObserved |= hostMiss.Status == RenderPickStatus.Miss &&
+                    hostMiss.PrimPath is null;
+                hostSelectionClearObserved |= hostMissSelectionArgs.PrimPaths.Count == 0;
             }
-            await CompletePickingSmokeUiPickAsync(
-                coordinator,
-                cancellationToken);
             await WaitForPickingSmokeSelectionAsync(
                 expectedPath: null,
                 cancellationToken);
@@ -5651,6 +5914,14 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 throw new InvalidOperationException(
                     $"{backend} click routing did not apply both hit and miss selection policy.");
+            }
+            if (!hostPickHitObserved ||
+                !hostPickMissObserved ||
+                !hostSelectionHitObserved ||
+                !hostSelectionClearObserved)
+            {
+                throw new InvalidOperationException(
+                    "Host-facing pick and selection callbacks did not observe both hit and miss.");
             }
             clickResults.Add(backend, (clickHit, clickMiss));
         }
@@ -5769,6 +6040,10 @@ public sealed partial class MainWindow : Window, IDisposable
             $"0x{clearedHash:X16}",
             highlightChanged,
             highlightCleared,
+            hostPickHitObserved,
+            hostPickMissObserved,
+            hostSelectionHitObserved,
+            hostSelectionClearObserved,
             [.. silkOutlines],
             DateTimeOffset.UtcNow);
         await ViewerPickingSmokeWriter.WriteAsync(
