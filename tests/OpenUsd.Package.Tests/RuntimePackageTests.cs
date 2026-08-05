@@ -121,15 +121,19 @@ public sealed class RuntimePackageTests
         [
             "OpenUsd.Runtime.Core",
             "OpenUsd.Runtime.Imaging",
+            "OpenUsd.Runtime.Cesium",
         ];
         string[] ridPackages =
         [
             "OpenUsd.Runtime.Core.win-x64",
             "OpenUsd.Runtime.Imaging.win-x64",
+            "OpenUsd.Runtime.Cesium.win-x64",
             "OpenUsd.Runtime.Core.linux-x64",
             "OpenUsd.Runtime.Imaging.linux-x64",
+            "OpenUsd.Runtime.Cesium.linux-x64",
             "OpenUsd.Runtime.Core.osx-arm64",
             "OpenUsd.Runtime.Imaging.osx-arm64",
+            "OpenUsd.Runtime.Cesium.osx-arm64",
         ];
 
         foreach (string packageId in metapackages.Concat(ridPackages))
@@ -212,6 +216,10 @@ public sealed class RuntimePackageTests
                 repositoryRoot,
                 "OpenUsd.Runtime.Imaging",
                 packageRoot);
+            PackedPackage cesiumPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Cesium",
+                packageRoot);
 
             await AssertPackageDependenciesAsync(
                 corePackage.Path,
@@ -222,6 +230,12 @@ public sealed class RuntimePackageTests
                 imagingPackage.Version,
                 AllRuntimePackageIds()
                     .Where(id => id.StartsWith("OpenUsd.Runtime.Imaging.", StringComparison.Ordinal))
+                    .ToArray());
+            await AssertPackageDependenciesAsync(
+                cesiumPackage.Path,
+                cesiumPackage.Version,
+                AllRuntimePackageIds()
+                    .Where(id => id.StartsWith("OpenUsd.Runtime.Cesium.", StringComparison.Ordinal))
                     .ToArray());
         }
         finally
@@ -663,6 +677,94 @@ public sealed class RuntimePackageTests
             {
                 await Assert.That(File.Exists(Path.Combine(publishRoot, publishedPath))).IsTrue();
             }
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task WindowsCesiumPackagePreservesOptInLayout()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+
+        try
+        {
+            (string installRoot, string shimRoot, string vulkanRuntimeLibrary) =
+                CreateSyntheticWindowsInstall(workRoot);
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+
+            PackedPackage corePackage = await PackAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Core.win-x64",
+                installRoot,
+                shimRoot,
+                vulkanRuntimeLibrary,
+                packageRoot);
+            PackedPackage cesiumPackage = await PackAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Cesium.win-x64",
+                installRoot,
+                shimRoot,
+                vulkanRuntimeLibrary,
+                packageRoot);
+
+            await AssertPackageEntriesAsync(
+                cesiumPackage.Path,
+                [
+                    "buildTransitive/OpenUsd.Runtime.Cesium.win-x64.targets",
+                    "runtimes/win-x64/native/openusd_cesium.dll",
+                ]);
+            await AssertPackageEntryMatchesFileAsync(
+                cesiumPackage.Path,
+                "runtimes/win-x64/native/openusd_cesium.dll",
+                Path.Combine(shimRoot, "bin", "openusd_cesium.dll"));
+            await AssertSingleNativePackageEntryAsync(
+                cesiumPackage.Path,
+                "win-x64",
+                "openusd_cesium.dll");
+            await AssertPackageDoesNotContainAsync(corePackage.Path, "openusd_cesium");
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task MissingCesiumShimFailsPackClearly()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            (string installRoot, string shimRoot, string vulkanRuntimeLibrary) =
+                CreateSyntheticWindowsInstall(workRoot);
+            File.Delete(Path.Combine(shimRoot, "bin", "openusd_cesium.dll"));
+            string projectPath = Path.Combine(
+                repositoryRoot,
+                "src",
+                "OpenUsd.Runtime.Cesium.win-x64",
+                "OpenUsd.Runtime.Cesium.win-x64.csproj");
+            CommandResult result = await RunDotnetAsync(
+                repositoryRoot,
+                [
+                    "pack",
+                    projectPath,
+                    "-c",
+                    "Release",
+                    "--nologo",
+                    $"-p:OpenUsdInstallRoot={installRoot}",
+                    $"-p:OpenUsdShimInstallRoot={shimRoot}",
+                    $"-p:OpenUsdVulkanRuntimeLibrary={vulkanRuntimeLibrary}",
+                    $"-p:PackageOutputPath={Path.Combine(workRoot, "packages")}",
+                ]);
+
+            await Assert.That(result.ExitCode).IsNotEqualTo(0);
+            await Assert.That(result.Output).Contains("The OpenUsd Cesium shim is missing");
         }
         finally
         {
@@ -2251,6 +2353,121 @@ public sealed class RuntimePackageTests
     }
 
     [Test]
+    public async Task CesiumPackageExecutesTilesetReadFromCleanFeed()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        if (!TryGetExecutionInputs(
+            repositoryRoot,
+            out NativeExecutionInputs inputs,
+            out string reason))
+        {
+            HandleMissingExecutionPrerequisites(
+                nameof(CesiumPackageExecutesTilesetReadFromCleanFeed),
+                reason);
+            return;
+        }
+
+        ExecutionPlatform platform = inputs.Platform;
+        string cesiumLibrary = GetCesiumLibraryName(platform);
+        string shimNativeDirectory = platform.Rid == "win-x64" ? "bin" : "lib";
+        string installedCesiumPath = Path.Combine(
+            inputs.ShimRoot,
+            shimNativeDirectory,
+            cesiumLibrary);
+        if (!File.Exists(installedCesiumPath))
+        {
+            HandleMissingExecutionPrerequisites(
+                nameof(CesiumPackageExecutesTilesetReadFromCleanFeed),
+                $"The Cesium shim is missing at '{installedCesiumPath}'.");
+            return;
+        }
+
+        string workRoot = Path.Combine(repositoryRoot, "artifacts", "pc");
+        if (Directory.Exists(workRoot))
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+        Directory.CreateDirectory(workRoot);
+        try
+        {
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+            foreach (string packageId in new[]
+            {
+                "OpenUsd.Interop",
+                "OpenUsd",
+                "OpenUsd.Cesium",
+                "OpenUsd.Runtime.Core",
+                "OpenUsd.Runtime.Cesium",
+            })
+            {
+                await PackManagedPackageAsync(repositoryRoot, packageId, packageRoot);
+            }
+
+            PackedPackage coreRuntimePackage = await PackAsync(
+                repositoryRoot,
+                $"OpenUsd.Runtime.Core.{platform.Rid}",
+                inputs.InstallRoot,
+                inputs.ShimRoot,
+                inputs.VulkanRuntimeLibrary,
+                packageRoot);
+            PackedPackage cesiumRuntimePackage = await PackAsync(
+                repositoryRoot,
+                $"OpenUsd.Runtime.Cesium.{platform.Rid}",
+                inputs.InstallRoot,
+                inputs.ShimRoot,
+                inputs.VulkanRuntimeLibrary,
+                packageRoot);
+            await Assert.That(cesiumRuntimePackage.Version).IsEqualTo(coreRuntimePackage.Version);
+            await AssertPackageEntryMatchesFileAsync(
+                cesiumRuntimePackage.Path,
+                $"runtimes/{platform.Rid}/native/{cesiumLibrary}",
+                installedCesiumPath);
+            await CreateStubRuntimePackagesAsync(
+                workRoot,
+                packageRoot,
+                cesiumRuntimePackage.Version,
+                [.. GetCesiumConsumerPackageGraph(platform)
+                    .Where(id => id.StartsWith("OpenUsd.Runtime.", StringComparison.Ordinal))
+                    .Where(id => id != "OpenUsd.Runtime.Core")
+                    .Where(id => id != "OpenUsd.Runtime.Cesium")
+                    .Where(id => id != $"OpenUsd.Runtime.Core.{platform.Rid}")
+                    .Where(id => id != $"OpenUsd.Runtime.Cesium.{platform.Rid}")]);
+
+            ExecutionConsumer consumer = await PublishCesiumConsumerAsync(
+                workRoot,
+                packageRoot,
+                cesiumRuntimePackage.Version,
+                platform);
+            AssertPackageOnlyGraph(
+                consumer.AssetsPath,
+                GetCesiumConsumerPackageGraph(platform));
+            await Assert.That(File.Exists(Path.Combine(consumer.PublishRoot, cesiumLibrary))).IsTrue();
+            await AssertFileHashesEqualAsync(
+                installedCesiumPath,
+                Path.Combine(consumer.PublishRoot, cesiumLibrary));
+
+            CommandResult result = await RunExecutableAsync(
+                GetExecutablePath(consumer.PublishRoot, "Consumer"),
+                consumer.PublishRoot,
+                [],
+                GetCoreRuntimeEnvironment(platform, consumer.PublishRoot));
+
+            Console.WriteLine(result.Output.Trim());
+            await Assert.That(result.ExitCode).IsEqualTo(0).Because(result.Output);
+            await Assert.That(result.Output).Contains("PACKAGE_CESIUM_TILESET_OK");
+            await Assert.That(result.Output).Contains("TILESET_REQUESTED=true");
+            await Assert.That(result.Output).Contains("SHIM_PRESENT=true");
+            await Assert.That(result.Output).Contains("CWD_IS_PUBLISH=true");
+            await AssertNoSourcePathLeakageAsync(result.Output, repositoryRoot);
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task ManagedPackagesExecuteNativeAotStageRoundTrip()
     {
         string repositoryRoot = FindRepositoryRoot();
@@ -3584,7 +3801,12 @@ public sealed class RuntimePackageTests
         string excludedEntry)
     {
         using ZipArchive package = ZipFile.OpenRead(packagePath);
-        await Assert.That(package.Entries.Select(entry => entry.FullName)).DoesNotContain(excludedEntry);
+        string[] matchingEntries = package
+            .Entries
+            .Select(entry => entry.FullName)
+            .Where(entry => entry.Contains(excludedEntry, StringComparison.Ordinal))
+            .ToArray();
+        await Assert.That(matchingEntries).IsEmpty();
     }
 
     private static async Task AssertPackageDoesNotContainFileNameOutsideNativeAsync(
@@ -4062,6 +4284,185 @@ public sealed class RuntimePackageTests
         }
 
         return publishRoot;
+    }
+
+    private static async Task<ExecutionConsumer> PublishCesiumConsumerAsync(
+        string workRoot,
+        string packageRoot,
+        string packageVersion,
+        ExecutionPlatform platform)
+    {
+        string consumerRoot = Path.Combine(workRoot, $"cesium-consumer-{platform.Rid}");
+        string publishRoot = Path.Combine(consumerRoot, "publish");
+        string projectPath = Path.Combine(consumerRoot, "Consumer.csproj");
+        Directory.CreateDirectory(consumerRoot);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "Directory.Build.props"),
+            "<Project />");
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "Directory.Packages.props"),
+            """
+            <Project>
+              <PropertyGroup>
+                <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+              </PropertyGroup>
+            </Project>
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "NuGet.config"),
+            $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="isolated-openusd-feed" value="{packageRoot}" />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+              <packageSourceMapping>
+                <packageSource key="isolated-openusd-feed">
+                  <package pattern="OpenUsd*" />
+                </packageSource>
+                <packageSource key="nuget.org">
+                  <package pattern="Microsoft.*" />
+                  <package pattern="runtime.*" />
+                </packageSource>
+              </packageSourceMapping>
+            </configuration>
+            """);
+        await File.WriteAllTextAsync(
+            projectPath,
+            $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <RuntimeIdentifier>{platform.Rid}</RuntimeIdentifier>
+                <SelfContained>false</SelfContained>
+                <Nullable>enable</Nullable>
+                <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="OpenUsd.Cesium" Version="{packageVersion}" />
+                <PackageReference Include="OpenUsd.Runtime.Core" Version="{packageVersion}" />
+              </ItemGroup>
+            </Project>
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "Program.cs"),
+            """
+            using System;
+            using System.IO;
+            using System.Threading;
+            using OpenUsd;
+            using OpenUsd.Cesium;
+            using OpenUsd.Geom;
+
+            namespace PackageCesiumExecutionConsumer;
+
+            internal static class Program
+            {
+                public static int Main()
+                {
+                    string tilesetPath = Path.Combine(AppContext.BaseDirectory, "tileset.json");
+                    File.WriteAllText(
+                        tilesetPath,
+                        "{ \"asset\": { \"version\": \"1.1\" }, " +
+                        "\"geometricError\": 0, \"root\": { " +
+                        "\"boundingVolume\": { \"sphere\": [0, 0, 0, 1] }, " +
+                        "\"geometricError\": 0 } }");
+
+                    var accessor = new CountingFileAccessor(AppContext.BaseDirectory);
+                    using var tileset = new CesiumTileset("tileset.json", accessor);
+                    CesiumUpdateResult update = default;
+                    for (int attempt = 0; attempt < 20 && accessor.RequestCount == 0; attempt++)
+                    {
+                        update = tileset.UpdateView(new CesiumViewState(
+                            new UsdVec3d(0, 0, 2),
+                            new UsdVec3d(0, 0, -1),
+                            new UsdVec3d(0, 1, 0),
+                            64,
+                            64,
+                            Math.PI / 3,
+                            Math.PI / 3));
+                        Thread.Sleep(25);
+                    }
+
+                    string outputPath = Path.Combine(AppContext.BaseDirectory, "cesium-package.usda");
+                    using UsdStage stage = UsdStage.Create(outputPath);
+                    CesiumTileImportResult imported = tileset.ImportVisibleTiles(stage, "/CesiumTiles");
+                    stage.Save();
+
+                    bool shimPresent = File.Exists(Path.Combine(
+                        AppContext.BaseDirectory,
+                        "__CESIUM_LIBRARY__"));
+                    string currentDirectory = Path.GetFullPath(".")
+                        .TrimEnd(Path.DirectorySeparatorChar);
+                    string baseDirectory = AppContext.BaseDirectory
+                        .TrimEnd(Path.DirectorySeparatorChar);
+                    bool cwdIsPublish = string.Equals(
+                        currentDirectory,
+                        baseDirectory,
+                        StringComparison.OrdinalIgnoreCase);
+
+                    Console.WriteLine("PACKAGE_CESIUM_TILESET_OK");
+                    Console.WriteLine($"SHIM_PRESENT={shimPresent.ToString().ToLowerInvariant()}");
+                    Console.WriteLine(
+                        $"TILESET_REQUESTED={accessor.TilesetRequested.ToString().ToLowerInvariant()}");
+                    Console.WriteLine($"REQUEST_COUNT={accessor.RequestCount}");
+                    Console.WriteLine($"TILES_TO_RENDER={update.TilesToRenderCount}");
+                    Console.WriteLine($"IMPORTED_MESHES={imported.MeshCount}");
+                    Console.WriteLine($"STAGE_SAVED={File.Exists(outputPath).ToString().ToLowerInvariant()}");
+                    Console.WriteLine($"CWD_IS_PUBLISH={cwdIsPublish.ToString().ToLowerInvariant()}");
+                    return shimPresent && accessor.TilesetRequested && cwdIsPublish ? 0 : 1;
+                }
+            }
+
+            internal sealed class CountingFileAccessor(string rootDirectory) : ICesiumAssetAccessor
+            {
+                private readonly CesiumFileAssetAccessor _inner = new(rootDirectory);
+
+                public int RequestCount { get; private set; }
+
+                public bool TilesetRequested { get; private set; }
+
+                public CesiumAssetResponse Request(CesiumAssetRequest request)
+                {
+                    RequestCount++;
+                    TilesetRequested |= request.Url.EndsWith(
+                        "tileset.json",
+                        StringComparison.OrdinalIgnoreCase);
+                    return _inner.Request(request);
+                }
+            }
+            """.Replace("__CESIUM_LIBRARY__", GetCesiumLibraryName(platform), StringComparison.Ordinal));
+
+        string globalPackagesRoot = Path.Combine(workRoot, "cesium-global-packages");
+        CommandResult result = await RunDotnetAsync(
+            consumerRoot,
+            [
+                "publish",
+                "Consumer.csproj",
+                "-c",
+                "Release",
+                "-r",
+                platform.Rid,
+                "--nologo",
+                "--configfile",
+                "NuGet.config",
+                "-o",
+                publishRoot,
+            ],
+            globalPackagesRoot);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Output);
+        }
+
+        return new ExecutionConsumer(
+            projectPath,
+            publishRoot,
+            Path.Combine(consumerRoot, "obj", "project.assets.json"));
     }
 
     private static async Task<ExecutionConsumer> PublishExecutionConsumerAsync(
@@ -5532,8 +5933,27 @@ public sealed class RuntimePackageTests
         "OpenUsd.Runtime.Imaging.win-x64",
         "OpenUsd.Runtime.Imaging.linux-x64",
         "OpenUsd.Runtime.Imaging.osx-arm64",
+        "OpenUsd.Runtime.Cesium",
+        "OpenUsd.Runtime.Cesium.win-x64",
+        "OpenUsd.Runtime.Cesium.linux-x64",
+        "OpenUsd.Runtime.Cesium.osx-arm64",
     ];
 
+
+    private static string[] GetCesiumConsumerPackageGraph(ExecutionPlatform platform) =>
+    [
+        "OpenUsd.Interop",
+        "OpenUsd",
+        "OpenUsd.Cesium",
+        "OpenUsd.Runtime.Core",
+        "OpenUsd.Runtime.Core.win-x64",
+        "OpenUsd.Runtime.Core.linux-x64",
+        "OpenUsd.Runtime.Core.osx-arm64",
+        "OpenUsd.Runtime.Cesium",
+        "OpenUsd.Runtime.Cesium.win-x64",
+        "OpenUsd.Runtime.Cesium.linux-x64",
+        "OpenUsd.Runtime.Cesium.osx-arm64",
+    ];
 
     private static string[] GetRuntimeImagingMetaPackageGraph(ExecutionPlatform platform) =>
     [
@@ -5576,6 +5996,14 @@ public sealed class RuntimePackageTests
         "OpenUsd.Runtime.Imaging.osx-arm64",
         $"OpenUsd.Runtime.Core.{platform.Rid}",
     ];
+
+    private static string GetCesiumLibraryName(ExecutionPlatform platform) => platform.Rid switch
+    {
+        "win-x64" => "openusd_cesium.dll",
+        "linux-x64" => "libopenusd_cesium.so",
+        "osx-arm64" => "libopenusd_cesium.dylib",
+        _ => throw new ArgumentOutOfRangeException(nameof(platform), platform.Rid, null),
+    };
 
     private static string GetExecutablePath(string publishRoot, string name) =>
         Path.Combine(publishRoot, OperatingSystem.IsWindows() ? $"{name}.exe" : name);
@@ -6041,10 +6469,14 @@ public sealed class RuntimePackageTests
         WriteTestFile(Path.Combine(installRoot, "plugin", "usd", "plugInfo.json"), "{}");
         WriteTestFile(Path.Combine(installRoot, "plugin", "usd", "hdStorm", "resources", "plugInfo.json"), "{}");
         WriteTestFile(Path.Combine(installRoot, "THIRD-PARTY.md"), "Synthetic test install.");
+        WriteTestFile(
+            Path.Combine(workRoot, "native", "install", "cesium", "win-x64", "THIRD-PARTY-CESIUM.md"),
+            "Synthetic Cesium notices.");
         WriteTestFile(Path.Combine(shimRoot, "bin", "openusd_dotnet.dll"));
         WriteTestFile(Path.Combine(shimRoot, "bin", "openusd_hydra.dll"));
         WriteTestFile(Path.Combine(shimRoot, "bin", "openusd_hdsilk.dll"));
         WriteTestFile(Path.Combine(shimRoot, "bin", "openusd_storm_child.dll"));
+        WriteTestFile(Path.Combine(shimRoot, "bin", "openusd_cesium.dll"));
         WriteTestFile(
             Path.Combine(shimRoot, "plugin", "usd", "hdSilk", "resources", "plugInfo.json"),
             CreateSyntheticHdSilkPlugInfo("../../../bin/openusd_hdsilk.dll"));
@@ -6078,6 +6510,7 @@ public sealed class RuntimePackageTests
         WriteTestFile(Path.Combine(shimRoot, "lib", $"libopenusd_dotnet{extension}"));
         WriteTestFile(Path.Combine(shimRoot, "lib", $"libopenusd_hydra{extension}"));
         WriteTestFile(Path.Combine(shimRoot, "lib", $"libopenusd_hdsilk{extension}"));
+        WriteTestFile(Path.Combine(shimRoot, "lib", $"libopenusd_cesium{extension}"));
         if (rid == "linux-x64")
         {
             string stormChild = Path.Combine(

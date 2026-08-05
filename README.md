@@ -107,7 +107,7 @@ flowchart LR
     Silk --> RHI[D3D12 / Vulkan / Metal]
 ```
 
-The data facade, renderer-neutral contracts, Hydra translation, and concrete RHIs remain separate.
+The data facade, renderer-neutral contracts, Hydra translation, Cesium importer, and concrete RHIs remain separate.
 Large scene and render payloads cross owned bulk boundaries rather than one native call per element.
 See [Architecture](docs/architecture.md) and [Rendering](docs/rendering.md).
 
@@ -122,6 +122,7 @@ repository.
 | `OpenUsd` | 8/9/10 | Managed stage, layer, prim, value, and schema API |
 | `OpenUsd.Rendering` | 8/9/10 | Renderer-neutral state, capabilities, picking, and failover |
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Hydra/Storm adapter |
+| `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer |
 | `OpenUsd.Rendering.Silk` | 8/9/10 | Hydra-fed managed renderer and backend-neutral RHI |
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Direct3D 12 backend |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Vulkan backend |
@@ -134,6 +135,10 @@ repository.
 | `OpenUsd.Runtime.Imaging.win-x64` | 8 carrier | Windows Hydra, Storm, hdSilk, and plugins |
 | `OpenUsd.Runtime.Imaging.linux-x64` | 8 carrier | Linux Hydra, Storm, hdSilk, and plugins |
 | `OpenUsd.Runtime.Imaging.osx-arm64` | 8 carrier | macOS Hydra, Storm, hdSilk, and plugins |
+| `OpenUsd.Runtime.Cesium` | 8 carrier | RID-agnostic Cesium metapackage for `win-x64`, `linux-x64`, and `osx-arm64` |
+| `OpenUsd.Runtime.Cesium.win-x64` | 8 carrier | Windows Cesium 3D Tiles native shim |
+| `OpenUsd.Runtime.Cesium.linux-x64` | 8 carrier | Linux Cesium 3D Tiles native shim |
+| `OpenUsd.Runtime.Cesium.osx-arm64` | 8 carrier | macOS Cesium 3D Tiles native shim |
 
 Runtime projects use `net8.0` as their NuGet asset-carrier TFM; the managed libraries they accompany
 target .NET 8, 9, and 10. Package layout and clean-consumer gates are documented in

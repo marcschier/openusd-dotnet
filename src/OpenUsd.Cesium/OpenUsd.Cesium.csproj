@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenUsd\OpenUsd.csproj" />
+    <ProjectReference Include="..\OpenUsd.Runtime.Cesium\OpenUsd.Runtime.Cesium.csproj" IncludeAssets="all" PrivateAssets="none" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -11,13 +12,6 @@
     <Description>Optional Cesium 3D Tiles importer for OpenUSD stages.</Description>
     <PackageTags>openusd;usd;cesium;3d-tiles;gltf</PackageTags>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!--
-      Cesium ships as a separate optional package with its own lock, so the core
-      runtime carries none of the ~30 vcpkg dependencies. No pack script
-      produces it yet, and claiming otherwise would put a package in the
-      packable contract that nothing builds.
-    -->
-    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
 </Project>

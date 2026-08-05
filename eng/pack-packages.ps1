@@ -44,6 +44,7 @@ $published = @(
     'OpenUsd.Rendering.Silk.Metal'
     'OpenUsd.Rendering.Silk.Vulkan'
     'OpenUsd.Rendering.Storm'
+    'OpenUsd.Cesium'
     'OpenUsd.Viewer'
     'OpenUsd.Runtime.Core'
     'OpenUsd.Runtime.Core.win-x64'
@@ -53,6 +54,10 @@ $published = @(
     'OpenUsd.Runtime.Imaging.win-x64'
     'OpenUsd.Runtime.Imaging.linux-x64'
     'OpenUsd.Runtime.Imaging.osx-arm64'
+    'OpenUsd.Runtime.Cesium'
+    'OpenUsd.Runtime.Cesium.win-x64'
+    'OpenUsd.Runtime.Cesium.linux-x64'
+    'OpenUsd.Runtime.Cesium.osx-arm64'
 )
 
 # Retained before any scope or SkipMetal filter so the src/ classification check below
@@ -70,7 +75,8 @@ switch ($Scope)
             $_ -ne $metalPackage -and (
                 -not $_.StartsWith('OpenUsd.Runtime.', [StringComparison]::Ordinal) -or
                 $_ -eq 'OpenUsd.Runtime.Core' -or
-                $_ -eq 'OpenUsd.Runtime.Imaging')
+                $_ -eq 'OpenUsd.Runtime.Imaging' -or
+                $_ -eq 'OpenUsd.Runtime.Cesium')
         }
     }
     'metal'
@@ -84,7 +90,10 @@ switch ($Scope)
             throw 'The runtime scope requires -Rid.'
         }
 
-        $published = @("OpenUsd.Runtime.Core.$Rid", "OpenUsd.Runtime.Imaging.$Rid")
+        $published = @(
+            "OpenUsd.Runtime.Core.$Rid",
+            "OpenUsd.Runtime.Imaging.$Rid",
+            "OpenUsd.Runtime.Cesium.$Rid")
     }
 }
 
@@ -103,7 +112,6 @@ if ($SkipMetal)
 # against the full set so it holds even when Metal is skipped locally.
 $notPublished = @{
     'OpenUsd.Viewer.App' = 'Desktop application shell, distributed separately from NuGet.'
-    'OpenUsd.Cesium' = 'Experimental Cesium integration surface; not part of the public package set.'
 }
 
 $srcProjects = Get-ChildItem (Join-Path $Root 'src') -Directory |

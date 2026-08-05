@@ -35,7 +35,9 @@ different RID, architecture, package version, or C ABI.
 
 Rendering consumers use `OpenUsd.Runtime.Imaging` plus a managed backend. The explicit Imaging
 packages are `OpenUsd.Runtime.Imaging.win-x64`, `OpenUsd.Runtime.Imaging.linux-x64`, and
-`OpenUsd.Runtime.Imaging.osx-arm64`.
+`OpenUsd.Runtime.Imaging.osx-arm64`. Cesium 3D Tiles consumers additionally reference `OpenUsd.Cesium`
+and get `OpenUsd.Runtime.Cesium`, or explicitly pin `OpenUsd.Runtime.Cesium.win-x64`,
+`OpenUsd.Runtime.Cesium.linux-x64`, or `OpenUsd.Runtime.Cesium.osx-arm64`.
 
 Managed builds do not require native binaries. Executing stage operations does.
 
@@ -78,6 +80,7 @@ To validate package consumption, first build the packages into a repository-loca
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />
+  <!-- Optional: add OpenUsd.Cesium for 3D Tiles import. -->
   <PackageReference Include="OpenUsd.Runtime.Core"
                     Version="$(OpenUsdPackageVersion)" />
 </ItemGroup>

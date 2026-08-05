@@ -34,11 +34,12 @@ letting NuGet select the native asset group for the consuming app's `RuntimeIden
 
 Projects that need explicit per-RID control can reference the RID packages directly:
 
-| RID | Core package | Imaging package |
-| --- | --- | --- |
-| `win-x64` | `OpenUsd.Runtime.Core.win-x64` | `OpenUsd.Runtime.Imaging.win-x64` |
-| `linux-x64` | `OpenUsd.Runtime.Core.linux-x64` | `OpenUsd.Runtime.Imaging.linux-x64` |
-| `osx-arm64` | `OpenUsd.Runtime.Core.osx-arm64` | `OpenUsd.Runtime.Imaging.osx-arm64` |
+- `win-x64`: `OpenUsd.Runtime.Core.win-x64`, `OpenUsd.Runtime.Imaging.win-x64`,
+  and `OpenUsd.Runtime.Cesium.win-x64`.
+- `linux-x64`: `OpenUsd.Runtime.Core.linux-x64`,
+  `OpenUsd.Runtime.Imaging.linux-x64`, and `OpenUsd.Runtime.Cesium.linux-x64`.
+- `osx-arm64`: `OpenUsd.Runtime.Core.osx-arm64`,
+  `OpenUsd.Runtime.Imaging.osx-arm64`, and `OpenUsd.Runtime.Cesium.osx-arm64`.
 
 Managed libraries target .NET 8, 9, and 10. Native assets are split into two extensible runtime
 packages for each supported RID:
@@ -50,6 +51,9 @@ packages for each supported RID:
   `openusd_hydra` and `openusd_hdsilk` C ABI shims, renderer plugins, and the hdSilk plugin tree.
   Windows includes `openusd_storm_child.dll`; Linux includes the exact ABI-7 Storm child SONAME link
   chain; macOS includes exactly one `libopenusd_storm_child.dylib`.
+- `OpenUsd.Runtime.Cesium.<rid>` contains only the optional `openusd_cesium` C ABI shim.
+  Consumers opt in by referencing `OpenUsd.Cesium`, which depends on the RID-agnostic
+  `OpenUsd.Runtime.Cesium` metapackage.
 
 The current package set requires project-owned data ABI version 14 and native
 capabilities `0xFFFF`. Package-only execution prints and verifies both values
@@ -67,6 +71,9 @@ Packing fails with a direct diagnostic when either install or a required library
 missing. It never creates an empty runtime package.
 
 ## Package layout
+
+Cesium has no OpenUSD plugin resource tree to merge; the package-only gate publishes a clean
+consumer, loads `openusd_cesium`, and reads a real `tileset.json` through `CesiumTileset`.
 
 Native libraries use NuGet's RID layout:
 
@@ -151,8 +158,8 @@ Build the locked native inputs first, then pack the runtime projects for the cur
 
 Use `linux-x64` or `osx-arm64` for the platform job that produced that native install. The Linux
 and macOS RID packages are ready to consume the same locked layout, but require native installs
-produced on those platforms. The RID-agnostic metapackages (`OpenUsd.Runtime.Core` and
-`OpenUsd.Runtime.Imaging`) are packed with the managed package scope because they contain no native
+produced on those platforms. The RID-agnostic metapackages (`OpenUsd.Runtime.Core`, `OpenUsd.Runtime.Imaging`, and
+`OpenUsd.Runtime.Cesium`) are packed with the managed package scope because they contain no native
 files; they depend on the three RID packages so a consumer can keep one unconditional
 `PackageReference`.
 
