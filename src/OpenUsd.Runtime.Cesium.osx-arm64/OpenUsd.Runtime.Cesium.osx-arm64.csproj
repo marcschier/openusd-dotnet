@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackageId>OpenUsd.Runtime.Cesium.osx-arm64</PackageId>
+    <Description>OpenUSD Cesium 3D Tiles native runtime shim for macOS arm64.</Description>
+    <PackageTags>openusd;usd;cesium;3d-tiles;native;runtime</PackageTags>
+    <RuntimePackageKind>Cesium</RuntimePackageKind>
+    <RuntimePackageRid>osx-arm64</RuntimePackageRid>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+  </PropertyGroup>
+
+  <Import Project="../OpenUsd.Runtime.Packaging/OpenUsd.Runtime.Packaging.targets" />
+
+</Project>

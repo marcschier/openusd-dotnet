@@ -168,6 +168,13 @@ jobs:
             -Source archive `
             -PipelineRoot artifacts/native-pipeline/${{ matrix.rid }}
           ./eng/native-install-metadata.ps1 -Operation Verify -Rid ${{ matrix.rid }}
+      - name: Build locked Cesium inputs for this RID
+        shell: pwsh
+        env:
+          Platform: ''
+        run: |
+          ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }}
+          ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }}
       - name: Pack the runtime packages for this RID
         shell: pwsh
         env:
@@ -222,7 +229,7 @@ jobs:
       - name: Require the complete published set
         shell: pwsh
         run: |
-          $expected = 17
+          $expected = 22
           $packages = @(Get-ChildItem artifacts/nupkg -Filter '*.nupkg')
           Write-Host "Packed $($packages.Count) package(s):"
           $packages | ForEach-Object { Write-Host "  $($_.Name)" }

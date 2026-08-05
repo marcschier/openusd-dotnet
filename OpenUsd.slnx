@@ -13,6 +13,10 @@
     <Project Path="src/OpenUsd.Runtime.Core.linux-x64/OpenUsd.Runtime.Core.linux-x64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.osx-arm64/OpenUsd.Runtime.Core.osx-arm64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.win-x64/OpenUsd.Runtime.Core.win-x64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Cesium/OpenUsd.Runtime.Cesium.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Cesium.linux-x64/OpenUsd.Runtime.Cesium.linux-x64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Cesium.osx-arm64/OpenUsd.Runtime.Cesium.osx-arm64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Cesium.win-x64/OpenUsd.Runtime.Cesium.win-x64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Imaging/OpenUsd.Runtime.Imaging.csproj" />
     <Project Path="src/OpenUsd.Runtime.Imaging.linux-x64/OpenUsd.Runtime.Imaging.linux-x64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Imaging.osx-arm64/OpenUsd.Runtime.Imaging.osx-arm64.csproj" />

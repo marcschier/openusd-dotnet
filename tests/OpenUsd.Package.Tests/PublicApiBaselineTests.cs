@@ -24,6 +24,9 @@ public sealed class PublicApiBaselineTests
         "OpenUsd.Runtime.Core.linux-x64",
         "OpenUsd.Runtime.Core.osx-arm64",
         "OpenUsd.Runtime.Core.win-x64",
+        "OpenUsd.Runtime.Cesium.linux-x64",
+        "OpenUsd.Runtime.Cesium.osx-arm64",
+        "OpenUsd.Runtime.Cesium.win-x64",
         "OpenUsd.Runtime.Imaging.linux-x64",
         "OpenUsd.Runtime.Imaging.osx-arm64",
         "OpenUsd.Runtime.Imaging.win-x64"
@@ -32,12 +35,14 @@ public sealed class PublicApiBaselineTests
     private static readonly string[] ExpectedDependencyOnlyRuntimeProjects =
     [
         "OpenUsd.Runtime.Core",
+        "OpenUsd.Runtime.Cesium",
         "OpenUsd.Runtime.Imaging"
     ];
 
     private static readonly string[] ExpectedPackableManagedProjects =
     [
         "OpenUsd",
+        "OpenUsd.Cesium",
         "OpenUsd.Interop",
         "OpenUsd.Rendering",
         "OpenUsd.Rendering.Silk",

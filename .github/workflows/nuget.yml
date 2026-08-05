@@ -78,6 +78,7 @@ jobs:
             OpenUsd.Rendering.Silk.Metal
             OpenUsd.Rendering.Silk.Vulkan
             OpenUsd.Rendering.Storm
+            OpenUsd.Cesium
             OpenUsd.Viewer
             OpenUsd.Runtime.Core
             OpenUsd.Runtime.Core.win-x64
@@ -87,6 +88,10 @@ jobs:
             OpenUsd.Runtime.Imaging.win-x64
             OpenUsd.Runtime.Imaging.linux-x64
             OpenUsd.Runtime.Imaging.osx-arm64
+            OpenUsd.Runtime.Cesium
+            OpenUsd.Runtime.Cesium.win-x64
+            OpenUsd.Runtime.Cesium.linux-x64
+            OpenUsd.Runtime.Cesium.osx-arm64
           )
 
           mkdir -p artifacts versions

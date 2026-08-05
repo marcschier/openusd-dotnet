@@ -15,6 +15,7 @@
     <_OpenUsdStormChildHeader>$(MSBuildThisFileDirectory)../../native/openusd_storm_child/include/openusd_storm_child.h</_OpenUsdStormChildHeader>
     <_OpenUsdLinuxValidationEvidence>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/linux-native-validation.json'))</_OpenUsdLinuxValidationEvidence>
     <_OpenUsdMacOsValidationEvidence>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/macos-native-validation.json'))</_OpenUsdMacOsValidationEvidence>
+    <_OpenUsdCesiumNotice>$(MSBuildThisFileDirectory)../../native/install/cesium/$(RuntimePackageRid)/THIRD-PARTY-CESIUM.md</_OpenUsdCesiumNotice>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(RuntimePackageRid)' == 'win-x64'">
@@ -23,6 +24,7 @@
     <_OpenUsdHydraLibrary>$(OpenUsdShimInstallRoot)/bin/openusd_hydra.dll</_OpenUsdHydraLibrary>
     <_OpenUsdHdSilkLibrary>$(OpenUsdShimInstallRoot)/bin/openusd_hdsilk.dll</_OpenUsdHdSilkLibrary>
     <_OpenUsdStormChildLibrary>$(OpenUsdShimInstallRoot)/bin/openusd_storm_child.dll</_OpenUsdStormChildLibrary>
+    <_OpenUsdCesiumLibrary>$(OpenUsdShimInstallRoot)/bin/openusd_cesium.dll</_OpenUsdCesiumLibrary>
     <_OpenUsdHdSilkPackageLibraryPath>../../../openusd_hdsilk.dll</_OpenUsdHdSilkPackageLibraryPath>
     <_OpenUsdHdSilkMergedPackageLibraryPath>../../openusd_hdsilk.dll</_OpenUsdHdSilkMergedPackageLibraryPath>
   </PropertyGroup>
@@ -32,6 +34,7 @@
     <_OpenUsdHydraLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so</_OpenUsdHydraLibrary>
     <_OpenUsdHdSilkLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so</_OpenUsdHdSilkLibrary>
     <_OpenUsdStormChildLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so</_OpenUsdStormChildLibrary>
+    <_OpenUsdCesiumLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_cesium.so</_OpenUsdCesiumLibrary>
     <_OpenUsdHdSilkPackageLibraryPath>../../../libopenusd_hdsilk.so</_OpenUsdHdSilkPackageLibraryPath>
     <_OpenUsdHdSilkMergedPackageLibraryPath>../../libopenusd_hdsilk.so</_OpenUsdHdSilkMergedPackageLibraryPath>
   </PropertyGroup>
@@ -41,6 +44,7 @@
     <_OpenUsdHydraLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.dylib</_OpenUsdHydraLibrary>
     <_OpenUsdHdSilkLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.dylib</_OpenUsdHdSilkLibrary>
     <_OpenUsdStormChildLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.dylib</_OpenUsdStormChildLibrary>
+    <_OpenUsdCesiumLibrary>$(OpenUsdShimInstallRoot)/lib/libopenusd_cesium.dylib</_OpenUsdCesiumLibrary>
     <_OpenUsdHdSilkPackageLibraryPath>../../../libopenusd_hdsilk.dylib</_OpenUsdHdSilkPackageLibraryPath>
     <_OpenUsdHdSilkMergedPackageLibraryPath>../../libopenusd_hdsilk.dylib</_OpenUsdHdSilkMergedPackageLibraryPath>
   </PropertyGroup>
@@ -52,14 +56,17 @@
     <_OpenUsdVulkanRuntimeLibrary Include="$(OpenUsdVulkanRuntimeLibrary)" />
     <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/bin/openusd_dotnet.dll" />
     <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/bin/openusd_hydra.dll;$(OpenUsdShimInstallRoot)/bin/openusd_hdsilk.dll;$(OpenUsdShimInstallRoot)/bin/openusd_storm_child.dll" />
+    <_OpenUsdCesiumShimLibrary Include="$(OpenUsdShimInstallRoot)/bin/openusd_cesium.dll" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'linux-x64'">
     <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so.*" />
     <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.7;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.7.0.0" />
+    <_OpenUsdCesiumShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_cesium.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_cesium.so.*" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'osx-arm64'">
     <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.dylib" />
     <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.dylib;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.dylib;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.dylib" />
+    <_OpenUsdCesiumShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_cesium.dylib" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(RuntimePackageKind)' == 'Core'">
@@ -77,13 +84,18 @@
     <None Include="$(_OpenUsdMacOsValidationEvidence)" Pack="true" PackagePath="build/OpenUsd.Runtime.Imaging.osx-arm64.native-validation.json" Condition="'$(RuntimePackageRid)' == 'osx-arm64' and '$(OpenUsdSkipMacOsMachOValidation)' != 'true'" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(RuntimePackageKind)' == 'Cesium'">
+    <None Include="@(_OpenUsdCesiumShimLibrary)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/native" />
+  </ItemGroup>
+
   <ItemGroup>
-    <None Include="$(OpenUsdInstallRoot)/THIRD-PARTY.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" />
+    <None Include="$(OpenUsdInstallRoot)/THIRD-PARTY.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Condition="'$(RuntimePackageKind)' != 'Cesium'" />
+    <None Include="$(_OpenUsdCesiumNotice)" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Condition="'$(RuntimePackageKind)' == 'Cesium' and Exists('$(_OpenUsdCesiumNotice)')" />
     <None Include="$(MSBuildProjectDirectory)/buildTransitive/$(PackageId).targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
   </ItemGroup>
 
   <Target Name="ValidateOpenUsdRuntimePackageInputs" BeforeTargets="GenerateNuspec">
-    <Error Condition="!Exists('$(OpenUsdInstallRoot)')" Text="The locked OpenUSD install for $(RuntimePackageRid) is missing at '$(OpenUsdInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
+    <Error Condition="'$(RuntimePackageKind)' != 'Cesium' and !Exists('$(OpenUsdInstallRoot)')" Text="The locked OpenUSD install for $(RuntimePackageRid) is missing at '$(OpenUsdInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="!Exists('$(OpenUsdShimInstallRoot)')" Text="The OpenUsd shim install for $(RuntimePackageRid) is missing at '$(OpenUsdShimInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdMonolithicLibrary)')" Text="The locked OpenUSD install is incomplete: '$(_OpenUsdMonolithicLibrary)' is missing." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdDotnetLibrary)')" Text="The OpenUsd data shim is missing: '$(_OpenUsdDotnetLibrary)'." />
@@ -94,6 +106,7 @@
     <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and '$(RuntimePackageRid)' == 'win-x64' and !Exists('$(_OpenUsdStormChildLibrary)')" Text="The OpenUsd Storm child shim is missing: '$(_OpenUsdStormChildLibrary)'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and '$(RuntimePackageRid)' == 'linux-x64' and !Exists('$(_OpenUsdStormChildLibrary)')" Text="The OpenUsd Storm child shim is missing: '$(_OpenUsdStormChildLibrary)'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and '$(RuntimePackageRid)' == 'osx-arm64' and !Exists('$(_OpenUsdStormChildLibrary)')" Text="The OpenUsd Storm child shim is missing: '$(_OpenUsdStormChildLibrary)'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Cesium' and !Exists('$(_OpenUsdCesiumLibrary)')" Text="The OpenUsd Cesium shim is missing: '$(_OpenUsdCesiumLibrary)'. Run eng/build-cesium-native.ps1 and the $(RuntimePackageRid)-cesium shim preset before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and !Exists('$(OpenUsdInstallRoot)/plugin/usd/plugInfo.json')" Text="The renderer plugin resource tree is missing from '$(OpenUsdInstallRoot)/plugin/usd'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and !Exists('$(OpenUsdShimInstallRoot)/plugin/usd/hdSilk/resources/plugInfo.json')" Text="The hdSilk plugin resource tree is missing from '$(OpenUsdShimInstallRoot)/plugin/usd'." />
   </Target>
