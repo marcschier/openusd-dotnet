@@ -239,6 +239,7 @@ Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fa
 | Texture scale, bias, and fallback | `texture-scale-bias-fallback` equivalence and divergence |
 | Texture slots beyond diffuse | Emissive, roughness, metallic, and normal self-consistency pairs |
 | Metallic workflow with non-zero `metallic` | `material-metallic-workflow` |
+| Remaining PreviewSurface constants | Emissive, occlusion, and opacity-threshold self-consistency pairs |
 | MaterialX standard-surface authored graph | None |
 | MaterialX projection arithmetic/equivalent constants | `materialx-standard-surface-preview-equivalent` |
 | Distant light direct transport | `light-distant-exposure` |
@@ -309,6 +310,14 @@ Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
   emissive `maxChannelDelta=79` / `meanChannelDelta=7.735`, roughness `maxChannelDelta=41` /
   `meanChannelDelta=8.278`, metallic `maxChannelDelta=144` / `meanChannelDelta=19.155`, and normal
   `maxChannelDelta=101` / `meanChannelDelta=14.463`, so silently dropping any slot loses divergence.
+- The remaining PreviewSurface constant-input gates compare different material setups that are equivalent
+  only if the named input reaches the checked shader. They measured: occlusion `maxChannelDelta=2` /
+  `meanChannelDelta=0.382`, opacity threshold `maxChannelDelta=2` / `meanChannelDelta=0.355`, and
+  emissive `maxChannelDelta=2` / `meanChannelDelta=0.091`. Their companions measured: occlusion
+  `maxChannelDelta=157` / `meanChannelDelta=20.629`, opacity threshold `maxChannelDelta=157` /
+  `meanChannelDelta=20.611`, and emissive `maxChannelDelta=63` / `meanChannelDelta=6.582`, so dropping
+  those inputs loses divergence. IOR and clearcoat were measured but not claimed here: each moved the
+  synthetic comparison by only `maxChannelDelta=2`, below the accepted divergence threshold.
 
 At the parity harness complexity, Storm renders the Catmull-Clark probe as a
 coarse/control-cage-like surface rather than full refinement. An eager
@@ -323,8 +332,9 @@ remains measured but ungated until the remaining divergence is eliminated.
 - Texture `repeat`, `clamp`, `mirror`, `useMetadata`/black, `sRGB`, diffuse `auto`, and raw/linear colour
   space are gated.
 - Specular, opacity, and occlusion texture slots have no parity scene.
-- `emissiveColor`, `clearcoat`, `clearcoatRoughness`, `opacity`, `opacityThreshold`, `ior`, `displacement`,
-  and `occlusion` are not gated as authored constant PreviewSurface inputs.
+- `clearcoat`, `clearcoatRoughness`, `ior`, and `displacement` are not gated as authored constant
+  PreviewSurface inputs. The Vulkan renderer-consumption path for emissive colour, occlusion, and opacity
+  threshold is self-consistency-gated, but not yet Storm-gated from authored USD.
 - MaterialX images, normal maps, emission, non-zero metalness, and arithmetic chains have no Storm parity gate.
 - Sphere-light glossy shaping, dome textures, image-based lighting, and area-light texture inputs are not gated.
 - Multiple point-instancer prototypes/proto-index variation and instanced shadows are not gated.

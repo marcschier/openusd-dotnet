@@ -992,6 +992,64 @@ def Xform "World"
     }
 
     [Test]
+    public async Task RemainingPreviewSurfaceConstantInputsMatchEquivalentMaterialsOnVulkan()
+    {
+        var evidence = new List<string>();
+        foreach (ConstantMaterialInputCase testCase in CreateConstantMaterialInputCases())
+        {
+            ParityImage image;
+            try
+            {
+                image = CaptureSyntheticConstantMaterialInputSelfConsistency(testCase, diverge: false);
+            }
+            catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+            {
+                SkipOrFail(testCase.Name + " Vulkan self-consistency", exception.ToString());
+                return;
+            }
+
+            (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+            string line = FormatSelfConsistencyMetrics(testCase.Name, maxChannelDelta, meanChannelDelta);
+            Console.WriteLine(line);
+            evidence.Add(line);
+            await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+            await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(2.000);
+        }
+
+        WriteEvidence("preview-surface-constant-input-self-consistency.txt", evidence);
+    }
+
+    [Test]
+    public async Task RemainingPreviewSurfaceConstantInputsDivergeFromEquivalentMaterialsOnVulkan()
+    {
+        var evidence = new List<string>();
+        foreach (ConstantMaterialInputCase testCase in CreateConstantMaterialInputCases())
+        {
+            ParityImage image;
+            try
+            {
+                image = CaptureSyntheticConstantMaterialInputSelfConsistency(testCase, diverge: true);
+            }
+            catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+            {
+                SkipOrFail(testCase.Name + " Vulkan divergence", exception.ToString());
+                return;
+            }
+
+            (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+            string line = FormatSelfConsistencyMetrics(
+                testCase.Name + "-divergence",
+                maxChannelDelta,
+                meanChannelDelta);
+            Console.WriteLine(line);
+            evidence.Add(line);
+            await Assert.That(maxChannelDelta).IsGreaterThan(MinimumMaterialTextureDivergenceChannelDelta);
+        }
+
+        WriteEvidence("preview-surface-constant-input-divergence.txt", evidence);
+    }
+
+    [Test]
     public async Task CullStyleBackMatchesBackUnlessDoubleSidedForSingleSidedMeshOnVulkan()
     {
         ParityImage image;
@@ -1420,6 +1478,12 @@ def Xform "World"
         MaterialScalarSpec[] LeftScalars,
         MaterialScalarSpec[] RightScalars);
 
+    private sealed record ConstantMaterialInputCase(
+        string Name,
+        MaterialScalarSpec[] ReferenceScalars,
+        MaterialScalarSpec[] EquivalentScalars,
+        MaterialScalarSpec[] DivergentScalars);
+
     private readonly record struct MaterialScalarSpec(SilkMaterialParameter Parameter, float[] Values);
 
     private readonly record struct MeshPageStats(
@@ -1628,6 +1692,83 @@ def Xform "World"
         ];
     }
 
+    private static ConstantMaterialInputCase[] CreateConstantMaterialInputCases()
+    {
+        MaterialScalarSpec[] matte =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.64f, 0.36f, 0.12f]),
+            new(SilkMaterialParameter.Roughness, [0.76f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] black =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.Roughness, [0.76f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] emissiveOnly =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.EmissiveColor, [0.18f, 0.08f, 0.02f]),
+            new(SilkMaterialParameter.Roughness, [0.76f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] occludedEmissive =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.64f, 0.36f, 0.12f]),
+            new(SilkMaterialParameter.EmissiveColor, [0.18f, 0.08f, 0.02f]),
+            new(SilkMaterialParameter.Occlusion, [0.0f]),
+            new(SilkMaterialParameter.Roughness, [0.76f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] thresholdDiscard =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.64f, 0.36f, 0.12f]),
+            new(SilkMaterialParameter.Opacity, [0.25f]),
+            new(SilkMaterialParameter.OpacityThreshold, [0.50f]),
+            new(SilkMaterialParameter.Roughness, [0.76f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] thresholdVisible =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.64f, 0.36f, 0.12f]),
+            new(SilkMaterialParameter.Opacity, [0.75f]),
+            new(SilkMaterialParameter.OpacityThreshold, [0.50f]),
+            new(SilkMaterialParameter.Roughness, [0.76f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        return
+        [
+            new("preview-constant-occlusion", emissiveOnly, occludedEmissive, AddScalars(occludedEmissive,
+                new MaterialScalarSpec(SilkMaterialParameter.Occlusion, [1.0f]))),
+            new("preview-constant-opacity-threshold", black, thresholdDiscard, thresholdVisible),
+            new("preview-constant-emissive", matte, AddScalars(matte,
+                new MaterialScalarSpec(SilkMaterialParameter.EmissiveColor, [0.0f, 0.0f, 0.0f])), AddScalars(matte,
+                new MaterialScalarSpec(SilkMaterialParameter.EmissiveColor, [0.24f, 0.08f, 0.02f]))),
+        ];
+    }
+
+    private static MaterialScalarSpec[] AddScalars(
+        ReadOnlySpan<MaterialScalarSpec> scalars,
+        params MaterialScalarSpec[] additions)
+    {
+        var values = scalars.ToArray();
+        foreach (MaterialScalarSpec addition in additions)
+        {
+            int index = Array.FindIndex(values, scalar => scalar.Parameter == addition.Parameter);
+            if (index >= 0)
+            {
+                values[index] = addition;
+                continue;
+            }
+
+            Array.Resize(ref values, values.Length + 1);
+            values[^1] = addition;
+        }
+
+        return values;
+    }
+
     private static ParityImage CaptureSyntheticMaterialTextureSlotSelfConsistency(
         MaterialTextureSlotCase testCase,
         float[] fallback) =>
@@ -1644,6 +1785,20 @@ def Xform "World"
                 fallback,
                 "st",
                 testCase.RightScalars));
+
+    private static ParityImage CaptureSyntheticConstantMaterialInputSelfConsistency(
+        ConstantMaterialInputCase testCase,
+        bool diverge) =>
+        CaptureSyntheticMaterialPair(
+            CreateMaterialCommandWithScalars(
+                "/Repeat",
+                SilkSurfaceKind.PreviewSurface,
+                testCase.ReferenceScalars),
+            CreateMaterialCommandWithScalars(
+                "/Candidate",
+                SilkSurfaceKind.PreviewSurface,
+                diverge ? testCase.DivergentScalars : testCase.EquivalentScalars),
+            requireImagePlugins: false);
 
     private static ParityImage CaptureSyntheticCullStyleSelfConsistency(
         SilkMeshCullStyle candidateCullStyle,
@@ -1722,9 +1877,14 @@ def Xform "World"
     private static ParityImage CaptureSyntheticMaterialPair(
         byte[] leftMaterial,
         byte[] rightMaterial,
-        ReadOnlySpan<float> textureCoordinates = default)
+        ReadOnlySpan<float> textureCoordinates = default,
+        bool requireImagePlugins = true)
     {
-        _ = ImagePluginsRegistered.Value;
+        if (requireImagePlugins)
+        {
+            _ = ImagePluginsRegistered.Value;
+        }
+
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
         using ISilkGraphicsTexture color = device.CreateTexture2D(
             new SilkTextureDescriptor(
