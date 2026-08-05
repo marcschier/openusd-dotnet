@@ -415,53 +415,211 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         payloadSize};
 }
 
-void AppendMeshUpsert(std::vector<uint8_t>& buffer, const HdSilkMeshRecord& record)
+uint32_t ComplexityDensity(uint32_t complexity)
 {
-    const MeshWireCounts counts = ValidateMesh(record);
+    switch (complexity)
+    {
+    case OPENUSD_SILK_COMPLEXITY_MEDIUM:
+        return 2;
+    case OPENUSD_SILK_COMPLEXITY_HIGH:
+        return 4;
+    case OPENUSD_SILK_COMPLEXITY_VERY_HIGH:
+        return 8;
+    case OPENUSD_SILK_COMPLEXITY_LOW:
+    default:
+        return 1;
+    }
+}
+
+void AppendVertexAttributeElement(
+    HdSilkMeshAttribute& destination,
+    const HdSilkMeshAttribute& source,
+    uint32_t sourcePoint)
+{
+    const size_t offset =
+        static_cast<size_t>(sourcePoint) * source.componentCount;
+    for (uint32_t component = 0; component < source.componentCount; ++component)
+    {
+        destination.data.push_back(source.data[offset + component]);
+    }
+}
+
+void AppendPointWithAttributes(
+    HdSilkMeshRecord& destination,
+    const HdSilkMeshRecord& source,
+    uint32_t sourcePoint)
+{
+    const size_t offset = static_cast<size_t>(sourcePoint) * 3;
+    destination.points.push_back(source.points[offset]);
+    destination.points.push_back(source.points[offset + 1]);
+    destination.points.push_back(source.points[offset + 2]);
+    for (size_t attribute = 0; attribute < source.attributes.size(); ++attribute)
+    {
+        const HdSilkMeshAttribute& sourceAttribute = source.attributes[attribute];
+        if (sourceAttribute.interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX)
+        {
+            AppendVertexAttributeElement(
+                destination.attributes[attribute],
+                sourceAttribute,
+                sourcePoint);
+        }
+    }
+}
+
+void AppendInterpolatedLinePoint(
+    HdSilkMeshRecord& destination,
+    const HdSilkMeshRecord& source,
+    uint32_t firstPoint,
+    uint32_t secondPoint,
+    float t,
+    bool useSecondAttributes)
+{
+    const size_t firstOffset = static_cast<size_t>(firstPoint) * 3;
+    const size_t secondOffset = static_cast<size_t>(secondPoint) * 3;
+    for (size_t component = 0; component < 3; ++component)
+    {
+        const float first = source.points[firstOffset + component];
+        const float second = source.points[secondOffset + component];
+        destination.points.push_back(first + ((second - first) * t));
+    }
+    for (size_t attribute = 0; attribute < source.attributes.size(); ++attribute)
+    {
+        const HdSilkMeshAttribute& sourceAttribute = source.attributes[attribute];
+        if (sourceAttribute.interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX)
+        {
+            AppendVertexAttributeElement(
+                destination.attributes[attribute],
+                sourceAttribute,
+                useSecondAttributes ? secondPoint : firstPoint);
+        }
+    }
+}
+
+HdSilkMeshRecord ApplyComplexity(
+    const HdSilkMeshRecord& record,
+    uint32_t complexity)
+{
+    const uint32_t density = ComplexityDensity(complexity);
+    if (density == 1 ||
+        (record.topologyKind != OPENUSD_SILK_TOPOLOGY_LINE_LIST &&
+            record.topologyKind != OPENUSD_SILK_TOPOLOGY_POINT_LIST) ||
+        record.points.empty())
+    {
+        return record;
+    }
+
+    HdSilkMeshRecord result = record;
+    result.points.clear();
+    result.indices.clear();
+    result.triangleSubprims.clear();
+    for (HdSilkMeshAttribute& attribute : result.attributes)
+    {
+        if (attribute.interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX)
+        {
+            attribute.data.clear();
+        }
+    }
+
+    if (record.topologyKind == OPENUSD_SILK_TOPOLOGY_POINT_LIST)
+    {
+        for (size_t primitive = 0; primitive < record.indices.size(); ++primitive)
+        {
+            const uint32_t point = record.indices[primitive];
+            for (uint32_t copy = 0; copy < density; ++copy)
+            {
+                const uint32_t emitted =
+                    CheckedCount(result.points.size() / 3, "complexity point");
+                AppendPointWithAttributes(result, record, point);
+                result.indices.push_back(emitted);
+                result.triangleSubprims.push_back(record.triangleSubprims[primitive]);
+            }
+        }
+        return result;
+    }
+
+    for (size_t primitive = 0; primitive < record.indices.size() / 2; ++primitive)
+    {
+        const uint32_t first = record.indices[primitive * 2];
+        const uint32_t second = record.indices[(primitive * 2) + 1];
+        for (uint32_t segment = 0; segment < density; ++segment)
+        {
+            const uint32_t emitted =
+                CheckedCount(result.points.size() / 3, "complexity point");
+            const float start = static_cast<float>(segment) / density;
+            const float end = static_cast<float>(segment + 1) / density;
+            AppendInterpolatedLinePoint(
+                result,
+                record,
+                first,
+                second,
+                start,
+                false);
+            AppendInterpolatedLinePoint(
+                result,
+                record,
+                first,
+                second,
+                end,
+                true);
+            result.indices.push_back(emitted);
+            result.indices.push_back(emitted + 1);
+            result.triangleSubprims.push_back(record.triangleSubprims[primitive]);
+        }
+    }
+    return result;
+}
+
+void AppendMeshUpsert(
+    std::vector<uint8_t>& buffer,
+    const HdSilkMeshRecord& record,
+    uint32_t complexity)
+{
+    HdSilkMeshRecord complexRecord = ApplyComplexity(record, complexity);
+    const MeshWireCounts counts = ValidateMesh(complexRecord);
 
     std::vector<uint8_t> payload;
     payload.reserve(counts.payloadSize);
 
-    AppendU64(payload, ComputeStableHash(record.path));
-    AppendI32(payload, record.primId);
-    AppendI32(payload, record.instanceId);
-    AppendI32(payload, record.instanceIndex);
-    AppendU32(payload, record.topologyKind);
-    AppendU64(payload, record.topologyRevision);
-    AppendU32(payload, record.doubleSided);
-    AppendU32(payload, record.cullStyle);
+    AppendU64(payload, ComputeStableHash(complexRecord.path));
+    AppendI32(payload, complexRecord.primId);
+    AppendI32(payload, complexRecord.instanceId);
+    AppendI32(payload, complexRecord.instanceIndex);
+    AppendU32(payload, complexRecord.topologyKind);
+    AppendU64(payload, complexRecord.topologyRevision);
+    AppendU32(payload, complexRecord.doubleSided);
+    AppendU32(payload, complexRecord.cullStyle);
     AppendU32(payload, counts.pathByteCount);
     AppendU32(payload, counts.pointCount);
     AppendU32(payload, counts.indexCount);
     AppendU32(payload, counts.triangleCount);
-    for (float value : record.displayColor)
+    for (float value : complexRecord.displayColor)
     {
         AppendF32(payload, value);
     }
-    for (double value : record.transform)
+    for (double value : complexRecord.transform)
     {
         AppendF64(payload, value);
     }
     AppendU64(
         payload,
-        record.materialPath.empty() ? 0ull : ComputeStableHash(record.materialPath));
-    AppendU32(payload, CheckedCount(record.materialPath.size(), "material path byte count"));
-    AppendU32(payload, CheckedCount(record.attributes.size(), "attribute count"));
-    AppendBytes(payload, record.path.data(), record.path.size());
-    for (float value : record.points)
+        complexRecord.materialPath.empty() ? 0ull : ComputeStableHash(complexRecord.materialPath));
+    AppendU32(payload, CheckedCount(complexRecord.materialPath.size(), "material path byte count"));
+    AppendU32(payload, CheckedCount(complexRecord.attributes.size(), "attribute count"));
+    AppendBytes(payload, complexRecord.path.data(), complexRecord.path.size());
+    for (float value : complexRecord.points)
     {
         AppendF32(payload, value);
     }
-    for (uint32_t value : record.indices)
+    for (uint32_t value : complexRecord.indices)
     {
         AppendU32(payload, value);
     }
-    for (uint32_t value : record.triangleSubprims)
+    for (uint32_t value : complexRecord.triangleSubprims)
     {
         AppendU32(payload, value);
     }
-    AppendBytes(payload, record.materialPath.data(), record.materialPath.size());
-    for (const HdSilkMeshAttribute& attribute : record.attributes)
+    AppendBytes(payload, complexRecord.materialPath.data(), complexRecord.materialPath.size());
+    for (const HdSilkMeshAttribute& attribute : complexRecord.attributes)
     {
         AppendU32(payload, attribute.semantic);
         AppendU32(payload, attribute.componentCount);
@@ -732,6 +890,29 @@ HdSilkSceneState::SetFrame(const HdSilkFrameState& frame)
 }
 
 void
+HdSilkSceneState::SetComplexity(uint32_t complexity)
+{
+    if (complexity > OPENUSD_SILK_COMPLEXITY_VERY_HIGH)
+    {
+        throw std::invalid_argument("An hdSilk complexity level is unknown.");
+    }
+    std::lock_guard<std::mutex> lock(_mutex);
+    if (_complexity == complexity)
+    {
+        return;
+    }
+    _complexity = complexity;
+    for (auto& entry : _meshes)
+    {
+        if (entry.second.record.topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ||
+            entry.second.record.topologyKind == OPENUSD_SILK_TOPOLOGY_POINT_LIST)
+        {
+            entry.second.dirty = true;
+        }
+    }
+}
+
+void
 HdSilkSceneState::ReplaceMaterial(HdSilkMaterialRecord record)
 {
     if (record.path.empty())
@@ -917,7 +1098,7 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         const size_t bufferSize = buffer.size();
         try
         {
-            AppendMeshUpsert(buffer, entry->record);
+            AppendMeshUpsert(buffer, entry->record, _complexity);
             ++appendedCommands;
         }
         catch (const std::exception& error)

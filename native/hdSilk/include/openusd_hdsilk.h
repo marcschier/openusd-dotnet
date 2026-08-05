@@ -309,6 +309,13 @@ extern "C" {
 #define OPENUSD_SILK_INTERPOLATION_CONSTANT 0u
 #define OPENUSD_SILK_INTERPOLATION_VERTEX 1u
 
+/// Renderer-neutral complexity levels. The page wire format is unchanged:
+/// complexity only changes how hdSilk emits curve and point records.
+#define OPENUSD_SILK_COMPLEXITY_LOW 0u
+#define OPENUSD_SILK_COMPLEXITY_MEDIUM 1u
+#define OPENUSD_SILK_COMPLEXITY_HIGH 2u
+#define OPENUSD_SILK_COMPLEXITY_VERY_HIGH 3u
+
 typedef struct openusd_silk_session openusd_silk_session;
 typedef struct openusd_silk_page openusd_silk_page;
 
@@ -364,6 +371,20 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_session_sync(
     int32_t height,
     double time_code,
     const openusd_render_camera* camera,
+    openusd_silk_page** page,
+    openusd_silk_page_view* view,
+    openusd_error_buffer* error);
+
+/// Same as openusd_silk_session_sync, with an explicit renderer-neutral complexity
+/// for curve and point tessellation density. Subdivision refinement remains at the
+/// historical hdSilk baseline and is not controlled by this setting.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_sync_with_complexity(
+    openusd_silk_session* session,
+    int32_t width,
+    int32_t height,
+    double time_code,
+    const openusd_render_camera* camera,
+    uint32_t complexity,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
     openusd_error_buffer* error);

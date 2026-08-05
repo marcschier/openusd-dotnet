@@ -27,6 +27,7 @@ public sealed class StormSilkParityCaptureDriverTests
     private const string D3D12WarpBackendName = "D3D12 WARP";
     private const string VulkanSwiftShaderBackendName = "Vulkan SwiftShader";
     private const string MetalBackendName = "Metal";
+
     private const string GeneratedMaterialXSelfConsistencyStage = """
 #usda 1.0
 (
@@ -536,6 +537,79 @@ def Xform "World"
         await Assert.That(failures.Count)
             .IsEqualTo(0)
             .Because(string.Join(Environment.NewLine, failures));
+    }
+
+    [Test]
+    public async Task SilkComplexityDefaultPreservesExplicitLowPointPage()
+    {
+        PrependHdSilkNativeSearchPath();
+        string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
+        string pluginPath = ResolvePluginPath();
+
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+        MeshPageStats defaultStats = CaptureMeshPageStats(session, complexity: null);
+        _ = CaptureMeshPageStats(session, RenderComplexity.Medium);
+        MeshPageStats explicitLowStats = CaptureMeshPageStats(session, RenderComplexity.Low);
+
+        await Assert.That(defaultStats.PointListPointCount).IsGreaterThan(0);
+        await Assert.That(explicitLowStats).IsEqualTo(defaultStats);
+    }
+
+    [Test]
+    public async Task SilkComplexityMediumChangesPointPage()
+    {
+        PrependHdSilkNativeSearchPath();
+        string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
+        string pluginPath = ResolvePluginPath();
+
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+        MeshPageStats lowStats = CaptureMeshPageStats(session, RenderComplexity.Low);
+        MeshPageStats mediumStats = CaptureMeshPageStats(session, RenderComplexity.Medium);
+
+        await Assert.That(lowStats.PointListPointCount).IsGreaterThan(0);
+        await Assert.That(mediumStats.PointListPointCount).IsGreaterThan(lowStats.PointListPointCount);
+        await Assert.That(mediumStats.PointListIndexCount).IsGreaterThan(lowStats.PointListIndexCount);
+    }
+
+    [Test]
+    public async Task SilkFrameCaptureReturnsDimensionsAndNonTrivialPixels()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        PrependHdSilkNativeSearchPath();
+        string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
+        string pluginPath = ResolvePluginPath();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        var settings = new RenderSettings(
+            1,
+            enableLighting: true,
+            enableShadows: true,
+            new Vector4(0.07f, 0.11f, 0.17f, 1),
+            backfaceCulling: true,
+            useSceneMaterials: true,
+            RenderComplexity.Low);
+
+        SilkFrameCaptureResult capture = SilkFrameCapture.Capture(
+            session,
+            device,
+            64,
+            48,
+            settings,
+            TimeCode,
+            CameraState.Default);
+
+        await Assert.That(capture.Width).IsEqualTo(64);
+        await Assert.That(capture.Height).IsEqualTo(48);
+        await Assert.That(capture.Rgba.Length).IsEqualTo(64 * 48 * ParityImage.BytesPerPixel);
+        ReadOnlySpan<byte> pixels = capture.Rgba.Span;
+        AssertNonZeroPixel(pixels, 0);
+        AssertNonZeroPixel(pixels, (64 * 48 / 2) * ParityImage.BytesPerPixel);
+        AssertNonZeroPixel(pixels, ((64 * 48) - 1) * ParityImage.BytesPerPixel);
+        await Assert.That(ContainsPixelDifferentFromClear(pixels, settings.ClearColor)).IsTrue();
     }
 
     [Test]
@@ -1348,6 +1422,11 @@ def Xform "World"
 
     private readonly record struct MaterialScalarSpec(SilkMaterialParameter Parameter, float[] Values);
 
+    private readonly record struct MeshPageStats(
+        int PointListPointCount,
+        int PointListIndexCount,
+        int LineListPrimitiveCount);
+
     private enum AreaLightGate
     {
         RectEquivalent,
@@ -1685,6 +1764,16 @@ def Xform "World"
     private static string MissingTextureAssetPath() =>
         Path.Combine(FindRepositoryRoot() ?? AppContext.BaseDirectory, "test-assets", "parity", "missing.png");
 
+    private static string ResolveParityAsset(string fileName)
+    {
+        string? root = FindRepositoryRoot();
+        if (root is null)
+        {
+            throw new DirectoryNotFoundException("Could not locate the repository root.");
+        }
+        return Path.Combine(root, "test-assets", "parity", fileName);
+    }
+
     private static float[] OutsideUnitTextureCoordinates() =>
     [
         1.18f, -0.27f,
@@ -1785,6 +1874,68 @@ def Xform "World"
         string path = Path.Combine(directory, "materialx-generated-self-consistency.usda");
         File.WriteAllText(path, GeneratedMaterialXSelfConsistencyStage, new UTF8Encoding(false));
         return path;
+    }
+
+    private static MeshPageStats CaptureMeshPageStats(
+        OpenUsdSilkSession session,
+        RenderComplexity? complexity)
+    {
+        using OpenUsdSilkPage page = complexity is { } requested
+            ? session.Sync(Width, Height, TimeCode, CameraState.Default, requested)
+            : session.Sync(Width, Height, TimeCode, CameraState.Default);
+        int pointListPoints = 0;
+        int pointListIndices = 0;
+        int lineListPrimitives = 0;
+        using SilkCommandEnumerator commands = page.GetEnumerator();
+        while (commands.MoveNext())
+        {
+            if (commands.Current.Type != SilkCommandType.MeshUpsert)
+            {
+                continue;
+            }
+            SilkMeshUpsertCommand mesh = commands.Current.AsMeshUpsert();
+            if (mesh.TopologyKind == SilkTopologyKind.PointList)
+            {
+                pointListPoints += mesh.PointCount;
+                pointListIndices += mesh.IndexCount;
+            }
+            else if (mesh.TopologyKind == SilkTopologyKind.LineList)
+            {
+                lineListPrimitives += mesh.TriangleCount;
+            }
+        }
+        return new MeshPageStats(pointListPoints, pointListIndices, lineListPrimitives);
+    }
+
+    private static void AssertNonZeroPixel(ReadOnlySpan<byte> pixels, int offset)
+    {
+        if (pixels[offset] == 0 &&
+            pixels[offset + 1] == 0 &&
+            pixels[offset + 2] == 0 &&
+            pixels[offset + 3] == 0)
+        {
+            throw new InvalidOperationException($"Expected non-zero pixel at byte offset {offset}.");
+        }
+    }
+
+    private static bool ContainsPixelDifferentFromClear(ReadOnlySpan<byte> pixels, Vector4 clearColor)
+    {
+        Span<byte> clear = stackalloc byte[ParityImage.BytesPerPixel];
+        clear[0] = convertChannel(clearColor.X);
+        clear[1] = convertChannel(clearColor.Y);
+        clear[2] = convertChannel(clearColor.Z);
+        clear[3] = convertChannel(clearColor.W);
+        for (int offset = 0; offset < pixels.Length; offset += ParityImage.BytesPerPixel)
+        {
+            if (!pixels.Slice(offset, ParityImage.BytesPerPixel).SequenceEqual(clear))
+            {
+                return true;
+            }
+        }
+        return false;
+
+        static byte convertChannel(float value) =>
+            (byte)Math.Clamp((int)MathF.Round(value * byte.MaxValue), byte.MinValue, byte.MaxValue);
     }
 
     private static void PrependHdSilkNativeSearchPath()

@@ -228,7 +228,7 @@ OpenUsd.Rendering.Silk.OpenUsdSilkPage.Revision.get -> ulong
 OpenUsd.Rendering.Silk.OpenUsdSilkRuntime
 OpenUsd.Rendering.Silk.OpenUsdSilkSession
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.Dispose() -> void
-OpenUsd.Rendering.Silk.OpenUsdSilkSession.Sync(int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.OpenUsdSilkPage!
+OpenUsd.Rendering.Silk.OpenUsdSilkSession.Sync(int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), OpenUsd.Rendering.RenderComplexity complexity = OpenUsd.Rendering.RenderComplexity.Low) -> OpenUsd.Rendering.Silk.OpenUsdSilkPage!
 OpenUsd.Rendering.Silk.SilkAttributeInterpolation
 OpenUsd.Rendering.Silk.SilkAttributeInterpolation.Constant = 0 -> OpenUsd.Rendering.Silk.SilkAttributeInterpolation
 OpenUsd.Rendering.Silk.SilkAttributeInterpolation.Vertex = 1 -> OpenUsd.Rendering.Silk.SilkAttributeInterpolation
@@ -405,6 +405,14 @@ OpenUsd.Rendering.Silk.SilkFrameCommand.GetViewElement(int index) -> double
 OpenUsd.Rendering.Silk.SilkFrameCommand.Height.get -> int
 OpenUsd.Rendering.Silk.SilkFrameCommand.SilkFrameCommand() -> void
 OpenUsd.Rendering.Silk.SilkFrameCommand.Width.get -> int
+OpenUsd.Rendering.Silk.SilkFrameCapture
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.CommandCount.get -> uint
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Height.get -> int
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.PageRevision.get -> ulong
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.RenderResult.get -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Rgba.get -> System.ReadOnlyMemory<byte>
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Width.get -> int
 OpenUsd.Rendering.Silk.SilkFrameState
 OpenUsd.Rendering.Silk.SilkFrameState.Height.get -> int
 OpenUsd.Rendering.Silk.SilkFrameState.Projection.get -> System.ReadOnlyMemory<double>
@@ -1453,6 +1461,8 @@ override OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.GetHashCode() -> int
 override OpenUsd.Rendering.Silk.SilkViewport.GetHashCode() -> int
 static OpenUsd.Rendering.Silk.OpenUsdSilkRuntime.Create(string! pluginPath, OpenUsd.UsdStageRenderSource! source) -> OpenUsd.Rendering.Silk.OpenUsdSilkSession!
 static OpenUsd.Rendering.Silk.OpenUsdSilkRuntime.Create(string! pluginPath, string! stagePath) -> OpenUsd.Rendering.Silk.OpenUsdSilkSession!
+static OpenUsd.Rendering.Silk.SilkFrameCapture.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+static OpenUsd.Rendering.Silk.SilkFrameCapture.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
 static OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.ForMaterial(System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkBindingSlot>! slots) -> OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor
 static OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor left, OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor right) -> bool

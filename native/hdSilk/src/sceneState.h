@@ -214,6 +214,7 @@ public:
         std::vector<HdSilkMeshRecord> records);
     void RemoveMesh(const std::string& path);
     void SetFrame(const HdSilkFrameState& frame);
+    void SetComplexity(uint32_t complexity);
 
     /// Publishes or replaces one material. The path is the authoritative
     /// identity, matching MESH_UPSERT's material_path.
@@ -264,6 +265,7 @@ private:
     std::vector<std::string> _pendingMaterialRemovals;
     std::unordered_map<std::string, HdSilkLightRecord> _lights;
     HdSilkFrameState _frame;
+    uint32_t _complexity = 0;
     uint64_t _revision = 0;
 };
 

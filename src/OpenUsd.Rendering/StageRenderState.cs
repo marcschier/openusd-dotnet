@@ -574,6 +574,29 @@ public enum RenderDrawMode
 }
 
 /// <summary>
+/// Selects renderer-neutral geometric complexity.
+/// </summary>
+/// <remarks>
+/// hdSilk applies complexity to emitted curve and point tessellation density only.
+/// Subdivision refinement is intentionally out of scope so the default preserves the
+/// existing Storm parity baseline for subdivision scenes.
+/// </remarks>
+public enum RenderComplexity
+{
+    /// <summary>Use the current parity baseline density.</summary>
+    Low,
+
+    /// <summary>Use a medium curve and point density.</summary>
+    Medium,
+
+    /// <summary>Use a high curve and point density.</summary>
+    High,
+
+    /// <summary>Use the highest curve and point density.</summary>
+    VeryHigh
+}
+
+/// <summary>
 /// Describes purpose, visibility, and draw-mode filtering.
 /// </summary>
 /// <param name="Purposes">The USD purposes included in rendering.</param>
@@ -629,7 +652,8 @@ public readonly record struct RenderSettings
         enableShadows: true,
         new Vector4(0, 0, 0, 1),
         backfaceCulling: true,
-        useSceneMaterials: true);
+        useSceneMaterials: true,
+        RenderComplexity.Low);
 
     /// <summary>Initializes render settings.</summary>
     /// <param name="samplesPerPixel">The requested samples per pixel.</param>
@@ -638,21 +662,28 @@ public readonly record struct RenderSettings
     /// <param name="clearColor">The linear RGBA viewport clear color.</param>
     /// <param name="backfaceCulling">Whether back-facing single-sided surfaces are culled.</param>
     /// <param name="useSceneMaterials">Whether authored scene materials are used.</param>
+    /// <param name="complexity">The requested curve and point tessellation density.</param>
     public RenderSettings(
         int samplesPerPixel,
         bool enableLighting,
         bool enableShadows,
         Vector4 clearColor,
         bool backfaceCulling = true,
-        bool useSceneMaterials = true)
+        bool useSceneMaterials = true,
+        RenderComplexity complexity = RenderComplexity.Low)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(samplesPerPixel, 1);
+        if (complexity is < RenderComplexity.Low or > RenderComplexity.VeryHigh)
+        {
+            throw new ArgumentOutOfRangeException(nameof(complexity));
+        }
         SamplesPerPixel = samplesPerPixel;
         EnableLighting = enableLighting;
         EnableShadows = enableShadows;
         ClearColor = clearColor;
         BackfaceCulling = backfaceCulling;
         UseSceneMaterials = useSceneMaterials;
+        Complexity = complexity;
     }
 
     /// <summary>Gets the requested samples per pixel.</summary>
@@ -672,6 +703,12 @@ public readonly record struct RenderSettings
 
     /// <summary>Gets a value indicating whether authored scene materials are used.</summary>
     public bool UseSceneMaterials { get; }
+
+    /// <summary>
+    /// Gets the requested curve and point tessellation density. Subdivision refinement is
+    /// intentionally not controlled by this setting.
+    /// </summary>
+    public RenderComplexity Complexity { get; }
 }
 
 /// <summary>

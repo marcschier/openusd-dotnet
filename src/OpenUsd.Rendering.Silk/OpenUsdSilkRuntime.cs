@@ -85,8 +85,10 @@ public static unsafe partial class OpenUsdSilkRuntime
         int width,
         int height,
         double timeCode,
-        CameraState camera)
+        CameraState camera,
+        RenderComplexity complexity)
     {
+        ValidateComplexity(complexity);
         var view = new NativePageView
         {
             StructSize = (uint)sizeof(NativePageView)
@@ -98,6 +100,7 @@ public static unsafe partial class OpenUsdSilkRuntime
             height,
             timeCode,
             camera,
+            complexity,
             ref view,
             out nint page,
             errorBytes,
@@ -141,6 +144,7 @@ public static unsafe partial class OpenUsdSilkRuntime
         int height,
         double timeCode,
         CameraState camera,
+        RenderComplexity complexity,
         ref NativePageView view,
         out nint page,
         Span<byte> errorBytes,
@@ -154,10 +158,19 @@ public static unsafe partial class OpenUsdSilkRuntime
             height,
             timeCode,
             in nativeCamera,
+            complexity,
             out page,
             ref view,
             errorBytes,
             out errorRequired);
+    }
+
+    private static void ValidateComplexity(RenderComplexity complexity)
+    {
+        if (complexity is < RenderComplexity.Low or > RenderComplexity.VeryHigh)
+        {
+            throw new ArgumentOutOfRangeException(nameof(complexity));
+        }
     }
 
     internal static void Destroy(nint session)
@@ -256,6 +269,7 @@ public static unsafe partial class OpenUsdSilkRuntime
             int height,
             double timeCode,
             in NativeRenderCamera camera,
+            RenderComplexity complexity,
             out nint page,
             ref NativePageView view,
             Span<byte> errorBytes,
@@ -270,11 +284,26 @@ public static unsafe partial class OpenUsdSilkRuntime
             int height,
             double timeCode,
             in NativeRenderCamera camera,
+            RenderComplexity complexity,
             out nint page,
             ref NativePageView view,
             Span<byte> errorBytes,
             out nuint errorRequired)
         {
+            if (complexity != RenderComplexity.Low)
+            {
+                return NativeSyncWithComplexityCall.Invoke(
+                    session,
+                    width,
+                    height,
+                    timeCode,
+                    in camera,
+                    complexity,
+                    out page,
+                    ref view,
+                    errorBytes,
+                    out errorRequired);
+            }
             fixed (byte* errorPointer = errorBytes)
             {
                 var error = new NativeErrorBuffer(
@@ -291,6 +320,41 @@ public static unsafe partial class OpenUsdSilkRuntime
                     ref error);
                 errorRequired = error.Required;
                 return status;
+            }
+        }
+
+        private readonly struct NativeSyncWithComplexityCall : ISyncCall
+        {
+            public static OpenUsdNativeStatus Invoke(
+                nint session,
+                int width,
+                int height,
+                double timeCode,
+                in NativeRenderCamera camera,
+                RenderComplexity complexity,
+                out nint page,
+                ref NativePageView view,
+                Span<byte> errorBytes,
+                out nuint errorRequired)
+            {
+                fixed (byte* errorPointer = errorBytes)
+                {
+                    var error = new NativeErrorBuffer(
+                        errorPointer,
+                        (nuint)errorBytes.Length);
+                    OpenUsdNativeStatus status = NativeMethods.SyncWithComplexity(
+                        session,
+                        width,
+                        height,
+                        timeCode,
+                        in camera,
+                        (uint)complexity,
+                        out page,
+                        ref view,
+                        ref error);
+                    errorRequired = error.Required;
+                    return status;
+                }
             }
         }
     }
@@ -337,6 +401,19 @@ public static unsafe partial class OpenUsdSilkRuntime
             int height,
             double timeCode,
             in NativeRenderCamera camera,
+            out nint page,
+            ref NativePageView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(LibraryName, EntryPoint = "openusd_silk_session_sync_with_complexity")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SyncWithComplexity(
+            nint session,
+            int width,
+            int height,
+            double timeCode,
+            in NativeRenderCamera camera,
+            uint complexity,
             out nint page,
             ref NativePageView view,
             ref NativeErrorBuffer error);
