@@ -47,7 +47,7 @@
     },
     {
       "path": ".github/workflows/release.yml",
-      "sha256": "bc64f27606633ea5ff462c654e9422030cbbdc8d619c94d02ba84a170ea4f027"
+      "sha256": "ac5d2e8d5f5f014ba62cfdb31dcc3e32431b90bfbc3aab25fb07825c26e4334d"
     },
     {
       "path": ".github/workflows/render.yml",
