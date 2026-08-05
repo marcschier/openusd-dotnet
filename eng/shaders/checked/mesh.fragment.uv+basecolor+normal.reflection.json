@@ -9,6 +9,72 @@
   },
   "resources": [
     {
+      "name": "materialSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 0,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 1,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "volumeDensityTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 9,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 9,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture3D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture3D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
       "name": "SceneParameters",
       "bindings": {
         "d3d": {
@@ -911,36 +977,6 @@
       }
     },
     {
-      "name": "materialSampler",
-      "bindings": {
-        "d3d": {
-          "registerClass": "s",
-          "register": 0,
-          "space": 0
-        },
-        "vulkan": {
-          "binding": 1,
-          "set": 0
-        }
-      },
-      "shape": {
-        "kind": "sampler",
-        "access": "read",
-        "arrayCount": null,
-        "elementType": null,
-        "elementStride": null,
-        "size": null
-      },
-      "vulkanLayout": {
-        "kind": "sampler",
-        "access": "read",
-        "arrayCount": null,
-        "elementType": null,
-        "elementStride": null,
-        "size": null
-      }
-    },
-    {
       "name": "baseColorTexture",
       "bindings": {
         "d3d": {
@@ -1065,13 +1101,30 @@
       }
     },
     {
+      "name": "objectPosition",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 2,
+        "systemValue": false
+      },
+      "location": 1,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
       "name": "normal",
       "semantic": {
         "name": "NORMAL",
         "index": 0,
         "systemValue": false
       },
-      "location": 1,
+      "location": 2,
       "type": {
         "kind": "vector",
         "elementCount": 3,
@@ -1088,7 +1141,7 @@
         "index": 0,
         "systemValue": false
       },
-      "location": 2,
+      "location": 3,
       "type": {
         "kind": "vector",
         "elementCount": 4,
@@ -1105,7 +1158,7 @@
         "index": 0,
         "systemValue": false
       },
-      "location": 3,
+      "location": 4,
       "type": {
         "kind": "vector",
         "elementCount": 2,
@@ -1122,7 +1175,7 @@
         "index": 0,
         "systemValue": false
       },
-      "location": 4,
+      "location": 5,
       "type": {
         "kind": "vector",
         "elementCount": 4,

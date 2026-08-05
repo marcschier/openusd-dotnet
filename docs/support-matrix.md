@@ -170,6 +170,13 @@ self-consistency instead: an unlit `ND_constant_color3 -> ND_multiply_color3FA -
 against an emissive PreviewSurface equivalent at `maxChannelDelta=1` and `meanChannelDelta=0.237`, and disabling
 generated shader selection fails at 187 / 19.574. Metal carries generated `MslShaderGenerator` source through the same
 runtime shader cache, but this Windows harness cannot execute a Metal pixel gate.
+Sampled `UsdVol` density rendering is currently implemented only for the Vulkan hdSilk backend and only when the native
+profile provides OpenUSD's `hioOpenVDB` field reader. The native shim reads `UsdVolOpenVDBAsset` density fields through
+OpenUSD Hio and publishes a bulk cached R32 volume texture; Vulkan uploads that cache as a 3D texture and the mesh shader
+raymarches it. If the Hio OpenVDB reader is absent, hdSilk falls back to the existing uniform density proxy and the
+sampled-grid conformance gate is reported as a capability skip. D3D12 and Metal intentionally use the uniform proxy today:
+D3D12 has no 3D texture upload/bind implementation in hdSilk, and Metal's explicit texture slot binding still needs an
+executed macOS proof before it can be advertised.
 
 ## Backend capabilities
 

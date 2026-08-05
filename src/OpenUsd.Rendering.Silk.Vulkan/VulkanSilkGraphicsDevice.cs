@@ -12,6 +12,7 @@ namespace OpenUsd.Rendering.Silk.Vulkan;
 public sealed unsafe partial class VulkanSilkGraphicsDevice
     : SilkGraphicsDeviceLifetimeBase,
       ISilkGraphicsDevice,
+      ISilkVolumeTextureGraphicsDevice,
       ISilkPickingGraphicsDevice,
       ISilkSelectionOutlineGraphicsDevice
 {

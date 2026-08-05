@@ -19,6 +19,10 @@ public sealed class VolumeRenderingConformanceTests
     private const byte MinimumDoubledDensityChannelDelta = 16;
     private const double MinimumNonZeroDensityMeanDelta = 5.0;
     private const double MinimumDoubledDensityMeanDelta = 1.0;
+    private const double MinimumSampledDeltaVariance = 4.0;
+    private const byte MinimumSampledVsUniformDelta = 12;
+    private const double MinimumSampledVsUniformMeanDelta = 1.0;
+    private const double MinimumTranslatedMeanDelta = 1.0;
 
     [Test]
     public async Task UniformDensityVolumeGatesOnVulkan()
@@ -72,6 +76,62 @@ public sealed class VolumeRenderingConformanceTests
             .Because("the current emission-absorption model brightens as density increases.");
     }
 
+    [Test]
+    public async Task SampledOpenVdbDensityGatesOnVulkan()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        ClearVolumeCache();
+        string asset = ResolveOpenVdbAsset("sampled_density.vdb");
+        string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
+        ParityImage sampled = CaptureStage(WriteVdbStage("volume-vdb-sampled", asset, 0, 1, sampleDensity: true));
+        if (!TryReadMeanCachedDensity("volume-vdb-sampled", out double meanDensity))
+        {
+            WriteEvidence(
+                "volume-vdb-vulkan-gates.txt",
+                ["volume-vdb-sampled skipped: hioOpenVDB reader is unavailable in the native profile."]);
+            Skip.Test("hioOpenVDB reader is unavailable in the native profile.");
+            return;
+        }
+        ParityImage uniform = CaptureStage(WriteVdbStage("volume-vdb-uniform-mean", asset, 0, meanDensity, sampleDensity: false));
+        ParityImage shifted = CaptureStage(WriteVdbStage("volume-vdb-shifted", shiftedAsset, 0, 1, sampleDensity: true));
+
+        ParityImage sampledFootprint = Crop(sampled, 68, 52, 24, 24);
+        ParityImage uniformFootprint = Crop(uniform, 68, 52, 24, 24);
+        ImageDelta sampledVsUniform = ImageDelta.Compare(uniformFootprint, sampledFootprint);
+        double variance = VarianceRgb(sampledFootprint);
+        double deltaVariance = VarianceDeltaRgb(uniformFootprint, sampledFootprint);
+        ImageDelta shiftedInterior = ImageDelta.Compare(sampled, shifted);
+
+        string[] evidence =
+        [
+            $"volume-vdb-nonuniform varianceRgb={Format(variance)}; " +
+                $"deltaVarianceRgb={Format(deltaVariance)}; " +
+                $"meanDensity={Format(meanDensity)}",
+            $"volume-vdb-sampled-vs-uniform maxChannelDelta={sampledVsUniform.MaximumChannelDelta}; " +
+                $"meanChannelDelta={Format(sampledVsUniform.MeanChannelDelta)}",
+            $"volume-vdb-shifted-interior maxChannelDelta={shiftedInterior.MaximumChannelDelta}; " +
+                $"meanChannelDelta={Format(shiftedInterior.MeanChannelDelta)}",
+        ];
+        WriteEvidence("volume-vdb-vulkan-gates.txt", evidence);
+
+        await Assert.That(deltaVariance)
+            .IsGreaterThanOrEqualTo(MinimumSampledDeltaVariance)
+            .Because("a sampled non-uniform VDB must vary across the volume footprint.");
+        await Assert.That(sampledVsUniform.MaximumChannelDelta)
+            .IsGreaterThanOrEqualTo(MinimumSampledVsUniformDelta)
+            .Because("a sampled VDB must differ from a uniform proxy at the same mean density.");
+        await Assert.That(sampledVsUniform.MeanChannelDelta)
+            .IsGreaterThanOrEqualTo(MinimumSampledVsUniformMeanDelta)
+            .Because("sampled-vs-uniform must move the image mean, not only one edge pixel.");
+        await Assert.That(shiftedInterior.MeanChannelDelta)
+            .IsGreaterThanOrEqualTo(MinimumTranslatedMeanDelta)
+            .Because("translating the VDB density grid inside the same proxy must move the sampled density footprint.");
+    }
+
     private static ParityImage CaptureStage(string stagePath)
     {
         PrependHdSilkNativeSearchPath();
@@ -110,6 +170,23 @@ public sealed class VolumeRenderingConformanceTests
         return path;
     }
 
+    private static string WriteVdbStage(
+        string name,
+        string assetPath,
+        double x,
+        double density,
+        bool sampleDensity)
+    {
+        string directory = Path.Combine(AppContext.BaseDirectory, "TestResults", "volumes");
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, name + ".usda");
+        File.WriteAllText(
+            path,
+            CreateVdbStage(assetPath, x, density, sampleDensity),
+            new UTF8Encoding(false));
+        return path;
+    }
+
     private static string CreateStage() =>
         $$"""
             #usda 1.0
@@ -127,6 +204,43 @@ public sealed class VolumeRenderingConformanceTests
             {{CreateVolumeXform("Zero", -0.55, 0)}}
             {{CreateVolumeXform("Unit", 0, 1)}}
             {{CreateVolumeXform("Double", 0.55, 2)}}
+            }
+            """;
+
+    private static string CreateVdbStage(
+        string assetPath,
+        double x,
+        double density,
+        bool sampleDensity) =>
+        $$"""
+            #usda 1.0
+            (
+                defaultPrim = "World"
+                startTimeCode = 1
+                endTimeCode = 1
+                framesPerSecond = 24
+                timeCodesPerSecond = 24
+                upAxis = "Y"
+            )
+
+            def Xform "World"
+            {
+              def Xform "Vdb"
+              {
+                  double3 xformOp:translate = ({{x.ToString("F6", CultureInfo.InvariantCulture)}}, 0, 0)
+                  uniform token[] xformOpOrder = ["xformOp:translate"]
+                  def Volume "Volume"
+                  {
+                      custom float hdsilk:density = {{density.ToString("F6", CultureInfo.InvariantCulture)}}
+                      custom bool hdsilk:sampleDensity = {{(sampleDensity ? "true" : "false")}}
+                      rel field:density = </World/Vdb/Volume/Density>
+                      def OpenVDBAsset "Density"
+                      {
+                          asset filePath = @{{assetPath.Replace("\\", "/")}}@
+                          token fieldName = "density"
+                      }
+                  }
+              }
             }
             """;
 
@@ -178,6 +292,122 @@ public sealed class VolumeRenderingConformanceTests
         return count == 0 ? 0 : (double)sum / count;
     }
 
+    private static double VarianceRgb(ParityImage image)
+    {
+        double mean = MeanRgb(image);
+        ReadOnlySpan<byte> pixels = image.Rgba.Span;
+        double sumSquared = 0;
+        int count = 0;
+        for (int offset = 0; offset < pixels.Length; offset += ParityImage.BytesPerPixel)
+        {
+            for (int channel = 0; channel < 3; channel++)
+            {
+                double delta = pixels[offset + channel] - mean;
+                sumSquared += delta * delta;
+                count++;
+            }
+        }
+        return count == 0 ? 0 : sumSquared / count;
+    }
+
+    private static double VarianceDeltaRgb(ParityImage reference, ParityImage candidate)
+    {
+        if (reference.Width != candidate.Width || reference.Height != candidate.Height)
+        {
+            throw new ArgumentException("Images must have equal dimensions.", nameof(candidate));
+        }
+
+        ReadOnlySpan<byte> referencePixels = reference.Rgba.Span;
+        ReadOnlySpan<byte> candidatePixels = candidate.Rgba.Span;
+        double sum = 0;
+        double sumSquared = 0;
+        int count = 0;
+        for (int offset = 0; offset < referencePixels.Length; offset += ParityImage.BytesPerPixel)
+        {
+            for (int channel = 0; channel < 3; channel++)
+            {
+                int delta = Math.Abs(candidatePixels[offset + channel] - referencePixels[offset + channel]);
+                sum += delta;
+                sumSquared += delta * delta;
+                count++;
+            }
+        }
+
+        double mean = sum / count;
+        return (sumSquared / count) - (mean * mean);
+    }
+
+    private static string ResolveOpenVdbAsset(string fileName)
+    {
+        string? root = FindRepositoryRoot();
+        if (root is null)
+        {
+            throw new DirectoryNotFoundException("Could not find repository root.");
+        }
+        string path = Path.Combine(
+            root,
+            "test-assets",
+            "native-profile",
+            "openvdb",
+            fileName);
+        if (File.Exists(path))
+        {
+            return path;
+        }
+        path = Path.Combine(
+            root,
+            "..",
+            "openusd",
+            "test-assets",
+            "native-profile",
+            "openvdb",
+            fileName);
+        if (File.Exists(path))
+        {
+            return Path.GetFullPath(path);
+        }
+        throw new FileNotFoundException("Could not find the OpenVDB test asset.", path);
+    }
+
+    private static bool TryReadMeanCachedDensity(string stageName, out double mean)
+    {
+        mean = 0;
+        string directory = Path.Combine(
+            AppContext.BaseDirectory,
+            "TestResults",
+            "volumes",
+            "hdsilk-volume-cache");
+        if (!Directory.Exists(directory))
+        {
+            return false;
+        }
+        string file = Directory.EnumerateFiles(directory, $"*{stageName}*.r32")
+            .Concat(Directory.EnumerateFiles(directory, "*.r32"))
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault() ?? string.Empty;
+        if (file.Length == 0)
+        {
+            return false;
+        }
+        byte[] bytes = File.ReadAllBytes(file);
+        double sum = 0;
+        int count = bytes.Length / sizeof(float);
+        if (count == 0)
+        {
+            return false;
+        }
+        for (int index = 0; index < count; index++)
+        {
+            float value = BitConverter.ToSingle(bytes, index * sizeof(float));
+            if (float.IsFinite(value))
+            {
+                sum += Math.Max(0, value);
+            }
+        }
+        mean = sum / count;
+        return true;
+    }
+
     private static string Format(double value) =>
         value.ToString("F6", CultureInfo.InvariantCulture);
 
@@ -186,6 +416,19 @@ public sealed class VolumeRenderingConformanceTests
         string directory = Path.Combine(AppContext.BaseDirectory, "TestResults", "volumes");
         Directory.CreateDirectory(directory);
         File.WriteAllLines(Path.Combine(directory, fileName), lines);
+    }
+
+    private static void ClearVolumeCache()
+    {
+        string directory = Path.Combine(
+            AppContext.BaseDirectory,
+            "TestResults",
+            "volumes",
+            "hdsilk-volume-cache");
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     private static void PrependHdSilkNativeSearchPath()
@@ -200,6 +443,8 @@ public sealed class VolumeRenderingConformanceTests
         [
             Path.Combine(AppContext.BaseDirectory, "volume-runtime", "bin"),
             Path.Combine(root, "native", "install", "shim", "win-x64", "bin"),
+            Path.Combine(root, "native", "install", "win-x64", "bin"),
+            Path.Combine(root, "native", "install", "win-x64", "lib"),
             Path.Combine(root, "..", "openusd", "native", "install", "win-x64", "bin"),
             Path.Combine(root, "..", "openusd", "native", "install", "win-x64", "lib"),
             Path.Combine(root, "..", "openusd", "native", "install", "vulkan-sdk-1.4.321.0", "Bin"),
@@ -216,10 +461,10 @@ public sealed class VolumeRenderingConformanceTests
 
     private static string ResolvePluginPath()
     {
-        string packaged = Path.Combine(AppContext.BaseDirectory, "usd");
-        if (File.Exists(Path.Combine(packaged, "plugInfo.json")))
+        string? configured = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH");
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(Path.Combine(configured, "plugInfo.json")))
         {
-            return packaged;
+            return configured;
         }
 
         if (TryPrepareLocalPluginRuntime(out string localRuntime))
@@ -227,10 +472,10 @@ public sealed class VolumeRenderingConformanceTests
             return localRuntime;
         }
 
-        string? configured = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH");
-        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(Path.Combine(configured, "plugInfo.json")))
+        string packaged = Path.Combine(AppContext.BaseDirectory, "usd");
+        if (File.Exists(Path.Combine(packaged, "plugInfo.json")))
         {
-            return configured;
+            return packaged;
         }
 
         throw new DirectoryNotFoundException(
@@ -256,9 +501,19 @@ public sealed class VolumeRenderingConformanceTests
             "usd");
         string hdsilkPlugin = Path.Combine(build, "hdSilk", "resources", "plugInfo.json");
         string hdsilkLibrary = Path.Combine(build, "hdSilk", "openusd_hdsilk.dll");
+        string openVdbPlugin = Path.Combine(
+            root,
+            "native",
+            "install",
+            "win-x64",
+            "lib",
+            "usd",
+            "hioOpenVDB");
+        string nativeLibraryDirectory = Path.Combine(root, "native", "install", "win-x64", "lib");
         if (!File.Exists(Path.Combine(stormPlugins, "plugInfo.json")) ||
             !File.Exists(hdsilkPlugin) ||
-            !File.Exists(hdsilkLibrary))
+            !File.Exists(hdsilkLibrary) ||
+            !Directory.Exists(nativeLibraryDirectory))
         {
             return false;
         }
@@ -269,6 +524,10 @@ public sealed class VolumeRenderingConformanceTests
         string runtimeHdSilkResources = Path.Combine(runtimePlugins, "hdSilk", "resources");
         Directory.CreateDirectory(runtimeHdSilkResources);
         File.Copy(hdsilkPlugin, Path.Combine(runtimeHdSilkResources, "plugInfo.json"), overwrite: true);
+        if (File.Exists(Path.Combine(openVdbPlugin, "resources", "plugInfo.json")))
+        {
+            CopyDirectory(openVdbPlugin, Path.Combine(runtimePlugins, "hioOpenVDB"));
+        }
         Directory.CreateDirectory(Path.Combine(runtime, "bin"));
         string runtimeHdSilkLibrary = Path.Combine(runtime, "bin", "openusd_hdsilk.dll");
         try
@@ -277,6 +536,17 @@ public sealed class VolumeRenderingConformanceTests
         }
         catch (IOException) when (File.Exists(runtimeHdSilkLibrary))
         {
+        }
+        foreach (string library in Directory.EnumerateFiles(nativeLibraryDirectory, "*.dll"))
+        {
+            string target = Path.Combine(runtime, "bin", Path.GetFileName(library));
+            try
+            {
+                File.Copy(library, target, overwrite: true);
+            }
+            catch (IOException) when (File.Exists(target))
+            {
+            }
         }
 
         pluginPath = runtimePlugins;
