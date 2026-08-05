@@ -83,6 +83,13 @@
                 Header="_Use Selected Camera"
                 IsEnabled="False"
                 ToolTip.Tip="Select a UsdGeomCamera prim to use its authored camera." />
+            <Separator x:Name="StageCameraMenuSeparator" IsVisible="False" />
+            <MenuItem
+                x:Name="StageCamerasMenu"
+                AutomationProperties.Name="Stage-authored cameras"
+                Header="Stage _Cameras"
+                IsEnabled="False"
+                IsVisible="False" />
             <MenuItem
                 x:Name="FrameSelectedMenuItem"
                 AutomationProperties.Name="Frame selected prim"

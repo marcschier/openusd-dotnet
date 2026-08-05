@@ -37,6 +37,8 @@ internal static class ViewerStartupOptions
 
     internal static string? StageCameraPrimPath { get; private set; }
 
+    internal static string? CommandLineStageCameraPath { get; private set; }
+
     internal static string? PickSmokeEvidencePath { get; private set; }
 
     internal static bool PickSmokeEnabled =>
@@ -167,6 +169,7 @@ internal static class ViewerStartupOptions
         StageCameraPrimPath = IsStageCameraEvidenceScenario
             ? Environment.GetEnvironmentVariable("OPENUSD_VIEWER_STAGE_CAMERA_PATH")
             : null;
+        CommandLineStageCameraPath = null;
         PickSmokeEvidencePath =
             Environment.GetEnvironmentVariable("OPENUSD_VIEWER_PICK_SMOKE_PATH");
         WindowsRenderingOverride = null;
@@ -202,6 +205,17 @@ internal static class ViewerStartupOptions
             {
                 Renderer = NormalizeRenderer(args[++i]);
             }
+            else if (args[i] == "--camera" && i + 1 < args.Length)
+            {
+                CommandLineStageCameraPath = NormalizeStageCameraPath(args[++i]);
+            }
+            else if (args[i].StartsWith(
+                "--camera=",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                CommandLineStageCameraPath = NormalizeStageCameraPath(
+                    args[i]["--camera=".Length..]);
+            }
             else if (args[i] == "--shared-stage-soak")
             {
                 SharedStageSoak = true;
@@ -232,6 +246,12 @@ internal static class ViewerStartupOptions
             else if (args[i] == "--windows-rendering" && i + 1 < args.Length)
             {
                 WindowsRenderingOverride = NormalizeWindowsRendering(args[++i]);
+            }
+            else if ((args[i].Length == 0 || args[i][0] != '-') &&
+                string.IsNullOrWhiteSpace(StagePath) &&
+                IsUsdStagePath(args[i]))
+            {
+                StagePath = Path.GetFullPath(args[i]);
             }
         }
 
@@ -290,9 +310,31 @@ internal static class ViewerStartupOptions
         }
         HostTitle = options.Title;
         HostShutdownToken = options.ShutdownToken;
-        HostStageCameraPath = options.StageCameraPath;
+        HostStageCameraPath = NormalizeStageCameraPath(options.StageCameraPath);
         StageReadyAsync = options.StageReadyAsync;
     }
+
+    private static string? NormalizeStageCameraPath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+        string trimmed = value.Trim();
+        if (trimmed[0] != '/' || trimmed.Contains('\\'))
+        {
+            throw new ArgumentException(
+                "The stage camera path must be an absolute USD prim path.",
+                nameof(value));
+        }
+        return trimmed;
+    }
+
+    private static bool IsUsdStagePath(string value) =>
+        value.EndsWith(".usd", StringComparison.OrdinalIgnoreCase) ||
+        value.EndsWith(".usda", StringComparison.OrdinalIgnoreCase) ||
+        value.EndsWith(".usdc", StringComparison.OrdinalIgnoreCase) ||
+        value.EndsWith(".usdz", StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeWindowsRendering(string value)
     {
