@@ -1737,6 +1737,88 @@ def Xform "World"
             new(SilkMaterialParameter.Roughness, [0.76f]),
             new(SilkMaterialParameter.Metallic, [0.0f]),
         ];
+        MaterialScalarSpec[] clearcoatSpecular =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.SpecularColor, [0.60493827f, 0.60493827f, 0.60493827f]),
+            new(SilkMaterialParameter.UseSpecularWorkflow, [1.0f]),
+            new(SilkMaterialParameter.Roughness, [0.65f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] clearcoatEquivalent =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.SpecularColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.UseSpecularWorkflow, [1.0f]),
+            new(SilkMaterialParameter.Ior, [8.0f]),
+            new(SilkMaterialParameter.Clearcoat, [1.0f]),
+            new(SilkMaterialParameter.ClearcoatRoughness, [0.65f]),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] clearcoatIgnored =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.SpecularColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.UseSpecularWorkflow, [1.0f]),
+            new(SilkMaterialParameter.Ior, [8.0f]),
+            new(SilkMaterialParameter.Clearcoat, [0.0f]),
+            new(SilkMaterialParameter.ClearcoatRoughness, [0.65f]),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] roughClearcoatSpecular =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.SpecularColor, [0.60493827f, 0.60493827f, 0.60493827f]),
+            new(SilkMaterialParameter.UseSpecularWorkflow, [1.0f]),
+            new(SilkMaterialParameter.Roughness, [0.82f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] roughClearcoatEquivalent =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.SpecularColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.UseSpecularWorkflow, [1.0f]),
+            new(SilkMaterialParameter.Ior, [8.0f]),
+            new(SilkMaterialParameter.Clearcoat, [1.0f]),
+            new(SilkMaterialParameter.ClearcoatRoughness, [0.82f]),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] smoothClearcoatDivergent =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.SpecularColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.UseSpecularWorkflow, [1.0f]),
+            new(SilkMaterialParameter.Ior, [8.0f]),
+            new(SilkMaterialParameter.Clearcoat, [1.0f]),
+            new(SilkMaterialParameter.ClearcoatRoughness, [0.08f]),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] highIorSpecular =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.SpecularColor, [0.60493827f, 0.60493827f, 0.60493827f]),
+            new(SilkMaterialParameter.UseSpecularWorkflow, [1.0f]),
+            new(SilkMaterialParameter.Roughness, [0.65f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] highIorEquivalent =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.Ior, [8.0f]),
+            new(SilkMaterialParameter.Roughness, [0.65f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] defaultIorDivergent =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 0.0f]),
+            new(SilkMaterialParameter.Ior, [1.5f]),
+            new(SilkMaterialParameter.Roughness, [0.65f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
         return
         [
             new("preview-constant-occlusion", emissiveOnly, occludedEmissive, AddScalars(occludedEmissive,
@@ -1745,6 +1827,13 @@ def Xform "World"
             new("preview-constant-emissive", matte, AddScalars(matte,
                 new MaterialScalarSpec(SilkMaterialParameter.EmissiveColor, [0.0f, 0.0f, 0.0f])), AddScalars(matte,
                 new MaterialScalarSpec(SilkMaterialParameter.EmissiveColor, [0.24f, 0.08f, 0.02f]))),
+            new("preview-constant-clearcoat", clearcoatSpecular, clearcoatEquivalent, clearcoatIgnored),
+            new(
+                "preview-constant-clearcoat-roughness",
+                roughClearcoatSpecular,
+                roughClearcoatEquivalent,
+                smoothClearcoatDivergent),
+            new("preview-constant-ior", highIorSpecular, highIorEquivalent, defaultIorDivergent),
         ];
     }
 
