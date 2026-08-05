@@ -39,6 +39,15 @@ public readonly struct UsdGeomPrimvarsAPI : IUsdStageBound
         return primvar;
     }
 
+    public void SetDisplayColor(float red, float green, float blue) =>
+        SetDisplayColor(new UsdVec3f(red, green, blue));
+
+    public void SetDisplayColor(UsdVec3f color)
+    {
+        UsdGeomPrimvar primvar = CreatePrimvar("displayColor");
+        primvar.SetColor3fArray([color]);
+    }
+
     public static bool TryWrap(UsdPrim prim, out UsdGeomPrimvarsAPI value)
     {
         if (UsdGeomFacade.TryWrap(prim, UsdGeomSchemaKind.PrimvarsAPI, out UsdStage? stage))
@@ -64,4 +73,3 @@ public readonly struct UsdGeomPrimvarsAPI : IUsdStageBound
         return name;
     }
 }
-

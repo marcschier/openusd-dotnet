@@ -307,6 +307,66 @@ internal sealed class OpenUsdNativeStage : SafeHandleZeroOrMinusOneIsInvalid
         double? timeCode = null) =>
         OpenUsdNativeRuntime.GetVec3fArray(this, primPath, attributeName, timeCode);
 
+    /// <summary>Sets a color3f-array attribute using one bulk native call.</summary>
+    public void SetColor3fArray(
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<OpenUsdNativeVec3f> values,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.SetColor3fArray(this, primPath, attributeName, values, timeCode);
+
+    /// <summary>Gets a color3f-array attribute using a two-call bulk buffer transfer.</summary>
+    public OpenUsdNativeVec3f[] GetColor3fArray(
+        string primPath,
+        string attributeName,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.GetColor3fArray(this, primPath, attributeName, timeCode);
+
+    /// <summary>Sets a bool-array attribute using one bulk native call.</summary>
+    public void SetBoolArray(
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<bool> values,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.SetBoolArray(this, primPath, attributeName, values, timeCode);
+
+    /// <summary>Gets a bool-array attribute using a two-call bulk buffer transfer.</summary>
+    public bool[] GetBoolArray(
+        string primPath,
+        string attributeName,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.GetBoolArray(this, primPath, attributeName, timeCode);
+
+    /// <summary>Sets a token-array attribute using one packed native string-list transfer.</summary>
+    public void SetTokenArray(
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<string> values,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.SetTokenArray(this, primPath, attributeName, values, timeCode);
+
+    /// <summary>Gets a token-array attribute using one packed native string-list transfer.</summary>
+    public string[] GetTokenArray(
+        string primPath,
+        string attributeName,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.GetTokenArray(this, primPath, attributeName, timeCode);
+
+    /// <summary>Sets a string-array attribute using one packed native string-list transfer.</summary>
+    public void SetStringArray(
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<string> values,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.SetStringArray(this, primPath, attributeName, values, timeCode);
+
+    /// <summary>Gets a string-array attribute using one packed native string-list transfer.</summary>
+    public string[] GetStringArray(
+        string primPath,
+        string attributeName,
+        double? timeCode = null) =>
+        OpenUsdNativeRuntime.GetStringArray(this, primPath, attributeName, timeCode);
+
     internal OpenUsdNativeBounds3d GetWorldBounds(
         string? targetPrimPath,
         uint purposeMask,

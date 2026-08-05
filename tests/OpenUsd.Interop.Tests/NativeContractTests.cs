@@ -16,13 +16,13 @@ public sealed class NativeContractTests
     }
 
     [Test]
-    public async Task DataAbiFourteenRequiresAllSchemaCapabilities()
+    public async Task DataAbiFifteenRequiresAllSchemaCapabilities()
     {
         uint abiVersion = OpenUsdNativeContract.AbiVersion;
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
 
-        await Assert.That(abiVersion).IsEqualTo(14U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x1FFFFUL);
+        await Assert.That(abiVersion).IsEqualTo(15U);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x3FFFFUL);
         await Assert.That(requiredCapabilities & 0xFFFUL).IsEqualTo(0xFFFUL);
         await Assert.That(requiredCapabilities & 0x1000UL).IsEqualTo(0x1000UL);
         await Assert.That(requiredCapabilities & 0x2000UL).IsEqualTo(0x2000UL);
@@ -31,6 +31,9 @@ public sealed class NativeContractTests
 
         // Inspection v2: oriented bounds, prim specifier, Ts splines and TfDebug.
         await Assert.That(requiredCapabilities & 0x10000UL).IsEqualTo(0x10000UL);
+
+        // Attribute arrays v2: explicit color3f[], bool[], token[] and string[] arrays.
+        await Assert.That(requiredCapabilities & 0x20000UL).IsEqualTo(0x20000UL);
     }
 
     [Test]

@@ -933,6 +933,134 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_set_color3f_array",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageSetColor3fArray(
+            nint stage,
+            string primPath,
+            string attributeName,
+            OpenUsdNativeVec3f* values,
+            nuint count,
+            int timeSampled,
+            double timeCode,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_get_color3f_array",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageGetColor3fArray(
+            nint stage,
+            string primPath,
+            string attributeName,
+            int timeSampled,
+            double timeCode,
+            OpenUsdNativeVec3f* values,
+            nuint capacity,
+            out nuint required,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_set_bool_array",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageSetBoolArray(
+            nint stage,
+            string primPath,
+            string attributeName,
+            int* values,
+            nuint count,
+            int timeSampled,
+            double timeCode,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_get_bool_array",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageGetBoolArray(
+            nint stage,
+            string primPath,
+            string attributeName,
+            int timeSampled,
+            double timeCode,
+            int* values,
+            nuint capacity,
+            out nuint required,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_set_token_array",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageSetTokenArray(
+            nint stage,
+            string primPath,
+            string attributeName,
+            ref NativeStringListView values,
+            int timeSampled,
+            double timeCode,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_get_token_array",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageGetTokenArray(
+            nint stage,
+            string primPath,
+            string attributeName,
+            int timeSampled,
+            double timeCode,
+            out nint list,
+            ref NativeStringListView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_set_string_array",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageSetStringArray(
+            nint stage,
+            string primPath,
+            string attributeName,
+            ref NativeStringListView values,
+            int timeSampled,
+            double timeCode,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_get_string_array",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageGetStringArray(
+            nint stage,
+            string primPath,
+            string attributeName,
+            int timeSampled,
+            double timeCode,
+            out nint list,
+            ref NativeStringListView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_geom_is_schema",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]

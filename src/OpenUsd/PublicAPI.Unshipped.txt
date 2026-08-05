@@ -2007,3 +2007,45 @@ static OpenUsd.UsdOrientedBounds3d.operator !=(OpenUsd.UsdOrientedBounds3d left,
 static OpenUsd.UsdOrientedBounds3d.operator ==(OpenUsd.UsdOrientedBounds3d left, OpenUsd.UsdOrientedBounds3d right) -> bool
 static OpenUsd.UsdPrimClassification.operator !=(OpenUsd.UsdPrimClassification left, OpenUsd.UsdPrimClassification right) -> bool
 static OpenUsd.UsdPrimClassification.operator ==(OpenUsd.UsdPrimClassification left, OpenUsd.UsdPrimClassification right) -> bool
+OpenUsd.Geom.UsdGeomPrimvar.GetColor3fArray() -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPrimvar.GetColor3fArray(double timeCode) -> OpenUsd.UsdVec3f[]!
+OpenUsd.Geom.UsdGeomPrimvar.SetColor3fArray(System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
+OpenUsd.Geom.UsdGeomPrimvar.SetColor3fArray(System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.Geom.UsdGeomPrimvarsAPI.SetDisplayColor(float red, float green, float blue) -> void
+OpenUsd.Geom.UsdGeomPrimvarsAPI.SetDisplayColor(OpenUsd.UsdVec3f color) -> void
+OpenUsd.UsdAttribute.IsArray.get -> bool
+OpenUsd.UsdAttribute.IsAuthored.get -> bool
+OpenUsd.UsdAttribute.Set(in OpenUsd.UsdScalarValue value, double timeCode) -> void
+OpenUsd.UsdAttribute.Set(in OpenUsd.UsdScalarValue value) -> void
+OpenUsd.UsdAttribute.TryGetValue(double timeCode, out OpenUsd.UsdScalarValue value) -> bool
+OpenUsd.UsdAttribute.TryGetValue(out OpenUsd.UsdScalarValue value) -> bool
+OpenUsd.UsdAttribute.TrySet(in OpenUsd.UsdScalarValue value, double timeCode) -> bool
+OpenUsd.UsdAttribute.TrySet(in OpenUsd.UsdScalarValue value) -> bool
+OpenUsd.UsdPrim.GetBoolArray(string! attributeName, double timeCode) -> bool[]!
+OpenUsd.UsdPrim.GetBoolArray(string! attributeName) -> bool[]!
+OpenUsd.UsdPrim.GetColor3fArray(string! attributeName, double timeCode) -> OpenUsd.UsdVec3f[]!
+OpenUsd.UsdPrim.GetColor3fArray(string! attributeName) -> OpenUsd.UsdVec3f[]!
+OpenUsd.UsdPrim.GetStringArray(string! attributeName, double timeCode) -> string![]!
+OpenUsd.UsdPrim.GetStringArray(string! attributeName) -> string![]!
+OpenUsd.UsdPrim.GetTokenArray(string! attributeName, double timeCode) -> string![]!
+OpenUsd.UsdPrim.GetTokenArray(string! attributeName) -> string![]!
+OpenUsd.UsdPrim.SetBoolArray(string! attributeName, System.ReadOnlySpan<bool> values, double timeCode) -> void
+OpenUsd.UsdPrim.SetBoolArray(string! attributeName, System.ReadOnlySpan<bool> values) -> void
+OpenUsd.UsdPrim.SetColor3fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
+OpenUsd.UsdPrim.SetColor3fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
+OpenUsd.UsdPrim.SetStringArray(string! attributeName, System.ReadOnlySpan<string!> values, double timeCode) -> void
+OpenUsd.UsdPrim.SetStringArray(string! attributeName, System.ReadOnlySpan<string!> values) -> void
+OpenUsd.UsdPrim.SetTokenArray(string! attributeName, System.ReadOnlySpan<string!> values, double timeCode) -> void
+OpenUsd.UsdPrim.SetTokenArray(string! attributeName, System.ReadOnlySpan<string!> values) -> void
+OpenUsd.UsdPrim.TryGetValue(string! attributeName, double timeCode, out OpenUsd.UsdScalarValue value) -> bool
+OpenUsd.UsdPrim.TryGetValue(string! attributeName, out OpenUsd.UsdScalarValue value) -> bool
+OpenUsd.UsdPrim.TrySetValue(string! attributeName, in OpenUsd.UsdScalarValue value, double timeCode) -> bool
+OpenUsd.UsdPrim.TrySetValue(string! attributeName, in OpenUsd.UsdScalarValue value) -> bool
+OpenUsd.UsdScalarKind.BooleanArray = 15 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.Color3fArray = 14 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.StringArray = 17 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarKind.TokenArray = 16 -> OpenUsd.UsdScalarKind
+OpenUsd.UsdScalarValue.BoolArrayValue.get -> bool[]!
+OpenUsd.UsdScalarValue.Color3fArrayValue.get -> OpenUsd.UsdVec3f[]!
+OpenUsd.UsdScalarValue.StringArrayValue.get -> string![]!
+OpenUsd.UsdScalarValue.TokenArrayValue.get -> string![]!

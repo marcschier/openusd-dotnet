@@ -260,7 +260,7 @@ typedef struct openusd_image_info
     uint32_t height;
 } openusd_image_info;
 
-#define OPENUSD_DATA_ABI_VERSION 14
+#define OPENUSD_DATA_ABI_VERSION 15
 #define OPENUSD_CAPABILITY_STRING_LIST_V2 (UINT64_C(1) << 0)
 #define OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS (UINT64_C(1) << 1)
 #define OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES (UINT64_C(1) << 2)
@@ -279,6 +279,7 @@ typedef struct openusd_image_info
 /* Schema facade allocations: 12 Geom, 13 Physics, 14 Shade/Skel, 15 Vol/Render/Media/Proc/UI. */
 #define OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI (UINT64_C(1) << 15)
 #define OPENUSD_CAPABILITY_INSPECTION_V2 (UINT64_C(1) << 16)
+#define OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2 (UINT64_C(1) << 17)
 
 typedef struct openusd_vec3f
 {
@@ -1259,6 +1260,86 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_get_vec3f_array(
     openusd_vec3f* values,
     size_t capacity,
     size_t* required,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_set_color3f_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const openusd_vec3f* values,
+    size_t count,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_get_color3f_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    openusd_vec3f* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_set_bool_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const int32_t* values,
+    size_t count,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_get_bool_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    int32_t* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_set_token_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const openusd_string_list_view* values,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_get_token_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_set_string_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const openusd_string_list_view* values,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_get_string_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_geom_is_schema(

@@ -1313,6 +1313,105 @@ public static unsafe partial class OpenUsdNativeRuntime
         GetArray<OpenUsdNativeVec3f>(
             stage, primPath, attributeName, timeCode, NativeMethods.StageGetVec3fArray, "vec3f");
 
+    internal static void SetColor3fArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<OpenUsdNativeVec3f> values,
+        double? timeCode) =>
+        SetArray(stage, primPath, attributeName, values, timeCode, NativeMethods.StageSetColor3fArray);
+
+    internal static OpenUsdNativeVec3f[] GetColor3fArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        double? timeCode) =>
+        GetArray<OpenUsdNativeVec3f>(
+            stage, primPath, attributeName, timeCode, NativeMethods.StageGetColor3fArray, "color3f");
+
+    internal static void SetBoolArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<bool> values,
+        double? timeCode)
+    {
+        int[] native = GC.AllocateUninitializedArray<int>(values.Length);
+        for (int index = 0; index < values.Length; ++index)
+        {
+            native[index] = values[index] ? 1 : 0;
+        }
+        SetArray(stage, primPath, attributeName, native, timeCode, NativeMethods.StageSetBoolArray);
+    }
+
+    internal static bool[] GetBoolArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        double? timeCode)
+    {
+        int[] native = GetArray<int>(
+            stage, primPath, attributeName, timeCode, NativeMethods.StageGetBoolArray, "bool");
+        bool[] values = GC.AllocateUninitializedArray<bool>(native.Length);
+        for (int index = 0; index < native.Length; ++index)
+        {
+            values[index] = native[index] != 0;
+        }
+        return values;
+    }
+
+    internal static void SetTokenArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<string> values,
+        double? timeCode) =>
+        SetStringLikeArray(
+            stage,
+            primPath,
+            attributeName,
+            values,
+            timeCode,
+            NativeMethods.StageSetTokenArray);
+
+    internal static string[] GetTokenArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        double? timeCode) =>
+        GetStringLikeArray(
+            stage,
+            primPath,
+            attributeName,
+            timeCode,
+            NativeMethods.StageGetTokenArray);
+
+    internal static void SetStringArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<string> values,
+        double? timeCode) =>
+        SetStringLikeArray(
+            stage,
+            primPath,
+            attributeName,
+            values,
+            timeCode,
+            NativeMethods.StageSetStringArray);
+
+    internal static string[] GetStringArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        double? timeCode) =>
+        GetStringLikeArray(
+            stage,
+            primPath,
+            attributeName,
+            timeCode,
+            NativeMethods.StageGetStringArray);
+
     internal static OpenUsdNativeBounds3d GetWorldBounds(
         OpenUsdNativeStage stage,
         string? targetPrimPath,
@@ -2497,6 +2596,92 @@ public static unsafe partial class OpenUsdNativeRuntime
             }
         }
         return values;
+    }
+
+    private static void SetStringLikeArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<string> values,
+        double? timeCode,
+        NativeStringArraySetter setter)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeName);
+        using var lease = new SafeHandleLease(stage);
+
+        (byte[] data, nuint[] offsets) = NativeStringListPacking.Pack(values);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* dataPointer = data)
+        fixed (nuint* offsetPointer = offsets)
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var view = new NativeStringListView
+            {
+                StructSize = (uint)sizeof(NativeStringListView),
+                Data = dataPointer,
+                DataSize = (nuint)data.Length,
+                Offsets = offsetPointer,
+                OffsetsSize = checked((nuint)offsets.Length * (nuint)sizeof(nuint)),
+                Count = (nuint)offsets.Length
+            };
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = setter(
+                lease.Handle,
+                primPath,
+                attributeName,
+                ref view,
+                timeCode.HasValue ? 1 : 0,
+                timeCode.GetValueOrDefault(),
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    private static string[] GetStringLikeArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        double? timeCode,
+        NativeStringArrayGetter getter)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeName);
+        using var lease = new SafeHandleLease(stage);
+        var view = new NativeStringListView
+        {
+            StructSize = (uint)sizeof(NativeStringListView)
+        };
+        nint list = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = getter(
+                lease.Handle,
+                primPath,
+                attributeName,
+                timeCode.HasValue ? 1 : 0,
+                timeCode.GetValueOrDefault(),
+                out list,
+                ref view,
+                ref error);
+            ThrowIfFailedAndReleaseStringList(status, errorBytes, error, ref list);
+        }
+
+        try
+        {
+            return DecodeStringListView(view);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.StringListRelease(list);
+            }
+        }
     }
 
     internal static void SetBool(
@@ -4921,6 +5106,25 @@ public static unsafe partial class OpenUsdNativeRuntime
         out nuint required,
         ref NativeErrorBuffer error)
         where T : unmanaged;
+
+    private delegate OpenUsdNativeStatus NativeStringArraySetter(
+        nint stage,
+        string primPath,
+        string attributeName,
+        ref NativeStringListView values,
+        int timeSampled,
+        double timeCode,
+        ref NativeErrorBuffer error);
+
+    private delegate OpenUsdNativeStatus NativeStringArrayGetter(
+        nint stage,
+        string primPath,
+        string attributeName,
+        int timeSampled,
+        double timeCode,
+        out nint list,
+        ref NativeStringListView view,
+        ref NativeErrorBuffer error);
 
     private unsafe delegate OpenUsdNativeStatus NativeGeomArraySetter<T>(
         nint stage,

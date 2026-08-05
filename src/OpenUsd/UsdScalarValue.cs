@@ -47,7 +47,19 @@ public enum UsdScalarKind
     Vec2fArray,
 
     /// <summary>A vec3f-array value.</summary>
-    Vec3fArray
+    Vec3fArray,
+
+    /// <summary>A color3f-array value.</summary>
+    Color3fArray,
+
+    /// <summary>A bool-array value.</summary>
+    BooleanArray,
+
+    /// <summary>A token-array value.</summary>
+    TokenArray,
+
+    /// <summary>A string-array value.</summary>
+    StringArray
 }
 
 /// <summary>Contains one explicitly tagged supported scalar or array USD value.</summary>
@@ -64,6 +76,8 @@ public readonly struct UsdScalarValue : IUsdDetachedResult
     private readonly double[]? _doubleArrayValue;
     private readonly UsdVec2f[]? _vec2fArrayValue;
     private readonly UsdVec3f[]? _vec3fArrayValue;
+    private readonly bool[]? _boolArrayValue;
+    private readonly string[]? _textArrayValue;
 
     private UsdScalarValue(
         UsdScalarKind kind,
@@ -77,7 +91,9 @@ public readonly struct UsdScalarValue : IUsdDetachedResult
         float[]? floatArrayValue = null,
         double[]? doubleArrayValue = null,
         UsdVec2f[]? vec2fArrayValue = null,
-        UsdVec3f[]? vec3fArrayValue = null)
+        UsdVec3f[]? vec3fArrayValue = null,
+        bool[]? boolArrayValue = null,
+        string[]? textArrayValue = null)
     {
         Kind = kind;
         _boolValue = boolValue;
@@ -91,6 +107,8 @@ public readonly struct UsdScalarValue : IUsdDetachedResult
         _doubleArrayValue = doubleArrayValue;
         _vec2fArrayValue = vec2fArrayValue;
         _vec3fArrayValue = vec3fArrayValue;
+        _boolArrayValue = boolArrayValue;
+        _textArrayValue = textArrayValue;
     }
 
     /// <summary>Gets the scalar kind.</summary>
@@ -161,6 +179,26 @@ public readonly struct UsdScalarValue : IUsdDetachedResult
         ? _vec3fArrayValue!
         : throw WrongKind(UsdScalarKind.Vec3fArray);
 
+    /// <summary>Gets the color3f-array payload.</summary>
+    public UsdVec3f[] Color3fArrayValue => Kind == UsdScalarKind.Color3fArray
+        ? _vec3fArrayValue!
+        : throw WrongKind(UsdScalarKind.Color3fArray);
+
+    /// <summary>Gets the bool-array payload.</summary>
+    public bool[] BoolArrayValue => Kind == UsdScalarKind.BooleanArray
+        ? _boolArrayValue!
+        : throw WrongKind(UsdScalarKind.BooleanArray);
+
+    /// <summary>Gets the token-array payload.</summary>
+    public string[] TokenArrayValue => Kind == UsdScalarKind.TokenArray
+        ? _textArrayValue!
+        : throw WrongKind(UsdScalarKind.TokenArray);
+
+    /// <summary>Gets the string-array payload.</summary>
+    public string[] StringArrayValue => Kind == UsdScalarKind.StringArray
+        ? _textArrayValue!
+        : throw WrongKind(UsdScalarKind.StringArray);
+
     internal static UsdScalarValue FromNative(OpenUsdNativeScalarResult value)
     {
         UsdScalarKind kind = value.Kind switch
@@ -199,6 +237,18 @@ public readonly struct UsdScalarValue : IUsdDetachedResult
 
     internal static UsdScalarValue FromVec3fArray(UsdVec3f[] value) => new(
         UsdScalarKind.Vec3fArray, false, 0, 0, null, default, default, vec3fArrayValue: value);
+
+    internal static UsdScalarValue FromColor3fArray(UsdVec3f[] value) => new(
+        UsdScalarKind.Color3fArray, false, 0, 0, null, default, default, vec3fArrayValue: value);
+
+    internal static UsdScalarValue FromBoolArray(bool[] value) => new(
+        UsdScalarKind.BooleanArray, false, 0, 0, null, default, default, boolArrayValue: value);
+
+    internal static UsdScalarValue FromTokenArray(string[] value) => new(
+        UsdScalarKind.TokenArray, false, 0, 0, null, default, default, textArrayValue: value);
+
+    internal static UsdScalarValue FromStringArray(string[] value) => new(
+        UsdScalarKind.StringArray, false, 0, 0, null, default, default, textArrayValue: value);
 
     private InvalidOperationException WrongKind(UsdScalarKind expected) =>
         new($"The scalar contains {Kind}, not {expected}.");
