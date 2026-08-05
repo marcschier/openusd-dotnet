@@ -55,9 +55,11 @@ not public-feed publication.
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Imaging runtime; Windows/Linux execution |
 | `OpenUsd.Rendering.Silk.Metal` | 8/9/10 | Imaging runtime; macOS execution |
 | `OpenUsd.Viewer` | 8/9/10 | Backend runtime of the renderer it activates |
+| `OpenUsd.Runtime.Core` | `net8.0` carrier | Core metapackage for all supported RIDs |
 | `OpenUsd.Runtime.Core.win-x64` | `net8.0` carrier | Windows x64 native install |
 | `OpenUsd.Runtime.Core.linux-x64` | `net8.0` carrier | Linux x64 native install |
 | `OpenUsd.Runtime.Core.osx-arm64` | `net8.0` carrier | macOS arm64 native install |
+| `OpenUsd.Runtime.Imaging` | `net8.0` carrier | Imaging metapackage for all supported RIDs |
 | `OpenUsd.Runtime.Imaging.win-x64` | `net8.0` carrier | Matching Windows Core package |
 | `OpenUsd.Runtime.Imaging.linux-x64` | `net8.0` carrier | Matching Linux Core package |
 | `OpenUsd.Runtime.Imaging.osx-arm64` | `net8.0` carrier | Matching macOS Core package |

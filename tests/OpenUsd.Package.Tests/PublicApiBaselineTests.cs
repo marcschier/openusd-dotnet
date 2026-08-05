@@ -19,7 +19,7 @@ public sealed class PublicApiBaselineTests
         "OpenUsd.Rendering.Storm"
     ];
 
-    private static readonly string[] ExpectedRuntimeProjects =
+    private static readonly string[] ExpectedContentOnlyRuntimeProjects =
     [
         "OpenUsd.Runtime.Core.linux-x64",
         "OpenUsd.Runtime.Core.osx-arm64",
@@ -27,6 +27,12 @@ public sealed class PublicApiBaselineTests
         "OpenUsd.Runtime.Imaging.linux-x64",
         "OpenUsd.Runtime.Imaging.osx-arm64",
         "OpenUsd.Runtime.Imaging.win-x64"
+    ];
+
+    private static readonly string[] ExpectedDependencyOnlyRuntimeProjects =
+    [
+        "OpenUsd.Runtime.Core",
+        "OpenUsd.Runtime.Imaging"
     ];
 
     private static readonly string[] ExpectedPackableManagedProjects =
@@ -112,7 +118,10 @@ public sealed class PublicApiBaselineTests
             .Select(LoadProjectContract)
             .ToArray();
         ProjectContract[] eligible = projects
-            .Where(project => !project.IsApplication && !project.IsContentOnly)
+            .Where(project =>
+                !project.IsApplication &&
+                !project.IsContentOnlyRuntimePackage &&
+                !project.IsDependencyOnlyRuntimePackage)
             .ToArray();
 
         await Assert.That(eligible.Select(project => project.Name).ToArray())
@@ -139,7 +148,7 @@ public sealed class PublicApiBaselineTests
     }
 
     [Test]
-    public async Task ContentOnlyRuntimePackagesRemainExcluded()
+    public async Task RuntimePackageProjectsHaveExplicitContentOrDependencyOnlyRoles()
     {
         string root = FindRepositoryRoot();
         ProjectContract[] runtimeProjects = Directory
@@ -149,13 +158,35 @@ public sealed class PublicApiBaselineTests
                 SearchOption.AllDirectories)
             .Select(LoadProjectContract)
             .ToArray();
+        ProjectContract[] contentOnlyRuntimeProjects = runtimeProjects
+            .Where(project => project.IsContentOnlyRuntimePackage)
+            .ToArray();
+        ProjectContract[] dependencyOnlyRuntimeProjects = runtimeProjects
+            .Where(project => project.IsDependencyOnlyRuntimePackage)
+            .ToArray();
 
-        await Assert.That(runtimeProjects.Select(project => project.Name).ToArray())
-            .IsEquivalentTo(ExpectedRuntimeProjects);
+        await Assert.That(contentOnlyRuntimeProjects.Select(project => project.Name).ToArray())
+            .IsEquivalentTo(ExpectedContentOnlyRuntimeProjects);
+        await Assert.That(dependencyOnlyRuntimeProjects.Select(project => project.Name).ToArray())
+            .IsEquivalentTo(ExpectedDependencyOnlyRuntimeProjects);
+        await Assert.That(runtimeProjects.Length)
+            .IsEqualTo(contentOnlyRuntimeProjects.Length + dependencyOnlyRuntimeProjects.Length);
 
-        foreach (ProjectContract project in runtimeProjects)
+        foreach (ProjectContract project in contentOnlyRuntimeProjects)
         {
-            await Assert.That(project.IsContentOnly).IsTrue();
+            await Assert.That(project.HasRuntimePackageRid).IsTrue();
+            await Assert.That(File.Exists(Path.Combine(
+                project.Directory,
+                "PublicAPI.Shipped.txt"))).IsFalse();
+            await Assert.That(File.Exists(Path.Combine(
+                project.Directory,
+                "PublicAPI.Unshipped.txt"))).IsFalse();
+        }
+
+        foreach (ProjectContract project in dependencyOnlyRuntimeProjects)
+        {
+            await Assert.That(project.HasRuntimePackageRid).IsFalse();
+            await Assert.That(project.HasProjectReference).IsTrue();
             await Assert.That(File.Exists(Path.Combine(
                 project.Directory,
                 "PublicAPI.Shipped.txt"))).IsFalse();
@@ -175,7 +206,10 @@ public sealed class PublicApiBaselineTests
                 "*.csproj",
                 SearchOption.AllDirectories)
             .Select(LoadProjectContract)
-            .Where(project => project.IsPackable && !project.IsContentOnly)
+            .Where(project =>
+                project.IsPackable &&
+                !project.IsContentOnlyRuntimePackage &&
+                !project.IsDependencyOnlyRuntimePackage)
             .ToArray();
 
         await Assert.That(packable.Select(project => project.Name).ToArray())
@@ -224,9 +258,21 @@ public sealed class PublicApiBaselineTests
                 .Any(element =>
                     element.Value.Equals("Exe", StringComparison.OrdinalIgnoreCase) ||
                     element.Value.Equals("WinExe", StringComparison.OrdinalIgnoreCase));
-        bool isContentOnly = project
+        bool excludesBuildOutput = project
             .Descendants("IncludeBuildOutput")
             .Any(element => IsFalse(element.Value));
+        bool hasRuntimePackageRid = project
+            .Descendants("RuntimePackageRid")
+            .Any(element => !string.IsNullOrWhiteSpace(element.Value));
+        bool hasProjectReference = project
+            .Descendants("ProjectReference")
+            .Any();
+        bool isRuntimeProject = Path.GetFileNameWithoutExtension(path)
+            .StartsWith("OpenUsd.Runtime.", StringComparison.Ordinal);
+        bool isContentOnlyRuntimePackage =
+            isRuntimeProject && excludesBuildOutput && hasRuntimePackageRid;
+        bool isDependencyOnlyRuntimePackage =
+            isRuntimeProject && excludesBuildOutput && !hasRuntimePackageRid && hasProjectReference;
         bool isPackable = project
             .Descendants("IsPackable")
             .Any(element => IsTrue(element.Value)) ||
@@ -247,7 +293,10 @@ public sealed class PublicApiBaselineTests
             Path.GetDirectoryName(path) ??
                 throw new InvalidOperationException($"Project path has no directory: {path}"),
             isApplication,
-            isContentOnly,
+            isContentOnlyRuntimePackage,
+            isDependencyOnlyRuntimePackage,
+            hasRuntimePackageRid,
+            hasProjectReference,
             isPackable,
             targetFrameworks);
     }
@@ -274,7 +323,10 @@ public sealed class PublicApiBaselineTests
         string Name,
         string Directory,
         bool IsApplication,
-        bool IsContentOnly,
+        bool IsContentOnlyRuntimePackage,
+        bool IsDependencyOnlyRuntimePackage,
+        bool HasRuntimePackageRid,
+        bool HasProjectReference,
         bool IsPackable,
         string TargetFrameworks);
 }

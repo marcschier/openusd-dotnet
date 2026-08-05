@@ -76,7 +76,7 @@ is sample source and is not packed. An external application can:
 - use the pattern as a starting point for its own boundary assembly.
 
 The final executable, not an abstract library layer, should select
-`OpenUsd.Runtime.Core.win-x64`, `.linux-x64`, or `.osx-arm64` at the exact managed package version.
+`OpenUsd.Runtime.Core` at the exact managed package version.
 Use the local feed and source-mapping process in [Pack](../../docs/packaging.md#pack) and the
 [package-only execution gate](../../docs/packaging.md#package-only-execution-gate) when validating
 repository-built packages. Do not add OPC UA packages to this adapter merely to consume it from Pump.

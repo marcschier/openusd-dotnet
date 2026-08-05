@@ -45,9 +45,11 @@ $published = @(
     'OpenUsd.Rendering.Silk.Vulkan'
     'OpenUsd.Rendering.Storm'
     'OpenUsd.Viewer'
+    'OpenUsd.Runtime.Core'
     'OpenUsd.Runtime.Core.win-x64'
     'OpenUsd.Runtime.Core.linux-x64'
     'OpenUsd.Runtime.Core.osx-arm64'
+    'OpenUsd.Runtime.Imaging'
     'OpenUsd.Runtime.Imaging.win-x64'
     'OpenUsd.Runtime.Imaging.linux-x64'
     'OpenUsd.Runtime.Imaging.osx-arm64'
@@ -65,7 +67,10 @@ switch ($Scope)
         # Platform-neutral libraries. Metal is excluded because it embeds a macOS
         # artifact, so it is packed by the metal scope on a macOS host.
         $published = $published | Where-Object {
-            $_ -ne $metalPackage -and -not $_.StartsWith('OpenUsd.Runtime.', [StringComparison]::Ordinal)
+            $_ -ne $metalPackage -and (
+                -not $_.StartsWith('OpenUsd.Runtime.', [StringComparison]::Ordinal) -or
+                $_ -eq 'OpenUsd.Runtime.Core' -or
+                $_ -eq 'OpenUsd.Runtime.Imaging')
         }
     }
     'metal'
@@ -98,6 +103,7 @@ if ($SkipMetal)
 # against the full set so it holds even when Metal is skipped locally.
 $notPublished = @{
     'OpenUsd.Viewer.App' = 'Desktop application shell, distributed separately from NuGet.'
+    'OpenUsd.Cesium' = 'Experimental Cesium integration surface; not part of the public package set.'
 }
 
 $srcProjects = Get-ChildItem (Join-Path $Root 'src') -Directory |

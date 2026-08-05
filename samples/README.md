@@ -21,16 +21,21 @@ The live-authoring projects do not contain OPC UA types or a production renderer
 - A native toolchain when building the native runtime from source.
 - A platform NativeAOT toolchain when publishing. On Windows, use an x64 Visual Studio developer shell.
 
-| Host | RID | Core runtime package |
-| --- | --- | --- |
-| Windows x64 | `win-x64` | `OpenUsd.Runtime.Core.win-x64` |
-| Linux x64 | `linux-x64` | `OpenUsd.Runtime.Core.linux-x64` |
-| macOS arm64 | `osx-arm64` | `OpenUsd.Runtime.Core.osx-arm64` |
+| Host | RID | Recommended Core reference | Explicit Core package |
+| --- | --- | --- | --- |
+| Windows x64 | `win-x64` | `OpenUsd.Runtime.Core` | `OpenUsd.Runtime.Core.win-x64` |
+| Linux x64 | `linux-x64` | `OpenUsd.Runtime.Core` | `OpenUsd.Runtime.Core.linux-x64` |
+| macOS arm64 | `osx-arm64` | `OpenUsd.Runtime.Core` | `OpenUsd.Runtime.Core.osx-arm64` |
 
-These samples need the Core runtime, not `OpenUsd.Runtime.Imaging.<rid>`. A source checkout expects
-`native/install/<rid>` and `native/install/shim/<rid>`. A package consumer references `OpenUsd` and the
-matching `OpenUsd.Runtime.Core.<rid>` at the same version. Never load a runtime for a different RID,
-architecture, package version, or C ABI.
+These samples need the Core runtime, not `OpenUsd.Runtime.Imaging`. A source checkout expects
+`native/install/<rid>` and `native/install/shim/<rid>`. A package consumer references `OpenUsd`
+and `OpenUsd.Runtime.Core` at the same version. The explicit `OpenUsd.Runtime.Core.<rid>`
+packages remain available for projects that intentionally pin a RID. Never load a runtime for a
+different RID, architecture, package version, or C ABI.
+
+Rendering consumers use `OpenUsd.Runtime.Imaging` plus a managed backend. The explicit Imaging
+packages are `OpenUsd.Runtime.Imaging.win-x64`, `OpenUsd.Runtime.Imaging.linux-x64`, and
+`OpenUsd.Runtime.Imaging.osx-arm64`.
 
 Managed builds do not require native binaries. Executing stage operations does.
 
@@ -73,15 +78,16 @@ To validate package consumption, first build the packages into a repository-loca
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />
-  <PackageReference Include="OpenUsd.Runtime.Core.win-x64"
+  <PackageReference Include="OpenUsd.Runtime.Core"
                     Version="$(OpenUsdPackageVersion)" />
 </ItemGroup>
 ```
 
 Follow [Pack](../docs/packaging.md#pack) and the
 [package-only execution gate](../docs/packaging.md#package-only-execution-gate) for local-feed and
-source-mapping setup when validating repository-built packages. Replace the runtime suffix with the
-application's RID and keep one version across all shipped packages.
+source-mapping setup when validating repository-built packages. Use the RID-agnostic runtime
+reference unless the application deliberately pins one RID-specific package. Keep one version
+across all shipped packages.
 
 `OpenUsd.LiveAuthoring` is not shipped to NuGet.org and is not part of the package set. External
 consumers that want this boundary should vendor `samples/OpenUsd.LiveAuthoring` as source, keep it as a
@@ -128,7 +134,7 @@ libraries on the loader path and register the USD plugin tree, or consume the ma
 - `DllNotFoundException`: the matching Core runtime is absent from the app or native loader path.
 - `BadImageFormatException`: the native architecture or RID does not match the process.
 - File-format or plugin errors: stage `usd/plugInfo.json`, or set `PXR_PLUGINPATH_NAME` for a source run.
-- ABI or capability error: use `OpenUsd` and `OpenUsd.Runtime.Core.<rid>` from the same build.
+- ABI or capability error: use `OpenUsd` and `OpenUsd.Runtime.Core` from the same build.
 - No live-authored file: the executable intentionally uses the transient session layer.
 
 ## Next documentation

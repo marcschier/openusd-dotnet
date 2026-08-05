@@ -20,11 +20,13 @@ paths.
 
 ```shell
 dotnet add package OpenUsd --version 0.4.0-alpha
-dotnet add package OpenUsd.Runtime.Core.win-x64 --version 0.4.0-alpha
+dotnet add package OpenUsd.Runtime.Core --version 0.4.0-alpha
 ```
 
-Keep every `OpenUsd*` package at the same version, and add the matching
-`OpenUsd.Runtime.Imaging.<rid>` package for rendering. See [Packaging](docs/packaging.md).
+`OpenUsd.Runtime.Core` is the RID-agnostic metapackage for `win-x64`, `linux-x64`, and
+`osx-arm64`. Rendering consumers add the managed backend and `OpenUsd.Runtime.Imaging`; the
+RID-specific package IDs remain available when a project wants explicit asset selection. See
+[Packaging](docs/packaging.md).
 
 ## ✨ Highlights
 
@@ -124,9 +126,11 @@ repository.
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Direct3D 12 backend |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Vulkan backend |
 | `OpenUsd.Rendering.Silk.Metal` | 8/9/10 | Metal backend |
+| `OpenUsd.Runtime.Core` | 8 carrier | RID-agnostic Core metapackage for `win-x64`, `linux-x64`, and `osx-arm64` |
 | `OpenUsd.Runtime.Core.win-x64` | 8 carrier | Windows OpenUSD core runtime and data plugins |
 | `OpenUsd.Runtime.Core.linux-x64` | 8 carrier | Linux OpenUSD core runtime and data plugins |
 | `OpenUsd.Runtime.Core.osx-arm64` | 8 carrier | macOS OpenUSD core runtime and data plugins |
+| `OpenUsd.Runtime.Imaging` | 8 carrier | RID-agnostic Imaging metapackage for `win-x64`, `linux-x64`, and `osx-arm64` |
 | `OpenUsd.Runtime.Imaging.win-x64` | 8 carrier | Windows Hydra, Storm, hdSilk, and plugins |
 | `OpenUsd.Runtime.Imaging.linux-x64` | 8 carrier | Linux Hydra, Storm, hdSilk, and plugins |
 | `OpenUsd.Runtime.Imaging.osx-arm64` | 8 carrier | macOS Hydra, Storm, hdSilk, and plugins |

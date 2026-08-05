@@ -14,12 +14,11 @@ managed facade and does not call the C ABI directly.
 - .NET SDK 10.0.301.
 - A writable output location.
 - A platform NativeAOT toolchain only when publishing.
-- The Core native runtime matching the process:
-  - `OpenUsd.Runtime.Core.win-x64` for Windows x64.
-  - `OpenUsd.Runtime.Core.linux-x64` for Linux x64.
-  - `OpenUsd.Runtime.Core.osx-arm64` for macOS arm64.
+- The Core native runtime matching the process. Prefer `OpenUsd.Runtime.Core`; explicit packages are
+  `OpenUsd.Runtime.Core.win-x64`, `OpenUsd.Runtime.Core.linux-x64`, and
+  `OpenUsd.Runtime.Core.osx-arm64`.
 
-Use the same version for `OpenUsd` and the runtime package. `OpenUsd.Runtime.Imaging.<rid>` is not needed.
+Use the same version for `OpenUsd` and the runtime package. `OpenUsd.Runtime.Imaging` is not needed.
 Building requires only the managed projects; running requires `openusd_dotnet`, OpenUSD, and the USD
 plugin resource tree.
 
@@ -65,7 +64,7 @@ To consume the published packages instead, use one property for the matching ver
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />
-  <PackageReference Include="OpenUsd.Runtime.Core.win-x64"
+  <PackageReference Include="OpenUsd.Runtime.Core"
                     Version="$(OpenUsdPackageVersion)" />
 </ItemGroup>
 ```
@@ -73,8 +72,9 @@ To consume the published packages instead, use one property for the matching ver
 The packages are published to NuGet.org, so no feed configuration is required. To test
 repository-built packages before they are published, build them into a local feed and configure
 source mapping as described by [Pack](../../docs/packaging.md#pack) and the
-[package-only execution gate](../../docs/packaging.md#package-only-execution-gate). Use the Core package
-for the target RID and keep every OpenUsd package at the same version. The Core package copies native
+[package-only execution gate](../../docs/packaging.md#package-only-execution-gate). Use the Core
+metapackage unless you intentionally pin one RID, and keep every OpenUsd package at the same version.
+The Core package copies native
 libraries and `usd/**` resources to the application output. Program startup registers
 `AppContext.BaseDirectory/usd` when that packaged resource tree is present. A source run instead uses
 the local loader path and `PXR_PLUGINPATH_NAME`.
@@ -118,7 +118,7 @@ dotnet publish samples/OpenUsd.HelloStage/OpenUsd.HelloStage.csproj -c Release -
 
 For a source publish, keep the local native install on `PATH` and set `PXR_PLUGINPATH_NAME` as shown
 above. A package-based publish receives the native files and `usd` resources from
-`OpenUsd.Runtime.Core.<rid>`. Publish and run on the target RID; NativeAOT output is platform-specific.
+`OpenUsd.Runtime.Core`. Publish and run on the target RID; NativeAOT output is platform-specific.
 
 ## Troubleshooting
 

@@ -60,7 +60,7 @@ sample source, not a published package. An external package-based host should:
 
 1. reference or copy the `OpenUsd.LiveAuthoring` adapter source,
 2. replace repository `OpenUsd` project references with `PackageReference Include="OpenUsd"`, and
-3. add `OpenUsd.Runtime.Core.<rid>` at the same package version to the executable.
+3. add `OpenUsd.Runtime.Core` at the same package version to the executable.
 
 Follow [Pack](../../docs/packaging.md#pack) and the
 [package-only execution gate](../../docs/packaging.md#package-only-execution-gate) to build a local
@@ -116,7 +116,7 @@ dotnet publish samples/OpenUsd.LiveAuthoring.Sample/OpenUsd.LiveAuthoring.Sample
 
 A source publish does not copy `native/install`; keep the matching directories on the loader path and
 set `PXR_PLUGINPATH_NAME`. A package-based publish obtains native files and resources from
-`OpenUsd.Runtime.Core.<rid>`. NativeAOT output is RID-specific and must be published on a supported
+`OpenUsd.Runtime.Core`. NativeAOT output is RID-specific and must be published on a supported
 toolchain.
 
 ## Troubleshooting
