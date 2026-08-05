@@ -55,6 +55,33 @@ internal static class ViewerStartupOptions
         private set;
     }
 
+    internal static Func<ViewerPickEventArgs, CancellationToken, Task>? PrimPickedAsync
+    {
+        get;
+        private set;
+    }
+
+    internal static RenderPickTarget HostPickTarget { get; private set; } =
+        RenderPickTarget.Primitive;
+
+    internal static Func<ViewerViewportPointerEventArgs, CancellationToken, Task>?
+        ViewportPointerPressedAsync
+    { get; private set; }
+
+    internal static Func<ViewerViewportPointerEventArgs, CancellationToken, Task>?
+        ViewportPointerMovedAsync
+    { get; private set; }
+
+    internal static Func<ViewerViewportPointerEventArgs, CancellationToken, Task>?
+        ViewportPointerReleasedAsync
+    { get; private set; }
+
+    internal static Func<ViewerSelectionChangedEventArgs, CancellationToken, Task>?
+        SelectionChangedAsync
+    { get; private set; }
+
+    internal static string? SelectionChangedPrimSubtree { get; private set; }
+
     /// <summary>
     /// Window title override supplied by an embedding host.
     /// </summary>
@@ -172,6 +199,17 @@ internal static class ViewerStartupOptions
         CommandLineStageCameraPath = null;
         PickSmokeEvidencePath =
             Environment.GetEnvironmentVariable("OPENUSD_VIEWER_PICK_SMOKE_PATH");
+        PrimPickedAsync = PickSmokeEnabled
+            ? ViewerPickingSmokeHostObserver.ObservePickAsync
+            : null;
+        HostPickTarget = RenderPickTarget.Primitive;
+        ViewportPointerPressedAsync = null;
+        ViewportPointerMovedAsync = null;
+        ViewportPointerReleasedAsync = null;
+        SelectionChangedAsync = PickSmokeEnabled
+            ? ViewerPickingSmokeHostObserver.ObserveSelectionAsync
+            : null;
+        SelectionChangedPrimSubtree = PickSmokeEnabled ? "/World" : null;
         WindowsRenderingOverride = null;
         NativeStormContextLoss = IsEnabled(
             Environment.GetEnvironmentVariable("OPENUSD_NATIVE_STORM_CONTEXT_LOSS"));
@@ -312,6 +350,13 @@ internal static class ViewerStartupOptions
         HostShutdownToken = options.ShutdownToken;
         HostStageCameraPath = NormalizeStageCameraPath(options.StageCameraPath);
         StageReadyAsync = options.StageReadyAsync;
+        PrimPickedAsync = options.PrimPicked;
+        HostPickTarget = options.PickTarget;
+        ViewportPointerPressedAsync = options.ViewportPointerPressed;
+        ViewportPointerMovedAsync = options.ViewportPointerMoved;
+        ViewportPointerReleasedAsync = options.ViewportPointerReleased;
+        SelectionChangedAsync = options.SelectionChanged;
+        SelectionChangedPrimSubtree = options.SelectionChangedPrimSubtree;
     }
 
     private static string? NormalizeStageCameraPath(string? value)

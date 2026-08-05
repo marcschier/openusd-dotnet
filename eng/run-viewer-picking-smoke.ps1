@@ -63,13 +63,17 @@ finally
 }
 
 $artifact = Get-Content $evidencePath -Raw | ConvertFrom-Json -Depth 12
-if ([int]$artifact.schemaVersion -ne 2 -or
+if ([int]$artifact.schemaVersion -ne 3 -or
     [string]$artifact.scenario -cne 'viewer-picking-short-smoke' -or
     [string]::IsNullOrWhiteSpace([string]$artifact.commonHitPath) -or
     -not [bool]$artifact.stormClickHit -or
     -not [bool]$artifact.stormClickMiss -or
     [long]$artifact.staleRetries -ne 1 -or
     -not [bool]$artifact.selectionPreservedAcrossSwitches -or
+    -not [bool]$artifact.hostPickHitObserved -or
+    -not [bool]$artifact.hostPickMissObserved -or
+    -not [bool]$artifact.hostSelectionHitObserved -or
+    -not [bool]$artifact.hostSelectionClearObserved -or
     -not [bool]$artifact.stormHighlightChanged -or
     -not [bool]$artifact.stormHighlightCleared)
 {
@@ -155,6 +159,10 @@ $sourcePaths = @(
     'src/OpenUsd.Viewer/RendererSwitchingViewport.cs',
     'src/OpenUsd.Viewer/ViewerTimelineModels.cs',
     'src/OpenUsd.Viewer/ViewerSessionModels.cs',
+    'src/OpenUsd.Viewer/ViewerHostEventArgs.cs',
+    'src/OpenUsd.Viewer/ViewerHostInteraction.cs',
+    'src/OpenUsd.Viewer/ViewerHostOptions.cs',
+    'src/OpenUsd.Viewer/ViewerStageSession.cs',
     'src/OpenUsd.Viewer/ViewerStartupOptions.cs',
     'src/OpenUsd.Viewer/MainWindow.axaml.cs',
     'tests/OpenUsd.Viewer.Tests/ViewerPickingTests.cs',
@@ -184,7 +192,7 @@ $sources = @($sourcePaths | ForEach-Object {
     }
 })
 $summary = [ordered]@{
-    schemaVersion = 2
+    schemaVersion = 3
     scenario = 'viewer-picking-short-smoke'
     status = 'passed'
     completedAt = [DateTimeOffset]::UtcNow.ToString('O')
@@ -192,6 +200,12 @@ $summary = [ordered]@{
     stageSha256 = (Get-FileHash $stagePath -Algorithm SHA256).Hash
     commonHitPath = [string]$artifact.commonHitPath
     staleRetries = [long]$artifact.staleRetries
+    hostCallbacks = [ordered]@{
+        pickHit = [bool]$artifact.hostPickHitObserved
+        pickMiss = [bool]$artifact.hostPickMissObserved
+        selectionHit = [bool]$artifact.hostSelectionHitObserved
+        selectionClear = [bool]$artifact.hostSelectionClearObserved
+    }
     stormHashes = [ordered]@{
         unselected = [string]$artifact.stormUnselectedHash
         selected = [string]$artifact.stormSelectedHash

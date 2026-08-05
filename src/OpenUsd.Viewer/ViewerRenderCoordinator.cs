@@ -44,6 +44,8 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
 
     internal event Action<UsdStageChange>? StageChanged;
 
+    internal event Action<StageRenderState>? StateChanged;
+
     internal UsdStageScheduler Scheduler { get; }
 
     internal UsdStageRenderSource RenderSource { get; }
@@ -67,6 +69,9 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
 
     internal SilkSelectionOutlineDiagnostics? SelectionOutlineDiagnostics =>
         _backendRegistry.CaptureSelectionOutline();
+
+    internal IRenderPickingBackend? PickingBackend =>
+        _backendRegistry.CapturePickingBackend();
 
     internal ViewerSilkFrameDiagnosticsSnapshot? FrameDiagnostics =>
         _backendRegistry.CaptureFrameDiagnostics();
@@ -182,6 +187,7 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         try
         {
             Volatile.Write(ref _currentState, state);
+            StateChanged?.Invoke(state);
             RenderBackendManagerResult result = await _manager
                 .UpdateStateAsync(state, cancellationToken)
                 .ConfigureAwait(false);
@@ -210,6 +216,7 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
                 return false;
             }
             Volatile.Write(ref _currentState, state);
+            StateChanged?.Invoke(state);
             RenderBackendManagerResult result = await _manager
                 .UpdateStateAsync(state, cancellationToken)
                 .ConfigureAwait(false);
@@ -366,6 +373,7 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
             {
                 StageRenderState revised = CurrentState.AdvanceRevision();
                 Volatile.Write(ref _currentState, revised);
+                StateChanged?.Invoke(revised);
                 RenderBackendManagerResult result = await _manager
                     .UpdateStateAsync(revised, cancellationToken)
                     .ConfigureAwait(false);
