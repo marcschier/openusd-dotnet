@@ -1,8 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Runtime.InteropServices;
 using OpenUsd.Geom;
 using OpenUsd.Physics;
-using System.Runtime.InteropServices;
 
 namespace OpenUsd.NativeCoverage.Tests;
 
