@@ -316,7 +316,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(reflection).IsEqualTo(
             new SilkPickParametersReflection(0, 1, 0, 16, 16, true));
         await Assert.That(dxilVertex.Code.Length).IsEqualTo(4008);
-        await Assert.That(dxilFragment.Code.Length).IsEqualTo(3732);
+        await Assert.That(dxilFragment.Code.Length).IsEqualTo(3736);
         await Assert.That(spirvVertex.Code.Length).IsEqualTo(804);
         await Assert.That(spirvFragment.Code.Length).IsEqualTo(1152);
         await Assert.That(dxilVertex.EntryPoint)
@@ -336,9 +336,9 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(descriptor.DepthCompare)
             .IsEqualTo(SilkPickDepthCompare.LessEqual);
         await Assert.That(GetSha256(dxilVertex.Code.Span)).IsEqualTo(
-            "0796a8c15c4e8b46927a3d4dffec53246a341876fc5740249062ee444d232077");
+            "fb50c77aa9beec49bc2647976ab5811206f0546e107c23e5f0a030f18fab8eb2");
         await Assert.That(GetSha256(dxilFragment.Code.Span)).IsEqualTo(
-            "6f13c55f9a3a1f4cbf27118ad1cc5f59dfeccbee4f9721d30b965ec3ffdfbc7e");
+            "f7600ba4f9f179492e152d3e10d07e80fe7f04b3b50095754ea664a01713eeb8");
         await Assert.That(GetSha256(spirvVertex.Code.Span)).IsEqualTo(
             "54e401ddf27cb2cc3107814c90c2b587eeca5e7dac19f545c644953f86b4211e");
         await Assert.That(GetSha256(spirvFragment.Code.Span)).IsEqualTo(
@@ -410,9 +410,9 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(spirvOutlineVertex.Code.Length).IsEqualTo(960);
         await Assert.That(spirvOutlineFragment.Code.Length).IsEqualTo(3316);
         await Assert.That(GetSha256(dxilMaskVertex.Code.Span)).IsEqualTo(
-            "ac21f3441e4e80bbfea238591f17a43b14255e767cf07e26d2931ad536a6a84f");
+            "c3db626f74b21e8955ee0293e1f253a5b18e1957b58a4c93afdfdc4b3417fe0e");
         await Assert.That(GetSha256(dxilMaskFragment.Code.Span)).IsEqualTo(
-            "682348314c6ef981564dbf7ac7ccd50814009a6f12b51223ac13c3efcdc9b00d");
+            "f98b5854fb210c1a1bbf7285ce6605e2de7f4f85f0591e900000b2365e6eb1ff");
         await Assert.That(GetSha256(spirvOutlineVertex.Code.Span)).IsEqualTo(
             "8f5f6854662fa8d097ddcb6d339f0a89b217fb62115f02af30c4e90284fc51cf");
         await Assert.That(GetSha256(spirvOutlineFragment.Code.Span)).IsEqualTo(
@@ -456,8 +456,8 @@ public sealed class SilkGraphicsPipelineTests
 
         await Assert.That(reflection).IsEqualTo(
             new SilkComputeReflection(0, 0, 16, 0, 1, 8, 16, 64, 1, 1));
-        await Assert.That(dxilFill.Code.Length).IsEqualTo(3608);
-        await Assert.That(dxilScale.Code.Length).IsEqualTo(3776);
+        await Assert.That(dxilFill.Code.Length).IsEqualTo(3612);
+        await Assert.That(dxilScale.Code.Length).IsEqualTo(3780);
         await Assert.That(spirvFill.Code.Length).IsEqualTo(1260);
         await Assert.That(spirvScale.Code.Length).IsEqualTo(1244);
         await Assert.That(dxilFill.EntryPoint).IsEqualTo("fillMain");
