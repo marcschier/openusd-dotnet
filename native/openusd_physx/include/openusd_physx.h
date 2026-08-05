@@ -105,6 +105,12 @@ OPENUSD_PHYSX_API openusd_physx_status openusd_physx_scene_get_dynamic_transform
     size_t* count,
     openusd_physx_error_buffer* error);
 
+OPENUSD_PHYSX_API openusd_physx_status openusd_physx_stage_simulate_file(
+    const char* stage_path,
+    float time_step,
+    uint32_t step_count,
+    openusd_physx_error_buffer* error);
+
 #ifdef __cplusplus
 }
 #endif

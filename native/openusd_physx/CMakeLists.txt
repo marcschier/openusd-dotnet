@@ -9,7 +9,7 @@ target_include_directories(openusd_physx
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
-target_link_libraries(openusd_physx PRIVATE unofficial::omniverse-physx-sdk::sdk)
+target_link_libraries(openusd_physx PRIVATE unofficial::omniverse-physx-sdk::sdk usd_m)
 if(TARGET openusd_native_sanitizers)
     target_link_libraries(openusd_physx PRIVATE openusd_native_sanitizers)
 endif()

@@ -10,6 +10,9 @@ on:
       - 'eng/openusd.lock.json'
       - 'eng/fetch-native.ps1'
       - 'eng/build-native.ps1'
+      - 'eng/physx.lock.json'
+      - 'eng/fetch-physx-native.ps1'
+      - 'eng/build-physx-native.ps1'
       - 'eng/build-vulkan-sdk.ps1'
       - 'eng/check-linux-native-prerequisites.ps1'
       - 'eng/test-linux-native-prerequisites.ps1'
@@ -30,6 +33,9 @@ on:
       - 'eng/openusd.lock.json'
       - 'eng/fetch-native.ps1'
       - 'eng/build-native.ps1'
+      - 'eng/physx.lock.json'
+      - 'eng/fetch-physx-native.ps1'
+      - 'eng/build-physx-native.ps1'
       - 'eng/build-vulkan-sdk.ps1'
       - 'eng/check-linux-native-prerequisites.ps1'
       - 'eng/test-linux-native-prerequisites.ps1'
@@ -229,6 +235,22 @@ jobs:
           --test-dir native/build/shim/win-x64
           -C Release
           --output-on-failure
+      - name: Build and test optional PhysX shim
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:OPENUSD_ROOT = (Resolve-Path native/install/win-x64).Path
+          $env:VULKAN_SDK = (Resolve-Path native/install/vulkan-sdk-1.4.321.0).Path
+          ./eng/build-physx-native.ps1 -Rid win-x64
+          cmake --preset win-x64-physx
+          cmake --build --preset win-x64-physx --parallel
+          cmake --install native/build/shim/win-x64-physx --prefix native/install/shim/win-x64-physx
+          ctest --test-dir native/build/shim/win-x64-physx -C Release --output-on-failure
+          ./eng/run-native-managed-tests.ps1 `
+            -Project tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj `
+            -Rid win-x64 `
+            -Configuration Release `
+            -MinimumExpectedTests 31
       - name: Run Linux native CTest under Xvfb
         if: runner.os == 'Linux'
         run: |

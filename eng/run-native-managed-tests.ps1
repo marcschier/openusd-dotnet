@@ -23,6 +23,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $openUsdRoot = Join-Path $repoRoot "native/install/$Rid"
 $shimRoot = Join-Path $repoRoot "native/install/shim/$Rid"
+$physxShimRoot = Join-Path $repoRoot "native/install/shim/$Rid-physx"
 $stageRoot = Join-Path $repoRoot "artifacts/native-managed-tests/$Rid"
 
 function Assert-Directory
@@ -59,6 +60,8 @@ New-Item -ItemType Directory -Force -Path $binTarget, $libTarget, $pluginPath, $
 foreach ($layout in @(
     @{ Source = (Join-Path $shimRoot 'bin'); Target = $binTarget },
     @{ Source = (Join-Path $shimRoot 'lib'); Target = $libTarget },
+    @{ Source = (Join-Path $physxShimRoot 'bin'); Target = $binTarget },
+    @{ Source = (Join-Path $physxShimRoot 'lib'); Target = $libTarget },
     @{ Source = (Join-Path $openUsdRoot 'bin'); Target = $binTarget },
     @{ Source = (Join-Path $openUsdRoot 'lib'); Target = $libTarget }))
 {
