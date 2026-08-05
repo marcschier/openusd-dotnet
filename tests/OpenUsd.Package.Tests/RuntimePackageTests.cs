@@ -2536,6 +2536,604 @@ public sealed class RuntimePackageTests
         }
     }
 
+    [Test]
+    public async Task WindowsImagingPackageShadesBoundUsdPreviewSurfaceFromMergedPluginPath()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("Windows package material rendering is covered by the win-x64 package job.");
+            return;
+        }
+
+        string repositoryRoot = FindRepositoryRoot();
+        if (!TryGetExecutionInputs(
+            repositoryRoot,
+            out NativeExecutionInputs inputs,
+            out string reason))
+        {
+            HandleMissingExecutionPrerequisites(
+                nameof(WindowsImagingPackageShadesBoundUsdPreviewSurfaceFromMergedPluginPath),
+                reason);
+            return;
+        }
+        if (inputs.Platform.Rid != "win-x64")
+        {
+            Console.WriteLine("The UsdPreviewSurface package rendering repro is win-x64 only.");
+            return;
+        }
+
+        string workRoot = Path.Combine(repositoryRoot, "artifacts", "pm");
+        if (Directory.Exists(workRoot))
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+        Directory.CreateDirectory(workRoot);
+        try
+        {
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+            string[] managedPackageIds =
+            [
+                "OpenUsd.Interop",
+                "OpenUsd",
+                "OpenUsd.Rendering",
+                "OpenUsd.Rendering.Storm",
+                "OpenUsd.Rendering.Silk",
+                inputs.Platform.BackendPackageId,
+            ];
+
+            var managedPackages = new List<PackedPackage>();
+            foreach (string packageId in managedPackageIds)
+            {
+                managedPackages.Add(
+                    await PackManagedPackageAsync(repositoryRoot, packageId, packageRoot));
+            }
+
+            PackedPackage coreRuntimePackage = await PackAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Core.win-x64",
+                inputs.InstallRoot,
+                inputs.ShimRoot,
+                inputs.VulkanRuntimeLibrary,
+                packageRoot);
+            PackedPackage imagingRuntimePackage = await PackAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Imaging.win-x64",
+                inputs.InstallRoot,
+                inputs.ShimRoot,
+                inputs.VulkanRuntimeLibrary,
+                packageRoot);
+            string packageVersion = managedPackages[0].Version;
+            foreach (PackedPackage package in managedPackages)
+            {
+                await Assert.That(package.Version).IsEqualTo(packageVersion);
+            }
+            await Assert.That(coreRuntimePackage.Version).IsEqualTo(packageVersion);
+            await Assert.That(imagingRuntimePackage.Version).IsEqualTo(packageVersion);
+
+            ExecutionConsumer consumer = await PublishPreviewSurfaceMaterialConsumerAsync(
+                workRoot,
+                packageRoot,
+                packageVersion,
+                inputs.Platform);
+            AssertPackageOnlyGraph(
+                consumer.AssetsPath,
+                [
+                    "OpenUsd.Interop",
+                    "OpenUsd",
+                    "OpenUsd.Rendering",
+                    "OpenUsd.Rendering.Storm",
+                    "OpenUsd.Rendering.Silk",
+                    inputs.Platform.BackendPackageId,
+                    "OpenUsd.Runtime.Core.win-x64",
+                    "OpenUsd.Runtime.Imaging.win-x64",
+                ]);
+            string mergedPluginPath = Path.Combine(consumer.PublishRoot, "usd");
+            await Assert.That(File.Exists(Path.Combine(
+                mergedPluginPath,
+                "hdStorm",
+                "resources",
+                "plugInfo.json"))).IsTrue();
+            await Assert.That(File.Exists(Path.Combine(
+                mergedPluginPath,
+                "hdSilk",
+                "resources",
+                "plugInfo.json"))).IsTrue();
+            await Assert.That(File.Exists(Path.Combine(
+                mergedPluginPath,
+                "sdrGlslfx",
+                "resources",
+                "plugInfo.json"))).IsTrue();
+            await Assert.That(File.Exists(Path.Combine(
+                mergedPluginPath,
+                "usdShaders",
+                "resources",
+                "shaders",
+                "previewSurface.glslfx"))).IsTrue();
+            await Assert.That(File.Exists(Path.Combine(
+                consumer.PublishRoot,
+                "plugin",
+                "usd",
+                "usdShaders",
+                "resources",
+                "shaders",
+                "previewSurface.glslfx"))).IsTrue();
+
+            CommandResult result = await RunExecutableAsync(
+                GetExecutablePath(consumer.PublishRoot, "Consumer"),
+                consumer.PublishRoot,
+                [],
+                GetImagingRuntimeEnvironment(inputs.Platform, consumer.PublishRoot));
+            Console.WriteLine(result.Output.Trim());
+            if (result.ExitCode != 0)
+            {
+                throw new InvalidOperationException(result.Output);
+            }
+
+            await Assert.That(result.Output).Contains("PACKAGE_PREVIEW_SURFACE_MATERIAL_OK");
+            await Assert.That(result.Output).Contains("PLUGIN_MERGED_LAYOUT=true");
+            await Assert.That(result.Output).Contains("PREVIEW_SURFACE_GLSLFX=true");
+            await Assert.That(result.Output).Contains("STAGE_HAS_DISPLAY_COLOR=false");
+            await Assert.That(result.Output).Contains("STORM_MATERIAL_DIVERGED=true");
+            await Assert.That(result.Output).Contains("HDSILK_MATERIAL_DIVERGED=true");
+            await AssertNoSourcePathLeakageAsync(result.Output, repositoryRoot);
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    private static async Task<ExecutionConsumer> PublishPreviewSurfaceMaterialConsumerAsync(
+        string workRoot,
+        string packageRoot,
+        string packageVersion,
+        ExecutionPlatform platform)
+    {
+        string consumerRoot = Path.Combine(workRoot, "psc");
+        string publishRoot = Path.Combine(consumerRoot, "publish");
+        string projectPath = Path.Combine(consumerRoot, "Consumer.csproj");
+        Directory.CreateDirectory(consumerRoot);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "Directory.Build.props"),
+            "<Project />");
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "Directory.Packages.props"),
+            """
+            <Project>
+              <PropertyGroup>
+                <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+              </PropertyGroup>
+            </Project>
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "NuGet.config"),
+            $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="isolated-openusd-feed" value="{packageRoot}" />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+              <packageSourceMapping>
+                <packageSource key="isolated-openusd-feed">
+                  <package pattern="OpenUsd*" />
+                </packageSource>
+                <packageSource key="nuget.org">
+                  <package pattern="Microsoft.*" />
+                  <package pattern="runtime.*" />
+                  <package pattern="Silk.NET.*" />
+                  <package pattern="Stride.*" />
+                </packageSource>
+              </packageSourceMapping>
+            </configuration>
+            """);
+        await File.WriteAllTextAsync(
+            projectPath,
+            $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <RuntimeIdentifier>{platform.Rid}</RuntimeIdentifier>
+                <PublishAot>false</PublishAot>
+                <SelfContained>false</SelfContained>
+                <ImplicitUsings>disable</ImplicitUsings>
+                <InvariantGlobalization>true</InvariantGlobalization>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="OpenUsd.Rendering.Storm"
+                                  Version="{packageVersion}" />
+                <PackageReference Include="{platform.BackendPackageId}"
+                                  Version="{packageVersion}" />
+                <PackageReference Include="OpenUsd.Runtime.Imaging.{platform.Rid}"
+                                  Version="{packageVersion}" />
+              </ItemGroup>
+            </Project>
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "Program.cs"),
+            CreatePreviewSurfaceMaterialConsumerProgram());
+
+        string globalPackagesRoot = Path.Combine(workRoot, "g");
+        CommandResult result = await RunDotnetAsync(
+            consumerRoot,
+            [
+                "publish",
+                "Consumer.csproj",
+                "-c",
+                "Release",
+                "-r",
+                platform.Rid,
+                "--nologo",
+                "--configfile",
+                "NuGet.config",
+                "--self-contained",
+                "false",
+                "-o",
+                publishRoot,
+            ],
+            globalPackagesRoot);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Output);
+        }
+
+        return new ExecutionConsumer(
+            projectPath,
+            publishRoot,
+            Path.Combine(consumerRoot, "obj", "project.assets.json"));
+    }
+
+    private static string CreatePreviewSurfaceMaterialConsumerProgram() =>
+        """
+        using System;
+        using System.ComponentModel;
+        using System.IO;
+        using System.Runtime.InteropServices;
+        using System.Runtime.Versioning;
+        using OpenUsd;
+        using OpenUsd.Geom;
+        using OpenUsd.Interop;
+        using OpenUsd.Rendering;
+        using OpenUsd.Rendering.Silk;
+        using OpenUsd.Rendering.Storm;
+        using OpenUsd.Rendering.Silk.D3D12;
+        using OpenUsd.Shade;
+
+        namespace PackagePreviewSurfaceMaterialConsumer;
+
+        [SupportedOSPlatform("windows")]
+        internal static partial class Program
+        {
+            private const int Width = 320;
+            private const int Height = 180;
+            private const byte ClearR = 5;
+            private const byte ClearG = 7;
+            private const byte ClearB = 11;
+            private static readonly WndProc WindowProcedure = DefWindowProc;
+
+            public static int Main()
+            {
+                try
+                {
+                    if (!OperatingSystem.IsWindows())
+                    {
+                        return 8;
+                    }
+
+                    string pluginPath = Path.Combine(AppContext.BaseDirectory, "usd");
+                    string legacyPluginPath = Path.Combine(AppContext.BaseDirectory, "plugin", "usd");
+                    string previewSurfacePath = Path.Combine(
+                        pluginPath,
+                        "usdShaders",
+                        "resources",
+                        "shaders",
+                        "previewSurface.glslfx");
+                    bool mergedLayout =
+                        File.Exists(Path.Combine(pluginPath, "plugInfo.json")) &&
+                        File.Exists(Path.Combine(pluginPath, "usdShade", "resources", "plugInfo.json")) &&
+                        File.Exists(Path.Combine(pluginPath, "hdStorm", "resources", "plugInfo.json")) &&
+                        File.Exists(Path.Combine(pluginPath, "hdSilk", "resources", "plugInfo.json")) &&
+                        File.Exists(Path.Combine(pluginPath, "sdrGlslfx", "resources", "plugInfo.json")) &&
+                        File.Exists(previewSurfacePath) &&
+                        File.Exists(Path.Combine(
+                            legacyPluginPath,
+                            "usdShaders",
+                            "resources",
+                            "shaders",
+                            "previewSurface.glslfx"));
+                    if (!mergedLayout)
+                    {
+                        Console.WriteLine("PLUGIN_MERGED_LAYOUT=false");
+                        return 2;
+                    }
+
+                    nuint pluginCount = OpenUsdNativeRuntime.RegisterPlugins(pluginPath);
+                    string warmStagePath = Path.Combine(AppContext.BaseDirectory, "preview-surface-warm.usda");
+                    string coolStagePath = Path.Combine(AppContext.BaseDirectory, "preview-surface-cool.usda");
+                    WriteStage(
+                        warmStagePath,
+                        new UsdVec3f(0.95f, 0.04f, 0.02f),
+                        new UsdVec3f(0.02f, 0.80f, 0.10f));
+                    WriteStage(
+                        coolStagePath,
+                        new UsdVec3f(0.05f, 0.20f, 0.95f),
+                        new UsdVec3f(0.95f, 0.75f, 0.05f));
+                    string stageText = File.ReadAllText(warmStagePath) + File.ReadAllText(coolStagePath);
+                    bool hasDisplayColor = stageText.Contains("displayColor", StringComparison.Ordinal);
+                    if (hasDisplayColor)
+                    {
+                        return 3;
+                    }
+
+                    RenderedImage stormWarm = RenderStorm(pluginPath, warmStagePath);
+                    RenderedImage stormCool = RenderStorm(pluginPath, coolStagePath);
+                    RenderedImage hdSilkWarm = RenderHdSilk(pluginPath, warmStagePath);
+                    RenderedImage hdSilkCool = RenderHdSilk(pluginPath, coolStagePath);
+                    MaterialMetrics storm = MeasureMaterialDivergence(stormWarm, stormCool);
+                    MaterialMetrics hdSilk = MeasureMaterialDivergence(hdSilkWarm, hdSilkCool);
+                    bool stormDiverged = storm.MaxChannelDelta >= 32 && storm.MeanChannelDelta >= 2;
+                    bool hdSilkDiverged = hdSilk.MaxChannelDelta >= 32 && hdSilk.MeanChannelDelta >= 2;
+
+                    Console.WriteLine("PACKAGE_PREVIEW_SURFACE_MATERIAL_OK");
+                    Console.WriteLine($"REGISTERED_PLUGIN_COUNT={pluginCount}");
+                    Console.WriteLine($"PLUGIN_MERGED_LAYOUT={mergedLayout.ToString().ToLowerInvariant()}");
+                    Console.WriteLine(
+                        $"PREVIEW_SURFACE_GLSLFX={File.Exists(previewSurfacePath).ToString().ToLowerInvariant()}");
+                    Console.WriteLine($"STAGE_HAS_DISPLAY_COLOR={hasDisplayColor.ToString().ToLowerInvariant()}");
+                    Console.WriteLine($"STORM_MATERIAL_MAX_CHANNEL_DELTA={storm.MaxChannelDelta}");
+                    Console.WriteLine($"STORM_MATERIAL_MEAN_CHANNEL_DELTA={storm.MeanChannelDelta:F3}");
+                    Console.WriteLine($"STORM_MATERIAL_DIVERGED={stormDiverged.ToString().ToLowerInvariant()}");
+                    Console.WriteLine($"HDSILK_MATERIAL_MAX_CHANNEL_DELTA={hdSilk.MaxChannelDelta}");
+                    Console.WriteLine($"HDSILK_MATERIAL_MEAN_CHANNEL_DELTA={hdSilk.MeanChannelDelta:F3}");
+                    Console.WriteLine($"HDSILK_MATERIAL_DIVERGED={hdSilkDiverged.ToString().ToLowerInvariant()}");
+                    return stormDiverged && hdSilkDiverged ? 0 : 4;
+                }
+                catch (Exception exception)
+                {
+                    Console.Error.WriteLine(exception);
+                    return 1;
+                }
+            }
+
+            private static void WriteStage(string stagePath, UsdVec3f leftColor, UsdVec3f rightColor)
+            {
+                File.Delete(stagePath);
+                using UsdStage stage = UsdStage.Create(stagePath);
+                _ = stage.DefineXform("/World");
+                stage.SetDefaultPrim("/World");
+                _ = stage.DefinePrim("/World/Looks", "Scope");
+
+                UsdGeomCube left = stage.DefineCube("/World/Left");
+                left.Size = 1.2;
+                left.Xformable.SetLocalTransform(UsdMatrix4d.CreateTranslation(-0.75, 0, 0));
+                UsdGeomCube right = stage.DefineCube("/World/Right");
+                right.Size = 1.2;
+                right.Xformable.SetLocalTransform(UsdMatrix4d.CreateTranslation(0.75, 0, 0));
+
+                UsdPreviewSurface leftMaterial = UsdPreviewSurface.Create(
+                    stage,
+                    "/World/Looks/Left",
+                    "/World/Looks/Left/PreviewSurface");
+                leftMaterial.SetDiffuseColor(leftColor);
+                leftMaterial.SetRoughness(1);
+                leftMaterial.Material.Bind(left.Prim);
+
+                UsdPreviewSurface rightMaterial = UsdPreviewSurface.Create(
+                    stage,
+                    "/World/Looks/Right",
+                    "/World/Looks/Right/PreviewSurface");
+                rightMaterial.SetDiffuseColor(rightColor);
+                rightMaterial.SetRoughness(1);
+                rightMaterial.Material.Bind(right.Prim);
+                stage.Save();
+            }
+
+            private static RenderedImage RenderHdSilk(string pluginPath, string stagePath)
+            {
+                using ISilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+                using ISilkGraphicsTexture color = device.CreateTexture2D(
+                    new SilkTextureDescriptor(
+                        (uint)Width,
+                        (uint)Height,
+                        SilkTextureFormat.Rgba8Unorm,
+                        SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+                using ISilkGraphicsTexture depth = device.CreateTexture2D(
+                    SilkTextureDescriptor.DepthTarget((uint)Width, (uint)Height));
+                using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+                using OpenUsdSilkPage page = session.Sync(Width, Height, camera: CameraState.Default);
+                using var renderer = new SilkMeshRenderer(device);
+                _ = renderer.ApplyAndRender(
+                    page,
+                    color,
+                    depth,
+                    new SilkMeshRenderOptions(new SilkColor(ClearR / 255f, ClearG / 255f, ClearB / 255f, 1), 1));
+                byte[] pixels = new byte[Width * Height * 4];
+                color.ReadbackForTesting(pixels);
+                return new RenderedImage(pixels, Width, Height);
+            }
+
+            private static RenderedImage RenderStorm(string pluginPath, string stagePath)
+            {
+                nint parent = CreateHiddenParentWindow();
+                try
+                {
+                    UsdStageScheduler scheduler = UsdStageScheduler.Open(stagePath);
+                    try
+                    {
+                        using UsdStageRenderSource source = scheduler.AcquireRenderSourceAsync()
+                            .GetAwaiter()
+                            .GetResult();
+                        using OpenUsdStormChildSession session = OpenUsdStormChildRuntime.Create(
+                            parent,
+                            pluginPath,
+                            source,
+                            Width,
+                            Height,
+                            96);
+                        session.SetVisible(false);
+                        _ = session.Render(0, CameraState.Default);
+                        OpenUsdStormFramebufferCapture capture = session.CaptureFramebuffer(
+                            PackRgba(ClearR, ClearG, ClearB, 255),
+                            tolerance: 2,
+                            copyPixels: true);
+                        return new RenderedImage(capture.RgbaPixels.ToArray(), capture.Width, capture.Height);
+                    }
+                    finally
+                    {
+                        scheduler.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    }
+                }
+                finally
+                {
+                    if (parent != 0)
+                    {
+                        _ = DestroyWindow(parent);
+                    }
+                }
+            }
+
+            private static MaterialMetrics MeasureMaterialDivergence(RenderedImage first, RenderedImage second)
+            {
+                if (first.Width != second.Width || first.Height != second.Height)
+                {
+                    throw new InvalidOperationException("Material comparison images must have the same dimensions.");
+                }
+
+                int max = 0;
+                long sum = 0;
+                long count = 0;
+                for (int offset = 0; offset < first.Pixels.Length; offset += 4)
+                {
+                    bool firstBackground = IsClear(first.Pixels, offset);
+                    bool secondBackground = IsClear(second.Pixels, offset);
+                    if (firstBackground && secondBackground)
+                    {
+                        continue;
+                    }
+
+                    for (int channel = 0; channel < 3; channel++)
+                    {
+                        int delta = Math.Abs(first.Pixels[offset + channel] - second.Pixels[offset + channel]);
+                        max = Math.Max(max, delta);
+                        sum += delta;
+                        count++;
+                    }
+                }
+
+                return new MaterialMetrics(max, count == 0 ? 0 : (double)sum / count);
+            }
+
+            private static bool IsClear(byte[] pixels, int offset) =>
+                Math.Abs(pixels[offset] - ClearR) <= 2 &&
+                Math.Abs(pixels[offset + 1] - ClearG) <= 2 &&
+                Math.Abs(pixels[offset + 2] - ClearB) <= 2;
+
+            private static uint PackRgba(byte r, byte g, byte b, byte a) =>
+                (uint)(r | (g << 8) | (b << 16) | (a << 24));
+
+            private static nint CreateHiddenParentWindow()
+            {
+                nint module = GetModuleHandle(null);
+                string className = $"OpenUsdPackageMaterial{Environment.ProcessId}";
+                var windowClass = new WindowClass
+                {
+                    Size = (uint)Marshal.SizeOf<WindowClass>(),
+                    WindowProcedure = Marshal.GetFunctionPointerForDelegate(WindowProcedure),
+                    Instance = module,
+                    ClassName = className,
+                };
+                ushort atom = RegisterClassEx(ref windowClass);
+                if (atom == 0)
+                {
+                    int error = Marshal.GetLastPInvokeError();
+                    if (error != 1410)
+                    {
+                        throw new Win32Exception(error, "RegisterClassEx failed for the Storm package material test.");
+                    }
+                }
+
+                nint window = CreateWindowEx(
+                    0,
+                    className,
+                    "OpenUSD package material test",
+                    0,
+                    0,
+                    0,
+                    Width,
+                    Height,
+                    0,
+                    0,
+                    module,
+                    0);
+                if (window == 0)
+                {
+                    throw new Win32Exception(
+                        Marshal.GetLastPInvokeError(),
+                        "CreateWindowEx failed for the Storm package material test.");
+                }
+
+                return window;
+            }
+
+            private readonly record struct RenderedImage(byte[] Pixels, int Width, int Height);
+
+            private readonly record struct MaterialMetrics(int MaxChannelDelta, double MeanChannelDelta);
+
+            private delegate nint WndProc(nint hwnd, uint message, nuint wParam, nint lParam);
+
+            [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+            private struct WindowClass
+            {
+                public uint Size;
+                public uint Style;
+                public nint WindowProcedure;
+                public int ClassExtra;
+                public int WindowExtra;
+                public nint Instance;
+                public nint Icon;
+                public nint Cursor;
+                public nint Background;
+                public string? MenuName;
+                public string ClassName;
+                public nint SmallIcon;
+            }
+
+            [DllImport("kernel32", EntryPoint = "GetModuleHandleW", SetLastError = true, CharSet = CharSet.Unicode)]
+            private static extern nint GetModuleHandle(string? moduleName);
+
+            [DllImport("user32", EntryPoint = "RegisterClassExW", SetLastError = true, CharSet = CharSet.Unicode)]
+            private static extern ushort RegisterClassEx(ref WindowClass windowClass);
+
+            [DllImport("user32", EntryPoint = "CreateWindowExW", SetLastError = true, CharSet = CharSet.Unicode)]
+            private static extern nint CreateWindowEx(
+                uint extendedStyle,
+                string className,
+                string windowName,
+                uint style,
+                int x,
+                int y,
+                int width,
+                int height,
+                nint parent,
+                nint menu,
+                nint instance,
+                nint parameter);
+
+            [DllImport("user32", EntryPoint = "DefWindowProcW", CharSet = CharSet.Unicode)]
+            private static extern nint DefWindowProc(nint hwnd, uint message, nuint wParam, nint lParam);
+
+            [DllImport("user32", SetLastError = true)]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            private static extern bool DestroyWindow(nint window);
+        }
+        """;
+
+
     private static async Task<PackedPackage> PackAsync(
         string repositoryRoot,
         string packageId,
@@ -3269,6 +3867,7 @@ public sealed class RuntimePackageTests
                 <RuntimeIdentifier>{platform.Rid}</RuntimeIdentifier>
                 <PublishAot>true</PublishAot>
                 <InvariantGlobalization>true</InvariantGlobalization>
+                <Nullable>enable</Nullable>
                 <StripSymbols>true</StripSymbols>
                 <OptimizationPreference>Size</OptimizationPreference>
               </PropertyGroup>
@@ -3472,6 +4071,7 @@ public sealed class RuntimePackageTests
                 <SelfContained>true</SelfContained>
                 <ImplicitUsings>disable</ImplicitUsings>
                 <InvariantGlobalization>true</InvariantGlobalization>
+                <Nullable>enable</Nullable>
                 <StripSymbols>true</StripSymbols>
                 <OptimizationPreference>Size</OptimizationPreference>
               </PropertyGroup>
@@ -4131,6 +4731,7 @@ public sealed class RuntimePackageTests
                 <RuntimeIdentifier>{platform.Rid}</RuntimeIdentifier>
                 <PublishAot>{publishAot.ToString().ToLowerInvariant()}</PublishAot>
                 <InvariantGlobalization>true</InvariantGlobalization>
+                <Nullable>enable</Nullable>
                 <StripSymbols>true</StripSymbols>
                 <OptimizationPreference>Size</OptimizationPreference>
               </PropertyGroup>

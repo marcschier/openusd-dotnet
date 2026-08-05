@@ -5,8 +5,16 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == 'osx-arm64'">
+    <_OpenUsdImagingMergedPluginResource
+        Include="$(_OpenUsdImagingOsxArm64ResourceRoot)/plugin/usd/**/*"
+        Exclude="$(_OpenUsdImagingOsxArm64ResourceRoot)/plugin/usd/plugInfo.json;$(_OpenUsdImagingOsxArm64ResourceRoot)/plugin/usd/hdSilk/resources/plugInfo.json" />
     <Content Include="$(_OpenUsdImagingOsxArm64ResourceRoot)/**/*">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="@(_OpenUsdImagingMergedPluginResource)">
+      <Link>usd/%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

@@ -5,8 +5,16 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == 'win-x64'">
+    <_OpenUsdImagingMergedPluginResource
+        Include="$(_OpenUsdImagingWinX64ResourceRoot)/plugin/usd/**/*"
+        Exclude="$(_OpenUsdImagingWinX64ResourceRoot)/plugin/usd/plugInfo.json;$(_OpenUsdImagingWinX64ResourceRoot)/plugin/usd/hdSilk/resources/plugInfo.json" />
     <Content Include="$(_OpenUsdImagingWinX64ResourceRoot)/**/*">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="@(_OpenUsdImagingMergedPluginResource)">
+      <Link>usd/%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

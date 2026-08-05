@@ -62,8 +62,10 @@ Use the RID that matches the host and available native install.
 ### NuGet package consumer
 
 Runtime packages place native files under `runtimes/<rid>/native`. NuGet copies selected native assets
-to publish output. `buildTransitive` targets separately preserve the `usd/**` and `plugin/usd/**`
-resource trees.
+to publish output. `buildTransitive` targets preserve `plugin/usd/**` for diagnostics and also merge those imaging
+plugins into the deployed `usd/**` tree. A package consumer should register the deployed `usd` root;
+it contains both the core USD plugins and renderer shader plugins such as `usdShaders` and
+`sdrGlslfx`.
 
 Check for:
 
@@ -100,8 +102,9 @@ See [Versioning and compatibility](versioning-compatibility.md) for the coordina
 
 Native libraries can load successfully while USD or Hydra plugin discovery still fails.
 
-Core requires the data plugin tree rooted at `usd/**`. Imaging requires renderer resources under
-`plugin/usd/**`, including the root `plugInfo.json`, Storm metadata, and hdSilk metadata.
+Core requires the data plugin tree rooted at `usd/**`. Imaging package targets copy renderer
+resources under `plugin/usd/**` and merge those plugin directories into `usd/**`, including Storm,
+hdSilk, `sdrGlslfx`, and `usdShaders`.
 
 For the repository Viewer runner, verify at least:
 
@@ -112,7 +115,8 @@ plugin/usd/hdSilk/resources/plugInfo.json
 ```
 
 The runner sets `OPENUSD_PLUGIN_PATH` to the staged `plugin/usd` root. A package consumer normally gets
-resource trees from the runtime package targets; preserve their relative directory names.
+resource trees from the runtime package targets and should register the published `usd` root; preserve
+plugin directory names when copying either tree.
 
 If a plugin cannot load:
 
