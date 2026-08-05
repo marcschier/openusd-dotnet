@@ -76,6 +76,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private ViewerValidationSnapshot _validation = ViewerValidationSnapshot.Empty;
     private ViewerHydraSceneSnapshot _hydraScene = ViewerHydraSceneSnapshot.Empty;
     private ViewerPrimInspectorSnapshot? _currentInspector;
+    private ViewerStageCameraMenuEntry[] _stageCameras = [];
+    private string? _primaryCameraPath;
     private ViewerDiagnosticsSnapshot _latestDiagnostics = ViewerDiagnosticsSnapshot.Empty;
     private ViewerSettings _settings = ViewerSettings.Default;
     private readonly ViewerSelectionState _selectionState = new();
@@ -1680,6 +1682,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 StringComparison.Ordinal);
         UseSelectedCameraButton.IsEnabled = selectedCamera;
         UseSelectedCameraMenuItem.IsEnabled = selectedCamera;
+        StageCamerasMenu.IsEnabled = enabled && _stageCameras.Length != 0;
         string selectedCameraTip = selectedCamera
             ? $"Use authored camera '{_selectionState.PrimPath}'."
             : GetUseSelectedCameraUnavailableMessage();
@@ -3030,6 +3033,8 @@ public sealed partial class MainWindow : Window, IDisposable
                 _layers = document.Layers;
                 _statistics = document.Statistics;
                 _currentInspector = document.SelectedPrim;
+                _stageCameras = document.StageCameras ?? [];
+                _primaryCameraPath = document.PrimaryCameraPath;
                 _rootLayerEditsExplicitlyEnabled = false;
                 _stagePath = normalizedPath;
                 coordinator.StatusChanged += OnRendererStatusChanged;
@@ -3042,6 +3047,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 ReloadStageButton.IsEnabled = true;
                 ReloadStageMenuItem.IsEnabled = true;
                 RenderHierarchy();
+                RenderStageCameraMenu();
                 RenderLayers();
                 RenderValidation();
                 SetActiveBackendStatus();
@@ -3070,7 +3076,10 @@ public sealed partial class MainWindow : Window, IDisposable
                         _documentLifetime.Token);
                 }
                 SetReady($"Opened {normalizedPath}");
-                await NotifyStageReadyAsync(_coordinator, normalizedPath, _documentLifetime.Token);
+                await ApplyStartupCameraAndNotifyStageReadyAsync(
+                    _coordinator,
+                    normalizedPath,
+                    _documentLifetime.Token);
             }
             finally
             {
@@ -3107,18 +3116,18 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// Applies the embedding host's startup stage camera and invokes its stage-ready
-    /// callback, if either was supplied. A failing callback is reported as a viewer error
-    /// and never tears the shell down.
+    /// Applies the startup stage camera and invokes the host's stage-ready callback.
+    /// CLI camera paths win over host options, which win over primaryCameraPrim. A
+    /// camera failure is reported and leaves the automatic camera in place.
     /// </summary>
-    private async Task NotifyStageReadyAsync(
+    private async Task ApplyStartupCameraAndNotifyStageReadyAsync(
         ViewerRenderCoordinator coordinator,
         string stagePath,
         CancellationToken cancellationToken)
     {
         Func<ViewerStageSession, CancellationToken, Task>? callback =
             ViewerStartupOptions.StageReadyAsync;
-        string? cameraPath = ViewerStartupOptions.HostStageCameraPath;
+        string? cameraPath = GetStartupStageCameraPath();
         if (callback is null && string.IsNullOrEmpty(cameraPath))
         {
             return;
@@ -3127,7 +3136,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             if (!string.IsNullOrEmpty(cameraPath))
             {
-                await ApplyHostStageCameraAsync(coordinator, cameraPath!, cancellationToken);
+                await ApplyStartupStageCameraAsync(coordinator, cameraPath!, cancellationToken);
             }
             if (callback is not null)
             {
@@ -3148,12 +3157,16 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
+    private string? GetStartupStageCameraPath() =>
+        ViewerStartupOptions.CommandLineStageCameraPath ??
+        ViewerStartupOptions.HostStageCameraPath ??
+        _primaryCameraPath;
+
     /// <summary>
-    /// Applies a stage camera the embedding host asked to start on, so a host can open
-    /// the viewport on, say, an overhead view instead of the automatic framing. A camera
-    /// that cannot be used is reported and leaves the automatic camera in place.
+    /// Applies a stage camera requested at startup. A camera that cannot be used is
+    /// reported and leaves the automatic camera in place.
     /// </summary>
-    private async Task ApplyHostStageCameraAsync(
+    private async Task ApplyStartupStageCameraAsync(
         ViewerRenderCoordinator coordinator,
         string primPath,
         CancellationToken cancellationToken)
@@ -3175,8 +3188,8 @@ public sealed partial class MainWindow : Window, IDisposable
         if (result.Outcome != ViewerStageCameraQueryOutcome.Ready)
         {
             ShowCameraMessage(
-                $"{result.Error ?? $"Stage camera '{primPath}' is unavailable."} " +
-                "The camera stays Automatic.");
+                $"Warning: {result.Error ?? $"Stage camera '{primPath}' is unavailable."} " +
+                "Falling back to Automatic.");
             return;
         }
         if (!_cameraNavigation.TryActivateStageCamera(
@@ -3191,6 +3204,47 @@ public sealed partial class MainWindow : Window, IDisposable
             cancellationToken);
         UpdateCameraStatus();
         ShowCameraMessage($"Using stage camera '{result.Snapshot.PrimPath}'.");
+    }
+
+    private async Task UseStageCameraFromMenuAsync(string primPath)
+    {
+        if (!CanNavigateCamera() || string.IsNullOrWhiteSpace(primPath))
+        {
+            return;
+        }
+        CancellationToken cancellationToken =
+            _documentLifetime?.Token ?? _viewerLifetime.Token;
+        try
+        {
+            await _documentGate.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        try
+        {
+            if (_coordinator is { } coordinator)
+            {
+                await ApplyStartupStageCameraAsync(
+                    coordinator,
+                    primPath,
+                    cancellationToken);
+            }
+        }
+        finally
+        {
+            _documentGate.Release();
+        }
+    }
+
+    private void OnStageCameraMenuItemClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: string primPath })
+        {
+            _ = UseStageCameraFromMenuAsync(primPath);
+        }
+        e.Handled = true;
     }
 
     private async Task ReloadStageAsync(CancellationToken cancellationToken)
@@ -3345,6 +3399,34 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             await OpenStageAndReportAsync(path);
         }
+    }
+
+
+    private void RenderStageCameraMenu()
+    {
+        MenuItem[] items = _stageCameras
+            .Select(entry =>
+            {
+                string header = string.Equals(
+                    entry.Path,
+                    _primaryCameraPath,
+                    StringComparison.Ordinal)
+                        ? $"{entry.Name} (primary)"
+                        : entry.Name;
+                var item = new MenuItem
+                {
+                    Header = header,
+                    Tag = entry.Path
+                };
+                ToolTip.SetTip(item, entry.Path);
+                item.Click += OnStageCameraMenuItemClick;
+                return item;
+            })
+            .ToArray();
+        StageCamerasMenu.ItemsSource = items;
+        StageCamerasMenu.IsEnabled = items.Length != 0 && CanNavigateCamera();
+        StageCamerasMenu.IsVisible = items.Length != 0;
+        StageCameraMenuSeparator.IsVisible = items.Length != 0;
     }
 
     private void OnHierarchyFilterChanged(object? sender, TextChangedEventArgs e) =>
@@ -5276,6 +5358,8 @@ public sealed partial class MainWindow : Window, IDisposable
         _validation = ViewerValidationSnapshot.Empty;
         _hydraScene = ViewerHydraSceneSnapshot.Empty;
         _currentInspector = null;
+        _stageCameras = [];
+        _primaryCameraPath = null;
         _rootLayerEditsExplicitlyEnabled = false;
         ShowStageSummary();
         OpenStageButton.IsEnabled = !_documentBusy;
@@ -5285,6 +5369,7 @@ public sealed partial class MainWindow : Window, IDisposable
         CaptureFrameButton.IsEnabled = false;
         CaptureFrameMenuItem.IsEnabled = false;
         UpdateCameraAvailability();
+        RenderStageCameraMenu();
         StageHierarchy.ItemsSource = null;
         StageHierarchy.IsVisible = false;
         HierarchyState.Text = "Open or drop a USD stage to inspect its prims.";

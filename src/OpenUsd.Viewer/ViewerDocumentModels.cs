@@ -751,7 +751,9 @@ internal sealed record ViewerDocumentSnapshot(
     ViewerStageTimingSnapshot Timing,
     ViewerLayerStackSnapshot Layers,
     ViewerStageStatisticsSnapshot Statistics,
-    ViewerPrimInspectorSnapshot? SelectedPrim) : IUsdDetachedResult;
+    ViewerPrimInspectorSnapshot? SelectedPrim,
+    ViewerStageCameraMenuEntry[] StageCameras = null!,
+    string? PrimaryCameraPath = null) : IUsdDetachedResult;
 
 internal static class ViewerStageSnapshotBuilder
 {
@@ -785,7 +787,9 @@ internal static class ViewerStageSnapshotBuilder
                 stage.TimeCodesPerSecond),
             BuildLayerStack(stage, previousLayers),
             BuildStatistics(stage, hierarchy),
-            selectedPrim);
+            selectedPrim,
+            ViewerStageCameraDiscovery.ListCameras(stage),
+            ViewerStageCameraDiscovery.GetPrimaryCameraPath(stage));
     }
 
     internal static ViewerHierarchySnapshot BuildHierarchy(UsdStage stage)

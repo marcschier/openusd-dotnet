@@ -39,6 +39,7 @@ ViewerEntryPoint.Run(new ViewerHostOptions
     PluginPath = pluginPath,
     Renderer = "Auto",
     Title = "Live twin",
+    StageCameraPath = "/World/HeroCamera",
     ShutdownToken = shutdownToken,
     StageReadyAsync = (session, cancellationToken) =>
     {
@@ -57,6 +58,7 @@ the scheduler flow into its ordered change feed, which the viewer already pumps,
 redraw without any further call. Blocking the callback stalls the UI thread, so start background work
 and return promptly; a failing callback is reported as a viewer error and never tears the shell down.
 
+`StageCameraPath` starts the viewport on an authored `UsdGeomCamera` prim when it resolves.
 `ShutdownToken` closes the window when cancelled, so a host that renders for a bounded time does not
 leave a window behind.
 
@@ -111,11 +113,20 @@ Projection matrices retain the row-vector layout but use the pinned
 `M43 = -(far + near) / (far - near)`. In both cases view-space `z = -near` maps
 to NDC `-1` and `z = -far` maps to NDC `+1`.
 
-**Use Selected Camera** applies only to the currently selected prim when its inspector confirms
-that it is a `UsdGeomCamera`; the Viewer does not discover or choose arbitrary stage cameras. The
-action is disabled with an explanatory tooltip for no selection and non-camera selections. One
-stage-scheduler callback detaches the selected path, time code, composed local-to-world transform,
-double-precision inverse world-to-view transform, and one bulk `UsdGeomCameraState` from
+A startup camera can be requested from the desktop app with `--camera /World/HeroCamera`, or by
+setting `ViewerHostOptions.StageCameraPath` from an embedding host. If neither explicit source is
+present, the Viewer honors the root layer's authored `primaryCameraPrim` metadata when it names an
+absolute camera prim path. Startup precedence is: CLI `--camera`, then host `StageCameraPath`, then
+`primaryCameraPrim`, then the automatic backend camera. If the requested path is missing or is not a
+`UsdGeomCamera`, the Viewer warns and falls back to Automatic.
+
+The **Camera** menu includes a **Stage Cameras** submenu populated from the stage's `UsdGeomCamera`
+prims, so authored shots can be selected without finding them in the hierarchy. **Use Selected
+Camera** still applies to the currently selected prim when its inspector confirms that it is a
+`UsdGeomCamera`; the action is disabled with an explanatory tooltip for no selection and non-camera
+selections. One stage-scheduler callback detaches the selected or menu-requested path, time code,
+composed local-to-world transform, double-precision inverse world-to-view transform, and one bulk
+`UsdGeomCameraState` from
 `UsdGeomCamera::GetCamera(time)` plus `GfCamera::GetFrustum()`. The state includes projection, the
 exact left/right/bottom/top reference-plane window with aperture offsets, clipping, focal length,
 apertures and offsets, focus distance, and f-stop. No stage-bound schema or prim escapes that

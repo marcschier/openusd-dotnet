@@ -14,6 +14,27 @@ public sealed class ViewerStageCameraTests
     private const int AllocationIterations = 1000;
     private static Matrix4x4 _projectionSink;
 
+
+    [Test]
+    [Arguments("</World/HeroCamera>")]
+    [Arguments("/World/HeroCamera")]
+    [Arguments("\"/World/HeroCamera\"")]
+    public async Task PrimaryCameraMetadataNormalizesUsdPathSyntax(string authored)
+    {
+        await Assert.That(ViewerStageCameraDiscovery.NormalizePrimaryCameraPath(authored))
+            .IsEqualTo("/World/HeroCamera");
+    }
+
+    [Test]
+    [Arguments("HeroCamera")]
+    [Arguments("<World/HeroCamera>")]
+    [Arguments("/World\\HeroCamera")]
+    public async Task PrimaryCameraMetadataRejectsRelativeOrInvalidPaths(string authored)
+    {
+        await Assert.That(ViewerStageCameraDiscovery.NormalizePrimaryCameraPath(authored))
+            .IsNull();
+    }
+
     [Test]
     public async Task DetachedSnapshotUsesComposedWorldTransformAndDoubleInverse()
     {
@@ -789,7 +810,8 @@ public sealed class ViewerStageCameraTests
         await Assert.That(models).DoesNotContain("camera.VerticalAperture");
         await Assert.That(models).Contains("localToWorld.TryInvert(");
         await Assert.That(models).Contains("ViewerStageCameraProjectionMath");
-        await Assert.That(models).DoesNotContain("stage.Traverse(");
+        await Assert.That(models).Contains("ViewerStageCameraDiscovery");
+        await Assert.That(models).Contains("stage.Traverse()");
         await Assert.That(documentModels).Contains(
             "bool isCamera = UsdGeomCamera.TryWrap(prim, out _);");
         await Assert.That(automatedEvidence).DoesNotContain(

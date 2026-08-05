@@ -122,6 +122,97 @@ internal static class ViewerStageCameraSnapshotFactory
     }
 }
 
+
+internal readonly record struct ViewerStageCameraMenuEntry(string Path, string Name);
+
+internal static class ViewerStageCameraDiscovery
+{
+    private const string PrimaryCameraPrimMetadata = "primaryCameraPrim";
+
+    internal static ViewerStageCameraMenuEntry[] ListCameras(UsdStage stage)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        return stage.Traverse()
+            .Where(static prim => UsdGeomCamera.TryWrap(prim, out _))
+            .Select(static prim => new ViewerStageCameraMenuEntry(
+                prim.Path,
+                GetPrimName(prim.Path)))
+            .ToArray();
+    }
+
+    internal static string? GetPrimaryCameraPath(UsdStage stage)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        string? authored = TryGetPrimaryCameraFromRootLayer(stage.RootLayerIdentifier);
+        return NormalizePrimaryCameraPath(authored);
+    }
+
+    internal static string? NormalizePrimaryCameraPath(string? authored)
+    {
+        if (string.IsNullOrWhiteSpace(authored))
+        {
+            return null;
+        }
+        string value = authored.Trim();
+        if (value.Length >= 2 && value[0] == '<' && value[^1] == '>')
+        {
+            value = value[1..^1].Trim();
+        }
+        if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+        {
+            value = value[1..^1].Trim();
+        }
+        return value.Length > 0 &&
+            value[0] == '/' &&
+            !value.Contains('\\')
+                ? value
+                : null;
+    }
+
+    private static string? TryGetPrimaryCameraFromRootLayer(string rootLayerIdentifier)
+    {
+        if (string.IsNullOrWhiteSpace(rootLayerIdentifier) ||
+            !File.Exists(rootLayerIdentifier))
+        {
+            return null;
+        }
+        try
+        {
+            foreach (string line in File.ReadLines(rootLayerIdentifier))
+            {
+                string trimmed = line.Trim();
+                if (!trimmed.StartsWith(
+                        PrimaryCameraPrimMetadata,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                int equals = trimmed.IndexOf('=', StringComparison.Ordinal);
+                if (equals < 0)
+                {
+                    continue;
+                }
+                return trimmed[(equals + 1)..].Trim();
+            }
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+        return null;
+    }
+
+    private static string GetPrimName(string path)
+    {
+        int slash = path.LastIndexOf('/');
+        return slash >= 0 && slash + 1 < path.Length ? path[(slash + 1)..] : path;
+    }
+}
+
 internal enum ViewerStageCameraQueryOutcome
 {
     Ready,
