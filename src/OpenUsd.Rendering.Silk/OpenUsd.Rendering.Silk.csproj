@@ -7,6 +7,28 @@
 
   <ItemGroup>
     <PackageReference Include="Silk.NET.Core" />
+    <PackageReference Include="SPIRV-Cross.NET" GeneratePathProperty="true" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Direct3D.DXC" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <Content Include="$(NuGetPackageRoot)spirv-cross.net\1.0.2\content\spirv-cross.dll"
+             Link="spirv-cross.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             Pack="true"
+             PackagePath="runtimes/win-x64/native/spirv-cross.dll" />
+    <Content Include="$(NuGetPackageRoot)microsoft.direct3d.dxc\1.8.2505.32\build\native\bin\x64\dxc.exe"
+             Link="dxc.exe"
+             CopyToOutputDirectory="PreserveNewest"
+             Pack="false" />
+    <Content Include="$(NuGetPackageRoot)microsoft.direct3d.dxc\1.8.2505.32\build\native\bin\x64\dxcompiler.dll"
+             Link="dxcompiler.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             Pack="false" />
+    <Content Include="$(NuGetPackageRoot)microsoft.direct3d.dxc\1.8.2505.32\build\native\bin\x64\dxil.dll"
+             Link="dxil.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             Pack="false" />
   </ItemGroup>
 
   <ItemGroup>

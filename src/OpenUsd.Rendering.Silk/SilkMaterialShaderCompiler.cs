@@ -1,6 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -281,10 +283,11 @@ public sealed class SilkProjectedMaterialShaderGenerator : ISilkMaterialShaderGe
     public void RegisterGenerated(SilkMaterialShaderKey key, ReadOnlyMemory<byte> fragmentCode)
     {
         ArgumentNullException.ThrowIfNull(key);
-        if (key.Format is not (SilkShaderBinaryFormat.SpirV or SilkShaderBinaryFormat.MetalLibrary))
+        if (key.Format is not (SilkShaderBinaryFormat.SpirV or
+            SilkShaderBinaryFormat.MetalLibrary or SilkShaderBinaryFormat.Dxil))
         {
             throw new ArgumentException(
-                "Generated MaterialX shaders are currently supported only on Vulkan/SPIR-V and Metal/MSL.",
+                "Generated MaterialX shaders are supported on Vulkan/SPIR-V, Metal/MSL, and D3D12/DXIL.",
                 nameof(key));
         }
         if (fragmentCode.IsEmpty)
@@ -313,13 +316,16 @@ public sealed class SilkProjectedMaterialShaderGenerator : ISilkMaterialShaderGe
         {
             if (_generatedFragments.TryGetValue(key.CacheHash, out generatedFragment))
             {
-                var generatedProgram = new SilkMaterialShaderProgram(
-                    SilkCheckedShaderAssets.LoadMeshVertex(key.Format),
-                    new SilkShaderModuleDescriptor(
+                SilkShaderModuleDescriptor fragment = key.Format == SilkShaderBinaryFormat.Dxil
+                    ? SilkD3D12GeneratedMaterialCompiler.CompileSpirvToDxil(generatedFragment)
+                    : new SilkShaderModuleDescriptor(
                         SilkShaderStage.Fragment,
                         key.Format,
                         "main",
-                        generatedFragment),
+                        generatedFragment);
+                var generatedProgram = new SilkMaterialShaderProgram(
+                    SilkCheckedShaderAssets.LoadMeshVertex(key.Format),
+                    fragment,
                     SilkBindingLayoutDescriptor.SceneParameters,
                     key.CacheHash);
                 generatedProgram.Validate();
@@ -340,6 +346,262 @@ public sealed class SilkProjectedMaterialShaderGenerator : ISilkMaterialShaderGe
             key.CacheHash);
         program.Validate();
         return ValueTask.FromResult(program);
+    }
+}
+
+internal static partial class SilkD3D12GeneratedMaterialCompiler
+{
+    private const string HlslEntryPoint = "main";
+
+    public static SilkShaderModuleDescriptor CompileSpirvToDxil(byte[] spirv)
+    {
+        ArgumentNullException.ThrowIfNull(spirv);
+        if (spirv.Length == 0)
+        {
+            throw new ArgumentException("Generated MaterialX SPIR-V cannot be empty.", nameof(spirv));
+        }
+
+        string hlsl = CrossCompileToHlsl(spirv);
+        byte[] dxil = CompileHlslToDxil(hlsl);
+        return new SilkShaderModuleDescriptor(
+            SilkShaderStage.Fragment,
+            SilkShaderBinaryFormat.Dxil,
+            HlslEntryPoint,
+            dxil);
+    }
+
+    private static unsafe string CrossCompileToHlsl(byte[] spirv)
+    {
+        if (spirv.Length % sizeof(uint) != 0)
+        {
+            throw new InvalidDataException("Generated MaterialX SPIR-V bytecode is not word-aligned.");
+        }
+
+        nint context = 0;
+        try
+        {
+            ThrowIfFailed(SpirvCross.spvc_context_create(out context), context);
+            fixed (byte* spirvBytes = spirv)
+            {
+                ThrowIfFailed(
+                    SpirvCross.spvc_context_parse_spirv(
+                        context,
+                        (uint*)spirvBytes,
+                        (nuint)(spirv.Length / sizeof(uint)),
+                        out nint parsedIr),
+                    context);
+                ThrowIfFailed(
+                    SpirvCross.spvc_context_create_compiler(
+                        context,
+                        SpirvCross.HlslBackend,
+                        parsedIr,
+                        SpirvCross.TakeOwnership,
+                        out nint compiler),
+                    context);
+                ThrowIfFailed(
+                    SpirvCross.spvc_compiler_create_compiler_options(
+                        compiler,
+                        out nint options),
+                    context);
+                ThrowIfFailed(
+                    SpirvCross.spvc_compiler_options_set_uint(
+                        options,
+                        SpirvCross.HlslShaderModelOption,
+                        60),
+                    context);
+                ThrowIfFailed(
+                    SpirvCross.spvc_compiler_options_set_bool(
+                        options,
+                        SpirvCross.HlslUseEntryPointNameOption,
+                        1),
+                    context);
+                ThrowIfFailed(
+                    SpirvCross.spvc_compiler_install_compiler_options(compiler, options),
+                    context);
+                ThrowIfFailed(
+                    SpirvCross.spvc_compiler_compile(compiler, out nint source),
+                    context);
+                return Marshal.PtrToStringUTF8(source) ??
+                    throw new InvalidDataException("SPIRV-Cross returned a null HLSL source string.");
+            }
+        }
+        finally
+        {
+            if (context != 0)
+            {
+                SpirvCross.spvc_context_destroy(context);
+            }
+        }
+    }
+
+    private static void ThrowIfFailed(int result, nint context)
+    {
+        if (result == 0)
+        {
+            return;
+        }
+
+        string? error = context == 0
+            ? null
+            : Marshal.PtrToStringUTF8(SpirvCross.spvc_context_get_last_error_string(context));
+        throw new InvalidDataException(
+            string.IsNullOrWhiteSpace(error)
+                ? $"SPIRV-Cross failed with error code {result}."
+                : "SPIRV-Cross failed: " + error);
+    }
+
+    private static byte[] CompileHlslToDxil(string hlsl)
+    {
+        string dxc = LocateDxc();
+        string workRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenUsd",
+            "SilkMaterialShaders",
+            "dxc");
+        Directory.CreateDirectory(workRoot);
+        string unique = Guid.NewGuid().ToString("N");
+        string hlslPath = Path.Combine(workRoot, unique + ".hlsl");
+        string dxilPath = Path.Combine(workRoot, unique + ".dxil");
+        string errorPath = Path.Combine(workRoot, unique + ".err");
+        try
+        {
+            File.WriteAllText(hlslPath, hlsl, new UTF8Encoding(false));
+            var start = new ProcessStartInfo
+            {
+                FileName = dxc,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            };
+            start.ArgumentList.Add("-T");
+            start.ArgumentList.Add("ps_6_0");
+            start.ArgumentList.Add("-E");
+            start.ArgumentList.Add(HlslEntryPoint);
+            start.ArgumentList.Add("-Fo");
+            start.ArgumentList.Add(dxilPath);
+            start.ArgumentList.Add("-Ges");
+            start.ArgumentList.Add(hlslPath);
+            using Process process = Process.Start(start) ??
+                throw new InvalidOperationException("Failed to start dxc.exe.");
+            string stdout = process.StandardOutput.ReadToEnd();
+            string stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            if (process.ExitCode != 0 || !File.Exists(dxilPath))
+            {
+                File.WriteAllText(errorPath, stdout + stderr, new UTF8Encoding(false));
+                throw new InvalidDataException(
+                    "DXC failed to compile generated MaterialX HLSL. See " + errorPath + ".");
+            }
+            return File.ReadAllBytes(dxilPath);
+        }
+        finally
+        {
+            TryDelete(hlslPath);
+            TryDelete(dxilPath);
+        }
+    }
+
+    private static string LocateDxc()
+    {
+        string? configured = Environment.GetEnvironmentVariable("OPENUSD_DXC_PATH");
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
+        {
+            return configured;
+        }
+
+        string local = Path.Combine(AppContext.BaseDirectory, "dxc.exe");
+        if (File.Exists(local))
+        {
+            return local;
+        }
+
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        foreach (string directory in (path ?? string.Empty).Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                continue;
+            }
+            string candidate = Path.Combine(directory, "dxc.exe");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new FileNotFoundException(
+            "dxc.exe is required to compile generated MaterialX HLSL for D3D12.");
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static unsafe partial class SpirvCross
+    {
+        public const int HlslBackend = 2;
+        public const int TakeOwnership = 1;
+        public const int HlslShaderModelOption = 13 | 0x4000000;
+        public const int HlslUseEntryPointNameOption = 90 | 0x4000000;
+
+        [LibraryImport("spirv-cross")]
+        public static partial int spvc_context_create(out nint context);
+
+        [LibraryImport("spirv-cross")]
+        public static partial void spvc_context_destroy(nint context);
+
+        [LibraryImport("spirv-cross")]
+        public static partial nint spvc_context_get_last_error_string(nint context);
+
+        [LibraryImport("spirv-cross")]
+        public static partial int spvc_context_parse_spirv(
+            nint context,
+            uint* spirv,
+            nuint wordCount,
+            out nint parsedIr);
+
+        [LibraryImport("spirv-cross")]
+        public static partial int spvc_context_create_compiler(
+            nint context,
+            int backend,
+            nint parsedIr,
+            int mode,
+            out nint compiler);
+
+        [LibraryImport("spirv-cross")]
+        public static partial int spvc_compiler_create_compiler_options(
+            nint compiler,
+            out nint options);
+
+        [LibraryImport("spirv-cross")]
+        public static partial int spvc_compiler_options_set_uint(
+            nint options,
+            int option,
+            uint value);
+
+        [LibraryImport("spirv-cross")]
+        public static partial int spvc_compiler_options_set_bool(
+            nint options,
+            int option,
+            uint value);
+
+        [LibraryImport("spirv-cross")]
+        public static partial int spvc_compiler_install_compiler_options(
+            nint compiler,
+            nint options);
+
+        [LibraryImport("spirv-cross")]
+        public static partial int spvc_compiler_compile(nint compiler, out nint source);
     }
 }
 
