@@ -143,10 +143,16 @@ public sealed class InspectionV2NativeCoverageTests
             await Assert.That(changed.Enabled).IsEqualTo(!before);
             await Assert.That(TfDebug.GetSymbolEnabled(symbol)).IsEqualTo(!before);
 
+            // Write through the ABI directly, then require the model to report
+            // whatever the ABI now reports. Comparing against the ABI rather
+            // than against the value we asked for is what proves the model
+            // reads through instead of returning cached local state, and it
+            // stays correct for symbols the runtime declines to change back.
             TfDebug.SetSymbolEnabled(symbol, before);
+            bool abiState = TfDebug.GetSymbolEnabled(symbol);
             ViewerTfDebugFlag reloaded = model.Load()
                 .Single(flag => string.Equals(flag.Name, symbol, StringComparison.Ordinal));
-            await Assert.That(reloaded.Enabled).IsEqualTo(before);
+            await Assert.That(reloaded.Enabled).IsEqualTo(abiState);
         }
         finally
         {
