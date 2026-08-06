@@ -246,8 +246,16 @@ jobs:
           $env:OPENUSD_ROOT = (Resolve-Path native/install/win-x64).Path
           $env:VULKAN_SDK = (Resolve-Path native/install/vulkan-sdk-1.4.321.0).Path
           ./eng/build-physx-native.ps1 -Rid win-x64
-          cmake --preset win-x64-physx
-          cmake --build --preset win-x64-physx --parallel
+          Push-Location native
+          try
+          {
+              cmake --preset win-x64-physx
+              cmake --build --preset win-x64-physx --parallel
+          }
+          finally
+          {
+              Pop-Location
+          }
           cmake --install native/build/shim/win-x64-physx --prefix native/install/shim/win-x64-physx
           ctest --test-dir native/build/shim/win-x64-physx -C Release --output-on-failure
           ./eng/run-native-managed-tests.ps1 `
