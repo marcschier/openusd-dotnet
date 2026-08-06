@@ -4959,7 +4959,7 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/pick.vertex.dxil",
-          "sha256": "fb50c77aa9beec49bc2647976ab5811206f0546e107c23e5f0a030f18fab8eb2",
+          "sha256": "0796a8c15c4e8b46927a3d4dffec53246a341876fc5740249062ee444d232077",
           "size": 4008
         },
         "spv": {
@@ -5105,8 +5105,8 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/pick.fragment.dxil",
-          "sha256": "f7600ba4f9f179492e152d3e10d07e80fe7f04b3b50095754ea664a01713eeb8",
-          "size": 3736
+          "sha256": "6f13c55f9a3a1f4cbf27118ad1cc5f59dfeccbee4f9721d30b965ec3ffdfbc7e",
+          "size": 3732
         },
         "spv": {
           "path": "eng/shaders/checked/pick.fragment.spv",
@@ -5251,7 +5251,7 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/selection.mask.vertex.dxil",
-          "sha256": "c3db626f74b21e8955ee0293e1f253a5b18e1957b58a4c93afdfdc4b3417fe0e",
+          "sha256": "ac21f3441e4e80bbfea238591f17a43b14255e767cf07e26d2931ad536a6a84f",
           "size": 4052
         },
         "spv": {
@@ -5383,7 +5383,7 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/selection.mask.fragment.dxil",
-          "sha256": "f98b5854fb210c1a1bbf7285ce6605e2de7f4f85f0591e900000b2365e6eb1ff",
+          "sha256": "682348314c6ef981564dbf7ac7ccd50814009a6f12b51223ac13c3efcdc9b00d",
           "size": 2752
         },
         "spv": {
@@ -5515,7 +5515,7 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/selection.outline.vertex.dxil",
-          "sha256": "ed50bffbfab61ff24ab6403c82d97695ad2979176c9a6e2e755e1bee48a6770a",
+          "sha256": "c30d430aa239c608630862a318ffcceb88fd9f62f85d85716a43b91406b9884e",
           "size": 3116
         },
         "spv": {
@@ -5700,8 +5700,8 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/selection.outline.fragment.dxil",
-          "sha256": "aefaae9cbb4fe301e7c51586782037c2e6d70cdb1d784fbba63b409e02ed7388",
-          "size": 5420
+          "sha256": "b2541e30c2efdb46e8fae1f0a71a1ddd9977ddaf327669f8870984680339155a",
+          "size": 5424
         },
         "spv": {
           "path": "eng/shaders/checked/selection.outline.fragment.spv",
@@ -5859,8 +5859,8 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/compute.fill.dxil",
-          "sha256": "f2ff0ed754e96ad5094a527d6f16188892957f76fd49842bff91d8f456828ad9",
-          "size": 3612
+          "sha256": "37693a84ccdef75b372f02981585fbd4a7956af142e39e42c2d9dbd25c6bcbce",
+          "size": 3608
         },
         "spv": {
           "path": "eng/shaders/checked/compute.fill.spv",
@@ -6018,8 +6018,8 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/compute.scale.dxil",
-          "sha256": "c6e0b42352f0d14228f1efda92849ec1976a70a59bd65751ce6a157648db1c9c",
-          "size": 3780
+          "sha256": "090c7a8ad0b15883401c709f935fe761783ce791f62dde72360507e1e1ed8d05",
+          "size": 3776
         },
         "spv": {
           "path": "eng/shaders/checked/compute.scale.spv",
