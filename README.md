@@ -122,7 +122,7 @@ repository.
 | `OpenUsd` | 8/9/10 | Managed stage, layer, prim, value, and schema API |
 | `OpenUsd.Rendering` | 8/9/10 | Renderer-neutral state, capabilities, picking, and failover |
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Hydra/Storm adapter |
-| `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer |
+| `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer — **not published yet** |
 | `OpenUsd.Rendering.Silk` | 8/9/10 | Hydra-fed managed renderer and backend-neutral RHI |
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Direct3D 12 backend |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Vulkan backend |
@@ -135,10 +135,17 @@ repository.
 | `OpenUsd.Runtime.Imaging.win-x64` | 8 carrier | Windows Hydra, Storm, hdSilk, and plugins |
 | `OpenUsd.Runtime.Imaging.linux-x64` | 8 carrier | Linux Hydra, Storm, hdSilk, and plugins |
 | `OpenUsd.Runtime.Imaging.osx-arm64` | 8 carrier | macOS Hydra, Storm, hdSilk, and plugins |
-| `OpenUsd.Runtime.Cesium` | 8 carrier | RID-agnostic Cesium metapackage for `win-x64`, `linux-x64`, and `osx-arm64` |
-| `OpenUsd.Runtime.Cesium.win-x64` | 8 carrier | Windows Cesium 3D Tiles native shim |
-| `OpenUsd.Runtime.Cesium.linux-x64` | 8 carrier | Linux Cesium 3D Tiles native shim |
-| `OpenUsd.Runtime.Cesium.osx-arm64` | 8 carrier | macOS Cesium 3D Tiles native shim |
+| `OpenUsd.Runtime.Cesium` | 8 carrier | RID-agnostic Cesium metapackage — **not published yet** |
+| `OpenUsd.Runtime.Cesium.win-x64` | 8 carrier | Windows Cesium 3D Tiles native shim — **not published yet** |
+| `OpenUsd.Runtime.Cesium.linux-x64` | 8 carrier | Linux Cesium 3D Tiles native shim — **not published yet** |
+| `OpenUsd.Runtime.Cesium.osx-arm64` | 8 carrier | macOS Cesium 3D Tiles native shim — **not published yet** |
+
+The five Cesium packages are built from source but **are not published to any feed**. Their
+packaging path has never completed in CI on any platform, and the Cesium shim build currently
+installs over the same prefix the verified native archive is extracted into, which would ship
+locally rebuilt binaries in place of archive-verified ones. Publication waits until that is fixed
+and proven; the reasons are recorded in `eng/pack-packages.ps1` beside the deferral list. Use
+Cesium by building the shim from source — see [Packaging](docs/packaging.md).
 
 Runtime projects use `net8.0` as their NuGet asset-carrier TFM; the managed libraries they accompany
 target .NET 8, 9, and 10. Package layout and clean-consumer gates are documented in

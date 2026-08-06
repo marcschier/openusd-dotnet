@@ -39,7 +39,7 @@
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "b782c77cf69485c4bade4806128daa75572bca99ed9746210f04b295b94bb103"
+      "sha256": "da7cd17044f689aedda05be371293e6805e503c42097757e3a4dcfbff14b2fa7"
     },
     {
       "path": ".github/workflows/performance.yml",
@@ -47,7 +47,7 @@
     },
     {
       "path": ".github/workflows/release.yml",
-      "sha256": "35ef7bddeae3ce0ff8c23d69c70c1ad95ff278e75f83720b642e11b2f0e50483"
+      "sha256": "286a5c9e058386521e126bd80bb375c08a64830779853f7c142933e4b4168f36"
     },
     {
       "path": ".github/workflows/render.yml",

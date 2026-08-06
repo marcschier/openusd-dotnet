@@ -55,6 +55,14 @@ packages for each supported RID:
   Consumers opt in by referencing `OpenUsd.Cesium`, which depends on the RID-agnostic
   `OpenUsd.Runtime.Cesium` metapackage.
 
+The five Cesium packages are **not published to any feed**. `eng/pack-packages.ps1` filters them
+out of every scope, and the deferral list there records why: the packaging path has never
+completed in CI on any platform, and `eng/build-cesium-shim.ps1` installs into
+`native/install/shim/<rid>` — the same prefix the verified native archive is extracted into — so it
+rebuilds the core, Hydra, hdSilk and Storm child shims from source over archive-verified binaries.
+Giving the Cesium shim its own prefix, as the PhysX shim already has, is the prerequisite for
+re-enabling publication. Cesium is usable today by building the shim from source.
+
 The current package set requires project-owned data ABI version 14 and native
 capabilities `0xFFFF`. Package-only execution prints and verifies both values
 before exercising stage operations.

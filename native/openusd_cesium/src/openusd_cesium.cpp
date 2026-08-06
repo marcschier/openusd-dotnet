@@ -735,10 +735,16 @@ extern "C" OPENUSD_CESIUM_API openusd_cesium_status openusd_cesium_tileset_creat
         }
         owner->taskProcessor = std::make_shared<CallbackTaskProcessor>(taskCallbacks);
         Cesium3DTilesContent::registerAllTileContentTypes();
+        // pCreditSystem is the only TilesetExternals member without a default
+        // member initializer, so omitting it trips -Wmissing-field-initializers
+        // on Clang. Naming it keeps the existing behaviour -- the shim exposes
+        // no credit surface, so the system was already an empty shared_ptr --
+        // while stating that the omission is deliberate rather than overlooked.
         Cesium3DTilesSelection::TilesetExternals externals{
             owner->assetAccessor,
             owner->rendererResources,
-            CesiumAsync::AsyncSystem(owner->taskProcessor)};
+            CesiumAsync::AsyncSystem(owner->taskProcessor),
+            nullptr};
         Cesium3DTilesSelection::TilesetOptions nativeOptions = ToOptions(owner.get(), options);
         owner->tileset = std::make_unique<Cesium3DTilesSelection::Tileset>(externals, std::string(tileset_url), nativeOptions);
         *tileset = owner.release();
@@ -778,7 +784,12 @@ extern "C" OPENUSD_CESIUM_API openusd_cesium_status openusd_cesium_tileset_updat
                 view.horizontal_fov_radians,
                 view.vertical_fov_radians);
         }
-        const Cesium3DTilesSelection::ViewUpdateResult& update = tileset->tileset->updateView(nativeViews, delta_time_seconds);
+        // updateView is deprecated in favour of updating an explicit view group
+        // and then loading. The default view group reproduces exactly what
+        // updateView did internally, so this is the documented migration rather
+        // than a behavioural change, and it keeps the -Werror build clean.
+        const Cesium3DTilesSelection::ViewUpdateResult& update = tileset->tileset->updateViewGroup(
+            tileset->tileset->getDefaultViewGroup(), nativeViews, delta_time_seconds);
         tileset->tileset->loadTiles();
         FillUpdateResult(result, update, *tileset->tileset);
         return OPENUSD_CESIUM_STATUS_OK;

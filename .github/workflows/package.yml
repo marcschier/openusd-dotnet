@@ -281,13 +281,6 @@ jobs:
             -Operation Verify `
             -Rid ${{ matrix.rid }} `
             -RequireVulkanRuntime:$requireVulkanRuntime
-      - name: Build locked Cesium inputs for package execution
-        shell: pwsh
-        env:
-          Platform: ''
-        run: |
-          ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }}
-          ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }}
       - name: Execute managed NativeAOT probe
         shell: pwsh
         run: >
@@ -362,4 +355,3 @@ jobs:
             artifacts/native-input/osx-arm64/source.json
             artifacts/package-linux-storm-child
             artifacts/package-macos-storm-child
-            native/install/cesium/${{ matrix.rid }}/THIRD-PARTY-CESIUM.md
