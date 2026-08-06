@@ -32,7 +32,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 namespace
 {
-#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN) || \
+    defined(OPENUSD_HDSILK_WITH_MATERIALX_MSL)
 // MaterialX source files include one another by paths that already carry the
 // "libraries/" prefix, for example "libraries/stdlib/genglsl/lib/mx_math.glsl",
 // while HdMtlxSearchPaths() reports the libraries directory itself. Registering
