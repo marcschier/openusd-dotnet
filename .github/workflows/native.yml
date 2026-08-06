@@ -258,6 +258,21 @@ jobs:
           }
           cmake --install native/build/shim/win-x64-physx --prefix native/install/shim/win-x64-physx
           ctest --test-dir native/build/shim/win-x64-physx -C Release --output-on-failure
+      - name: Run PhysX shim managed coverage tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        # Two things this step must own that the native step above cannot.
+        # Nothing in this job builds managed assemblies, so the test runner had
+        # no DLL to launch. And the MSVC developer environment exports
+        # Platform=x64, which makes MSBuild both write to and resolve TargetPath
+        # under bin\x64\Release; clearing it keeps the build and the runner
+        # agreeing on bin\Release, as package.yml already does.
+        env:
+          Platform: ''
+        run: |
+          dotnet build `
+            tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj `
+            -c Release
           ./eng/run-native-managed-tests.ps1 `
             -Project tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj `
             -Rid win-x64 `
