@@ -226,27 +226,6 @@ _EvaluateUnlitEmission(const HdMaterialNetwork& network, const HdMaterialNode& s
 }
 
 void
-_ReplaceFinalOutputColor(std::string& source, const GfVec3f& color)
-{
-    const size_t assignment = source.rfind("out1 =");
-    if (assignment == std::string::npos)
-    {
-        return;
-    }
-    const size_t semicolon = source.find(';', assignment);
-    if (semicolon == std::string::npos)
-    {
-        return;
-    }
-    std::ostringstream replacement;
-    replacement << "out1 = vec4("
-        << _ToGlslFloat(color[0]) << ", "
-        << _ToGlslFloat(color[1]) << ", "
-        << _ToGlslFloat(color[2]) << ", 1.0)";
-    source.replace(assignment, semicolon - assignment, replacement.str());
-}
-
-void
 _EraseUniformBlock(std::string& source, const char* blockName)
 {
     const size_t name = source.find(blockName);
