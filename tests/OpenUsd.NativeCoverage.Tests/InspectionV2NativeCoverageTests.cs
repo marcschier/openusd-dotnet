@@ -104,7 +104,15 @@ public sealed class InspectionV2NativeCoverageTests
         await Assert.That(knots[^1].NextInterpolation).IsEqualTo(TsInterpMode.Held);
     }
 
+    // Both TfDebug tests mutate TF_ERROR_MARK_TRACKING, which is one
+    // process-global flag inside the loaded native library. Run in parallel
+    // they interleave: one test's finally restores the symbol while the other
+    // is between its write and its read, so the read observes the sibling's
+    // value. That is what failed the hosted Linux coverage gate, and it is not
+    // a property of the symbol. The shared constraint key serialises exactly
+    // the tests that contend for it rather than the whole class.
     [Test]
+    [NotInParallel(nameof(TfDebug))]
     public async Task TfDebugSymbolsCanBeListedToggledAndRejectUnknownNames()
     {
         NativeCoverageRuntime.EnsureNativeLoaded();
@@ -129,6 +137,7 @@ public sealed class InspectionV2NativeCoverageTests
     }
 
     [Test]
+    [NotInParallel(nameof(TfDebug))]
     public async Task ViewerTfDebugPanelModelTogglesThroughAbiAndReloadsAbiState()
     {
         NativeCoverageRuntime.EnsureNativeLoaded();
@@ -144,11 +153,9 @@ public sealed class InspectionV2NativeCoverageTests
             await Assert.That(TfDebug.GetSymbolEnabled(symbol)).IsEqualTo(!before);
 
             // Read-through is asserted across every symbol rather than by
-            // toggling one back. TF_ERROR_MARK_TRACKING latches on Linux, so an
-            // assertion that it returns to its prior value tests the symbol
-            // rather than the model. Comparing the whole loaded set against the
-            // ABI still fails if the model reports cached local state, which is
-            // the property under test.
+            // toggling one back, so the check covers the whole loaded set and
+            // still fails if the model reports cached local state, which is the
+            // property under test.
             ViewerTfDebugFlag[] reloaded = model.Load();
             await Assert.That(reloaded.Length).IsGreaterThan(0);
             foreach (ViewerTfDebugFlag flag in reloaded)
