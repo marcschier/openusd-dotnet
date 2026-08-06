@@ -73,6 +73,7 @@ _ToGlslFloat(float value)
     return text;
 }
 
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
 std::string
 _ToGlslLiteral(const VtValue& value)
 {
@@ -133,6 +134,7 @@ _ToGlslLiteral(const VtValue& value)
     stream << ")";
     return stream.str();
 }
+#endif
 
 std::optional<GfVec3f>
 _ReadColor3(const VtValue& value)
@@ -225,6 +227,7 @@ _EvaluateUnlitEmission(const HdMaterialNetwork& network, const HdMaterialNode& s
         : _ReadColor3(value->second);
 }
 
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
 void
 _EraseUniformBlock(std::string& source, const char* blockName)
 {
@@ -356,7 +359,9 @@ _InlineNetworkConstants(
             _ToGlslLiteral(value->second));
     }
 }
+#endif
 
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_MSL)
 void
 _InlineNetworkConstantsMsl(
     std::string& source,
@@ -401,6 +406,7 @@ _InlineNetworkConstantsMsl(
         source = replacement.str();
     }
 }
+#endif
 #endif
 
 struct _DocumentBuild
