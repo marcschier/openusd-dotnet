@@ -44,9 +44,9 @@ these references:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="OpenUsd" Version="0.4.0-alpha" />
-  <PackageReference Include="OpenUsd.Rendering.Silk.Vulkan" Version="0.4.0-alpha" />
-  <PackageReference Include="OpenUsd.Runtime.Imaging" Version="0.4.0-alpha" />
+  <PackageReference Include="OpenUsd" Version="0.5.0-alpha" />
+  <PackageReference Include="OpenUsd.Rendering.Silk.Vulkan" Version="0.5.0-alpha" />
+  <PackageReference Include="OpenUsd.Runtime.Imaging" Version="0.5.0-alpha" />
 </ItemGroup>
 ```
 

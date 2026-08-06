@@ -1,7 +1,7 @@
 # Support matrix
 
 This matrix describes the implementation and declared repository gates for the public
-`0.4.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
+`0.5.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
 workflow is currently green.
 
 ## Status terms
@@ -24,7 +24,7 @@ branch.
 
 | Item | Current state |
 | --- | --- |
-| Version | `0.4.0-alpha` |
+| Version | `0.5.0-alpha` |
 | Repository visibility | Public |
 | API compatibility | Pre-1.0; public APIs may change |
 | Package identity stability | Pre-1.0; IDs may change |

@@ -1,6 +1,6 @@
 # OpenUsd documentation
 
-OpenUsd is a public `0.4.0-alpha` project, published to NuGet.org. Start with the route that matches
+OpenUsd is a public `0.5.0-alpha` project, published to NuGet.org. Start with the route that matches
 what you are trying to
 do, then follow the deeper design or evidence documents only as needed.
 

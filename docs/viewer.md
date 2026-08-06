@@ -62,6 +62,52 @@ and return promptly; a failing callback is reported as a viewer error and never 
 `ShutdownToken` closes the window when cancelled, so a host that renders for a bounded time does not
 leave a window behind.
 
+### Reacting to the operator
+
+A host that needs to know what the operator clicked should use `PrimPicked` rather than attaching its
+own pointer handling. The viewer already owns hit-test coordinates, DPI scaling, physical-pixel
+conversion and stale-revision retry for its own selection, so the callback reuses all of it.
+
+```csharp
+ViewerEntryPoint.Run(new ViewerHostOptions
+{
+    StagePath = stagePath,
+    PickTarget = RenderPickTarget.Primitive,
+    PrimPicked = async (pick, cancellationToken) =>
+    {
+        if (pick.Status == RenderPickStatus.Miss)
+        {
+            return;
+        }
+        await SendCommandAsync(pick.PrimPath, pick.WorldPosition, cancellationToken);
+    },
+    SelectionChangedPrimSubtree = "/World/Commands",
+    SelectionChanged = (primPaths, cancellationToken) => HandleSelectionAsync(primPaths),
+});
+```
+
+`PrimPicked` is awaited off the UI thread, so a callback that performs I/O cannot stall the render
+loop. A miss raises the callback with `Status` set to `RenderPickStatus.Miss` and a null `PrimPath`.
+
+`SelectionChanged` reports the current selection independently of clicks. Set
+`SelectionChangedPrimSubtree` to scope it to one subtree; a host that is itself authoring live values
+into the stage would otherwise be woken by its own edits. Leave it unset to receive every selection.
+
+Framework-neutral `ViewportPointerPressed`, `ViewportPointerMoved` and `ViewportPointerReleased`
+callbacks carry coordinates already converted to physical pixels, for hosts that need raw input
+without taking a dependency on the UI framework.
+
+`ViewerStageSession` also publishes what the viewport holds, so a host can drive a pick itself or
+persist the operator's viewpoint:
+
+| Member | Purpose |
+| --- | --- |
+| `PickingBackend` | The picking backend, or null when the active backend cannot pick |
+| `CurrentRenderState` | The revisions a `RenderPickRequest` must quote to avoid going stale |
+| `Camera` | View and projection state, plus the viewport dimensions the projection assumes |
+| `CameraChanged` | Raised when the operator changes the view |
+| `FrameAsync` | Points the viewport at a prim |
+
 ## Stage and session editing
 
 The stage panel shows the resolved root/session layer identities, default prim, traversable prim

@@ -13,14 +13,14 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Current distribution:** public source repository and published packages, version `0.4.0-alpha`,
+> **Current distribution:** public source repository and published packages, version `0.5.0-alpha`,
 > with pre-1.0 APIs. Managed and runtime packages are on
 > [NuGet.org](https://www.nuget.org/packages/OpenUsd) and on GitHub Packages; package identities and
 > public APIs may still change before 1.0.
 
 ```shell
-dotnet add package OpenUsd --version 0.4.0-alpha
-dotnet add package OpenUsd.Runtime.Core --version 0.4.0-alpha
+dotnet add package OpenUsd --version 0.5.0-alpha
+dotnet add package OpenUsd.Runtime.Core --version 0.5.0-alpha
 ```
 
 `OpenUsd.Runtime.Core` is the RID-agnostic metapackage for `win-x64`, `linux-x64`, and
@@ -389,7 +389,7 @@ tests and documentation. See [Contributing](CONTRIBUTING.md).
 
 ## Status
 
-OpenUsd is a substantial public `0.4.0-alpha` baseline, published to NuGet.org, but not a stable
+OpenUsd is a substantial public `0.5.0-alpha` baseline, published to NuGet.org, but not a stable
 release. Data, rendering, Viewer, package, NativeAOT, shader, parity, and performance gates exist,
 and this README states what they do and do not prove. Public API and package identities may change
 before 1.0. Workflow badges above are the authoritative status for the default branch.
