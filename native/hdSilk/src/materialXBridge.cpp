@@ -12,8 +12,7 @@
 #include <MaterialXFormat/XmlIo.h>
 #include <MaterialXGenShader/GenContext.h>
 #include <MaterialXGenShader/Shader.h>
-#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN) || \
-    defined(OPENUSD_HDSILK_WITH_MATERIALX_MSL)
+#if defined(OPENUSD_HDSILK_WITH_MATERIALX_VULKAN)
 #include <MaterialXGenGlsl/VkShaderGenerator.h>
 
 #include <shaderc/shaderc.hpp>
