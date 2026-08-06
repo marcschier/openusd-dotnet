@@ -32,7 +32,16 @@ public sealed class VolumeRenderingConformanceTests
             return;
         }
 
-        ParityImage capture = CaptureStage(WriteStage("volume-density-gates"));
+        ParityImage capture;
+        try
+        {
+            capture = CaptureStage(WriteStage("volume-density-gates"));
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
+            return;
+        }
         ParityImage empty = Crop(capture, 0, 0, 16, 16);
         ParityImage zeroDensity = Crop(capture, 28, 56, 16, 16);
         ParityImage unitDensity = Crop(capture, 72, 56, 16, 16);
@@ -87,7 +96,16 @@ public sealed class VolumeRenderingConformanceTests
         ClearVolumeCache();
         string asset = ResolveOpenVdbAsset("sampled_density.vdb");
         string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
-        ParityImage sampled = CaptureStage(WriteVdbStage("volume-vdb-sampled", asset, 0, 1, sampleDensity: true));
+        ParityImage sampled;
+        try
+        {
+            sampled = CaptureStage(WriteVdbStage("volume-vdb-sampled", asset, 0, 1, sampleDensity: true));
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
+            return;
+        }
         if (!TryReadMeanCachedDensity("volume-vdb-sampled", out double meanDensity))
         {
             WriteEvidence(

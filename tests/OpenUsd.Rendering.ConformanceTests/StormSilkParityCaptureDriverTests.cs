@@ -542,14 +542,24 @@ def Xform "World"
     [Test]
     public async Task SilkComplexityDefaultPreservesExplicitLowPointPage()
     {
-        PrependHdSilkNativeSearchPath();
-        string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
-        string pluginPath = ResolvePluginPath();
+        MeshPageStats defaultStats;
+        MeshPageStats explicitLowStats;
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
+            string pluginPath = ResolvePluginPath();
 
-        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
-        MeshPageStats defaultStats = CaptureMeshPageStats(session, complexity: null);
-        _ = CaptureMeshPageStats(session, RenderComplexity.Medium);
-        MeshPageStats explicitLowStats = CaptureMeshPageStats(session, RenderComplexity.Low);
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            defaultStats = CaptureMeshPageStats(session, complexity: null);
+            _ = CaptureMeshPageStats(session, RenderComplexity.Medium);
+            explicitLowStats = CaptureMeshPageStats(session, RenderComplexity.Low);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk complexity default page", exception.ToString());
+            return;
+        }
 
         await Assert.That(defaultStats.PointListPointCount).IsGreaterThan(0);
         await Assert.That(explicitLowStats).IsEqualTo(defaultStats);
@@ -558,13 +568,23 @@ def Xform "World"
     [Test]
     public async Task SilkComplexityMediumChangesPointPage()
     {
-        PrependHdSilkNativeSearchPath();
-        string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
-        string pluginPath = ResolvePluginPath();
+        MeshPageStats lowStats;
+        MeshPageStats mediumStats;
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
+            string pluginPath = ResolvePluginPath();
 
-        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
-        MeshPageStats lowStats = CaptureMeshPageStats(session, RenderComplexity.Low);
-        MeshPageStats mediumStats = CaptureMeshPageStats(session, RenderComplexity.Medium);
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            lowStats = CaptureMeshPageStats(session, RenderComplexity.Low);
+            mediumStats = CaptureMeshPageStats(session, RenderComplexity.Medium);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk complexity medium page", exception.ToString());
+            return;
+        }
 
         await Assert.That(lowStats.PointListPointCount).IsGreaterThan(0);
         await Assert.That(mediumStats.PointListPointCount).IsGreaterThan(lowStats.PointListPointCount);
@@ -579,11 +599,7 @@ def Xform "World"
             return;
         }
 
-        PrependHdSilkNativeSearchPath();
-        string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
-        string pluginPath = ResolvePluginPath();
-        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
-        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        SilkFrameCaptureResult capture;
         var settings = new RenderSettings(
             1,
             enableLighting: true,
@@ -592,15 +608,28 @@ def Xform "World"
             backfaceCulling: true,
             useSceneMaterials: true,
             RenderComplexity.Low);
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
+            string pluginPath = ResolvePluginPath();
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
 
-        SilkFrameCaptureResult capture = SilkFrameCapture.Capture(
-            session,
-            device,
-            64,
-            48,
-            settings,
-            TimeCode,
-            CameraState.Default);
+            capture = SilkFrameCapture.Capture(
+                session,
+                device,
+                64,
+                48,
+                settings,
+                TimeCode,
+                CameraState.Default);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk frame capture", exception.ToString());
+            return;
+        }
 
         await Assert.That(capture.Width).IsEqualTo(64);
         await Assert.That(capture.Height).IsEqualTo(48);
