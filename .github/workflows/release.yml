@@ -315,6 +315,11 @@ jobs:
       actions: read
       packages: write
     steps:
+      # This job publishes rather than builds, so it carried no checkout. It
+      # needs one now: the gate below reads the published set out of
+      # eng/pack-packages.ps1 instead of restating a count, and that file has to
+      # be on disk for it to do so.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 10.0.301
