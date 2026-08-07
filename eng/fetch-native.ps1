@@ -102,7 +102,8 @@ $knownUnpatchedHashes = @(
     '4175A4790F95BD9E1E5AF3B67DB99F63E37679CCAD37139417DB51ED9874AD8B',
     'FFC713F58159AAF18682438FC686BABB47484A3FFA94D16EC016FE33EE367194',
     '328341514C4218AD12D16E9ACF09BBAD289C92FDAF413BF12AB89911E9F71242',
-    'F6FD234EE167F2695BA8F62C159B5E29F5073DE64F09D97D426F9850EC9448E9'
+    'F6FD234EE167F2695BA8F62C159B5E29F5073DE64F09D97D426F9850EC9448E9',
+    '58874A95818876A9F1A6145D9C73F5A499C907A6C621542C7D449F34B6819E42'
 )
 if ($knownUnpatchedHashes -contains $buildScriptHash)
 {
@@ -225,6 +226,54 @@ if ($knownUnpatchedHashes -contains $buildScriptHash)
         throw 'The expected Alembic USD configure marker was not found.'
     }
 
+    $openVdbBoostMarker = @(
+        '        # Make sure to use boost installed by the build script and not any',
+        '        # system installed boost',
+        "        extraArgs.append('-DBoost_NO_SYSTEM_PATHS=ON')",
+        '',
+        '        extraArgs.append(''-DBLOSC_ROOT="{instDir}"'''
+    ) -join "`n"
+    $openVdbBoostPatched = @(
+        '        # Make sure to use boost installed by the build script and not any',
+        '        # system installed boost',
+        "        extraArgs.append('-DBoost_NO_SYSTEM_PATHS=ON')",
+        "        extraArgs.append('-DBoost_NO_BOOST_CMAKE=ON')",
+        '',
+        '        extraArgs.append(''-DBLOSC_ROOT="{instDir}"'''
+    ) -join "`n"
+    if ($content.Contains($openVdbBoostMarker) -and
+        -not $content.Contains("extraArgs.append('-DBoost_NO_BOOST_CMAKE=ON')"))
+    {
+        $content = $content.Replace($openVdbBoostMarker, $openVdbBoostPatched)
+    }
+    elseif (-not $content.Contains("extraArgs.append('-DBoost_NO_BOOST_CMAKE=ON')"))
+    {
+        throw 'The expected OpenVDB Boost configure marker was not found.'
+    }
+
+    $openVdbUsdMarker = @(
+        '            if context.enableOpenVDB:',
+        "                extraArgs.append('-DPXR_ENABLE_OPENVDB_SUPPORT=ON')",
+        '            else:',
+        "                extraArgs.append('-DPXR_ENABLE_OPENVDB_SUPPORT=OFF')"
+    ) -join "`n"
+    $openVdbUsdPatched = @(
+        '            if context.enableOpenVDB:',
+        "                extraArgs.append('-DPXR_ENABLE_OPENVDB_SUPPORT=ON')",
+        '                extraArgs.append(''-DOPENVDB_LOCATION="{instDir}"''',
+        '                                 .format(instDir=context.instDir))',
+        '            else:',
+        "                extraArgs.append('-DPXR_ENABLE_OPENVDB_SUPPORT=OFF')"
+    ) -join "`n"
+    if ($content.Contains($openVdbUsdMarker) -and
+        -not $content.Contains("extraArgs.append('-DOPENVDB_LOCATION="))
+    {
+        $content = $content.Replace($openVdbUsdMarker, $openVdbUsdPatched)
+    }
+    elseif (-not $content.Contains("extraArgs.append('-DOPENVDB_LOCATION="))
+    {
+        throw 'The expected USD OpenVDB configure marker was not found.'
+    }
     $alembicPolicyMarker = @(
         'def InstallAlembic(context, force, buildArgs):',
         '    with CurrentWorkingDirectory(DownloadURL(ALEMBIC_URL, context, force)):',

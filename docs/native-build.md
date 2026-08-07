@@ -36,9 +36,10 @@ bootstrap is launched through `cmd.exe` with the `vc143` toolset, Boost is bound
 already configured by the developer shell, existing lean Boost installs are rejected when OpenVDB
 needs `boost_iostreams`, Alembic's install root is passed to USD configure so the Ogawa-only build
 does not require HDF5, and the locked Windows monolithic profile is permitted to build the Draco
-plugin. This handles Python 3.13 process launching, hardened Windows command search, Visual Studio
-versions newer than Boost's discovery table, and the expanded asset-format profile; the patched
-script hash is locked.
+plugin. OpenVDB is configured through the locked Boost install, and USD is pointed at the locked
+OpenVDB prefix so hioOpenVDB cannot resolve from a system or vcpkg tree. This handles Python
+3.13 process launching, hardened Windows command search, Visual Studio versions newer than Boost's
+discovery table, and the expanded asset-format profile; the patched script hash is locked.
 
 The viewer-standard profile retains core USD, validation, Imaging, Hydra, Storm, MaterialX,
 OpenImageIO, OpenColorIO, Ptex, OpenVDB, Alembic, and Draco. OpenVDB brings locked Blosc
