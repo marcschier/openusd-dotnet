@@ -5,6 +5,26 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerSourceContractTests
 {
     [Test]
+    public async Task BackendCandidatesStayVisibleWhileCreatingPlatformSurfaces()
+    {
+        string root = FindRepositoryRoot();
+        string host = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "AvaloniaViewerRenderBackendHost.cs"));
+
+        await Assert.That(host).Contains("private bool AttachForSurfaceCreation(Control control)");
+        await Assert.That(host).Contains("viewportHost.Attach(control, isActive: true);");
+        await Assert.That(host)
+            .Contains("Linux X11 NativeControlHost can stay");
+        await Assert.That(host)
+            .Contains("macOS Metal composition can crash");
+        await Assert.That(host).Contains("HideInitializedCandidateUnlessFirstAsync(");
+        await Assert.That(host).DoesNotContain("viewportHost.Attach(control, isActive: false);");
+    }
+
+    [Test]
     public async Task ViewerSourceKeepsDetachedTraversalAndSerializedDocumentLifecycle()
     {
         string root = FindRepositoryRoot();

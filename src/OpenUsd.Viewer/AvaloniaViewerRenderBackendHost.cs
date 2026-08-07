@@ -2,6 +2,7 @@
 
 using System.Diagnostics;
 using System.Runtime.Versioning;
+using Avalonia.Controls;
 using Avalonia.Threading;
 using OpenUsd.Rendering;
 using OpenUsd.Rendering.Silk;
@@ -31,6 +32,35 @@ internal sealed class AvaloniaViewerRenderBackendHost(
     internal ViewerBackendRuntimeIdentity GetRuntimeIdentity(RenderBackendKind kind) =>
         Volatile.Read(ref _runtimeIdentities[(int)kind]) ??
         ViewerBackendRuntimeIdentity.Unknown;
+
+    private bool AttachForSurfaceCreation(Control control)
+    {
+        bool keepActive = viewportHost.VisibleControlCount == 0;
+
+        // Run 31210681699 proved that Linux X11 NativeControlHost can stay
+        // uncreated forever when the first backend candidate is initialized
+        // hidden, and macOS Metal composition can crash after initializing
+        // against a zero-sized hidden surface.
+        viewportHost.Attach(control, isActive: true);
+        return keepActive;
+    }
+
+    private static async ValueTask HideInitializedCandidateUnlessFirstAsync(
+        RendererSwitchingViewport viewportHost,
+        Control control,
+        bool keepActive,
+        CancellationToken cancellationToken)
+    {
+        if (keepActive)
+        {
+            return;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(
+            () => viewportHost.SetActive(control, isActive: false),
+            DispatcherPriority.Send,
+            cancellationToken);
+    }
 
     public ValueTask<RenderBackendProbeResult> ProbeAsync(
         RenderBackendKind kind,
@@ -169,6 +199,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
     {
         StormNativeControlHost? createdControl = null;
         StormNativeHostedBackendSession? cleanupOwner = null;
+        bool keepActive = false;
         try
         {
             await Dispatcher.UIThread.InvokeAsync(() =>
@@ -181,7 +212,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                     control,
                     initialState,
                     RenderBackendDiagnostics.Empty);
-                viewportHost.Attach(control, isActive: false);
+                keepActive = AttachForSurfaceCreation(control);
             });
         }
         catch (OperationCanceledException exception) when (cleanupOwner is not null)
@@ -208,6 +239,11 @@ internal sealed class AvaloniaViewerRenderBackendHost(
             string rendererName = await control
                 .WaitForInitializationAsync(cancellationToken)
                 .ConfigureAwait(false);
+            await HideInitializedCandidateUnlessFirstAsync(
+                viewportHost,
+                control,
+                keepActive,
+                cancellationToken).ConfigureAwait(false);
             owner.SetDiagnostics(Diagnostics(
                 RenderBackendKind.Storm,
                 "VIEWER_STORM_NATIVE_CHILD_READY",
@@ -245,6 +281,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         CancellationToken cancellationToken)
     {
         StormViewportControl? createdControl = null;
+        bool keepActive = false;
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -255,7 +292,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
             control.SetRenderSource(scheduler, source);
             control.UpdateRenderState(initialState);
             control.StatusChanged += OnControlStatusChanged;
-            viewportHost.Attach(control, isActive: false);
+            keepActive = AttachForSurfaceCreation(control);
             createdControl = control;
         });
         StormViewportControl control = createdControl ??
@@ -265,6 +302,11 @@ internal sealed class AvaloniaViewerRenderBackendHost(
             string rendererName = await control
                 .WaitForHostedInitializationAsync(cancellationToken)
                 .ConfigureAwait(false);
+            await HideInitializedCandidateUnlessFirstAsync(
+                viewportHost,
+                control,
+                keepActive,
+                cancellationToken).ConfigureAwait(false);
             SetRuntimeIdentity(
                 RenderBackendKind.Storm,
                 "Hydra/Storm OpenGL",
@@ -303,6 +345,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
     {
         SilkCompositionResources? resources = null;
         CompositionViewportControl? createdControl = null;
+        bool keepActive = false;
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -317,7 +360,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 }
             };
             control.StatusChanged += OnControlStatusChanged;
-            viewportHost.Attach(control, isActive: false);
+            keepActive = AttachForSurfaceCreation(control);
             createdControl = control;
         });
         CompositionViewportControl control = createdControl ??
@@ -332,6 +375,11 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 throw new InvalidOperationException(
                     $"{kind} is incompatible with the active Avalonia compositor.");
             }
+            await HideInitializedCandidateUnlessFirstAsync(
+                viewportHost,
+                control,
+                keepActive,
+                cancellationToken).ConfigureAwait(false);
             string diagnosticCode = kind == RenderBackendKind.Metal
                 ? "VIEWER_METAL_HDSILK_READY"
                 : "VIEWER_SILK_READY";

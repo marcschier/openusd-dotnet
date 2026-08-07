@@ -96,9 +96,12 @@ $statusFile = Join-Path $installRoot 'viewer-status.txt'
 $logFile = Join-Path $installRoot 'viewer.log'
 $stdoutFile = Join-Path $installRoot 'viewer.stdout.log'
 $stderrFile = Join-Path $installRoot 'viewer.stderr.log'
+$crashReportRoot = Join-Path $installRoot 'viewer-crash-reports'
+$dumpPattern = Join-Path $installRoot 'viewer-crash-%p.dmp'
 Remove-Item $statusFile, $logFile, $stdoutFile, $stderrFile `
     -Force `
     -ErrorAction SilentlyContinue
+Remove-Item $crashReportRoot -Recurse -Force -ErrorAction SilentlyContinue
 
 function Write-ViewerDiagnostics
 {
@@ -118,6 +121,64 @@ function Write-ViewerDiagnostics
             Write-Host '(not produced)'
         }
     }
+
+    Write-Host '----- viewer crash dumps -----'
+    $dumps = @(Get-ChildItem $installRoot -Filter 'viewer-crash-*.dmp' -ErrorAction SilentlyContinue)
+    if ($dumps.Count -eq 0)
+    {
+        Write-Host '(not produced)'
+    }
+    foreach ($dump in $dumps)
+    {
+        Write-Host "$($dump.FullName) ($($dump.Length) bytes)"
+    }
+
+    Write-Host '----- viewer macOS crash reports -----'
+    $reports = @(Get-ChildItem $crashReportRoot -File -ErrorAction SilentlyContinue)
+    if ($reports.Count -eq 0)
+    {
+        Write-Host '(not produced)'
+    }
+    foreach ($report in $reports)
+    {
+        Write-Host "----- $($report.Name) -----"
+        Get-Content $report.FullName -TotalCount 200 | Write-Host
+    }
+}
+
+function Copy-MacOSCrashReports
+{
+    param([DateTime]$SinceUtc)
+
+    if (-not $IsMacOS)
+    {
+        return
+    }
+
+    $diagnosticRoot = Join-Path $HOME 'Library/Logs/DiagnosticReports'
+    if (-not (Test-Path $diagnosticRoot))
+    {
+        return
+    }
+
+    $reports = @(
+        Get-ChildItem $diagnosticRoot -File -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.Name -match '^OpenUsd\.Viewer(\.App)?_' -and
+                $_.LastWriteTimeUtc -ge $SinceUtc.AddSeconds(-10)
+            } |
+            Sort-Object LastWriteTimeUtc -Descending
+    )
+    if ($reports.Count -eq 0)
+    {
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path $crashReportRoot | Out-Null
+    foreach ($report in $reports)
+    {
+        Copy-Item $report.FullName (Join-Path $crashReportRoot $report.Name) -Force
+    }
 }
 
 $oldPath = $env:PATH
@@ -127,11 +188,24 @@ $oldStatusFile = $env:OPENUSD_STATUS_FILE
 $oldLogFile = $env:OPENUSD_LOG_FILE
 $oldLdLibraryPath = $env:LD_LIBRARY_PATH
 $oldDyldLibraryPath = $env:DYLD_LIBRARY_PATH
+$oldDotnetDump = $env:DOTNET_DbgEnableMiniDump
+$oldDotnetDumpType = $env:DOTNET_DbgMiniDumpType
+$oldDotnetDumpName = $env:DOTNET_DbgMiniDumpName
+$oldComPlusDump = $env:COMPlus_DbgEnableMiniDump
+$oldComPlusDumpType = $env:COMPlus_DbgMiniDumpType
+$oldComPlusDumpName = $env:COMPlus_DbgMiniDumpName
 $process = $null
+$processStartUtc = [DateTime]::UtcNow
 try
 {
     $env:PATH = $installRoot + [IO.Path]::PathSeparator + $oldPath
     $env:LD_LIBRARY_PATH = $installRoot + [IO.Path]::PathSeparator + $oldLdLibraryPath
+    $env:DOTNET_DbgEnableMiniDump = '1'
+    $env:DOTNET_DbgMiniDumpType = '4'
+    $env:DOTNET_DbgMiniDumpName = $dumpPattern
+    $env:COMPlus_DbgEnableMiniDump = '1'
+    $env:COMPlus_DbgMiniDumpType = '4'
+    $env:COMPlus_DbgMiniDumpName = $dumpPattern
 
     # Deliberately NOT set on macOS. DYLD_LIBRARY_PATH overrides dylib lookup by
     # leaf name for the whole process, not just for this bundle, and macOS ships
@@ -155,6 +229,7 @@ try
     $env:OPENUSD_LOG_FILE = $logFile
 
     $arguments = if ($IsWindows) { @('--windows-rendering=angle') } else { @() }
+    $processStartUtc = [DateTime]::UtcNow
     $process = Start-Process $executable -PassThru `
         -ArgumentList $arguments `
         -RedirectStandardOutput $stdoutFile `
@@ -206,6 +281,7 @@ try
 }
 catch
 {
+    Copy-MacOSCrashReports -SinceUtc $processStartUtc
     Write-ViewerDiagnostics
     throw
 }
@@ -223,4 +299,10 @@ finally
     $env:OPENUSD_LOG_FILE = $oldLogFile
     $env:LD_LIBRARY_PATH = $oldLdLibraryPath
     $env:DYLD_LIBRARY_PATH = $oldDyldLibraryPath
+    $env:DOTNET_DbgEnableMiniDump = $oldDotnetDump
+    $env:DOTNET_DbgMiniDumpType = $oldDotnetDumpType
+    $env:DOTNET_DbgMiniDumpName = $oldDotnetDumpName
+    $env:COMPlus_DbgEnableMiniDump = $oldComPlusDump
+    $env:COMPlus_DbgMiniDumpType = $oldComPlusDumpType
+    $env:COMPlus_DbgMiniDumpName = $oldComPlusDumpName
 }

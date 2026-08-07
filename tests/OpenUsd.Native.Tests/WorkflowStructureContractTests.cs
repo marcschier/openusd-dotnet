@@ -445,6 +445,29 @@ public sealed class WorkflowStructureContractTests
             .Because("viewer-distribution.yml consumes the native install and must not save it");
     }
 
+    [Test]
+    public async Task ViewerBundleSmokeCapturesNativeCrashDiagnostics()
+    {
+        string root = FindRepositoryRoot();
+        string smoke = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "test-viewer-bundle-smoke.ps1"));
+
+        await Assert.That(smoke)
+            .Contains("DOTNET_DbgEnableMiniDump", StringComparison.Ordinal)
+            .Because("a Unix SIGSEGV can bypass managed stderr and Avalonia tracing");
+        await Assert.That(smoke)
+            .Contains("COMPlus_DbgEnableMiniDump", StringComparison.Ordinal)
+            .Because("older runtime aliases should produce the same dump artifact");
+        await Assert.That(smoke)
+            .Contains("Library/Logs/DiagnosticReports", StringComparison.Ordinal)
+            .Because("macOS writes native crash reports outside the bundle directory");
+        await Assert.That(smoke)
+            .Contains("viewer macOS crash reports", StringComparison.Ordinal)
+            .Because("the CI log must include the report text, not only upload it");
+        await Assert.That(smoke)
+            .Contains("Copy-MacOSCrashReports -SinceUtc $processStartUtc", StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Returns the quoted arguments of the <c>hashFiles</c> call anchored on a
     /// cache key prefix, in declaration order.
