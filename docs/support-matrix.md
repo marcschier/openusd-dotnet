@@ -358,7 +358,7 @@ remains measured but ungated until the remaining divergence is eliminated.
 - MaterialX images, normal maps, emission, non-zero metalness, and arithmetic chains have no Storm parity gate.
 - Sphere-light glossy shaping, dome textures, image-based lighting, and area-light texture inputs are not gated.
 - Multiple point-instancer prototypes/proto-index variation and instanced shadows are not gated.
-- Wide point splats, authored curve widths/ribbons, wire draw mode, and shaded-wire draw mode are not gated.
+- Wide point splats and authored curve widths/ribbons are not gated.
 - Authored `cullStyle=back` and the default `backUnlessDoubleSided` are gated for a single-sided mesh and
   a double-sided back-face divergence companion. `front`, `frontUnlessDoubleSided`, and `nothing` remain ungated.
 - Animated materials, textures, lights, and topology have no parity scene.
@@ -477,6 +477,8 @@ when a backend returns identity-only results.
 | Timeline playback and authored timing | Implemented |
 | Orbit, pan, dolly/zoom, projection toggle, and framing | Implemented |
 | Selected `UsdGeomCamera` adoption | Implemented |
+| usdview viewport draw-mode ladder | Implemented |
+| Stage AABB/OBB statistics display | Implemented |
 | Renderer switching and fallback | Implemented on supported host combinations |
 | Picking and selection display | Implemented with limits above |
 | Bounded diagnostics and redacted export | Implemented |

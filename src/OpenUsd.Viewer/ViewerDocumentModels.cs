@@ -728,6 +728,7 @@ internal sealed record ViewerStageStatisticsSnapshot(
     int LeafPrimCount,
     int MaximumDepth,
     UsdBounds3d WorldBounds,
+    UsdOrientedBounds3d OrientedWorldBounds,
     TimeSpan BoundsQueryDuration) : IUsdDetachedResult
 {
     internal static ViewerStageStatisticsSnapshot Empty { get; } = new(
@@ -743,6 +744,7 @@ internal sealed record ViewerStageStatisticsSnapshot(
         0,
         0,
         UsdBounds3d.Empty,
+        UsdOrientedBounds3d.Empty,
         TimeSpan.Zero);
 }
 
@@ -1030,6 +1032,9 @@ internal static class ViewerStageSnapshotBuilder
         UsdBounds3d worldBounds = stage.GetWorldBounds(
             timeCode: stage.StartTimeCode,
             purposeMask: UsdGeomPurposeMask.All);
+        UsdOrientedBounds3d orientedWorldBounds = stage.GetWorldOrientedBounds(
+            timeCode: stage.StartTimeCode,
+            purposeMask: UsdGeomPurposeMask.All);
         boundsTimer.Stop();
         string defaultPrimPath;
         try
@@ -1056,6 +1061,7 @@ internal static class ViewerStageSnapshotBuilder
                 ? 0
                 : hierarchy.Entries.Max(entry => entry.Depth),
             worldBounds,
+            orientedWorldBounds,
             boundsTimer.Elapsed);
     }
 

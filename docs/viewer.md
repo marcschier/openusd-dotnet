@@ -223,6 +223,11 @@ the native delta by 120, Linux maps wheel buttons 4/5 to +1/-1, and macOS maps t
 events to signed detents. Precise macOS trackpad deltas use 40 points per logical step, retain
 fractional movement, clamp each event to four steps, and compensate for device-direction inversion.
 
+The Viewport display controls expose the usdview draw-mode ladder: Wireframe, Wireframe on
+surface, Smooth shaded, Flat shaded, Points, Geom only, Geom flat, Geom smooth, and Hidden
+surface wireframe. The statistics HUD displays stage AABB and OBB values from the world-bounds
+query capability at the stage start time.
+
 Pointer and wheel snapshots use a bounded latest-wins update pump. Physical-pixel resize publishes
 viewport and any required orbit or stage-camera projection revision in one coordinator mutation.
 Timeline changes query an active authored camera at the same requested time and publish time plus

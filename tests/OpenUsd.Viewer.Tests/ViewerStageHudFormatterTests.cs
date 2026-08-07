@@ -22,6 +22,11 @@ public sealed class ViewerStageHudFormatterTests
             new UsdBounds3d(
                 new UsdVec3d(-1, -2, -3),
                 new UsdVec3d(4, 5, 6)),
+            new UsdOrientedBounds3d(
+                new UsdBounds3d(
+                    new UsdVec3d(-2, -3, -4),
+                    new UsdVec3d(5, 6, 7)),
+                UsdMatrix4d.Identity),
             TimeSpan.FromMilliseconds(1.5));
         ViewerStageTimingSnapshot timing = ViewerStageTimingSnapshot.Create(1, 24, 24, 24);
         var diagnostics = new ViewerDiagnosticsSnapshot(
@@ -45,6 +50,8 @@ public sealed class ViewerStageHudFormatterTests
         await Assert.That(hud).Contains("Meshes: 2; mesh vertices: 8; curve CVs: 5; faces: 3");
         await Assert.That(hud).Contains("Playback: 1..24; FPS 24; TCPS 24");
         await Assert.That(hud).Contains("Render: CPU 4 ms; GPU 2 ms; draws 7; triangles 11");
-        await Assert.That(hud).Contains("AABB: [(-1, -2, -3) .. (4, 5, 6)]; bbox query 1.5 ms");
+        await Assert.That(hud).Contains("AABB: [(-1, -2, -3) .. (4, 5, 6)]; OBB: ");
+        await Assert.That(hud).Contains("[(-2, -3, -4) .. (5, 6, 7)]");
+        await Assert.That(hud).Contains("bbox query 1.5 ms");
     }
 }

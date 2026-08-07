@@ -28,7 +28,8 @@ public sealed class OpenUsdSilkSession : IDisposable
         int height,
         double timeCode = 0,
         CameraState camera = default,
-        RenderComplexity complexity = RenderComplexity.Low)
+        RenderComplexity complexity = RenderComplexity.Low,
+        RenderDrawMode drawMode = RenderDrawMode.SmoothShaded)
     {
         lock (_gate)
         {
@@ -39,7 +40,8 @@ public sealed class OpenUsdSilkSession : IDisposable
                 height,
                 timeCode,
                 camera,
-                complexity);
+                complexity,
+                drawMode);
         }
     }
 

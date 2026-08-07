@@ -239,7 +239,7 @@ buffers, and selection crosses the ABI once as a packed update.
 
 ### Hydra to Silk
 
-`openusd_hdsilk` session ABI 4 registers the hdSilk Hydra plugin against the exact retained stage.
+`openusd_hdsilk` session ABI 5 registers the hdSilk Hydra plugin against the exact retained stage.
 Each sync returns a native-owned immutable page. Managed code validates page ABI 9, copies the page
 bytes once, and releases the native page.
 

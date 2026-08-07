@@ -198,6 +198,72 @@ void AppendLight(
     AppendF32(payload, record->radius);
 }
 
+HdSilkMeshRecord ApplyDrawMode(const HdSilkMeshRecord& record, uint32_t drawMode)
+{
+    if (record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST)
+    {
+        return record;
+    }
+
+    if (drawMode != OPENUSD_SILK_DRAW_MODE_WIREFRAME &&
+        drawMode != OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME &&
+        drawMode != OPENUSD_SILK_DRAW_MODE_POINTS)
+    {
+        return record;
+    }
+
+    HdSilkMeshRecord result = record;
+    const size_t pointCount = result.points.size() / 3;
+    result.materialPath.clear();
+    result.attributes.clear();
+
+    if (drawMode == OPENUSD_SILK_DRAW_MODE_POINTS)
+    {
+        result.topologyKind = OPENUSD_SILK_TOPOLOGY_POINT_LIST;
+        result.indices.clear();
+        result.indices.reserve(pointCount);
+        result.triangleSubprims.clear();
+        result.triangleSubprims.reserve(pointCount);
+        for (size_t point = 0; point < pointCount; ++point)
+        {
+            if (point > std::numeric_limits<uint32_t>::max())
+            {
+                throw std::overflow_error("The hdSilk point draw-mode index overflows uint32.");
+            }
+            result.indices.push_back(static_cast<uint32_t>(point));
+            result.triangleSubprims.push_back(0);
+        }
+        return result;
+    }
+
+    result.topologyKind = OPENUSD_SILK_TOPOLOGY_LINE_LIST;
+    std::vector<uint32_t> lines;
+    std::vector<uint32_t> lineSubprims;
+    lines.reserve(result.indices.size() * 2);
+    lineSubprims.reserve(result.indices.size());
+    for (size_t triangle = 0; triangle + 2 < result.indices.size(); triangle += 3)
+    {
+        const uint32_t a = result.indices[triangle];
+        const uint32_t b = result.indices[triangle + 1];
+        const uint32_t c = result.indices[triangle + 2];
+        const uint32_t subprim = triangle / 3 < result.triangleSubprims.size()
+            ? result.triangleSubprims[triangle / 3]
+            : 0u;
+        lines.push_back(a);
+        lines.push_back(b);
+        lines.push_back(b);
+        lines.push_back(c);
+        lines.push_back(c);
+        lines.push_back(a);
+        lineSubprims.push_back(subprim);
+        lineSubprims.push_back(subprim);
+        lineSubprims.push_back(subprim);
+    }
+    result.indices = std::move(lines);
+    result.triangleSubprims = std::move(lineSubprims);
+    return result;
+}
+
 void AppendFrame(
     std::vector<uint8_t>& buffer,
     const HdSilkFrameState& frame,
@@ -914,6 +980,25 @@ HdSilkSceneState::SetComplexity(uint32_t complexity)
 }
 
 void
+HdSilkSceneState::SetDrawMode(uint32_t drawMode)
+{
+    if (drawMode > OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME)
+    {
+        throw std::invalid_argument("An hdSilk draw mode is unknown.");
+    }
+    std::lock_guard<std::mutex> lock(_mutex);
+    if (_drawMode == drawMode)
+    {
+        return;
+    }
+    _drawMode = drawMode;
+    for (auto& entry : _meshes)
+    {
+        entry.second.dirty = true;
+    }
+}
+
+void
 HdSilkSceneState::ReplaceMaterial(HdSilkMaterialRecord record)
 {
     if (record.path.empty())
@@ -1099,7 +1184,8 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         const size_t bufferSize = buffer.size();
         try
         {
-            AppendMeshUpsert(buffer, entry->record, _complexity);
+            const HdSilkMeshRecord modeRecord = ApplyDrawMode(entry->record, _drawMode);
+            AppendMeshUpsert(buffer, modeRecord, _complexity);
             ++appendedCommands;
         }
         catch (const std::exception& error)

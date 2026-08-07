@@ -570,7 +570,22 @@ public enum RenderDrawMode
     Points,
 
     /// <summary>Draw world-space bounds.</summary>
-    Bounds
+    Bounds,
+
+    /// <summary>Draw shaded surfaces with a wireframe overlay.</summary>
+    WireframeOnSurface,
+
+    /// <summary>Draw geometry without authored surface shading.</summary>
+    GeomOnly,
+
+    /// <summary>Draw flat-shaded geometry without authored surface shading.</summary>
+    GeomFlat,
+
+    /// <summary>Draw smooth-shaded geometry without authored surface shading.</summary>
+    GeomSmooth,
+
+    /// <summary>Draw wireframes with hidden-surface depth rejection.</summary>
+    HiddenSurfaceWireframe
 }
 
 /// <summary>

@@ -143,7 +143,7 @@ release their scheduler child lease only after native success; failed stage acce
 The ABI-compatible void release remains non-throwing and attempts only normal checked destruction, never
 an unsafe context-free destructor.
 
-hdSilk session ABI v4 uses never-reused opaque tokens backed by a process registry of shared session
+hdSilk session ABI v5 uses never-reused opaque tokens backed by a process registry of shared session
 states. Every operation acquires a shared state before waiting on the session mutex. Checked destruction
 first closes the token to new lookups, waits for all acquired operations, tears down under stage access,
 and then removes the registry entry. A failed stage-access acquisition reopens the same token for retry;

@@ -118,7 +118,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v6 and
-hdSilk session ABI v4; the hdSilk page ABI is v9. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v5; the hdSilk page ABI is v9. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one

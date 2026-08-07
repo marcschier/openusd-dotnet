@@ -58,7 +58,7 @@ public sealed class SharedStageSoakTests
         await Assert.That(json).Contains("\"sourceHash\": \"SOURCE\"");
         await Assert.That(json).Contains("\"dataAbi\": 8");
         await Assert.That(json).Contains("\"stormAbi\": 4");
-        await Assert.That(json).Contains("\"silkSessionAbi\": 4");
+        await Assert.That(json).Contains("\"silkSessionAbi\": 5");
         await Assert.That(json).Contains("\"silkPageAbi\": 1");
         await Assert.That(json).Contains("\"expectedFinalMeshes\"");
         await Assert.That(json).Contains("\"actualFinalDisplayColor\"");

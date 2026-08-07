@@ -30,7 +30,7 @@ extern "C" {
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
 #define OPENUSD_SILK_PAGE_ABI_VERSION 11u
-#define OPENUSD_SILK_SESSION_ABI_VERSION 4u
+#define OPENUSD_SILK_SESSION_ABI_VERSION 5u
 
 /// Command types written into openusd_silk_page_view::data. Every command
 /// starts with a little-endian uint32 "type" followed by a little-endian
@@ -318,6 +318,18 @@ extern "C" {
 #define OPENUSD_SILK_COMPLEXITY_HIGH 2u
 #define OPENUSD_SILK_COMPLEXITY_VERY_HIGH 3u
 
+/// Renderer-neutral draw modes matching OpenUsd.Rendering.RenderDrawMode.
+#define OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED 0u
+#define OPENUSD_SILK_DRAW_MODE_FLAT_SHADED 1u
+#define OPENUSD_SILK_DRAW_MODE_WIREFRAME 2u
+#define OPENUSD_SILK_DRAW_MODE_POINTS 3u
+#define OPENUSD_SILK_DRAW_MODE_BOUNDS 4u
+#define OPENUSD_SILK_DRAW_MODE_WIREFRAME_ON_SURFACE 5u
+#define OPENUSD_SILK_DRAW_MODE_GEOM_ONLY 6u
+#define OPENUSD_SILK_DRAW_MODE_GEOM_FLAT 7u
+#define OPENUSD_SILK_DRAW_MODE_GEOM_SMOOTH 8u
+#define OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME 9u
+
 typedef struct openusd_silk_session openusd_silk_session;
 typedef struct openusd_silk_page openusd_silk_page;
 
@@ -387,6 +399,20 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_session_sync_with_complexity(
     double time_code,
     const openusd_render_camera* camera,
     uint32_t complexity,
+    openusd_silk_page** page,
+    openusd_silk_page_view* view,
+    openusd_error_buffer* error);
+
+/// Same as openusd_silk_session_sync_with_complexity, with an explicit
+/// renderer-neutral draw mode forwarded to UsdImagingGLRenderParams.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_sync_with_complexity_and_draw_mode(
+    openusd_silk_session* session,
+    int32_t width,
+    int32_t height,
+    double time_code,
+    const openusd_render_camera* camera,
+    uint32_t complexity,
+    uint32_t draw_mode,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
     openusd_error_buffer* error);
