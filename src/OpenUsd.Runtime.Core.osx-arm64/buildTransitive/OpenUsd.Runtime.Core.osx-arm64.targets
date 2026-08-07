@@ -32,6 +32,7 @@
   <ItemGroup Condition="'$(_OUCoreOsxApplies)' == 'true'">
     <Content Include="$(_OUCoreOsxRes)/**/*">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <Pack>false</Pack>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
@@ -40,6 +41,7 @@
   <ItemGroup Condition="'$(_OUCoreOsxRidless)' == 'true'">
     <Content Include="$(_OUCoreOsxNative)/**/*">
       <Link>%(Filename)%(Extension)</Link>
+      <Pack>false</Pack>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

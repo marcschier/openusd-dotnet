@@ -29,6 +29,7 @@
   <ItemGroup Condition="'$(_OUCesLinuxRidless)' == 'true'">
     <Content Include="$(_OUCesLinuxNative)/**/*">
       <Link>%(Filename)%(Extension)</Link>
+      <Pack>false</Pack>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

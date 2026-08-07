@@ -35,11 +35,13 @@
         Exclude="$(_OUImgLinuxRes)/plugin/usd/plugInfo.json;$(_OUImgLinuxRes)/plugin/usd/hdSilk/resources/plugInfo.json" />
     <Content Include="$(_OUImgLinuxRes)/**/*">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <Pack>false</Pack>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <Content Include="@(_OUImgLinuxMerged)">
       <Link>usd/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <Pack>false</Pack>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
@@ -48,6 +50,7 @@
   <ItemGroup Condition="'$(_OUImgLinuxRidless)' == 'true'">
     <Content Include="$(_OUImgLinuxNative)/**/*">
       <Link>%(Filename)%(Extension)</Link>
+      <Pack>false</Pack>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

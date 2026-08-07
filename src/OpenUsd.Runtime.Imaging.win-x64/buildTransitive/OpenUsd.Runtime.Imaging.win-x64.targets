@@ -35,11 +35,13 @@
         Exclude="$(_OUImgWinRes)/plugin/usd/plugInfo.json;$(_OUImgWinRes)/plugin/usd/hdSilk/resources/plugInfo.json" />
     <Content Include="$(_OUImgWinRes)/**/*">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <Pack>false</Pack>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <Content Include="@(_OUImgWinMerged)">
       <Link>usd/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <Pack>false</Pack>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
@@ -48,6 +50,7 @@
   <ItemGroup Condition="'$(_OUImgWinRidless)' == 'true'">
     <Content Include="$(_OUImgWinNative)/**/*">
       <Link>%(Filename)%(Extension)</Link>
+      <Pack>false</Pack>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
