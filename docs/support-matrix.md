@@ -220,16 +220,35 @@ See [Rendering](rendering.md) for request binding, stale results, GPU passes, an
 The 1.0 rendering-parity claim is intentionally narrower than "everything hdSilk can parse".
 `eng/run-parity-capture.ps1` registers 25 curated scenes. Twenty-two are hard gates at
 `1.000000` adjusted IoU against D3D12 WARP and Vulkan SwiftShader; three are
-measured but deliberately ungated. macOS Metal has only one completed native pipeline probe and has
-not run the 25 curated parity scenes. Hosted Mesa/llvmpipe Storm runs only 21 registered scenes,
-excluding `single-sided-winding`, `bounds-draw-mode`, `origin-draw-mode`, and
-`subdivision-catmull-clark` because Mesa Storm differs from conformant-driver Storm.
-The render workflow now wires the curated capture into the macOS arm64 job with a CGL Storm
-context and Metal hdSilk backend, asserting all 25 registered scenes unless a named exclusion is
-added. That macOS path is **pending hosted proof** until a workflow run records whether hosted
-macOS can create the required OpenGL context and which Metal scenes gate; it must not be counted
-as observed Storm parity yet. The previous macOS native/Metal single-stage probe remains the only
-completed hosted Metal evidence until that run exists.
+measured but deliberately ungated because Storm is not a valid offscreen reference there:
+`materialx-standard-surface-constant` renders the MaterialX side black in Storm,
+`light-distant-shadow` never casts the authored shadow in Storm, and
+`subdivision-catmull-clark` records Storm's coarse/control-cage-like subdivision output.
+Hosted Mesa/llvmpipe Storm runs only 21 registered scenes, excluding `single-sided-winding`,
+`bounds-draw-mode`, `origin-draw-mode`, and `subdivision-catmull-clark` because Mesa Storm
+differs from conformant-driver Storm.
+
+The render workflow now wires the curated capture into the `macos-15` arm64 job with a CGL Storm
+context and the Metal hdSilk backend. It runs only the two parity-driver tests on macOS:
+deterministic Storm/Metal capture and the perturbation companion that must go red when the Metal
+image is flipped, mirrored, transposed, shifted, or sampled at the wrong time. It asserts all
+25 registered scenes with no macOS exclusions unless the script is changed to name one; a missing
+CGL context, missing Metal device, scene-count mismatch, or missing input is a hard failure in this
+required capture path. Those two tests are the curated scene matrix plus its cross-backend
+divergence companion, not two individual scenes.
+
+The other `StormSilkParityCaptureDriverTests` entries are targeted backend/detail gates rather than
+additional curated scenes: D3D12 frame capture, hdSilk complexity page selection, Vulkan synthetic
+MaterialX and texture self-consistency/divergence, non-diffuse texture slots, remaining constant
+PreviewSurface inputs, cull-style divergence, and area-light equivalence/divergence. The macOS
+parity capture does not run those Vulkan/D3D12 detail gates. Metal detail evidence outside the
+curated scene capture remains limited to the native pipeline probe, the ten-entry `mesh.metallib`
+contract, IOSurface composition, selection/picking/compute conformance, and the generated
+MaterialX-vs-PreviewSurface Metal self-consistency gate.
+
+This path is **pending hosted proof** until a workflow run records that hosted macOS can create the
+required CGL OpenGL context and Metal device and shows which scenes gate; it must not be counted as
+observed Storm/Metal parity yet.
 
 The harness is driven by the `render` workflow, **not** by ordinary CI, so a green `ci` badge does
 not mean parity ran. The full 22-gate matrix passes on Windows with a conformant GPU driver. Hosted
@@ -517,8 +536,9 @@ here.
 - Edge/point picking and x-ray selection are not supported.
 - The Viewer is an inspector and focused editor, not a `usdview` clone or full DCC.
 - Only `win-x64`, `linux-x64`, and `osx-arm64` runtime packages exist today.
-- The curated Storm/hdSilk parity matrix is gated on D3D12 WARP and Vulkan SwiftShader only; Metal has a
-  single-stage native pipeline probe, not 25-scene parity coverage.
+- The curated Storm/hdSilk parity matrix is observed on D3D12 WARP and Vulkan SwiftShader. Metal is
+  wired into the macOS render job for the same 25-scene capture, but that hosted result is pending
+  and must not be reported as passing until the workflow artifact exists.
 - Volume rendering outside Vulkan single-density OpenVDB assets, path tracing, proprietary shaders,
   arbitrary MaterialX graphs, and third-party Hydra render delegates are excluded from the 1.0 support claim.
 

@@ -149,7 +149,16 @@ def Xform "World"
     [Test]
     public async Task CapturesStormAndHdSilkBackendsDeterministically()
     {
-        if (!StormGlContextFactory.IsCurrentPlatformSupported || !CanCreatePlatformGlContext())
+        ParityScene[] scenes = CreateScenes();
+        VerifyExpectedSceneSet(scenes);
+        WriteScenePlan(scenes);
+        WriteMesaWglSceneExclusions();
+        if (!StormGlContextFactory.IsCurrentPlatformSupported)
+        {
+            SkipOrFail("platform OpenGL parity capture", "Storm GL contexts are not supported on this platform.");
+            return;
+        }
+        if (!CanCreatePlatformGlContext())
         {
             return;
         }
@@ -157,14 +166,15 @@ def Xform "World"
         SilkParityBackend[] backends = CreateBackends();
         var evidence = new List<string>();
         var jsonEvidence = new List<object>();
-        ParityScene[] scenes = CreateScenes();
-        VerifyExpectedSceneSet(scenes);
-        WriteScenePlan(scenes);
-        WriteMesaWglSceneExclusions();
         foreach (ParityScene scene in scenes)
         {
             if (!TryCreateInput(scene, out ParityCaptureInput input))
             {
+                if (RequireCapture)
+                {
+                    throw new InvalidOperationException($"{scene.Name} did not produce parity-capture input.");
+                }
+
                 return;
             }
 
@@ -350,7 +360,16 @@ def Xform "World"
     [Test]
     public async Task ComparisonDetectsPerturbedCaptures()
     {
-        if (!StormGlContextFactory.IsCurrentPlatformSupported || !CanCreatePlatformGlContext())
+        ParityScene[] scenes = CreateScenes();
+        VerifyExpectedSceneSet(scenes);
+        WriteScenePlan(scenes);
+        WriteMesaWglSceneExclusions();
+        if (!StormGlContextFactory.IsCurrentPlatformSupported)
+        {
+            SkipOrFail("platform OpenGL parity capture", "Storm GL contexts are not supported on this platform.");
+            return;
+        }
+        if (!CanCreatePlatformGlContext())
         {
             return;
         }
@@ -359,14 +378,15 @@ def Xform "World"
         var evidence = new List<string>();
         var jsonEvidence = new List<object>();
         var failures = new List<string>();
-        ParityScene[] scenes = CreateScenes();
-        VerifyExpectedSceneSet(scenes);
-        WriteScenePlan(scenes);
-        WriteMesaWglSceneExclusions();
         foreach (ParityScene scene in scenes)
         {
             if (!TryCreateInput(scene, out ParityCaptureInput input))
             {
+                if (RequireCapture)
+                {
+                    throw new InvalidOperationException($"{scene.Name} did not produce parity-capture input.");
+                }
+
                 return;
             }
 
@@ -1463,6 +1483,14 @@ def Xform "World"
     {
         try
         {
+            if (Environment.GetEnvironmentVariable("OPENUSD_PARITY_FORCE_CONTEXT_UNAVAILABLE") is "1" or "true")
+            {
+                SkipOrFail(
+                    "platform OpenGL parity capture",
+                    "OPENUSD_PARITY_FORCE_CONTEXT_UNAVAILABLE forced context creation to fail.");
+                return false;
+            }
+
             using IStormGlContext context = StormGlContextFactory.CreateForCurrentPlatform()
                 .Create(1, 1, new SilkColor(0, 0, 0, 1));
             context.Finish();

@@ -942,7 +942,9 @@ executable identity no longer matches the current build.
 
 The first stable release parity claim is limited to the curated Storm/hdSilk scene matrix documented in
 [Support matrix](support-matrix.md#hdsilk-storm-parity-sign-off): D3D12 WARP and Vulkan SwiftShader gate the
-accepted scenes at `1.000000` adjusted IoU, while Metal is pipeline-validated but does not yet run that matrix.
+accepted scenes at `1.000000` adjusted IoU. The macOS render job now runs the same parity-driver
+capture against Metal, but that path is pending hosted proof until a workflow run records the CGL
+Storm context and Metal capture artifacts.
 Subdivision, shadows, arbitrary MaterialX graphs, volumes, path tracing, proprietary shaders, and third-party Hydra
 render plugins are out of scope.
 
