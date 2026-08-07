@@ -87,7 +87,7 @@ The current contracts are:
 - data ABI 14 with required capabilities `0xFFFF`;
 - direct Storm ABI 6;
 - Storm child ABI 7;
-- hdSilk session ABI 4; and
+- hdSilk session ABI 5; and
 - hdSilk command-page ABI 9.
 
 Do not work around a mismatch by suppressing initialization or editing a constant. Remove mixed native

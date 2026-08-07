@@ -228,7 +228,7 @@ OpenUsd.Rendering.Silk.OpenUsdSilkPage.Revision.get -> ulong
 OpenUsd.Rendering.Silk.OpenUsdSilkRuntime
 OpenUsd.Rendering.Silk.OpenUsdSilkSession
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.Dispose() -> void
-OpenUsd.Rendering.Silk.OpenUsdSilkSession.Sync(int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), OpenUsd.Rendering.RenderComplexity complexity = OpenUsd.Rendering.RenderComplexity.Low) -> OpenUsd.Rendering.Silk.OpenUsdSilkPage!
+OpenUsd.Rendering.Silk.OpenUsdSilkSession.Sync(int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), OpenUsd.Rendering.RenderComplexity complexity = OpenUsd.Rendering.RenderComplexity.Low, OpenUsd.Rendering.RenderDrawMode drawMode = OpenUsd.Rendering.RenderDrawMode.SmoothShaded) -> OpenUsd.Rendering.Silk.OpenUsdSilkPage!
 OpenUsd.Rendering.Silk.SilkAttributeInterpolation
 OpenUsd.Rendering.Silk.SilkAttributeInterpolation.Constant = 0 -> OpenUsd.Rendering.Silk.SilkAttributeInterpolation
 OpenUsd.Rendering.Silk.SilkAttributeInterpolation.Vertex = 1 -> OpenUsd.Rendering.Silk.SilkAttributeInterpolation

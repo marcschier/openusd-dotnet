@@ -120,6 +120,7 @@ public sealed class CameraInteropAllocationTests
                     i,
                     CameraState.Default,
                     RenderComplexity.Low,
+                    RenderDrawMode.SmoothShaded,
                     ref view,
                     out _,
                     errorBytes,
@@ -137,6 +138,7 @@ public sealed class CameraInteropAllocationTests
                     i,
                     CameraState.Default,
                     RenderComplexity.Low,
+                    RenderDrawMode.SmoothShaded,
                     ref view,
                     out _,
                     errorBytes,
@@ -245,6 +247,7 @@ public sealed class CameraInteropAllocationTests
             double timeCode,
             in NativeRenderCamera camera,
             RenderComplexity complexity,
+            RenderDrawMode drawMode,
             out nint page,
             ref OpenUsdSilkRuntime.NativePageView view,
             Span<byte> errorBytes,
@@ -256,6 +259,7 @@ public sealed class CameraInteropAllocationTests
             _ = timeCode;
             _ = camera;
             _ = complexity;
+            _ = drawMode;
             _ = view;
             _ = errorBytes;
             Interlocked.Increment(ref _silkSyncCalls);

@@ -591,6 +591,45 @@ def Xform "World"
         await Assert.That(mediumStats.PointListIndexCount).IsGreaterThan(lowStats.PointListIndexCount);
     }
 
+
+    [Test]
+    public async Task SilkWireframeDrawModeDivergesFromSmoothShadedPixelsOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        ParityImage smooth;
+        ParityImage wireframe;
+        try
+        {
+            smooth = CaptureHdSilkDrawModeD3D12(RenderDrawMode.SmoothShaded);
+            wireframe = CaptureHdSilkDrawModeD3D12(RenderDrawMode.Wireframe);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk draw-mode D3D12 divergence", exception.ToString());
+            return;
+        }
+
+        int differentBytes = CountDifferentBytes(smooth.Rgba.Span, wireframe.Rgba.Span);
+        string line = "draw-mode-divergence smoothHash=" + Hash(smooth) +
+            " wireframeHash=" + Hash(wireframe) +
+            " differentBytes=" + differentBytes.ToString(CultureInfo.InvariantCulture);
+        Console.WriteLine(line);
+        WriteEvidence("draw-mode-divergence.txt", [line]);
+        if (differentBytes == 0)
+        {
+            WriteCapture("draw-mode-divergence", "smooth", smooth);
+            WriteCapture("draw-mode-divergence", "wireframe", wireframe);
+        }
+
+        await Assert.That(ContainsPixelDifferentFromClear(smooth.Rgba.Span, new Vector4(0, 0, 0, 1))).IsTrue();
+        await Assert.That(ContainsPixelDifferentFromClear(wireframe.Rgba.Span, new Vector4(0, 0, 0, 1))).IsTrue();
+        await Assert.That(differentBytes).IsGreaterThan(0);
+    }
+
     [Test]
     public async Task SilkFrameCaptureReturnsDimensionsAndNonTrivialPixels()
     {
@@ -2185,6 +2224,59 @@ def Xform "World"
         return new MeshPageStats(pointListPoints, pointListIndices, lineListPrimitives);
     }
 
+
+    [SupportedOSPlatform("windows")]
+    private static ParityImage CaptureHdSilkDrawModeD3D12(RenderDrawMode drawMode)
+    {
+        PrependHdSilkNativeSearchPath();
+        string stagePath = ResolveParityAsset("parity-orientation-asymmetric.usda");
+        string pluginPath = ResolvePluginPath();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+        using OpenUsdSilkPage page = session.Sync(
+            Width,
+            Height,
+            TimeCode,
+            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity),
+            RenderComplexity.Low,
+            drawMode);
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            checked((uint)Width),
+            checked((uint)Height),
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(
+            checked((uint)Width),
+            checked((uint)Height)));
+        using var renderer = new SilkMeshRenderer(device);
+        _ = renderer.ApplyAndRender(
+            page,
+            color,
+            depth,
+            new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1));
+        byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+        color.ReadbackForTesting(pixels);
+        return new ParityImage(Width, Height, pixels);
+    }
+
+    private static int CountDifferentBytes(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    {
+        if (left.Length != right.Length)
+        {
+            throw new ArgumentException("Pixel buffers must have equal length.");
+        }
+
+        int count = 0;
+        for (int index = 0; index < left.Length; index++)
+        {
+            if (left[index] != right[index])
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
     private static void AssertNonZeroPixel(ReadOnlySpan<byte> pixels, int offset)
     {
         if (pixels[offset] == 0 &&
@@ -2227,6 +2319,9 @@ def Xform "World"
         PrependNativeSearchPath(
             Path.Combine(AppContext.BaseDirectory, "parity-capture", "runtime", "bin"),
             Path.Combine(root, "native", "install", "shim", "win-x64", "bin"),
+            Path.Combine(root, "native", "install", "win-x64", "bin"),
+            Path.Combine(root, "native", "install", "win-x64", "lib"),
+            Path.Combine(root, "native", "install", "vulkan-sdk-1.4.321.0", "Bin"),
             Path.Combine(root, "..", "openusd", "native", "install", "win-x64", "bin"),
             Path.Combine(root, "..", "openusd", "native", "install", "win-x64", "lib"),
             Path.Combine(root, "..", "openusd", "native", "install", "vulkan-sdk-1.4.321.0", "Bin"));

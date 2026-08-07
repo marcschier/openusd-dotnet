@@ -86,9 +86,11 @@ public static unsafe partial class OpenUsdSilkRuntime
         int height,
         double timeCode,
         CameraState camera,
-        RenderComplexity complexity)
+        RenderComplexity complexity,
+        RenderDrawMode drawMode)
     {
         ValidateComplexity(complexity);
+        ValidateDrawMode(drawMode);
         var view = new NativePageView
         {
             StructSize = (uint)sizeof(NativePageView)
@@ -101,6 +103,7 @@ public static unsafe partial class OpenUsdSilkRuntime
             timeCode,
             camera,
             complexity,
+            drawMode,
             ref view,
             out nint page,
             errorBytes,
@@ -145,6 +148,7 @@ public static unsafe partial class OpenUsdSilkRuntime
         double timeCode,
         CameraState camera,
         RenderComplexity complexity,
+        RenderDrawMode drawMode,
         ref NativePageView view,
         out nint page,
         Span<byte> errorBytes,
@@ -159,6 +163,7 @@ public static unsafe partial class OpenUsdSilkRuntime
             timeCode,
             in nativeCamera,
             complexity,
+            drawMode,
             out page,
             ref view,
             errorBytes,
@@ -170,6 +175,14 @@ public static unsafe partial class OpenUsdSilkRuntime
         if (complexity is < RenderComplexity.Low or > RenderComplexity.VeryHigh)
         {
             throw new ArgumentOutOfRangeException(nameof(complexity));
+        }
+    }
+
+    private static void ValidateDrawMode(RenderDrawMode drawMode)
+    {
+        if (!Enum.IsDefined(drawMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(drawMode));
         }
     }
 
@@ -270,6 +283,7 @@ public static unsafe partial class OpenUsdSilkRuntime
             double timeCode,
             in NativeRenderCamera camera,
             RenderComplexity complexity,
+            RenderDrawMode drawMode,
             out nint page,
             ref NativePageView view,
             Span<byte> errorBytes,
@@ -285,12 +299,13 @@ public static unsafe partial class OpenUsdSilkRuntime
             double timeCode,
             in NativeRenderCamera camera,
             RenderComplexity complexity,
+            RenderDrawMode drawMode,
             out nint page,
             ref NativePageView view,
             Span<byte> errorBytes,
             out nuint errorRequired)
         {
-            if (complexity != RenderComplexity.Low)
+            if (complexity != RenderComplexity.Low || drawMode != RenderDrawMode.SmoothShaded)
             {
                 return NativeSyncWithComplexityCall.Invoke(
                     session,
@@ -299,6 +314,7 @@ public static unsafe partial class OpenUsdSilkRuntime
                     timeCode,
                     in camera,
                     complexity,
+                    drawMode,
                     out page,
                     ref view,
                     errorBytes,
@@ -332,6 +348,7 @@ public static unsafe partial class OpenUsdSilkRuntime
                 double timeCode,
                 in NativeRenderCamera camera,
                 RenderComplexity complexity,
+                RenderDrawMode drawMode,
                 out nint page,
                 ref NativePageView view,
                 Span<byte> errorBytes,
@@ -342,13 +359,14 @@ public static unsafe partial class OpenUsdSilkRuntime
                     var error = new NativeErrorBuffer(
                         errorPointer,
                         (nuint)errorBytes.Length);
-                    OpenUsdNativeStatus status = NativeMethods.SyncWithComplexity(
+                    OpenUsdNativeStatus status = NativeMethods.SyncWithComplexityAndDrawMode(
                         session,
                         width,
                         height,
                         timeCode,
                         in camera,
                         (uint)complexity,
+                        (uint)drawMode,
                         out page,
                         ref view,
                         ref error);
@@ -405,15 +423,18 @@ public static unsafe partial class OpenUsdSilkRuntime
             ref NativePageView view,
             ref NativeErrorBuffer error);
 
-        [LibraryImport(LibraryName, EntryPoint = "openusd_silk_session_sync_with_complexity")]
+        [LibraryImport(
+            LibraryName,
+            EntryPoint = "openusd_silk_session_sync_with_complexity_and_draw_mode")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-        internal static partial OpenUsdNativeStatus SyncWithComplexity(
+        internal static partial OpenUsdNativeStatus SyncWithComplexityAndDrawMode(
             nint session,
             int width,
             int height,
             double timeCode,
             in NativeRenderCamera camera,
             uint complexity,
+            uint drawMode,
             out nint page,
             ref NativePageView view,
             ref NativeErrorBuffer error);

@@ -205,9 +205,9 @@ if ($stormAbi -ne [int]$lock.abi.storm)
 {
     throw "Storm ABI $stormAbi does not match lock ABI $($lock.abi.storm)."
 }
-if ($sessionAbi -ne 4)
+if ($sessionAbi -ne 5)
 {
-    throw "hdSilk session ABI $sessionAbi does not match the package ABI 4 contract."
+    throw "hdSilk session ABI $sessionAbi does not match the package ABI 5 contract."
 }
 if ($stormChildAbi -ne 7)
 {

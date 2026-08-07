@@ -282,9 +282,14 @@ OpenUsd.Rendering.RenderDiagnosticsState.RenderDiagnosticsState(System.Collectio
 OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderDrawMode.Bounds = 4 -> OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderDrawMode.FlatShaded = 1 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderDrawMode.GeomFlat = 7 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderDrawMode.GeomOnly = 6 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderDrawMode.GeomSmooth = 8 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderDrawMode.HiddenSurfaceWireframe = 9 -> OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderDrawMode.Points = 3 -> OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderDrawMode.SmoothShaded = 0 -> OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderDrawMode.Wireframe = 2 -> OpenUsd.Rendering.RenderDrawMode
+OpenUsd.Rendering.RenderDrawMode.WireframeOnSurface = 5 -> OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderHeadlight
 OpenUsd.Rendering.RenderHeadlight.Ambient.get -> float
 OpenUsd.Rendering.RenderHeadlight.Ambient.init -> void

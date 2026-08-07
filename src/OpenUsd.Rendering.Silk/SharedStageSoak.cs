@@ -113,7 +113,7 @@ internal sealed record SharedStageBuildIdentity
 {
     internal const uint DataAbi = 8;
     internal const uint StormAbi = 4;
-    internal const uint SilkSessionAbi = 4;
+    internal const uint SilkSessionAbi = 5;
     internal const uint SilkPageAbi = 1;
 
     internal required string SourceHash { get; init; }

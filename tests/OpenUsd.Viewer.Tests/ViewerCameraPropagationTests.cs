@@ -62,6 +62,25 @@ public sealed class ViewerCameraPropagationTests
         await Assert.That(adapter.Request.Camera.Projection).IsEqualTo(camera.Projection);
     }
 
+
+    [Test]
+    [Arguments(RenderDrawMode.WireframeOnSurface)]
+    [Arguments(RenderDrawMode.GeomOnly)]
+    [Arguments(RenderDrawMode.GeomFlat)]
+    [Arguments(RenderDrawMode.GeomSmooth)]
+    [Arguments(RenderDrawMode.HiddenSurfaceWireframe)]
+    public async Task DrawModeReachesSilkSessionBoundary(RenderDrawMode drawMode)
+    {
+        StageRenderState state = StageRenderState.Create(new StageIdentity("draw-mode.usda"))
+            .WithDisplay(SceneDisplayState.Default with { DrawMode = drawMode });
+        var adapter = new RecordingSilkSessionAdapter();
+
+        await Assert.That(() => ViewerFrameAdapter.SyncSilk(adapter, 640, 480, state))
+            .Throws<SilkBoundaryCapturedException>();
+
+        await Assert.That(adapter.Request.DrawMode).IsEqualTo(drawMode);
+    }
+
     [Test]
     public async Task AutomaticCameraRemainsAutomaticAtBothNativeBoundaries()
     {

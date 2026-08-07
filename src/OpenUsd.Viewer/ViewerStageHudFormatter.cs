@@ -61,6 +61,10 @@ internal static class ViewerStageHudFormatter
         builder.AppendLine();
         builder.Append("AABB: ");
         builder.Append(statistics.WorldBounds.IsEmpty ? "empty" : statistics.WorldBounds.ToString());
+        builder.Append("; OBB: ");
+        builder.Append(statistics.OrientedWorldBounds.IsEmpty
+            ? "empty"
+            : statistics.OrientedWorldBounds.ToString());
         builder.Append(CultureInfo.InvariantCulture, $"; bbox query {FormatDuration(statistics.BoundsQueryDuration)}");
         return builder.ToString();
     }

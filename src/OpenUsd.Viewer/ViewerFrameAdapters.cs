@@ -10,6 +10,7 @@ internal readonly record struct ViewerFrameRequest(
     ulong Revision,
     double TimeCode,
     CameraState Camera,
+    RenderDrawMode DrawMode,
     RenderComplexity Complexity,
     ulong? SceneRevision)
 {
@@ -20,6 +21,7 @@ internal readonly record struct ViewerFrameRequest(
             state.Revision,
             state.Time.TimeCode,
             state.Camera,
+            state.Display.DrawMode,
             state.RenderSettings.Complexity,
             SceneRevision: null);
     }
@@ -65,7 +67,13 @@ internal sealed class OpenUsdSilkSessionAdapter(OpenUsdSilkSession session)
         int width,
         int height,
         ViewerFrameRequest request) =>
-        session.Sync(width, height, request.TimeCode, request.Camera, request.Complexity);
+        session.Sync(
+            width,
+            height,
+            request.TimeCode,
+            request.Camera,
+            request.Complexity,
+            request.DrawMode);
 }
 
 internal static class ViewerFrameAdapter

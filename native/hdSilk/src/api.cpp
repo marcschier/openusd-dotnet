@@ -41,6 +41,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -54,6 +55,33 @@ const TfToken& SilkRendererPluginId()
 {
     static const TfToken id("HdSilkRendererPlugin");
     return id;
+}
+
+UsdImagingGLDrawMode MapDrawMode(uint32_t drawMode)
+{
+    switch (drawMode)
+    {
+    case OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED:
+        return UsdImagingGLDrawMode::DRAW_SHADED_SMOOTH;
+    case OPENUSD_SILK_DRAW_MODE_FLAT_SHADED:
+        return UsdImagingGLDrawMode::DRAW_SHADED_FLAT;
+    case OPENUSD_SILK_DRAW_MODE_WIREFRAME:
+    case OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME:
+        return UsdImagingGLDrawMode::DRAW_WIREFRAME;
+    case OPENUSD_SILK_DRAW_MODE_POINTS:
+        return UsdImagingGLDrawMode::DRAW_POINTS;
+    case OPENUSD_SILK_DRAW_MODE_WIREFRAME_ON_SURFACE:
+        return UsdImagingGLDrawMode::DRAW_WIREFRAME_ON_SURFACE;
+    case OPENUSD_SILK_DRAW_MODE_GEOM_ONLY:
+    case OPENUSD_SILK_DRAW_MODE_BOUNDS:
+        return UsdImagingGLDrawMode::DRAW_GEOM_ONLY;
+    case OPENUSD_SILK_DRAW_MODE_GEOM_FLAT:
+        return UsdImagingGLDrawMode::DRAW_GEOM_FLAT;
+    case OPENUSD_SILK_DRAW_MODE_GEOM_SMOOTH:
+        return UsdImagingGLDrawMode::DRAW_GEOM_SMOOTH;
+    default:
+        throw std::invalid_argument("An hdSilk draw mode is unknown.");
+    }
 }
 }
 
@@ -1125,13 +1153,14 @@ openusd_status openusd_silk_session_sync(
     openusd_silk_page_view* view,
     openusd_error_buffer* error)
 {
-    return openusd_silk_session_sync_with_complexity(
+    return openusd_silk_session_sync_with_complexity_and_draw_mode(
         session,
         width,
         height,
         time_code,
         camera,
         OPENUSD_SILK_COMPLEXITY_LOW,
+        OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED,
         page,
         view,
         error);
@@ -1144,6 +1173,31 @@ openusd_status openusd_silk_session_sync_with_complexity(
     double time_code,
     const openusd_render_camera* camera,
     uint32_t complexity,
+    openusd_silk_page** page,
+    openusd_silk_page_view* view,
+    openusd_error_buffer* error)
+{
+    return openusd_silk_session_sync_with_complexity_and_draw_mode(
+        session,
+        width,
+        height,
+        time_code,
+        camera,
+        complexity,
+        OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED,
+        page,
+        view,
+        error);
+}
+
+openusd_status openusd_silk_session_sync_with_complexity_and_draw_mode(
+    openusd_silk_session* session,
+    int32_t width,
+    int32_t height,
+    double time_code,
+    const openusd_render_camera* camera,
+    uint32_t complexity,
+    uint32_t draw_mode,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
     openusd_error_buffer* error)
@@ -1167,6 +1221,11 @@ openusd_status openusd_silk_session_sync_with_complexity(
     if (complexity > OPENUSD_SILK_COMPLEXITY_VERY_HIGH)
     {
         WriteError(error, "A valid hdSilk complexity level is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (draw_mode > OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME)
+    {
+        WriteError(error, "A valid hdSilk draw mode is required.");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
     return Guard(error, [&]()
@@ -1239,6 +1298,7 @@ openusd_status openusd_silk_session_sync_with_complexity(
             UsdImagingGLRenderParams parameters;
             parameters.frame = UsdTimeCode(time_code);
             parameters.showRender = true;
+            parameters.drawMode = MapDrawMode(draw_mode);
             // UsdImagingGLRenderParams defaults cullStyle to CULL_STYLE_NOTHING,
             // which UsdImaging reports as the per-prim fallback because USD gprims
             // author doubleSided rather than a Hydra cull style. That made hdSilk
@@ -1257,6 +1317,7 @@ openusd_status openusd_silk_session_sync_with_complexity(
                     camera->clip_planes[plane][3]);
             }
             state->sceneState->SetComplexity(complexity);
+            state->sceneState->SetDrawMode(draw_mode);
             HdSilkBeginUsdSkelEvaluation(state->stage, UsdTimeCode(time_code));
             try
             {
