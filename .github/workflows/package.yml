@@ -64,6 +64,17 @@ on:
         description: Native artifact workflow run ID to consume instead of URL archives
         required: false
         type: string
+  # These gates only ever ran inside a release, and it cost five release runs
+  # to ship 0.5.0-alpha because four of them were first-ever executions. This
+  # runs them on every push to main instead, reusing the verified archive the
+  # native pipeline just produced for the same commit rather than rebuilding
+  # OpenUSD -- so the cost is the package jobs alone, not another 2.5 hours per
+  # RID. A push trigger would rebuild, because the native cache here is a
+  # separate namespace from the one native.yml fills.
+  workflow_run:
+    workflows: ['native artifact pipeline']
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -76,6 +87,12 @@ concurrency:
 jobs:
   package-execution:
     name: ${{ matrix.name }} package-only NativeAOT execution
+    # A workflow_run fires whatever the upstream conclusion was, so a failed or
+    # cancelled native pipeline would otherwise send these jobs looking for an
+    # archive that was never uploaded.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     strategy:
@@ -93,17 +110,22 @@ jobs:
             rid: osx-arm64
     env:
       OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
-      NATIVE_PIPELINE_RUN_ID: ${{ inputs['native-pipeline-run-id'] }}
+      NATIVE_PIPELINE_RUN_ID: >-
+        ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id ||
+            inputs['native-pipeline-run-id'] }}
       WINDOWS_NATIVE_SOURCE: >-
-        ${{ inputs['native-pipeline-run-id'] && 'archive' || 'build' }}
+        ${{ (github.event_name == 'workflow_run' ||
+            inputs['native-pipeline-run-id']) && 'archive' || 'build' }}
       LINUX_NATIVE_SOURCE: >-
-        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
+        ${{ (github.event_name == 'workflow_run' ||
+            inputs['native-pipeline-run-id']) && 'archive' ||
             (github.event_name == 'workflow_dispatch' &&
             inputs['linux-native-source'] || 'build') }}
       LINUX_NATIVE_URL: ${{ inputs['linux-native-url'] }}
       LINUX_NATIVE_SHA256: ${{ inputs['linux-native-sha256'] }}
       MACOS_NATIVE_SOURCE: >-
-        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
+        ${{ (github.event_name == 'workflow_run' ||
+            inputs['native-pipeline-run-id']) && 'archive' ||
             (github.event_name == 'workflow_dispatch' &&
             inputs['macos-native-source'] || 'build') }}
       MACOS_NATIVE_URL: ${{ inputs['macos-native-url'] }}
@@ -114,6 +136,13 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          # A workflow_run checks out the default branch by default, not the
+          # commit that produced the archive these jobs are about to consume.
+          # Pinning the triggering SHA keeps the tests and the native payload
+          # describing the same tree.
+          ref: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: |
