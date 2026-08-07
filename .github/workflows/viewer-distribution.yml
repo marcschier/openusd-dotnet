@@ -43,6 +43,8 @@ concurrency:
 jobs:
   pack-viewer-inputs:
     name: pack Viewer inputs ${{ matrix.rid }}
+    outputs:
+      ready: ${{ steps.native-ready.outputs.ready }}
     if: >-
       github.event_name != 'workflow_run' ||
       github.event.workflow_run.conclusion == 'success'
@@ -149,15 +151,35 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install cmake ninja
       - name: Fetch locked native sources
-        if: env.NATIVE_SOURCE == 'build' && steps.native-cache.outputs.cache-hit != 'true'
+        if: env.NATIVE_SOURCE == 'build' && steps.native-cache.outputs.cache-hit == 'true'
         shell: pwsh
         run: ./eng/fetch-native.ps1 -Rid ${{ matrix.rid }}
-      - name: Build locked native install
+      # Deliberately never builds OpenUSD from source. A miss means the native
+      # tree changed and the pipeline has not published that tree yet, so
+      # building here would spend about two and a half hours per RID on work
+      # the pipeline is already doing, and this workflow restores rather than
+      # saves, so the result would be thrown away. The workflow_run trigger
+      # re-runs this properly once the archive exists, so the coverage is
+      # deferred rather than lost -- and the notice says so out loud instead of
+      # leaving a silent gap.
+      - name: Report a deferred smoke when the native tree is not published yet
         if: env.NATIVE_SOURCE == 'build' && steps.native-cache.outputs.cache-hit != 'true'
         shell: pwsh
-        run: ./eng/build-native.ps1 -Rid ${{ matrix.rid }}
+        run: |
+          Write-Host (
+            '::notice::VIEWER_SMOKE_DEFERRED: no verified native install for ' +
+            '${{ matrix.rid }} at this commit. The native artifact pipeline has ' +
+            'not published this native tree yet; this workflow will re-run ' +
+            'automatically through workflow_run once it has.')
+      - id: native-ready
+        shell: pwsh
+        run: |
+          $ready = '${{ env.NATIVE_SOURCE }}' -eq 'archive' -or
+            '${{ steps.native-cache.outputs.cache-hit }}' -eq 'true'
+          "ready=$($ready.ToString().ToLowerInvariant())" |
+            Out-File $env:GITHUB_OUTPUT -Append
       - name: Download verified native pipeline archive
-        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -165,7 +187,7 @@ jobs:
           name: openusd-native-${{ matrix.rid }}
           path: artifacts/native-pipeline/${{ matrix.rid }}
       - name: Extract verified native archive
-        if: env.NATIVE_SOURCE == 'archive'
+        if: env.NATIVE_SOURCE == 'archive' && steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           ./eng/prepare-workflow-native-input.ps1 `
@@ -173,6 +195,7 @@ jobs:
             -Source archive `
             -PipelineRoot artifacts/native-pipeline/${{ matrix.rid }}
       - name: Verify native install metadata
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           $requireVulkanRuntime =
@@ -195,12 +218,15 @@ jobs:
               'eng/build-cesium-shim.ps1'
             ) }}
       - name: Build Cesium native install
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }} -SkipSmokeProbe
       - name: Build Cesium shim
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }}
       - name: Pack the runtime packages for this RID
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         env:
           Platform: ''
@@ -210,18 +236,19 @@ jobs:
             -Rid ${{ matrix.rid }} `
             -OutputPath artifacts/nupkg
       - name: Pack the platform-neutral packages
-        if: matrix.rid == 'linux-x64'
+        if: matrix.rid == 'linux-x64' && steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         env:
           Platform: ''
         run: ./eng/pack-packages.ps1 -Scope managed -OutputPath artifacts/nupkg
       - name: Pack the Metal package
-        if: matrix.rid == 'osx-arm64'
+        if: matrix.rid == 'osx-arm64' && steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         env:
           Platform: ''
         run: ./eng/pack-packages.ps1 -Scope metal -OutputPath artifacts/nupkg
       - name: Upload packed Viewer inputs
+        if: steps.native-ready.outputs.ready == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: openusd-viewer-input-nupkg-${{ matrix.rid }}
@@ -232,6 +259,9 @@ jobs:
   viewer-distribution:
     name: viewer distribution ${{ matrix.rid }}
     needs: pack-viewer-inputs
+    # Skips rather than fails when the pack job deferred: there is nothing to
+    # smoke, and workflow_run re-runs both once the native archive exists.
+    if: needs.pack-viewer-inputs.outputs.ready == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
