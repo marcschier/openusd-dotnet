@@ -470,6 +470,8 @@ try
         'subdivision-catmull-clark')
     $mesaSceneCount = $totalParityScenes - $mesaExcludedScenes.Count
     $mesaExcludedList = $mesaExcludedScenes -join ','
+    $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = "$totalParityScenes"
+    $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES = ''
 
     if ($Rid -eq 'win-x64')
     {
@@ -516,15 +518,41 @@ try
         throw 'StormGl=Mesa is supported only for win-x64.'
     }
 
-    & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
-        -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
-        -Framework net10.0 `
-        -Configuration $Configuration `
-        -MinimumExpectedTests 2 `
-        -TestArguments @(
-            '--treenode-filter',
-            '/*/*/StormSilkParityCaptureDriverTests/*')
-    exit $LASTEXITCODE
+    $testProject = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+    if ($Rid -eq 'osx-arm64')
+    {
+        foreach ($driverTest in @(
+            '/*/*/StormSilkParityCaptureDriverTests/CapturesStormAndHdSilkBackendsDeterministically',
+            '/*/*/StormSilkParityCaptureDriverTests/ComparisonDetectsPerturbedCaptures'))
+        {
+            & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
+                -Project $testProject `
+                -Framework net10.0 `
+                -Configuration $Configuration `
+                -MinimumExpectedTests 1 `
+                -TestArguments @(
+                    '--treenode-filter',
+                    $driverTest)
+            if ($LASTEXITCODE -ne 0)
+            {
+                exit $LASTEXITCODE
+            }
+        }
+
+        exit 0
+    }
+    else
+    {
+        & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
+            -Project $testProject `
+            -Framework net10.0 `
+            -Configuration $Configuration `
+            -MinimumExpectedTests 2 `
+            -TestArguments @(
+                '--treenode-filter',
+                '/*/*/StormSilkParityCaptureDriverTests/*')
+        exit $LASTEXITCODE
+    }
 }
 finally
 {
