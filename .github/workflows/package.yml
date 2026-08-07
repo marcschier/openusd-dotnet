@@ -447,6 +447,7 @@ jobs:
         run: >-
           sudo apt-get install -y
           build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev
+          libvulkan1
       - name: Build Cesium native install
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
