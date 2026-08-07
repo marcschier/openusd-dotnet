@@ -68,6 +68,14 @@ jobs:
         if: runner.os == 'Linux'
         shell: pwsh
         run: ./eng/test-native-artifact-workflow.ps1
+      - name: Validate Linux native prerequisites
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./eng/test-linux-native-prerequisites.ps1
+      - name: Validate render native archive
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./eng/test-render-native-archive.ps1
       - name: Validate continuous safety workflow
         if: runner.os == 'Linux'
         shell: pwsh

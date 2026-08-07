@@ -143,6 +143,83 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task NativeWorkflowPathFiltersExcludeValidationOnlyInputs()
+    {
+        string root = FindRepositoryRoot();
+        string native = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "native.yml"));
+        string ci = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "ci.yml"));
+        string triggers = ReadTriggerBlock(native);
+        await Assert.That(triggers).IsNotEmpty();
+
+        foreach (string path in new[]
+        {
+            "'eng/test-linux-native-prerequisites.ps1'",
+            "'eng/test-render-native-archive.ps1'",
+            "'eng/run-native-probe.ps1'",
+            "'eng/run-silk-probe.ps1'",
+        })
+        {
+            await Assert.That(triggers)
+                .DoesNotContain(path, StringComparison.Ordinal)
+                .Because(
+                    $"{path} is exercised by a cheaper self-firing workflow " +
+                    "or is a workflow contract test, so it must not starve " +
+                    "the serialized native archive queue");
+        }
+
+        foreach (string path in new[]
+        {
+            "'eng/openusd.lock.json'",
+            "'eng/openusd.install.lock.json'",
+            "'eng/fetch-native.ps1'",
+            "'eng/build-native.ps1'",
+            "'eng/build-vulkan-sdk.ps1'",
+            "'eng/check-linux-native-prerequisites.ps1'",
+            "'eng/native-install-metadata.ps1'",
+            "'eng/prepare-render-native.ps1'",
+            "'eng/create-native-archive.ps1'",
+            "'eng/run-native-fuzz.ps1'",
+            "'eng/native-fuzz-lsan.supp'",
+            "'eng/physx.lock.json'",
+            "'eng/fetch-physx-native.ps1'",
+            "'eng/build-physx-native.ps1'",
+            "'native/**'",
+            "'test-assets/fuzz-seeds/**'",
+        })
+        {
+            await Assert.That(triggers)
+                .Contains(path, StringComparison.Ordinal)
+                .Because(
+                    $"{path} can change archive bytes, archive-only validation " +
+                    "that no other workflow exercises, the archive sidecar, " +
+                    "or the cache key that downstream workflows restore");
+        }
+
+        await Assert.That(native)
+            .Contains("./eng/test-linux-native-prerequisites.ps1", StringComparison.Ordinal)
+            .Because("the Linux prerequisite contract still has to run when native.yml runs");
+        await Assert.That(native)
+            .Contains("./eng/check-linux-native-prerequisites.ps1", StringComparison.Ordinal)
+            .Because("the Linux prerequisite preflight still has to run when native.yml runs");
+
+        string ciBuild = ReadJob(ci, "build-test");
+        foreach (string script in new[]
+        {
+            "./eng/test-linux-native-prerequisites.ps1",
+            "./eng/test-render-native-archive.ps1",
+        })
+        {
+            await Assert.That(ciBuild)
+                .Contains(script, StringComparison.Ordinal)
+                .Because(
+                    $"{script} no longer triggers native.yml, so ordinary " +
+                    "push CI must execute it before release-only workflows do");
+        }
+    }
+
+    [Test]
     public async Task PackageWorkflowRestoresTheCacheTheNativePipelineSaves()
     {
         string root = FindRepositoryRoot();
