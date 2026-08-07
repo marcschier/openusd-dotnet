@@ -326,15 +326,33 @@ jobs:
           path: artifacts/nupkg
       - name: Require the complete published set
         shell: pwsh
+        # Compared by name against eng/pack-packages.ps1 rather than against a
+        # count written here. A restated number drifts the instant the set
+        # changes -- deferring the Cesium packages took it from 22 to 17 and
+        # this gate only said so after a multi-hour run had already produced
+        # every artifact. Comparing names also catches the wrong package being
+        # present, which a count never could.
         run: |
-          $expected = 22
+          $expected = @(& ./eng/pack-packages.ps1 -ListPublished)
+          if ($LASTEXITCODE -ne 0 -or $expected.Count -eq 0)
+          {
+            throw 'eng/pack-packages.ps1 -ListPublished produced no package ids.'
+          }
           $packages = @(Get-ChildItem artifacts/nupkg -Filter '*.nupkg')
           Write-Host "Packed $($packages.Count) package(s):"
           $packages | ForEach-Object { Write-Host "  $($_.Name)" }
-          if ($packages.Count -ne $expected)
+          $actual = @($packages | ForEach-Object {
+            $_.Name -replace '\.\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?\.nupkg$', ''
+          })
+          $missing = @($expected | Where-Object { $actual -notcontains $_ })
+          $unexpected = @($actual | Where-Object { $expected -notcontains $_ })
+          if ($missing.Count -gt 0 -or $unexpected.Count -gt 0)
           {
-            throw "Expected $expected packages to publish; found $($packages.Count)."
+            throw (
+              "The packed set does not match the published set. " +
+              "Missing: $($missing -join ', '). Unexpected: $($unexpected -join ', ').")
           }
+          Write-Host "Verified all $($expected.Count) published package(s)."
       # GITHUB_TOKEN is auto-issued and this job requests packages: write, so the
       # GitHub Packages feed needs no additional secret. Every package goes here.
       # --no-symbols is required: dotnet nuget push uploads an adjacent .snupkg

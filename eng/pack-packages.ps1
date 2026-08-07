@@ -28,7 +28,12 @@ param(
     [string]$OutputPath = 'artifacts/nupkg',
     [string]$Configuration = 'Release',
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')),
-    [switch]$SkipMetal
+    [switch]$SkipMetal,
+    # Emits the complete published set, one id per line, and exits. The release
+    # gate uses this instead of restating a package count, because a restated
+    # count drifts the moment the set changes and only fails at the very last
+    # step of a multi-hour release run.
+    [switch]$ListPublished
 )
 
 $ErrorActionPreference = 'Stop'
@@ -94,6 +99,12 @@ $deferred = @(
 # Retained before any scope or SkipMetal filter so the src/ classification check below
 # always covers the full set whichever slice this invocation packs.
 $allPublished = $published
+
+if ($ListPublished)
+{
+    ($published | Where-Object { $deferred -notcontains $_ }) | ForEach-Object { $_ }
+    exit 0
+}
 
 $metalPackage = 'OpenUsd.Rendering.Silk.Metal'
 switch ($Scope)
