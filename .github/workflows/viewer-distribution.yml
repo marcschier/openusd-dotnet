@@ -1,0 +1,326 @@
+name: viewer distribution
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['native artifact pipeline']
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [ master, main ]
+    paths: &viewer-distribution-paths
+      - '.github/workflows/viewer-distribution.yml'
+      - 'eng/publish-viewer-bundle.ps1'
+      - 'eng/sign-viewer-bundle.ps1'
+      - 'eng/test-viewer-bundle-smoke.ps1'
+      - 'eng/pack-packages.ps1'
+      - 'eng/cesium.lock.json'
+      - 'eng/fetch-cesium-native.ps1'
+      - 'eng/build-cesium-native.ps1'
+      - 'eng/build-cesium-shim.ps1'
+      - 'eng/native-install-metadata.ps1'
+      - 'src/OpenUsd.Viewer/**'
+      - 'src/OpenUsd.Viewer.App/**'
+      - 'src/OpenUsd.Runtime.Core*/**'
+      - 'src/OpenUsd.Runtime.Imaging*/**'
+      - 'src/OpenUsd.Rendering*/**'
+      - 'src/OpenUsd/**'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'version.json'
+  pull_request:
+    branches: [ master, main ]
+    paths: *viewer-distribution-paths
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: viewer-distribution-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pack-viewer-inputs:
+    name: pack Viewer inputs ${{ matrix.rid }}
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+          - rid: linux-x64
+            runner: ubuntu-latest
+          - rid: osx-arm64
+            runner: macos-15
+    env:
+      NATIVE_PIPELINE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || '' }}
+      NATIVE_SOURCE: ${{ github.event_name == 'workflow_run' && 'archive' || 'build' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          ref: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.301
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - id: native-cache
+        if: env.NATIVE_SOURCE == 'build'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            native/install/${{ matrix.rid }}
+            native/install/shim/${{ matrix.rid }}
+            native/install/vulkan-sdk-1.4.321.0
+            native/build/shim/${{ matrix.rid }}
+          key: >-
+            native-${{ matrix.rid }}-${{ hashFiles(
+              'eng/openusd.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/check-linux-native-prerequisites.ps1',
+              'eng/native-install-metadata.ps1',
+              'native/CMakeLists.txt',
+              'native/CMakePresets.json',
+              'native/**/CMakeLists.txt',
+              'native/**/*.cmake',
+              'native/**/*.json',
+              'native/**/*.in',
+              'native/**/resources/**',
+              'native/**/*.c',
+              'native/**/*.cc',
+              'native/**/*.cpp',
+              'native/**/*.cxx',
+              'native/**/*.m',
+              'native/**/*.mm',
+              'native/**/*.h',
+              'native/**/*.hh',
+              'native/**/*.hpp',
+              'native/**/*.hxx',
+              'native/**/*.inc',
+              'native/**/*.inl',
+              '!native/build/**',
+              '!native/install/**',
+              '!native/downloads/**',
+              '!native/src/**',
+              '!native/.cache/**'
+            ) }}
+      - name: Install Linux package prerequisites
+        if: runner.os == 'Linux'
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y
+          clang
+          libgl1-mesa-dev libgl1-mesa-dri libglu1-mesa-dev libx11-dev libxcursor-dev
+          libxi-dev libxinerama-dev libxrandr-dev libwayland-dev zlib1g-dev
+          build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev
+      - name: Preflight Linux native build prerequisites
+        if: >-
+          matrix.rid == 'linux-x64' &&
+          env.NATIVE_SOURCE == 'build' &&
+          steps.native-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./eng/check-linux-native-prerequisites.ps1
+      - name: Prepare validated six-entry Metal library
+        if: runner.os == 'macOS'
+        shell: pwsh
+        run: |
+          ./eng/shaders/prepare-metal-library.ps1 `
+            -OutputRoot eng/shaders/out/package-metal-library
+      - name: Install macOS native build prerequisites
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+      - name: Fetch locked native sources
+        if: env.NATIVE_SOURCE == 'build' && steps.native-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./eng/fetch-native.ps1 -Rid ${{ matrix.rid }}
+      - name: Build locked native install
+        if: env.NATIVE_SOURCE == 'build' && steps.native-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./eng/build-native.ps1 -Rid ${{ matrix.rid }}
+      - name: Download verified native pipeline archive
+        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.NATIVE_PIPELINE_RUN_ID }}
+          name: openusd-native-${{ matrix.rid }}
+          path: artifacts/native-pipeline/${{ matrix.rid }}
+      - name: Extract verified native archive
+        if: env.NATIVE_SOURCE == 'archive'
+        shell: pwsh
+        run: |
+          ./eng/prepare-workflow-native-input.ps1 `
+            -Rid ${{ matrix.rid }} `
+            -Source archive `
+            -PipelineRoot artifacts/native-pipeline/${{ matrix.rid }}
+      - name: Verify native install metadata
+        shell: pwsh
+        run: |
+          $requireVulkanRuntime =
+            $IsWindows -and $env:NATIVE_SOURCE -eq 'build'
+          ./eng/native-install-metadata.ps1 `
+            -Operation Verify `
+            -Rid ${{ matrix.rid }} `
+            -RequireVulkanRuntime:$requireVulkanRuntime
+      - id: cesium-vcpkg-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            native/.cache/vcpkg-*
+            native/build/cesium/${{ matrix.rid }}/vcpkg_installed
+          key: >-
+            cesium-vcpkg-${{ matrix.rid }}-${{ hashFiles(
+              'eng/cesium.lock.json',
+              'eng/fetch-cesium-native.ps1',
+              'eng/build-cesium-native.ps1',
+              'eng/build-cesium-shim.ps1'
+            ) }}
+      - name: Build Cesium native install
+        shell: pwsh
+        run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }} -SkipSmokeProbe
+      - name: Build Cesium shim
+        shell: pwsh
+        run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }}
+      - name: Pack the runtime packages for this RID
+        shell: pwsh
+        env:
+          Platform: ''
+        run: |
+          ./eng/pack-packages.ps1 `
+            -Scope runtime `
+            -Rid ${{ matrix.rid }} `
+            -OutputPath artifacts/nupkg
+      - name: Pack the platform-neutral packages
+        if: matrix.rid == 'linux-x64'
+        shell: pwsh
+        env:
+          Platform: ''
+        run: ./eng/pack-packages.ps1 -Scope managed -OutputPath artifacts/nupkg
+      - name: Pack the Metal package
+        if: matrix.rid == 'osx-arm64'
+        shell: pwsh
+        env:
+          Platform: ''
+        run: ./eng/pack-packages.ps1 -Scope metal -OutputPath artifacts/nupkg
+      - name: Upload packed Viewer inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openusd-viewer-input-nupkg-${{ matrix.rid }}
+          path: artifacts/nupkg
+          if-no-files-found: error
+          retention-days: 14
+
+  viewer-distribution:
+    name: viewer distribution ${{ matrix.rid }}
+    needs: pack-viewer-inputs
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+          - rid: linux-x64
+            runner: ubuntu-latest
+          - rid: osx-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          ref: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.301
+      - name: Install Linux viewer smoke prerequisites
+        if: matrix.rid == 'linux-x64'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfontconfig1 libgl1 libglx0 libopengl0 libgl1-mesa-dri libx11-6 xvfb
+      - name: Download packed Viewer inputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: openusd-viewer-input-nupkg-*
+          merge-multiple: true
+          path: artifacts/nupkg
+      - name: Build package-only Viewer bundle
+        shell: pwsh
+        run: |
+          ./eng/publish-viewer-bundle.ps1 `
+            -Rid ${{ matrix.rid }} `
+            -PackageSource artifacts/nupkg
+      - name: Smoke the installed Viewer bundle
+        if: matrix.rid != 'linux-x64'
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem `
+            artifacts/viewer-distribution/artifacts/${{ matrix.rid }} `
+            -Filter 'OpenUsd.Viewer.${{ matrix.rid }}.*' |
+            Where-Object { $_.Name -notmatch '\.symbols\.|\.sha256$|\.json$' } |
+            Select-Object -First 1
+          if ($null -eq $archive)
+          {
+            throw 'The Viewer bundle archive was not produced.'
+          }
+          ./eng/test-viewer-bundle-smoke.ps1 `
+            -Rid ${{ matrix.rid }} `
+            -BundlePath $archive.FullName
+      - name: Smoke the installed Linux Viewer bundle
+        if: matrix.rid == 'linux-x64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DISPLAY=:99
+          Xvfb "$DISPLAY" -screen 0 1280x720x24 -ac -nolisten tcp \
+            >artifacts/viewer-distribution/linux-xvfb.out \
+            2>artifacts/viewer-distribution/linux-xvfb.err &
+          xvfb_pid=$!
+          trap 'kill "$xvfb_pid" 2>/dev/null || true' EXIT
+          bundle=$(find artifacts/viewer-distribution/artifacts/linux-x64 \
+            -maxdepth 1 -name 'OpenUsd.Viewer.linux-x64.tar.gz' -print -quit)
+          if [ -z "$bundle" ]; then
+            echo 'The Linux Viewer bundle archive was not produced.' >&2
+            exit 1
+          fi
+          pwsh ./eng/test-viewer-bundle-smoke.ps1 \
+            -Rid linux-x64 \
+            -BundlePath "$bundle"
+      - name: Upload Viewer distribution artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openusd-viewer-${{ matrix.rid }}
+          path: artifacts/viewer-distribution/artifacts/${{ matrix.rid }}
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Viewer smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openusd-viewer-smoke-${{ matrix.rid }}
+          path: artifacts/viewer-distribution-smoke
+          if-no-files-found: warn
+          retention-days: 14

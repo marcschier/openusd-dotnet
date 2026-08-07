@@ -177,6 +177,84 @@ public sealed class WorkflowStructureContractTests
             .Because("package.yml consumes the native install and must not save it");
     }
 
+    [Test]
+    public async Task ViewerDistributionRunsOutsideAReleaseOnEverySupportedRid()
+    {
+        string root = FindRepositoryRoot();
+        string release = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "release.yml"));
+        string viewer = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "viewer-distribution.yml"));
+        string native = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "native.yml"));
+
+        string releaseViewerJob = ReadJob(release, "viewer-distribution");
+        await Assert.That(releaseViewerJob)
+            .Contains("if: startsWith(github.ref, 'refs/tags/v')", StringComparison.Ordinal)
+            .Because("the release bundle job must stay tag-gated and keep consuming release pack artifacts");
+        await Assert.That(releaseViewerJob)
+            .Contains("needs: pack", StringComparison.Ordinal)
+            .Because("the release bundle job must continue smoking the exact packages produced by release pack");
+
+        string triggers = ReadTriggerBlock(viewer);
+        await Assert.That(triggers).IsNotEmpty();
+        await Assert.That(triggers)
+            .Contains("workflow_run:", StringComparison.Ordinal)
+            .Because("native changes must smoke the Viewer bundle after the native archive is available");
+        await Assert.That(triggers)
+            .Contains("push:", StringComparison.Ordinal)
+            .Because("Viewer bundle script changes must run without a tag");
+        await Assert.That(triggers)
+            .Contains("pull_request:", StringComparison.Ordinal)
+            .Because("Viewer bundle changes must be smoke-tested before merge");
+
+        foreach (string path in new[]
+        {
+            "'.github/workflows/viewer-distribution.yml'",
+            "'eng/publish-viewer-bundle.ps1'",
+            "'eng/test-viewer-bundle-smoke.ps1'",
+            "'src/OpenUsd.Viewer/**'",
+            "'src/OpenUsd.Viewer.App/**'",
+        })
+        {
+            await Assert.That(triggers)
+                .Contains(path, StringComparison.Ordinal)
+                .Because($"{path} changes the Viewer bundle and must trigger a non-release smoke");
+        }
+
+        string viewerSmokeJob = ReadJob(viewer, "viewer-distribution");
+        foreach (string rid in new[] { "win-x64", "linux-x64", "osx-arm64" })
+        {
+            await Assert.That(viewerSmokeJob)
+                .Contains($"rid: {rid}", StringComparison.Ordinal)
+                .Because("the Viewer distribution smoke must run on every RID shipped in a release");
+        }
+
+        await Assert.That(viewerSmokeJob)
+            .Contains("Download packed Viewer inputs", StringComparison.Ordinal)
+            .Because("the non-release smoke must build from freshly packed local inputs, not nuget.org");
+        await Assert.That(viewerSmokeJob)
+            .Contains("Smoke the installed Viewer bundle", StringComparison.Ordinal)
+            .Because("building the archive without executing it would not catch loader and renderer failures");
+        await Assert.That(viewerSmokeJob)
+            .Contains("Smoke the installed Linux Viewer bundle", StringComparison.Ordinal)
+            .Because("the Linux smoke needs the Xvfb leg that catches GL loader regressions");
+
+        const string prefix = "native-${{ matrix.rid }}-";
+        IReadOnlyList<string> saved = HashFileInputs(native, prefix);
+        IReadOnlyList<string> restored = HashFileInputs(viewer, prefix);
+
+        await Assert.That(restored.Count)
+            .IsGreaterThan(20)
+            .Because("the push smoke must restore native.yml's install cache rather than rebuilding");
+        await Assert.That(restored)
+            .IsEquivalentTo(saved)
+            .Because("a different hashFiles list silently changes the native cache key");
+        await Assert.That(viewer)
+            .Contains("actions/cache/restore@", StringComparison.Ordinal)
+            .Because("viewer-distribution.yml consumes the native install and must not save it");
+    }
+
     /// <summary>
     /// Returns the quoted arguments of the <c>hashFiles</c> call anchored on a
     /// cache key prefix, in declaration order.
@@ -236,6 +314,13 @@ public sealed class WorkflowStructureContractTests
             yield return (current, string.Join("\n", body));
         }
     }
+
+    /// <summary>Returns one workflow job body by id, or an empty string when absent.</summary>
+    private static string ReadJob(string workflow, string name) =>
+        ReadJobs(workflow)
+            .Where(job => job.Name == name)
+            .Select(job => job.Body)
+            .FirstOrDefault() ?? string.Empty;
 
     /// <summary>Returns the <c>on:</c> block, up to the next top-level key.</summary>
     private static string ReadTriggerBlock(string workflow)
