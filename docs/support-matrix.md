@@ -170,13 +170,19 @@ self-consistency instead: an unlit `ND_constant_color3 -> ND_multiply_color3FA -
 against an emissive PreviewSurface equivalent at `maxChannelDelta=1` and `meanChannelDelta=0.237`, and disabling
 generated shader selection fails at 187 / 19.574. Metal carries generated `MslShaderGenerator` source through the same
 runtime shader cache, but this Windows harness cannot execute a Metal pixel gate.
-Sampled `UsdVol` density rendering is currently implemented only for the Vulkan hdSilk backend and only when the native
-profile provides OpenUSD's `hioOpenVDB` field reader. The native shim reads `UsdVolOpenVDBAsset` density fields through
-OpenUSD Hio and publishes a bulk cached R32 volume texture; Vulkan uploads that cache as a 3D texture and the mesh
-raymarches it. If the Hio OpenVDB reader is absent, hdSilk falls back to the existing uniform density proxy and the
-sampled-grid conformance gate is reported as a capability skip. D3D12 and Metal use the uniform proxy today:
-D3D12 has no 3D texture upload/bind implementation in hdSilk, and Metal's explicit texture slot binding still needs an
-executed macOS proof before it can be advertised.
+Sampled `UsdVol` density rendering is currently implemented and conformance-gated only for the Vulkan hdSilk backend
+and only when the native profile provides OpenUSD's `hioOpenVDB` field reader. The native shim reads one
+`UsdVolOpenVDBAsset` density field through OpenUSD Hio and publishes a bulk cached R32 volume texture; Vulkan uploads
+that cache as a 3D texture and the mesh raymarches it. The gate compares the sampled render with a uniform proxy at the
+same mean density and with a shifted density grid, so a uniform fallback fails. If the Hio OpenVDB reader is absent, the
+gate is reported as a capability skip. Storm is not a usable VDB reference in the current offscreen harness: the same
+sampled, uniform-mean, and shifted VDB stages produce identical Storm images, so hdSilk remains gated by the
+self-divergence proof rather than cross-renderer parity. D3D12 now has the R32 3D texture upload/bind path needed to try
+the same scene on WARP, but it is not advertised as supported because the shifted-grid divergence remains invariant in
+that backend (`maxChannelDelta=0`, `meanChannelDelta=0` for sampled versus shifted). Metal's explicit texture slot
+binding still needs an executed macOS proof before it can be advertised. Multi-field volumes, non-density field roles
+such as temperature or velocity, Field3D rendering, and `UsdVolVolume` prims with several field relationships remain
+outside the rendering support claim.
 
 ## Backend capabilities
 
@@ -437,7 +443,7 @@ The complete API examples and native ownership rules are in [Data API](data-api.
 | `Ts` | Double-valued spline knots, tangents, extrapolation, evaluation | Focused read-only |
 | `UsdValidation` | Registry enumeration and stage/prim validation results | Focused read-only |
 | `UsdPhysics` | Scene, body, collision, material, joints, limits/drives, filtering | Authoring only |
-| `UsdVol` | Volume, field assets, OpenVDBAsset schema, Field3DAsset | OpenVDB runtime; rendering parity ungated |
+| `UsdVol` | Volume, field assets, OpenVDBAsset schema, Field3DAsset | Vulkan single-density OpenVDB gate |
 | `UsdRender` | SettingsBase, Settings, Product, Var, Pass | Data API; no RenderDenoisePass in pinned OpenUSD |
 | `UsdMedia` | SpatialAudio, AssetPreviewsAPI | Data API |
 | `UsdProc` | GenerativeProcedural | Data API |
@@ -513,8 +519,8 @@ here.
 - Only `win-x64`, `linux-x64`, and `osx-arm64` runtime packages exist today.
 - The curated Storm/hdSilk parity matrix is gated on D3D12 WARP and Vulkan SwiftShader only; Metal has a
   single-stage native pipeline probe, not 25-scene parity coverage.
-- Volumes, path tracing, proprietary shaders, arbitrary MaterialX graphs, and third-party Hydra render
-  delegates are excluded from the 1.0 support claim.
+- Volume rendering outside Vulkan single-density OpenVDB assets, path tracing, proprietary shaders,
+  arbitrary MaterialX graphs, and third-party Hydra render delegates are excluded from the 1.0 support claim.
 
 Use [Troubleshooting](troubleshooting.md) to diagnose native loading, plugin discovery, platform,
 NativeAOT, and evidence failures without weakening these support boundaries.

@@ -13,7 +13,7 @@ namespace OpenUsd.Rendering.Silk.D3D12;
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed unsafe partial class D3D12SilkGraphicsDevice
-    : SilkGraphicsDeviceLifetimeBase, ISilkGraphicsDevice
+    : SilkGraphicsDeviceLifetimeBase, ISilkGraphicsDevice, ISilkVolumeTextureGraphicsDevice
 {
     private readonly global::Silk.NET.Direct3D12.D3D12 _api;
     private readonly DXGI _dxgi;
