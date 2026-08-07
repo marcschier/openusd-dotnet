@@ -43,6 +43,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         {
             resourceFlags |= ResourceFlags.AllowRenderTarget;
         }
+
         if (descriptor.Usage.HasFlag(SilkTextureUsage.DepthRenderTarget))
         {
             resourceFlags |= ResourceFlags.AllowDepthStencil;
@@ -188,6 +189,103 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             {
                 Release(ref shaderResourceDescriptorHeap);
                 Release(ref attachmentDescriptorHeap);
+            }
+            if (!success && resource != null)
+            {
+                _ = resource->Release();
+            }
+            if (!success)
+            {
+                ReleaseDependentObject();
+            }
+        }
+    }
+
+    ISilkGraphicsTexture ISilkVolumeTextureGraphicsDevice.CreateTexture3D(
+        uint width,
+        uint height,
+        uint depth,
+        SilkTextureFormat format)
+    {
+        ObjectDisposedException.ThrowIf(_device == null, this);
+        ArgumentOutOfRangeException.ThrowIfZero(width);
+        ArgumentOutOfRangeException.ThrowIfZero(height);
+        ArgumentOutOfRangeException.ThrowIfZero(depth);
+        if (format != SilkTextureFormat.R32Float)
+        {
+            throw new ArgumentException("Volume textures currently require R32Float.", nameof(format));
+        }
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, ushort.MaxValue);
+
+        RegisterDependentObject();
+        var heapProperties = new HeapProperties(HeapType.Default);
+        var description = new ResourceDesc(
+            ResourceDimension.Texture3D,
+            0,
+            width,
+            height,
+            checked((ushort)depth),
+            1,
+            Format.FormatR32Float,
+            new SampleDesc(1, 0),
+            TextureLayout.LayoutUnknown,
+            ResourceFlags.None);
+        ID3D12Resource* resource = null;
+        ID3D12DescriptorHeap* shaderResourceDescriptorHeap = null;
+        bool success = false;
+        try
+        {
+            Guid resourceId = ID3D12Resource.Guid;
+            SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
+                &heapProperties,
+                HeapFlags.None,
+                &description,
+                ResourceStates.Common,
+                null,
+                &resourceId,
+                (void**)&resource));
+
+            var heapDescription = new DescriptorHeapDesc(
+                DescriptorHeapType.CbvSrvUav,
+                1,
+                DescriptorHeapFlags.None,
+                0);
+            Guid heapId = ID3D12DescriptorHeap.Guid;
+            SilkMarshal.ThrowHResult(_device->CreateDescriptorHeap(
+                &heapDescription,
+                &heapId,
+                (void**)&shaderResourceDescriptorHeap));
+            CpuDescriptorHandle shaderResourceView =
+                shaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+            var view = new ShaderResourceViewDesc
+            {
+                Format = Format.FormatR32Float,
+                ViewDimension = SrvDimension.Texture3D,
+                Shader4ComponentMapping = 0x1688,
+                Texture3D = new Tex3DSrv(0, 1, 0)
+            };
+            _device->CreateShaderResourceView(resource, &view, shaderResourceView);
+
+            success = true;
+            return new D3D12SilkGraphicsTexture(
+                this,
+                resource,
+                null,
+                shaderResourceDescriptorHeap,
+                default,
+                default,
+                shaderResourceView,
+                new SilkTextureDescriptor(
+                    width,
+                    height,
+                    format,
+                    SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination));
+        }
+        finally
+        {
+            if (!success)
+            {
+                Release(ref shaderResourceDescriptorHeap);
             }
             if (!success && resource != null)
             {
@@ -679,6 +777,48 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             ResourceStates.CopyDest,
                             ResourceStates.CopySource);
                         finalStates[uploadTexture] = ResourceStates.CopySource;
+                        break;
+                    case SilkGraphicsCommandKind.UploadTexture3D:
+                        D3D12SilkGraphicsTexture upload3DTexture = command.Texture!;
+                        upload3DTexture.ThrowIfDisposed();
+                        ResourceStates upload3DPreviousState =
+                            GetCurrentState(finalStates, upload3DTexture);
+                        CreateTextureUpload(
+                            upload3DTexture,
+                            command.Data!,
+                            out ID3D12Resource* upload3D,
+                            out PlacedSubresourceFootprint footprint3D);
+                        uploadResources.Add((nint)upload3D);
+                        Transition(
+                            nativeCommands,
+                            upload3DTexture.Resource,
+                            upload3DPreviousState,
+                            ResourceStates.CopyDest);
+                        var source3DLocation = new TextureCopyLocation(
+                            upload3D,
+                            TextureCopyType.PlacedFootprint)
+                        {
+                            PlacedFootprint = footprint3D
+                        };
+                        var destination3DLocation = new TextureCopyLocation(
+                            upload3DTexture.Resource,
+                            TextureCopyType.SubresourceIndex)
+                        {
+                            SubresourceIndex = 0
+                        };
+                        nativeCommands->CopyTextureRegion(
+                            &destination3DLocation,
+                            0,
+                            0,
+                            0,
+                            &source3DLocation,
+                            null);
+                        Transition(
+                            nativeCommands,
+                            upload3DTexture.Resource,
+                            ResourceStates.CopyDest,
+                            ResourceStates.CopySource);
+                        finalStates[upload3DTexture] = ResourceStates.CopySource;
                         break;
                     case SilkGraphicsCommandKind.ClearColor:
                         D3D12SilkGraphicsTexture colorTexture = command.Texture!;
@@ -1222,18 +1362,35 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             SilkMarshal.ThrowHResult(nativeUpload->Map(0, &readRange, &mapped));
             try
             {
-                int sourceRowPitch = checked((int)texture.Width * 4);
+                ResourceDesc description = texture.Resource->GetDesc();
+                int texelSize = texture.Format switch
+                {
+                    SilkTextureFormat.Rgba8Unorm or SilkTextureFormat.R32Float => 4,
+                    _ => throw new InvalidOperationException("Unsupported texture upload format.")
+                };
+                int sourceRowPitch = checked((int)texture.Width * texelSize);
+                int sourceSlicePitch = checked(sourceRowPitch * (int)texture.Height);
                 int destinationRowPitch =
                     checked((int)nativeFootprint.Footprint.RowPitch);
+                int destinationSlicePitch = checked(
+                    destinationRowPitch *
+                    (int)nativeFootprint.Footprint.Height);
+                int depth = description.Dimension == ResourceDimension.Texture3D
+                    ? description.DepthOrArraySize
+                    : 1;
                 byte* destination =
                     (byte*)mapped + checked((nint)nativeFootprint.Offset);
-                for (int row = 0; row < texture.Height; row++)
+                for (int slice = 0; slice < depth; slice++)
                 {
-                    source.Slice(
-                        checked(row * sourceRowPitch),
-                        sourceRowPitch).CopyTo(new Span<byte>(
-                            destination + checked(row * destinationRowPitch),
-                            sourceRowPitch));
+                    for (int row = 0; row < texture.Height; row++)
+                    {
+                        source.Slice(
+                            checked((slice * sourceSlicePitch) + (row * sourceRowPitch)),
+                            sourceRowPitch).CopyTo(new Span<byte>(
+                                destination +
+                                    checked((slice * destinationSlicePitch) + (row * destinationRowPitch)),
+                                sourceRowPitch));
+                    }
                 }
             }
 
@@ -1828,7 +1985,7 @@ internal sealed unsafe class D3D12SilkGraphicsSampler(
 
 [SupportedOSPlatform("windows")]
 internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevice device)
-    : ISilkGraphicsCommandList
+    : ISilkGraphicsCommandList, ISilkVolumeTextureCommandList
 {
     private readonly List<D3D12GraphicsCommand> _commands = [];
     private D3D12SilkGraphicsTexture? _colorAttachment;
@@ -1870,6 +2027,32 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
                 nameof(source));
         }
         _commands.Add(D3D12GraphicsCommand.Upload(d3d12Texture, source.ToArray()));
+    }
+
+    public unsafe void UploadTexture3D(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
+    {
+        ThrowIfOutsideRendering();
+        D3D12SilkGraphicsTexture d3d12Texture = ValidateTexture(texture);
+        ResourceDesc description = d3d12Texture.Resource->GetDesc();
+        if (description.Dimension != ResourceDimension.Texture3D ||
+            d3d12Texture.Format != SilkTextureFormat.R32Float ||
+            !d3d12Texture.Usage.HasFlag(SilkTextureUsage.CopyDestination))
+        {
+            throw new InvalidOperationException(
+                "UploadTexture3D requires an R32Float 3D texture with CopyDestination usage.");
+        }
+        int requiredLength = checked(
+            (int)(d3d12Texture.Width *
+            d3d12Texture.Height *
+            description.DepthOrArraySize *
+            sizeof(float)));
+        if (source.Length != requiredLength)
+        {
+            throw new ArgumentException(
+                $"The source must contain exactly {requiredLength} bytes.",
+                nameof(source));
+        }
+        _commands.Add(D3D12GraphicsCommand.Upload3D(d3d12Texture, source.ToArray()));
     }
 
     public void ClearColor(ISilkGraphicsTexture texture, SilkColor color)
@@ -2353,6 +2536,14 @@ internal readonly record struct D3D12GraphicsCommand(
         byte[] data) =>
         Create(
             SilkGraphicsCommandKind.UploadTexture,
+            texture: texture,
+            data: data);
+
+    internal static D3D12GraphicsCommand Upload3D(
+        D3D12SilkGraphicsTexture texture,
+        byte[] data) =>
+        Create(
+            SilkGraphicsCommandKind.UploadTexture3D,
             texture: texture,
             data: data);
 

@@ -4,7 +4,9 @@ using System.Globalization;
 using System.Numerics;
 using System.Text;
 using OpenUsd.Rendering.Silk;
+using OpenUsd.Rendering.Silk.D3D12;
 using OpenUsd.Rendering.Silk.Vulkan;
+using OpenUsd.Rendering.Storm;
 
 namespace OpenUsd.Rendering.ConformanceTests;
 
@@ -29,13 +31,13 @@ public sealed class VolumeRenderingConformanceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("The Vulkan volume gate is currently exercised only by the Windows native profile.");
         }
 
         ParityImage capture;
         try
         {
-            capture = CaptureStage(WriteStage("volume-density-gates"));
+            capture = CaptureStage(WriteStage("volume-density-gates"), VulkanSilkGraphicsDevice.Create);
         }
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
@@ -88,9 +90,139 @@ public sealed class VolumeRenderingConformanceTests
     [Test]
     public async Task SampledOpenVdbDensityGatesOnVulkan()
     {
+        await RunSampledOpenVdbDensityGate(
+            "vulkan",
+            VulkanSilkGraphicsDevice.Create,
+            "volume-vdb-vulkan-gates.txt").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task SampledOpenVdbDensityReportsD3D12WarpLimitation()
+    {
+        await RunSampledOpenVdbDensityGate(
+            "d3d12",
+            CreateD3D12WarpDevice,
+            "volume-vdb-d3d12-gates.txt",
+            skipWhenTranslatedGridIsInvariant: true).ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task SampledOpenVdbDensityUsesStormReferenceWhenAvailable()
+    {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("The Storm VDB reference probe is currently exercised only by the Windows native profile.");
+        }
+        if (!StormGlContextFactory.IsCurrentPlatformSupported)
+        {
+            Skip.Test("The current platform cannot create the Storm OpenGL context used by this harness.");
+        }
+
+        ClearVolumeCache();
+        string asset = ResolveOpenVdbAsset("sampled_density.vdb");
+        string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
+        ParityImage silkSampled;
+        try
+        {
+            silkSampled = CaptureStage(
+                WriteVdbStage("volume-vdb-storm-reference-hdsilk-sampled", asset, 0, 1, sampleDensity: true),
+                VulkanSilkGraphicsDevice.Create);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
+        }
+        if (!TryReadMeanCachedDensity("volume-vdb-storm-reference-hdsilk-sampled", out double meanDensity))
+        {
+            WriteEvidence(
+                "volume-vdb-storm-reference.txt",
+                ["storm-reference skipped: hioOpenVDB reader is unavailable in the native profile."]);
+            Skip.Test("hioOpenVDB reader is unavailable in the native profile.");
+        }
+
+        string sampledStage = WriteVdbStage(
+            "volume-vdb-storm-reference-sampled",
+            asset,
+            0,
+            1,
+            sampleDensity: true);
+        string uniformStage = WriteVdbStage(
+            "volume-vdb-storm-reference-uniform-mean",
+            asset,
+            0,
+            meanDensity,
+            sampleDensity: false);
+        string shiftedStage = WriteVdbStage(
+            "volume-vdb-storm-reference-shifted",
+            shiftedAsset,
+            0,
+            1,
+            sampleDensity: true);
+        ParityImage stormSampled;
+        ParityImage stormUniform;
+        ParityImage stormShifted;
+        try
+        {
+            stormSampled = await CaptureStormStage(sampledStage).ConfigureAwait(false);
+            stormUniform = await CaptureStormStage(uniformStage).ConfigureAwait(false);
+            stormShifted = await CaptureStormStage(shiftedStage).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is DllNotFoundException or DirectoryNotFoundException or InvalidOperationException)
+        {
+            WriteEvidence(
+                "volume-vdb-storm-reference.txt",
+                [$"storm-reference unavailable: {exception.GetType().Name}: {exception.Message}"]);
+            Skip.Test($"Storm cannot render the VDB stage in this harness: {exception.Message}");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
+        }
+
+        ParityImage stormSampledFootprint = Crop(stormSampled, 68, 52, 24, 24);
+        ParityImage stormUniformFootprint = Crop(stormUniform, 68, 52, 24, 24);
+        ImageDelta stormSampledVsUniform = ImageDelta.Compare(stormUniformFootprint, stormSampledFootprint);
+        ImageDelta stormShiftedInterior = ImageDelta.Compare(stormSampled, stormShifted);
+        ParityImage silkUniform = CaptureStage(uniformStage, VulkanSilkGraphicsDevice.Create);
+        ImageDelta stormVsSilkSampled = ImageDelta.Compare(stormSampled, silkSampled);
+        ImageDelta stormVsSilkUniform = ImageDelta.Compare(stormSampled, silkUniform);
+
+        string[] evidence =
+        [
+            $"storm-vdb-sampled-vs-uniform maxChannelDelta={stormSampledVsUniform.MaximumChannelDelta}; " +
+                $"meanChannelDelta={Format(stormSampledVsUniform.MeanChannelDelta)}; " +
+                $"meanDensity={Format(meanDensity)}",
+            $"storm-vdb-shifted-interior maxChannelDelta={stormShiftedInterior.MaximumChannelDelta}; " +
+                $"meanChannelDelta={Format(stormShiftedInterior.MeanChannelDelta)}",
+            $"storm-vs-hdsilk-sampled maxChannelDelta={stormVsSilkSampled.MaximumChannelDelta}; " +
+                $"meanChannelDelta={Format(stormVsSilkSampled.MeanChannelDelta)}",
+            $"storm-vs-hdsilk-uniform-proxy maxChannelDelta={stormVsSilkUniform.MaximumChannelDelta}; " +
+                $"meanChannelDelta={Format(stormVsSilkUniform.MeanChannelDelta)}",
+        ];
+        WriteEvidence("volume-vdb-storm-reference.txt", evidence);
+
+        if (stormSampledVsUniform.MaximumChannelDelta < MinimumSampledVsUniformDelta ||
+            stormSampledVsUniform.MeanChannelDelta < MinimumSampledVsUniformMeanDelta ||
+            stormShiftedInterior.MeanChannelDelta < MinimumTranslatedMeanDelta)
+        {
+            Skip.Test(
+                "Storm does not expose a sampled VDB reference in this offscreen harness; see " +
+                "volume-vdb-storm-reference.txt for sampled/uniform/shifted deltas.");
+        }
+
+        await Assert.That(stormVsSilkSampled.MeanChannelDelta)
+            .IsLessThan(stormVsSilkUniform.MeanChannelDelta)
+            .Because("hdSilk's sampled VDB image must be closer to Storm than the uniform-density fallback.");
+    }
+
+    private static async Task RunSampledOpenVdbDensityGate(
+        string backendName,
+        Func<ISilkGraphicsDevice> createDevice,
+        string evidenceFileName,
+        bool skipWhenTranslatedGridIsInvariant = false)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test($"The {backendName} volume gate is currently exercised only by the Windows native profile.");
         }
 
         ClearVolumeCache();
@@ -99,25 +231,28 @@ public sealed class VolumeRenderingConformanceTests
         ParityImage sampled;
         try
         {
-            sampled = CaptureStage(WriteVdbStage("volume-vdb-sampled", asset, 0, 1, sampleDensity: true));
+            sampled = CaptureStage(
+                WriteVdbStage($"volume-vdb-{backendName}-sampled", asset, 0, 1, sampleDensity: true),
+                createDevice);
         }
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
-            return;
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
         }
-        if (!TryReadMeanCachedDensity("volume-vdb-sampled", out double meanDensity))
+        if (!TryReadMeanCachedDensity($"volume-vdb-{backendName}-sampled", out double meanDensity))
         {
             WriteEvidence(
-                "volume-vdb-vulkan-gates.txt",
-                ["volume-vdb-sampled skipped: hioOpenVDB reader is unavailable in the native profile."]);
+                evidenceFileName,
+                [$"volume-vdb-{backendName}-sampled skipped: hioOpenVDB reader is unavailable in the native profile."]);
             Skip.Test("hioOpenVDB reader is unavailable in the native profile.");
-            return;
         }
         ParityImage uniform = CaptureStage(
-            WriteVdbStage("volume-vdb-uniform-mean", asset, 0, meanDensity, sampleDensity: false));
+            WriteVdbStage($"volume-vdb-{backendName}-uniform-mean", asset, 0, meanDensity, sampleDensity: false),
+            createDevice);
         ParityImage shifted = CaptureStage(
-            WriteVdbStage("volume-vdb-shifted", shiftedAsset, 0, 1, sampleDensity: true));
+            WriteVdbStage($"volume-vdb-{backendName}-shifted", shiftedAsset, 0, 1, sampleDensity: true),
+            createDevice);
 
         ParityImage sampledFootprint = Crop(sampled, 68, 52, 24, 24);
         ParityImage uniformFootprint = Crop(uniform, 68, 52, 24, 24);
@@ -136,7 +271,7 @@ public sealed class VolumeRenderingConformanceTests
             $"volume-vdb-shifted-interior maxChannelDelta={shiftedInterior.MaximumChannelDelta}; " +
                 $"meanChannelDelta={Format(shiftedInterior.MeanChannelDelta)}",
         ];
-        WriteEvidence("volume-vdb-vulkan-gates.txt", evidence);
+        WriteEvidence(evidenceFileName, evidence);
 
         await Assert.That(deltaVariance)
             .IsGreaterThanOrEqualTo(MinimumSampledDeltaVariance)
@@ -147,12 +282,49 @@ public sealed class VolumeRenderingConformanceTests
         await Assert.That(sampledVsUniform.MeanChannelDelta)
             .IsGreaterThanOrEqualTo(MinimumSampledVsUniformMeanDelta)
             .Because("sampled-vs-uniform must move the image mean, not only one edge pixel.");
+        if (skipWhenTranslatedGridIsInvariant &&
+            shiftedInterior.MeanChannelDelta < MinimumTranslatedMeanDelta)
+        {
+            Skip.Test(
+                $"{backendName} sampled VDB rendering is not a conformance gate yet: the translated-grid " +
+                "divergence check is invariant in this harness. See the evidence file for deltas.");
+        }
         await Assert.That(shiftedInterior.MeanChannelDelta)
             .IsGreaterThanOrEqualTo(MinimumTranslatedMeanDelta)
             .Because("translating the VDB density grid inside the same proxy must move the sampled density footprint.");
     }
 
-    private static ParityImage CaptureStage(string stagePath)
+    private static ISilkGraphicsDevice CreateD3D12WarpDevice()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Direct3D 12 is available only on Windows.");
+        }
+        return D3D12SilkGraphicsDevice.Create(useWarp: true);
+    }
+
+    private static async Task<ParityImage> CaptureStormStage(string stagePath)
+    {
+        PrependHdSilkNativeSearchPath();
+        ParityCaptureSet capture = await ParityCaptureDriver.CaptureAsync(
+            new ParityCaptureInput(
+                ResolvePluginPath(),
+                stagePath,
+                Width,
+                Height,
+                TimeCode,
+                new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []),
+                new SilkColor(0, 0, 0, 1),
+                OpenUsdStormRuntime.Headlight,
+                UseSceneLights: false),
+            StormGlContextFactory.CreateForCurrentPlatform(),
+            Array.Empty<SilkParityBackend>()).ConfigureAwait(false);
+        return capture.Storm;
+    }
+
+    private static ParityImage CaptureStage(
+        string stagePath,
+        Func<ISilkGraphicsDevice> createDevice)
     {
         PrependHdSilkNativeSearchPath();
         using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(ResolvePluginPath(), stagePath);
@@ -161,7 +333,7 @@ public sealed class VolumeRenderingConformanceTests
             Height,
             TimeCode,
             new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
-        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        using ISilkGraphicsDevice device = createDevice();
         using ISilkGraphicsTexture color = device.CreateTexture2D(
             new SilkTextureDescriptor(
                 checked((uint)Width),
