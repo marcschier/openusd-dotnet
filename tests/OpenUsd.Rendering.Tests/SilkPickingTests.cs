@@ -84,7 +84,21 @@ public sealed class SilkPickingTests
             3,
             device.PickDeviceGeneration,
             new ViewportDimensions(1, 1));
-        ExerciseReadbackRing(ring, context);
+        // Warmed with the full loop rather than a single call. Measuring blocks
+        // of 100 shows the first block allocating and every later one allocating
+        // exactly zero -- 592 bytes with tiered compilation, still 24 with it
+        // disabled -- so the transient is both longer than one iteration and
+        // partly one-off initialisation rather than purely JIT. Its length
+        // depends on how quickly the host promotes tier-0 code, which is why
+        // this passed everywhere for months and then failed only on hosted
+        // Linux net10.0 with 7,720 bytes. Warming with the same loop moves the
+        // transient outside the measurement instead of loosening the assertion,
+        // which stays at exactly zero across a thousand steady-state
+        // iterations, so a genuine per-iteration allocation still fails it.
+        for (int warmup = 0; warmup < 1000; warmup++)
+        {
+            ExerciseReadbackRing(ring, context);
+        }
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int iteration = 0; iteration < 1000; iteration++)

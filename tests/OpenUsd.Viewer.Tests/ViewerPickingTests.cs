@@ -139,10 +139,33 @@ public sealed class ViewerPickingTests
     {
         var bounds = new ViewerLogicalContentBounds(0, 0, 100, 80);
         var viewport = new ViewportDimensions(150, 120);
-        _ = ViewerPickPixelMapper.TryMap(10, 10, bounds, 1.5, viewport, out _);
-        _ = ViewerPickGestureClassifier.IsDrag(1, 1, 1.5);
 
+        // Warmed with the full loop for the same reason as
+        // SilkPickingTests.WarmReadbackRingOperationsDoNotAllocate: a single
+        // call does not reach steady state, the startup transient lasts an
+        // environment-dependent number of iterations, and the assertion is
+        // exactly zero. That test failed only on hosted Linux net10.0 after
+        // passing everywhere for months; this one has the identical shape and
+        // is fixed before it does the same.
         int checksum = 0;
+        for (int warmup = 0; warmup < 1000; warmup++)
+        {
+            if (ViewerPickPixelMapper.TryMap(
+                    warmup % 99,
+                    warmup % 79,
+                    bounds,
+                    1.5,
+                    viewport,
+                    out ViewerPhysicalPixel warmupPixel))
+            {
+                checksum += warmupPixel.X + warmupPixel.Y;
+            }
+            checksum += ViewerPickGestureClassifier.IsDrag(1, 1, 1.5) ? 1 : 0;
+        }
+
+        // Reset so the closing assertion still proves the measured loop did the
+        // work, rather than passing on the warm-up's total.
+        checksum = 0;
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int index = 0; index < 1000; index++)
         {
