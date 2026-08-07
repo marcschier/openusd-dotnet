@@ -760,6 +760,7 @@ public sealed class RuntimePackageTests
                     "--nologo",
                     $"-p:OpenUsdInstallRoot={installRoot}",
                     $"-p:OpenUsdShimInstallRoot={shimRoot}",
+                    $"-p:OpenUsdCesiumShimInstallRoot={shimRoot}",
                     $"-p:OpenUsdVulkanRuntimeLibrary={vulkanRuntimeLibrary}",
                     $"-p:PackageOutputPath={Path.Combine(workRoot, "packages")}",
                 ]);
@@ -2364,7 +2365,7 @@ public sealed class RuntimePackageTests
         string cesiumLibrary = GetCesiumLibraryName(platform);
         string shimNativeDirectory = platform.Rid == "win-x64" ? "bin" : "lib";
         string installedCesiumPath = Path.Combine(
-            inputs.ShimRoot,
+            inputs.CesiumShimRoot,
             shimNativeDirectory,
             cesiumLibrary);
         if (!File.Exists(installedCesiumPath))
@@ -2425,7 +2426,8 @@ public sealed class RuntimePackageTests
                 inputs.InstallRoot,
                 inputs.ShimRoot,
                 inputs.VulkanRuntimeLibrary,
-                packageRoot);
+                packageRoot,
+                cesiumShimRoot: inputs.CesiumShimRoot);
             await Assert.That(cesiumRuntimePackage.Version).IsEqualTo(coreRuntimePackage.Version);
             await AssertPackageEntryMatchesFileAsync(
                 cesiumRuntimePackage.Path,
@@ -3559,6 +3561,7 @@ public sealed class RuntimePackageTests
         string shimRoot,
         string vulkanRuntimeLibrary,
         string packageRoot,
+        string? cesiumShimRoot = null,
         bool skipLinuxElfValidation = false,
         bool skipMacOsMachOValidation = false)
     {
@@ -3573,6 +3576,7 @@ public sealed class RuntimePackageTests
                 "--nologo",
                 $"-p:OpenUsdInstallRoot={installRoot}",
                 $"-p:OpenUsdShimInstallRoot={shimRoot}",
+                $"-p:OpenUsdCesiumShimInstallRoot={cesiumShimRoot ?? shimRoot}",
                 $"-p:OpenUsdVulkanRuntimeLibrary={vulkanRuntimeLibrary}",
                 $"-p:OpenUsdSkipLinuxElfValidation={skipLinuxElfValidation.ToString().ToLowerInvariant()}",
                 $"-p:OpenUsdSkipMacOsMachOValidation={skipMacOsMachOValidation.ToString().ToLowerInvariant()}",
@@ -6633,6 +6637,12 @@ public sealed class RuntimePackageTests
             "install",
             "shim",
             platform.Rid);
+        string cesiumShimRoot = Path.Combine(
+            repositoryRoot,
+            "native",
+            "install",
+            "shim",
+            platform.Rid + "-cesium");
         string nativeInstallRoot = Path.Combine(repositoryRoot, "native", "install");
         string[] vulkanRuntimeLibraries = platform.Rid == "win-x64" &&
             Directory.Exists(nativeInstallRoot)
@@ -6665,6 +6675,7 @@ public sealed class RuntimePackageTests
             platform,
             installRoot,
             shimRoot,
+            cesiumShimRoot,
             vulkanRuntimeLibraries.SingleOrDefault() ?? string.Empty);
         reason = string.Empty;
         return true;
@@ -7014,5 +7025,6 @@ public sealed class RuntimePackageTests
         ExecutionPlatform Platform,
         string InstallRoot,
         string ShimRoot,
+        string CesiumShimRoot,
         string VulkanRuntimeLibrary);
 }

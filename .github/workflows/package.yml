@@ -85,9 +85,17 @@ on:
     paths: &package-paths
       - '.github/workflows/package.yml'
       - 'eng/pack-packages.ps1'
+      - 'eng/cesium.lock.json'
+      - 'eng/fetch-cesium-native.ps1'
+      - 'eng/build-cesium-native.ps1'
+      - 'eng/build-cesium-shim.ps1'
       - 'eng/run-native-probe.ps1'
       - 'eng/run-silk-probe.ps1'
       - 'eng/native-install-metadata.ps1'
+      - 'native/CMakeLists.txt'
+      - 'native/CMakePresets.json'
+      - 'native/hdSilk/**'
+      - 'native/openusd_cesium/**'
       - 'src/OpenUsd.Runtime.Packaging/**'
       - 'src/OpenUsd.Runtime.Core*/**'
       - 'src/OpenUsd.Runtime.Imaging*/**'
@@ -177,7 +185,7 @@ jobs:
         with:
           python-version: '3.13'
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
-        if: runner.os == 'Windows' && env.WINDOWS_NATIVE_SOURCE == 'build'
+        if: runner.os == 'Windows'
         with:
           arch: x64
       # Restore-only, and keyed character-identically to the cache native.yml
@@ -243,6 +251,7 @@ jobs:
           clang
           libgl1-mesa-dev libgl1-mesa-dri libglu1-mesa-dev libx11-dev libxcursor-dev
           libxi-dev libxinerama-dev libxrandr-dev libwayland-dev zlib1g-dev
+          build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev
       - name: Install Linux native build prerequisites
         if: >-
           matrix.rid == 'linux-x64' &&
@@ -269,10 +278,7 @@ jobs:
           ./eng/shaders/prepare-metal-library.ps1 `
             -OutputRoot eng/shaders/out/package-metal-library
       - name: Install macOS native build prerequisites
-        if: >-
-          runner.os == 'macOS' &&
-          env.MACOS_NATIVE_SOURCE == 'build' &&
-          steps.native-cache.outputs.cache-hit != 'true'
+        if: runner.os == 'macOS'
         run: brew install cmake ninja
       - name: Fetch locked native sources
         if: >-
@@ -345,6 +351,25 @@ jobs:
             -Operation Verify `
             -Rid ${{ matrix.rid }} `
             -RequireVulkanRuntime:$requireVulkanRuntime
+      - id: cesium-vcpkg-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            native/.cache/vcpkg-*
+            native/build/cesium/${{ matrix.rid }}/vcpkg_installed
+          key: >-
+            cesium-vcpkg-${{ matrix.rid }}-${{ hashFiles(
+              'eng/cesium.lock.json',
+              'eng/fetch-cesium-native.ps1',
+              'eng/build-cesium-native.ps1',
+              'eng/build-cesium-shim.ps1'
+            ) }}
+      - name: Build Cesium native install
+        shell: pwsh
+        run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }} -SkipSmokeProbe
+      - name: Build Cesium shim
+        shell: pwsh
+        run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }}
       - name: Execute managed NativeAOT probe
         shell: pwsh
         run: >
@@ -415,6 +440,7 @@ jobs:
             eng/shaders/out/package-metal-library/metallib-manifest.json
             eng/shaders/out/package-metal-library/mesh.metallib
             eng/shaders/out/package-metal/*.nupkg
+            native/install/cesium/${{ matrix.rid }}/THIRD-PARTY-CESIUM.md
             artifacts/native-input/linux-x64/source.json
             artifacts/native-input/osx-arm64/source.json
             artifacts/package-linux-storm-child

@@ -31,7 +31,7 @@ set(OPENUSD_HDSILK_SOURCES
 find_package(MaterialX CONFIG REQUIRED)
 
 set(OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS)
-if(TARGET Vulkan::shaderc_combined)
+if(OPENUSD_WITH_VULKAN AND TARGET Vulkan::shaderc_combined)
     list(APPEND OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS
         MaterialXGenGlsl
         Vulkan::shaderc_combined)

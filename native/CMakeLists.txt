@@ -61,6 +61,12 @@ find_package(OpenGL REQUIRED)
 option(OPENUSD_WITH_VULKAN "Resolve Vulkan targets required by the OpenUSD build" OFF)
 if(OPENUSD_WITH_VULKAN)
     find_package(Vulkan REQUIRED COMPONENTS shaderc_combined)
+elseif(OPENUSD_WITH_CESIUM AND NOT TARGET Vulkan::Vulkan)
+    # The Cesium shim does not link Vulkan, but OpenUSD's exported hgiVulkan
+    # target can mention Vulkan targets even when no Cesium package ships the
+    # locally rebuilt renderer binaries from this preset.
+    add_library(Vulkan::Vulkan INTERFACE IMPORTED)
+    add_library(Vulkan::shaderc_combined INTERFACE IMPORTED)
 endif()
 if(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)

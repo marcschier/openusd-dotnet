@@ -65,36 +65,10 @@ $published = @(
     'OpenUsd.Runtime.Cesium.osx-arm64'
 )
 
-# Deferred from the published set. The Cesium packages are deliberately withheld
-# until their build path is verified end to end, because publishing to nuget.org
-# cannot be undone. Four defects block them, none of which the package layout
-# tests can see, since those pack against a synthetic install:
-#
-#   1. eng/build-cesium-shim.ps1 installs into native/install/shim/<rid>, the
-#      same prefix the verified native archive is extracted into, so it rebuilds
-#      openusd_dotnet, openusd_hydra, openusd_hdsilk and openusd_storm_child
-#      from source over archive-verified binaries. That silently breaks the
-#      immutable-archive chain every other published package depends on, and it
-#      is the reason this list exists rather than the build errors below. Give
-#      the Cesium shim its own prefix, as the PhysX shim already has, before
-#      re-enabling anything here.
-#   2. The <rid>-cesium presets inherit OPENUSD_WITH_VULKAN=ON, and the packages
-#      and pack jobs have no Vulkan SDK, so the Linux shim configure fails on
-#      find_package(Vulkan ... shaderc_combined).
-#   3. The pack job sets up no MSVC developer environment, so cl.exe is absent
-#      on Windows.
-#   4. cesium-native's own vcpkg dependency build took over forty minutes per
-#      job before failing, against a 120 minute pack timeout.
-#
-# The Cesium managed and runtime projects, their layout tests and the native
-# shim all stay in the tree and build from source; only publication waits.
-$deferred = @(
-    'OpenUsd.Cesium'
-    'OpenUsd.Runtime.Cesium'
-    'OpenUsd.Runtime.Cesium.win-x64'
-    'OpenUsd.Runtime.Cesium.linux-x64'
-    'OpenUsd.Runtime.Cesium.osx-arm64'
-)
+# Deferred from the published set. A package pushed to nuget.org can be
+# unlisted but never withdrawn or replaced, so any future package deferral must
+# be listed here and justified beside the package ids.
+$deferred = @()
 
 # Retained before any scope or SkipMetal filter so the src/ classification check below
 # always covers the full set whichever slice this invocation packs.
