@@ -70,6 +70,26 @@ jobs:
           ref: >-
             ${{ github.event_name == 'workflow_run' &&
                 github.event.workflow_run.head_sha || github.sha }}
+      - name: Report validated checkout commit
+        shell: pwsh
+        env:
+          VALIDATED_BRANCH: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_branch || github.head_ref || github.ref_name }}
+          CHECKOUT_FALLBACK_SHA: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          $validated = (git rev-parse HEAD).Trim()
+          $branch = $env:VALIDATED_BRANCH
+          $branchHead = (git rev-parse "origin/$branch" 2>$null).Trim()
+          if (-not $branchHead) {
+            $branchHead = $env:CHECKOUT_FALLBACK_SHA
+          }
+          Write-Host "::notice::WORKFLOW_CHECKOUT_VALIDATION: viewer-distribution.yml pack job is validating commit $validated from '$branch'; current branch head is $branchHead."
+          if ($validated -ne $branchHead) {
+            Write-Host "::warning::WORKFLOW_CHECKOUT_STALE: viewer-distribution.yml pack job is validating $validated, not current '$branch' head $branchHead. For workflow_run, this is the native artifact pipeline commit and can lag behind the branch head."
+          }
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: |
@@ -281,6 +301,26 @@ jobs:
           ref: >-
             ${{ github.event_name == 'workflow_run' &&
                 github.event.workflow_run.head_sha || github.sha }}
+      - name: Report validated checkout commit
+        shell: pwsh
+        env:
+          VALIDATED_BRANCH: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_branch || github.head_ref || github.ref_name }}
+          CHECKOUT_FALLBACK_SHA: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          $validated = (git rev-parse HEAD).Trim()
+          $branch = $env:VALIDATED_BRANCH
+          $branchHead = (git rev-parse "origin/$branch" 2>$null).Trim()
+          if (-not $branchHead) {
+            $branchHead = $env:CHECKOUT_FALLBACK_SHA
+          }
+          Write-Host "::notice::WORKFLOW_CHECKOUT_VALIDATION: viewer-distribution.yml smoke job is validating commit $validated from '$branch'; current branch head is $branchHead."
+          if ($validated -ne $branchHead) {
+            Write-Host "::warning::WORKFLOW_CHECKOUT_STALE: viewer-distribution.yml smoke job is validating $validated, not current '$branch' head $branchHead. For workflow_run, this is the native artifact pipeline commit and can lag behind the branch head."
+          }
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 10.0.301

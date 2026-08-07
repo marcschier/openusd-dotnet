@@ -140,8 +140,13 @@ jobs:
           - name: macOS arm64
             runner: macos-15
             rid: osx-arm64
+    outputs:
+      ready: ${{ steps.native-ready.outputs.ready }}
     env:
       OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
+      DEFER_ON_NATIVE_CACHE_MISS: >-
+        ${{ (github.event_name == 'push' || github.event_name == 'pull_request') &&
+            'true' || 'false' }}
       NATIVE_PIPELINE_RUN_ID: >-
         ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id ||
             inputs['native-pipeline-run-id'] }}
@@ -175,6 +180,26 @@ jobs:
           ref: >-
             ${{ github.event_name == 'workflow_run' &&
                 github.event.workflow_run.head_sha || github.sha }}
+      - name: Report validated checkout commit
+        shell: pwsh
+        env:
+          VALIDATED_BRANCH: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_branch || github.head_ref || github.ref_name }}
+          CHECKOUT_FALLBACK_SHA: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          $validated = (git rev-parse HEAD).Trim()
+          $branch = $env:VALIDATED_BRANCH
+          $branchHead = (git rev-parse "origin/$branch" 2>$null).Trim()
+          if (-not $branchHead) {
+            $branchHead = $env:CHECKOUT_FALLBACK_SHA
+          }
+          Write-Host "::notice::WORKFLOW_CHECKOUT_VALIDATION: package.yml is validating commit $validated from '$branch'; current branch head is $branchHead."
+          if ($validated -ne $branchHead) {
+            Write-Host "::warning::WORKFLOW_CHECKOUT_STALE: package.yml is validating $validated, not current '$branch' head $branchHead. For workflow_run, this is the native artifact pipeline commit and can lag behind the branch head."
+          }
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: |
@@ -256,7 +281,8 @@ jobs:
         if: >-
           matrix.rid == 'linux-x64' &&
           env.LINUX_NATIVE_SOURCE == 'build' &&
-          steps.native-cache.outputs.cache-hit != 'true'
+          steps.native-cache.outputs.cache-hit != 'true' &&
+          env.DEFER_ON_NATIVE_CACHE_MISS != 'true'
         run: >-
           sudo apt-get install -y
           build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev
@@ -268,7 +294,8 @@ jobs:
         if: >-
           matrix.rid == 'linux-x64' &&
           env.LINUX_NATIVE_SOURCE == 'build' &&
-          steps.native-cache.outputs.cache-hit != 'true'
+          steps.native-cache.outputs.cache-hit != 'true' &&
+          env.DEFER_ON_NATIVE_CACHE_MISS != 'true'
         shell: pwsh
         run: ./eng/check-linux-native-prerequisites.ps1
       - name: Prepare validated six-entry Metal library
@@ -283,6 +310,7 @@ jobs:
       - name: Fetch locked native sources
         if: >-
           steps.native-cache.outputs.cache-hit != 'true' &&
+          env.DEFER_ON_NATIVE_CACHE_MISS != 'true' &&
           (matrix.rid != 'win-x64' || env.WINDOWS_NATIVE_SOURCE == 'build') &&
           (matrix.rid != 'linux-x64' || env.LINUX_NATIVE_SOURCE == 'build') &&
           (matrix.rid != 'osx-arm64' || env.MACOS_NATIVE_SOURCE == 'build')
@@ -291,13 +319,47 @@ jobs:
       - name: Build locked native install
         if: >-
           steps.native-cache.outputs.cache-hit != 'true' &&
+          env.DEFER_ON_NATIVE_CACHE_MISS != 'true' &&
           (matrix.rid != 'win-x64' || env.WINDOWS_NATIVE_SOURCE == 'build') &&
           (matrix.rid != 'linux-x64' || env.LINUX_NATIVE_SOURCE == 'build') &&
           (matrix.rid != 'osx-arm64' || env.MACOS_NATIVE_SOURCE == 'build')
         shell: pwsh
         run: ./eng/build-native.ps1 -Rid ${{ matrix.rid }}
+      # Deliberately defers only self-firing push and pull_request runs. A cache
+      # miss there means the native tree changed and native.yml has not
+      # published it yet; workflow_run re-runs these gates once the archive
+      # exists. workflow_call and workflow_dispatch keep building from source so
+      # release and manually requested package gates cannot silently skip.
+      - name: Report a deferred smoke when the native tree is not published yet
+        if: >-
+          steps.native-cache.outputs.cache-hit != 'true' &&
+          env.DEFER_ON_NATIVE_CACHE_MISS == 'true' &&
+          (matrix.rid != 'win-x64' || env.WINDOWS_NATIVE_SOURCE == 'build') &&
+          (matrix.rid != 'linux-x64' || env.LINUX_NATIVE_SOURCE == 'build') &&
+          (matrix.rid != 'osx-arm64' || env.MACOS_NATIVE_SOURCE == 'build')
+        shell: pwsh
+        run: |
+          Write-Host (
+            '::notice::PACKAGE_SMOKE_DEFERRED: no verified native install for ' +
+            '${{ matrix.rid }} at this commit. The native artifact pipeline has ' +
+            'not published this native tree yet; this push or pull_request run ' +
+            'will be covered by workflow_run once it has.')
+      - id: native-ready
+        shell: pwsh
+        run: |
+          $source = switch ('${{ matrix.rid }}') {
+            'win-x64' { '${{ env.WINDOWS_NATIVE_SOURCE }}' }
+            'linux-x64' { '${{ env.LINUX_NATIVE_SOURCE }}' }
+            'osx-arm64' { '${{ env.MACOS_NATIVE_SOURCE }}' }
+            default { 'build' }
+          }
+          $ready = $source -eq 'archive' -or
+            '${{ steps.native-cache.outputs.cache-hit }}' -eq 'true' -or
+            '${{ env.DEFER_ON_NATIVE_CACHE_MISS }}' -ne 'true'
+          "ready=$($ready.ToString().ToLowerInvariant())" |
+            Out-File $env:GITHUB_OUTPUT -Append
       - name: Download verified native pipeline archive
-        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -305,7 +367,10 @@ jobs:
           name: openusd-native-${{ matrix.rid }}
           path: artifacts/native-pipeline/${{ matrix.rid }}
       - name: Extract immutable Windows native archive
-        if: matrix.rid == 'win-x64' && env.WINDOWS_NATIVE_SOURCE == 'archive'
+        if: >-
+          matrix.rid == 'win-x64' &&
+          env.WINDOWS_NATIVE_SOURCE == 'archive' &&
+          steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           ./eng/prepare-workflow-native-input.ps1 `
@@ -313,7 +378,10 @@ jobs:
             -Source archive `
             -PipelineRoot artifacts/native-pipeline/win-x64
       - name: Extract immutable Linux native archive
-        if: matrix.rid == 'linux-x64' && env.LINUX_NATIVE_SOURCE == 'archive'
+        if: >-
+          matrix.rid == 'linux-x64' &&
+          env.LINUX_NATIVE_SOURCE == 'archive' &&
+          steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           $pipelineRoot = if ($env:NATIVE_PIPELINE_RUN_ID) {
@@ -328,7 +396,10 @@ jobs:
             -ArchiveSha256 $env:LINUX_NATIVE_SHA256 `
             -PipelineRoot $pipelineRoot
       - name: Extract immutable macOS native archive
-        if: matrix.rid == 'osx-arm64' && env.MACOS_NATIVE_SOURCE == 'archive'
+        if: >-
+          matrix.rid == 'osx-arm64' &&
+          env.MACOS_NATIVE_SOURCE == 'archive' &&
+          steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           $pipelineRoot = if ($env:NATIVE_PIPELINE_RUN_ID) {
@@ -343,6 +414,7 @@ jobs:
             -ArchiveSha256 $env:MACOS_NATIVE_SHA256 `
             -PipelineRoot $pipelineRoot
       - name: Verify native install metadata
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           $requireVulkanRuntime =
@@ -352,6 +424,7 @@ jobs:
             -Rid ${{ matrix.rid }} `
             -RequireVulkanRuntime:$requireVulkanRuntime
       - id: cesium-vcpkg-cache
+        if: steps.native-ready.outputs.ready == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -365,21 +438,26 @@ jobs:
               'eng/build-cesium-shim.ps1'
             ) }}
       - name: Build Cesium native install
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/build-cesium-native.ps1 -Rid ${{ matrix.rid }} -SkipSmokeProbe
       - name: Build Cesium shim
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }}
       - name: Execute managed NativeAOT probe
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: >
           ./eng/run-native-probe.ps1
           -Rid ${{ matrix.rid }}
           -SkipNativeAbiProbe
       - name: Execute hdSilk NativeAOT probe
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/run-silk-probe.ps1 -Rid ${{ matrix.rid }}
       - name: Build package tests
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         # The MSVC developer environment exports Platform=x64, which makes MSBuild
         # write to bin\x64\Release instead of bin\Release and leaves the executable
@@ -388,7 +466,7 @@ jobs:
           Platform: ''
         run: dotnet build tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj -c Release
       - name: Verify Metal package staging
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           dotnet pack `
@@ -402,6 +480,7 @@ jobs:
             --library eng/shaders/checked/mesh.metallib `
             --manifest eng/shaders/checked/mesh.metallib.manifest.json
       - name: Run required package execution gates
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         env:
           Platform: ''
@@ -417,14 +496,14 @@ jobs:
           & $testApp --minimum-expected-tests 22
           exit $LASTEXITCODE
       - name: Require Linux ABI-7 SONAME topology and package-only evidence
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           $archiveMode = $env:LINUX_NATIVE_SOURCE -eq 'archive'
           ./eng/validate-linux-package-evidence.ps1 `
             -RequireArchiveSource:$archiveMode
       - name: Require macOS signed Storm child package-only evidence
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           $archiveMode = $env:MACOS_NATIVE_SOURCE -eq 'archive'
