@@ -42,7 +42,8 @@ centralized in [Versioning and compatibility](versioning-compatibility.md).
 ## Packages
 
 All package projects below are packable from source. Availability here means repository production,
-not public-feed publication.
+not public-feed publication. The 17 non-Cesium IDs are published to NuGet.org at `0.5.0-alpha`;
+the five Cesium IDs are next-alpha packages that have not yet been published.
 
 | Package | Framework project | Native requirement |
 | --- | --- | --- |
@@ -50,6 +51,7 @@ not public-feed publication.
 | `OpenUsd` | 8/9/10 | Core runtime |
 | `OpenUsd.Rendering` | 8/9/10 | None for neutral contracts |
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Imaging runtime |
+| `OpenUsd.Cesium` | 8/9/10 | Cesium runtime; next alpha, not on NuGet.org at `0.5.0-alpha` |
 | `OpenUsd.Rendering.Silk` | 8/9/10 | Imaging runtime for scene pages |
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Imaging runtime; Windows execution |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Imaging runtime; Windows/Linux execution |
@@ -63,6 +65,10 @@ not public-feed publication.
 | `OpenUsd.Runtime.Imaging.win-x64` | `net8.0` carrier | Matching Windows Core package |
 | `OpenUsd.Runtime.Imaging.linux-x64` | `net8.0` carrier | Matching Linux Core package |
 | `OpenUsd.Runtime.Imaging.osx-arm64` | `net8.0` carrier | Matching macOS Core package |
+| `OpenUsd.Runtime.Cesium` | `net8.0` carrier | Cesium metapackage; next alpha |
+| `OpenUsd.Runtime.Cesium.win-x64` | `net8.0` carrier | Windows Cesium shim; next alpha |
+| `OpenUsd.Runtime.Cesium.linux-x64` | `net8.0` carrier | Linux Cesium shim; next alpha |
+| `OpenUsd.Runtime.Cesium.osx-arm64` | `net8.0` carrier | macOS Cesium shim; next alpha |
 
 The runtime projects use `net8.0` to carry RID assets and transitive build targets. The managed
 libraries they support target all three production frameworks. `OpenUsd.LiveAuthoring` is intentionally
@@ -217,7 +223,7 @@ See [Rendering](rendering.md) for request binding, stale results, GPU passes, an
 
 ## hdSilk Storm parity sign-off
 
-The 1.0 rendering-parity claim is intentionally narrower than "everything hdSilk can parse".
+The next-alpha rendering-parity claim is intentionally narrower than "everything hdSilk can parse".
 `eng/run-parity-capture.ps1` registers 25 curated scenes. Twenty-two are hard gates at
 `1.000000` adjusted IoU against D3D12 WARP and Vulkan SwiftShader; three are
 measured but deliberately ungated because Storm is not a valid offscreen reference there:
@@ -393,10 +399,10 @@ remains measured but ungated until the remaining divergence is eliminated.
   `HdxColorCorrectionTask`, but hdSilk does not run the Hdx task graph and has no render-settings ABI
   for OCIO config names, LUT resources, or generated colour-correction shader code.
 
-### Unimplemented or deliberately excluded from the 1.0 parity claim
+### Unimplemented or deliberately excluded from the next-alpha parity claim
 
 - Full Catmull-Clark/Loop/bilinear subdivision, creases, and subdivision primvar refinement are not part of the
-  1.0 parity claim.
+  next-alpha parity claim.
 - hdSilk evaluates the narrow CPU blend-shape subset described in `docs/rendering.md` before CPU
   skinning. GPU blend-shape deformation and in-between/primvar/tangent deltas are not implemented.
 - Light linking is not implemented.
@@ -540,7 +546,7 @@ here.
   wired into the macOS render job for the same 25-scene capture, but that hosted result is pending
   and must not be reported as passing until the workflow artifact exists.
 - Volume rendering outside Vulkan single-density OpenVDB assets, path tracing, proprietary shaders,
-  arbitrary MaterialX graphs, and third-party Hydra render delegates are excluded from the 1.0 support claim.
+  arbitrary MaterialX graphs, and third-party Hydra render delegates are excluded from the next-alpha support claim.
 
 Use [Troubleshooting](troubleshooting.md) to diagnose native loading, plugin discovery, platform,
 NativeAOT, and evidence failures without weakening these support boundaries.

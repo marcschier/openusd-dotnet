@@ -31,9 +31,12 @@ flowchart TD
     aggregate --> evidence["release-gate.json"]
 ```
 
-The dependency arrows show reusable workflow ordering and native artifact flow. Every workflow
-result also feeds the aggregate job, which records one release decision without duplicating each
-workflow's detailed evidence contract.
+The dependency arrows show reusable release-workflow ordering and native artifact flow.
+`package.yml` also runs outside release: after successful `native artifact pipeline` runs on `main`,
+and on pushes or pull requests that touch packaging paths, package tests, runtime package projects,
+Cesium inputs, or native hdSilk/package-validation inputs. Every workflow result also feeds the
+aggregate job, which records one release decision without duplicating each workflow's detailed
+evidence contract.
 
 Managed tests use TUnit on Microsoft.Testing.Platform. The current pre-alpha baseline includes
 managed data, interop, package, rendering, and viewer suites; native ABI and OpenUSD compatibility
@@ -134,7 +137,7 @@ timings:
 The suite requires .NET SDK 10.0.301 but no native OpenUSD installation. Results include
 BenchmarkDotNet Markdown, CSV, and full JSON reports under the selected artifact directory.
 
-The curated Storm/hdSilk parity capture remains the render gate for the 22 scene set. In addition to
+The curated Storm/hdSilk parity capture remains the render gate for the 25 scene set. In addition to
 the adjusted-IoU floor, each captured hdSilk backend must stay under per-scene deterministic resource
 thresholds recorded in [Performance](performance.md#object-and-resource-churn). Thresholds are measured
 counter values plus modest headroom, not shared global ceilings. These gates prefer counters over
@@ -143,7 +146,7 @@ regressions the renderer controls without becoming flaky.
 
 ## Storm offscreen harness capability limits
 
-Nineteen scenes are gated at adjusted IoU `1.000000`; three are measured but ungated:
+Twenty-two scenes are gated at adjusted IoU `1.000000`; three are measured but ungated:
 MaterialX standard-surface, Catmull-Clark subdivision, and `light-distant-shadow`. The shadow scene
 matches the direct-lit image (`maxChannelDiff=3`, `meanChannelDiff=0.161`) but the paired
 shadow-disabled stage is byte-identical in Storm (`disabledAdjustedIoU=1.000000`, unchanged Storm
@@ -166,7 +169,7 @@ doubled-intensity sensitivity probe fail with `ChangedStorm=false`.
 
 Shadows are therefore a recorded Storm offscreen-harness capability limit, not a reference hdSilk
 can be built against -- the third such limit alongside subdivision, where Storm renders the control
-cage, and MaterialX, where Storm renders black. `-StormGl Mesa` runs 18 of the 22 registered scenes
+cage, and MaterialX, where Storm renders black. `-StormGl Mesa` runs 21 of the 25 registered scenes
 and continues to exclude four Mesa/llvmpipe Storm divergences: `single-sided-winding`,
 `bounds-draw-mode`, `origin-draw-mode`, and `subdivision-catmull-clark`.
 
@@ -247,7 +250,7 @@ commit and artifact set.
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 9 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 11 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 Instance identity has dedicated coverage. One case serializes a point-instanced scene and
@@ -600,9 +603,9 @@ driver or an installed GPU driver. The parity capture evidence also records the 
 OpenGL path, SHA-256, renderer, version, and current WGL handles beside the scene metrics.
 
 `eng/run-parity-capture.ps1` defaults to `-StormGl Auto`. In that mode the script removes any stale
-test-host `opengl32.dll` override, preflights the system WGL implementation, selects all 22 registered scenes, and
+test-host `opengl32.dll` override, preflights the system WGL implementation, selects all 25 registered scenes, and
 gates the scenes whose measured thresholds are enabled. If the system driver is unavailable, Auto falls back to Mesa
-with a warning that the selected set has changed to 18 scenes. Hosted CI passes `-StormGl Mesa` explicitly so the
+with a warning that the selected set has changed to 21 scenes. Hosted CI passes `-StormGl Mesa` explicitly so the
 result is deterministic and runner-safe. Both modes publish the scene count and excluded scene names, and the test host
 asserts the expected count so the parity subset cannot shrink silently.
 
@@ -626,7 +629,7 @@ than hdSilk regressions:
 
 The WGL gate writes `parity-capture-mesa-wgl-exclusions.json`/`.txt` so the subset is explicit in CI
 artifacts. If a future Mesa/OpenUSD update makes those scenes agree with the real-GPU measurements,
-remove the exclusion and restore all 22 registered scenes to the WGL parity subset.
+remove the exclusion and restore all 25 registered scenes to the WGL parity subset.
 
 Those four scenes are selected only when `-StormGl Auto` finds a conformant system driver. Hosted CI has no
 such driver today, so authored double-sidedness and the two basis-curves line-topology draw-mode probes
@@ -1040,8 +1043,8 @@ hdSilk's scene-light exposure during capture: the distant gate failed at
 **127 / 126.087**, and the sphere gate failed at **128 / 75.214**, then the
 transport was restored.
 
-The implementation carries direct DistantLight/SphereLight data and untextured
-DomeLight ambient through page ABI 9, but shadows, PCF, light linking, dome
+The implementation introduced direct DistantLight/SphereLight data and untextured
+DomeLight ambient in page ABI 9, but shadows, PCF, light linking, dome
 textures/image lighting, and instanced-shadow parity remain scoped out until the
 Storm measurements can support real gates.
 

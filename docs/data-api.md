@@ -891,12 +891,12 @@ Data ABI v15 preserves every v14 export and capability and adds explicit `color3
 `OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). The managed required mask is
 `0x3FFFF`.
 
-Data ABI v14 preserves every v11 export and capability and adds
-`OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE` (`0x1000`). Together with the prior physics schema
-capability, the managed required mask is `0xFFFF`. Managed startup rejects an older ABI or a v14
-runtime missing required exports. Every status-returning export executes its complete body inside the
-common exception/TfError guard, so C++ exceptions and unconsumed OpenUSD diagnostics never cross C;
-access-end alone performs its already-validated owner-thread `noexcept` commit after the guard.
+Data ABI v15 preserves every v14 export and capability and adds
+`OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). Current managed startup requires the v15
+`0x3FFFF` mask and rejects older runtimes or runtimes missing required exports. Every status-returning
+export executes its complete body inside the common exception/TfError guard, so C++ exceptions and
+unconsumed OpenUSD diagnostics never cross C. Access-end alone performs its already-validated
+owner-thread `noexcept` commit after the guard.
 Clean false typed reads, including blocked or declared-but-unvalued attributes, return `NotFound`;
 dirty `TfErrorMark` reads return `NativeError`.
 
@@ -946,8 +946,8 @@ P/Invoke on authoring paths.
 
 The data API now includes focused schema views for volume assets, render settings, spatial media,
 generative procedurals, and selected UI metadata. The locked native profile includes OpenVDB runtime
-support for referenced `.vdb` assets; hdSilk volume rendering remains outside the current parity
-claim.
+support for referenced `.vdb` assets. Rendering support is limited to the Vulkan single-density
+OpenVDB gate described in the support matrix; it is not part of Storm cross-renderer parity.
 
 ```csharp
 UsdVolVolume volume = stage.DefineVolume("/World/Volume");

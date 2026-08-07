@@ -118,7 +118,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v6 and
-hdSilk session ABI v5; the hdSilk page ABI is v9. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v5; the hdSilk page ABI is v11. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -277,8 +277,9 @@ evidence verifies both the highlight hash change and exact clear restoration. Sc
 instance as its whole prim path. hdSilk retains selection through rendering and backend switches and renders the shared
 visible-only orange mask/composite outline on D3D12, Vulkan, and Metal. D3D12 WARP and Vulkan SwiftShader conformance
 prove real outline pixels, physical width, occlusion suppression, exact clear restoration, resize/generation recovery,
-cleanup, and NativeAOT. Metal source and ten-entry shader contracts are complete; real pixels remain gated on hosted
-macOS with Xcode 16.4. Stale, unsupported, canceled, and failed picks retain the last valid selection.
+cleanup, and NativeAOT. Metal source and ten-entry shader contracts are complete. Hosted real-pixel
+proof remains pending on macOS with Xcode 16.4. Stale, unsupported, canceled, and failed picks
+retain the last valid selection.
 
 Normal automated Viewer runs do not execute picking. The dedicated short Windows scenario is:
 
@@ -317,7 +318,7 @@ Coalesced same-path Rprim recreation may therefore emit a logical old-prim remov
 upsert, or reset topology revision under the same prim ID, without exposing range internals.
 `SilkSceneGpuResources` applies that delta, the renderer looks up the current range by
 `(path, instance index)` for each draw, and deactivated ranges are pruned from searchable storage so
-old tokens cannot resolve. Pick identity is per instance, matching page ABI 9: a point-instanced
+old tokens cannot resolve. Pick identity is per instance, matching page ABI 11: a point-instanced
 prototype allocates one range per resolved instance, so picking selects the instance that was
 actually drawn, and retiring one instance leaves the others resolvable. The prim ID and path hash
 indexes are shared by every instance of a prototype and are retired only with the last one.
@@ -775,7 +776,7 @@ still carries the full mesh payload and transform; later records keep the same f
 the geometry, material-path, and attribute counts to zero and reuse instance zero's retained
 geometry, material path, and attributes.
 
-Page ABI v9 extends `FRAME` with a fixed four-entry light table and ambient vector. Lights are
+Page ABI v9 extended `FRAME` with a fixed four-entry light table and ambient vector. Lights are
 frame-local rather than material-local: the managed renderer converts world-space light transforms to
 eye space alongside the camera, and every draw path already binds slot 8. Keeping light data there
 avoids widening `SceneParameters`, which remains pinned at 80 bytes and mirrored by the instance
@@ -940,13 +941,13 @@ distinct IDs, so the final ID set legitimately differs from the initialized one.
 identity the renderer and pick table already resolve by. Scripts reject artifacts whose source or
 executable identity no longer matches the current build.
 
-The first stable release parity claim is limited to the curated Storm/hdSilk scene matrix documented in
+The current alpha parity claim is limited to the curated Storm/hdSilk scene matrix documented in
 [Support matrix](support-matrix.md#hdsilk-storm-parity-sign-off): D3D12 WARP and Vulkan SwiftShader gate the
 accepted scenes at `1.000000` adjusted IoU. The macOS render job now runs the same parity-driver
 capture against Metal, but that path is pending hosted proof until a workflow run records the CGL
 Storm context and Metal capture artifacts.
-Subdivision, shadows, arbitrary MaterialX graphs, volumes, path tracing, proprietary shaders, and third-party Hydra
-render plugins are out of scope.
+Subdivision, shadows, arbitrary MaterialX graphs, volumes beyond the Vulkan single-density OpenVDB
+gate, path tracing, proprietary shaders, and third-party Hydra render plugins are out of scope.
 
 Automatic fallback covers capability and initialization failures plus device-loss conditions reported cleanly by the
 graphics API. It cannot recover from a native driver crash that terminates the process.

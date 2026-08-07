@@ -84,11 +84,11 @@ Typical messages name the managed and native ABI values or report missing requir
 
 The current contracts are:
 
-- data ABI 14 with required capabilities `0xFFFF`;
+- data ABI 15 with required capabilities `0x3FFFF`;
 - direct Storm ABI 6;
 - Storm child ABI 7;
 - hdSilk session ABI 5; and
-- hdSilk command-page ABI 9.
+- hdSilk command-page ABI 11.
 
 Do not work around a mismatch by suppressing initialization or editing a constant. Remove mixed native
 assets, align all managed and runtime package versions, and rebuild or republish.

@@ -72,7 +72,7 @@ renderer plugin resources. See [Packaging](packaging.md).
 The data boundary is declared in `native/openusd_dotnet/include/openusd_dotnet.h`. It exposes opaque
 stage, access, layer, string-list, and payload-list handles. The managed declarations in
 `OpenUsdNativeMethods.g.cs` are generated from that header by `eng/generate-interop.py`.
-The current managed contract requires data ABI 14 and capability mask `0xFFFF`.
+The current managed contract requires data ABI 15 and capability mask `0x3FFFF`.
 
 The boundary uses a small status model:
 
@@ -226,7 +226,7 @@ flowchart LR
 
 ### Storm
 
-The direct Storm adapter calls `openusd_hydra` ABI 5. Creation, rendering, picking, selection, and
+The direct Storm adapter calls `openusd_hydra` ABI 6. Creation, rendering, picking, selection, and
 destruction remain on the creating OpenGL owner thread and context.
 
 The Viewer uses `openusd_storm_child` ABI 7 to host a native child window and a dedicated render
@@ -240,7 +240,7 @@ buffers, and selection crosses the ABI once as a packed update.
 ### Hydra to Silk
 
 `openusd_hdsilk` session ABI 5 registers the hdSilk Hydra plugin against the exact retained stage.
-Each sync returns a native-owned immutable page. Managed code validates page ABI 9, copies the page
+Each sync returns a native-owned immutable page. Managed code validates page ABI 11, copies the page
 bytes once, and releases the native page.
 
 The wire format is pointer-free and little-endian. Commands currently describe the frame,
