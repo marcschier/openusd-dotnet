@@ -36,6 +36,9 @@ $configureArguments = @(
     '-G', 'Ninja',
     "-DCMAKE_BUILD_TYPE=Release",
     "-DCMAKE_INSTALL_PREFIX=$installRoot",
+    # Linux links cesium-native static archives into libopenusd_cesium.so; without
+    # PIC, thread_local statics can emit executable-only R_X86_64_TPOFF32 relocations.
+    "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
     "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain",
     "-DVCPKG_TARGET_TRIPLET=$triplet",
     "-DVCPKG_HOST_TRIPLET=$triplet",

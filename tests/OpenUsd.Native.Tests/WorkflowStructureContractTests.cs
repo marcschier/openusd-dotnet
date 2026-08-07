@@ -314,6 +314,21 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task CesiumNativeBuildConfiguresPositionIndependentCode()
+    {
+        string root = FindRepositoryRoot();
+        string buildCesiumNative = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "build-cesium-native.ps1"));
+
+        await Assert.That(buildCesiumNative)
+            .Contains("-DCMAKE_POSITION_INDEPENDENT_CODE=ON", StringComparison.Ordinal)
+            .Because(
+                "the Linux package-only NativeAOT gate links cesium-native static " +
+                "archives into libopenusd_cesium.so, and non-PIC thread_local " +
+                "statics can emit executable-only R_X86_64_TPOFF32 relocations");
+    }
+
+    [Test]
     public async Task ConsumerWorkflowsAnnounceValidatedCommitAndStaleWorkflowRunCheckouts()
     {
         string root = FindRepositoryRoot();
