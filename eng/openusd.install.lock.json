@@ -10,7 +10,7 @@
     "extractDirectory": "OpenUSD-2095fafafd033fa23386d7ec6d58c7cc33974518",
     "buildScript": "build_scripts/build_usd.py",
     "buildScriptSha256": "258C2BD80974154C00B8CB7D6CA19257D6E1878BDBDCE6501DDF18A5E230C629",
-    "patchedBuildScriptSha256": "58874A95818876A9F1A6145D9C73F5A499C907A6C621542C7D449F34B6819E42",
+    "patchedBuildScriptSha256": "11C753DF035D6FC47B4D061FB0FEDE78CAC89F1D4BF814460C3401FB14B73E35",
     "patches": [
       {
         "id": "windows-python-3.13-batch-launch",
@@ -35,6 +35,14 @@
       {
         "id": "alembic-root-for-usd-configure",
         "description": "Pass the locked Alembic install root into USD configure so the Ogawa-only Alembic build is found without HDF5 on every platform."
+      },
+      {
+        "id": "openvdb-boost-module-configure",
+        "description": "Use Boost's FindBoost path when configuring OpenVDB so the locked b2 Boost install works without component CMake packages."
+      },
+      {
+        "id": "openvdb-root-for-usd-configure",
+        "description": "Pass the locked OpenVDB install root into USD configure so hioOpenVDB never resolves from a system or vcpkg tree."
       }
     ],
     "license": "Apache-2.0"
