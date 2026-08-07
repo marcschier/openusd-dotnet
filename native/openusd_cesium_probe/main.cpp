@@ -45,14 +45,6 @@ void appendBytes(std::vector<uint8_t>& bytes, const void* value, size_t size) {
     bytes.insert(bytes.end(), first, first + size);
 }
 
-void appendF32(std::vector<uint8_t>& bytes, float value) {
-    appendBytes(bytes, &value, sizeof(value));
-}
-
-void appendU16(std::vector<uint8_t>& bytes, uint16_t value) {
-    appendBytes(bytes, &value, sizeof(value));
-}
-
 std::vector<uint8_t> makeGlb(float scale) {
     std::vector<uint8_t> binary;
     const float positions[] = {
