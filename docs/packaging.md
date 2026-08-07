@@ -29,8 +29,14 @@ flowchart LR
 
 Data-only consumers pair the managed API with `OpenUsd.Runtime.Core`. Rendering consumers add a
 managed backend and `OpenUsd.Runtime.Imaging`, whose RID-specific dependencies also bring Core.
-The Core and Imaging metapackages depend on the published `win-x64`, `linux-x64`, and `osx-arm64` runtime packages,
-letting NuGet select the native asset group for the consuming app's `RuntimeIdentifier`.
+The Core and Imaging metapackages depend on the published `win-x64`, `linux-x64`, and `osx-arm64`
+runtime packages, letting NuGet select the native asset group for the consuming app's
+`RuntimeIdentifier`.
+
+RID-less build, run, and publish are supported only when the SDK host RID is one of those three
+RIDs. In that case the buildTransitive targets copy only the matching host resources and native
+libraries into the output. Cross-publishing and unsupported hosts such as `linux-arm64` must set
+`RuntimeIdentifier` explicitly so NuGet resolves a single runtime asset group.
 
 Projects that need explicit per-RID control can reference the RID packages directly:
 

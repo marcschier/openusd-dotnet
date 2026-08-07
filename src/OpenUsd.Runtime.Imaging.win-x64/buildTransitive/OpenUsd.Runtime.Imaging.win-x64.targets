@@ -1,20 +1,53 @@
 <Project>
 
   <PropertyGroup>
-    <_OpenUsdImagingWinX64ResourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/win-x64/resources'))</_OpenUsdImagingWinX64ResourceRoot>
+    <_OURid>$(NETCoreSdkPortableRuntimeIdentifier)</_OURid>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('Windows'))">Windows</_OUOs>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('Linux'))">Linux</_OUOs>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('OSX'))">OSX</_OUOs>
+    <_OUArch Condition="'$(_OURid)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_OUArch>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'Windows' and '$(_OUArch)' == 'X64'">win-x64</_OURid>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'Linux' and '$(_OUArch)' == 'X64'">linux-x64</_OURid>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'OSX' and '$(_OUArch)' == 'Arm64'">osx-arm64</_OURid>
+    <_OUHostOk Condition="'$(_OURid)' == 'win-x64'">true</_OUHostOk>
+    <_OUHostOk Condition="'$(_OURid)' == 'linux-x64'">true</_OUHostOk>
+    <_OUHostOk Condition="'$(_OURid)' == 'osx-arm64'">true</_OUHostOk>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == 'win-x64'">
-    <_OpenUsdImagingMergedPluginResource
-        Include="$(_OpenUsdImagingWinX64ResourceRoot)/plugin/usd/**/*"
-        Exclude="$(_OpenUsdImagingWinX64ResourceRoot)/plugin/usd/plugInfo.json;$(_OpenUsdImagingWinX64ResourceRoot)/plugin/usd/hdSilk/resources/plugInfo.json" />
-    <Content Include="$(_OpenUsdImagingWinX64ResourceRoot)/**/*">
+  <Target
+    Name="ValidateOpenUsdRidlessHostRuntime"
+    BeforeTargets="ResolveReferences"
+    Condition="'$(RuntimeIdentifier)' == '' and '$(_OUHostOk)' != 'true'">
+    <Error
+      Text="OpenUSD RID-less builds need host win-x64, linux-x64, or osx-arm64. Set RuntimeIdentifier explicitly." />
+  </Target>
+  <PropertyGroup>
+    <_OUImgWinRes>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/win-x64/resources'))</_OUImgWinRes>
+    <_OUImgWinNative>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/win-x64/native'))</_OUImgWinNative>
+    <_OUImgWinApplies Condition="'$(RuntimeIdentifier)' == 'win-x64'">true</_OUImgWinApplies>
+    <_OUImgWinRidless Condition="'$(RuntimeIdentifier)' == '' and '$(_OURid)' == 'win-x64'">true</_OUImgWinRidless>
+    <_OUImgWinApplies Condition="'$(_OUImgWinRidless)' == 'true'">true</_OUImgWinApplies>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_OUImgWinApplies)' == 'true'">
+    <_OUImgWinMerged
+        Include="$(_OUImgWinRes)/plugin/usd/**/*"
+        Exclude="$(_OUImgWinRes)/plugin/usd/plugInfo.json;$(_OUImgWinRes)/plugin/usd/hdSilk/resources/plugInfo.json" />
+    <Content Include="$(_OUImgWinRes)/**/*">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Include="@(_OpenUsdImagingMergedPluginResource)">
+    <Content Include="@(_OUImgWinMerged)">
       <Link>usd/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(_OUImgWinRidless)' == 'true'">
+    <Content Include="$(_OUImgWinNative)/**/*">
+      <Link>%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

@@ -53,8 +53,10 @@ these references:
 `OpenUsd.Rendering.Silk.Vulkan` brings Silk.NET's Vulkan loader and the pinned
 `Stride.Dependencies.SwiftShader` package. `OpenUsd.Runtime.Imaging` brings the matching Core
 runtime through the RID-specific Imaging package selected for the published app. Publish for
-`linux-x64`, run from the publish directory, and point the Vulkan loader at the packaged
-SwiftShader ICD:
+`linux-x64` in CI or when publishing from a different host. A RID-less publish on a `linux-x64`
+host copies the same runtime assets, but unsupported hosts must set `RuntimeIdentifier`
+explicitly. Run from the publish directory and point the Vulkan loader at the packaged SwiftShader
+ICD:
 
 ```bash
 dotnet publish -c Release -r linux-x64 -o artifacts/viewer-smoke

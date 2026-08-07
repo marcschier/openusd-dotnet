@@ -25,8 +25,10 @@ dotnet add package OpenUsd.Runtime.Core --version 0.5.0-alpha
 
 `OpenUsd.Runtime.Core` is the RID-agnostic metapackage for `win-x64`, `linux-x64`, and
 `osx-arm64`. Rendering consumers add the managed backend and `OpenUsd.Runtime.Imaging`; the
-RID-specific package IDs remain available when a project wants explicit asset selection. See
-[Packaging](docs/packaging.md).
+RID-specific package IDs remain available when a project wants explicit asset selection. RID-less
+builds and publishes copy the current host's assets only on `win-x64`, `linux-x64`, and
+`osx-arm64`; cross-publishing, CI matrix jobs, and unsupported hosts should set
+`RuntimeIdentifier` explicitly. See [Packaging](docs/packaging.md).
 
 ## ✨ Highlights
 

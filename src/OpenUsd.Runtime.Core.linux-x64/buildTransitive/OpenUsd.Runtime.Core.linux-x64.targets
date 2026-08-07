@@ -1,12 +1,45 @@
 <Project>
 
   <PropertyGroup>
-    <_OpenUsdCoreLinuxX64ResourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/linux-x64/resources'))</_OpenUsdCoreLinuxX64ResourceRoot>
+    <_OURid>$(NETCoreSdkPortableRuntimeIdentifier)</_OURid>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('Windows'))">Windows</_OUOs>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('Linux'))">Linux</_OUOs>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('OSX'))">OSX</_OUOs>
+    <_OUArch Condition="'$(_OURid)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_OUArch>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'Windows' and '$(_OUArch)' == 'X64'">win-x64</_OURid>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'Linux' and '$(_OUArch)' == 'X64'">linux-x64</_OURid>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'OSX' and '$(_OUArch)' == 'Arm64'">osx-arm64</_OURid>
+    <_OUHostOk Condition="'$(_OURid)' == 'win-x64'">true</_OUHostOk>
+    <_OUHostOk Condition="'$(_OURid)' == 'linux-x64'">true</_OUHostOk>
+    <_OUHostOk Condition="'$(_OURid)' == 'osx-arm64'">true</_OUHostOk>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == 'linux-x64'">
-    <Content Include="$(_OpenUsdCoreLinuxX64ResourceRoot)/**/*">
+  <Target
+    Name="ValidateOpenUsdRidlessHostRuntime"
+    BeforeTargets="ResolveReferences"
+    Condition="'$(RuntimeIdentifier)' == '' and '$(_OUHostOk)' != 'true'">
+    <Error
+      Text="OpenUSD RID-less builds need host win-x64, linux-x64, or osx-arm64. Set RuntimeIdentifier explicitly." />
+  </Target>
+  <PropertyGroup>
+    <_OUCoreLinuxRes>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/linux-x64/resources'))</_OUCoreLinuxRes>
+    <_OUCoreLinuxNative>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/linux-x64/native'))</_OUCoreLinuxNative>
+    <_OUCoreLinuxApplies Condition="'$(RuntimeIdentifier)' == 'linux-x64'">true</_OUCoreLinuxApplies>
+    <_OUCoreLinuxRidless Condition="'$(RuntimeIdentifier)' == '' and '$(_OURid)' == 'linux-x64'">true</_OUCoreLinuxRidless>
+    <_OUCoreLinuxApplies Condition="'$(_OUCoreLinuxRidless)' == 'true'">true</_OUCoreLinuxApplies>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_OUCoreLinuxApplies)' == 'true'">
+    <Content Include="$(_OUCoreLinuxRes)/**/*">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(_OUCoreLinuxRidless)' == 'true'">
+    <Content Include="$(_OUCoreLinuxNative)/**/*">
+      <Link>%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

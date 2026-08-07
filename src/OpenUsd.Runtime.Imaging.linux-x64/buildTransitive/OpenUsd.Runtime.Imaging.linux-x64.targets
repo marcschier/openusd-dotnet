@@ -1,33 +1,71 @@
 <Project>
 
   <PropertyGroup>
-    <_OpenUsdImagingLinuxX64ResourceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/linux-x64/resources'))</_OpenUsdImagingLinuxX64ResourceRoot>
+    <_OURid>$(NETCoreSdkPortableRuntimeIdentifier)</_OURid>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('Windows'))">Windows</_OUOs>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('Linux'))">Linux</_OUOs>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('OSX'))">OSX</_OUOs>
+    <_OUArch Condition="'$(_OURid)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_OUArch>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'Windows' and '$(_OUArch)' == 'X64'">win-x64</_OURid>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'Linux' and '$(_OUArch)' == 'X64'">linux-x64</_OURid>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'OSX' and '$(_OUArch)' == 'Arm64'">osx-arm64</_OURid>
+    <_OUHostOk Condition="'$(_OURid)' == 'win-x64'">true</_OUHostOk>
+    <_OUHostOk Condition="'$(_OURid)' == 'linux-x64'">true</_OUHostOk>
+    <_OUHostOk Condition="'$(_OURid)' == 'osx-arm64'">true</_OUHostOk>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(RuntimeIdentifier)' == '' or '$(RuntimeIdentifier)' == 'linux-x64'">
-    <_OpenUsdImagingMergedPluginResource
-        Include="$(_OpenUsdImagingLinuxX64ResourceRoot)/plugin/usd/**/*"
-        Exclude="$(_OpenUsdImagingLinuxX64ResourceRoot)/plugin/usd/plugInfo.json;$(_OpenUsdImagingLinuxX64ResourceRoot)/plugin/usd/hdSilk/resources/plugInfo.json" />
-    <Content Include="$(_OpenUsdImagingLinuxX64ResourceRoot)/**/*">
+  <Target
+    Name="ValidateOpenUsdRidlessHostRuntime"
+    BeforeTargets="ResolveReferences"
+    Condition="'$(RuntimeIdentifier)' == '' and '$(_OUHostOk)' != 'true'">
+    <Error
+      Text="OpenUSD RID-less builds need host win-x64, linux-x64, or osx-arm64. Set RuntimeIdentifier explicitly." />
+  </Target>
+  <PropertyGroup>
+    <_OUImgLinuxRes>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/linux-x64/resources'))</_OUImgLinuxRes>
+    <_OUImgLinuxNative>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/linux-x64/native'))</_OUImgLinuxNative>
+    <_OUImgLinuxApplies Condition="'$(RuntimeIdentifier)' == 'linux-x64'">true</_OUImgLinuxApplies>
+    <_OUImgLinuxRidless Condition="'$(RuntimeIdentifier)' == '' and '$(_OURid)' == 'linux-x64'">true</_OUImgLinuxRidless>
+    <_OUImgLinuxApplies Condition="'$(_OUImgLinuxRidless)' == 'true'">true</_OUImgLinuxApplies>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_OUImgLinuxApplies)' == 'true'">
+    <_OUImgLinuxMerged
+        Include="$(_OUImgLinuxRes)/plugin/usd/**/*"
+        Exclude="$(_OUImgLinuxRes)/plugin/usd/plugInfo.json;$(_OUImgLinuxRes)/plugin/usd/hdSilk/resources/plugInfo.json" />
+    <Content Include="$(_OUImgLinuxRes)/**/*">
       <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Include="@(_OpenUsdImagingMergedPluginResource)">
+    <Content Include="@(_OUImgLinuxMerged)">
       <Link>usd/%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
 
+  <ItemGroup Condition="'$(_OUImgLinuxRidless)' == 'true'">
+    <Content Include="$(_OUImgLinuxNative)/**/*">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+  <Target
+    Name="RehydrateOpenUsdStormChildBuildLinks"
+    AfterTargets="Build"
+    Condition="'$(_OUImgLinuxApplies)' == 'true' and $([MSBuild]::IsOSPlatform('Linux'))">
+    <Exec Command="rm -f &quot;$(TargetDir)libopenusd_storm_child.so&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7&quot; &quot;$(TargetDir)libopenusd_storm_child.so&quot;" />
+    <Exec Command="test -f &quot;$(TargetDir)libopenusd_storm_child.so.7.0.0&quot; &amp;&amp; rm -f &quot;$(TargetDir)libopenusd_storm_child.so.7&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7.0.0&quot; &quot;$(TargetDir)libopenusd_storm_child.so.7&quot;" />
+  </Target>
+
   <Target
     Name="RehydrateOpenUsdStormChildPublishLinks"
     AfterTargets="CopyFilesToPublishDirectory"
-    Condition="'$(RuntimeIdentifier)' == 'linux-x64' and $([MSBuild]::IsOSPlatform('Linux'))">
-    <Exec
-      Command="rm -f &quot;$(PublishDir)libopenusd_storm_child.so&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7&quot; &quot;$(PublishDir)libopenusd_storm_child.so&quot;" />
-    <Exec
-      Command="test -f &quot;$(PublishDir)libopenusd_storm_child.so.7.0.0&quot; &amp;&amp; rm -f &quot;$(PublishDir)libopenusd_storm_child.so.7&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7.0.0&quot; &quot;$(PublishDir)libopenusd_storm_child.so.7&quot;" />
+    Condition="'$(_OUImgLinuxApplies)' == 'true' and $([MSBuild]::IsOSPlatform('Linux'))">
+    <Exec Command="rm -f &quot;$(PublishDir)libopenusd_storm_child.so&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7&quot; &quot;$(PublishDir)libopenusd_storm_child.so&quot;" />
+    <Exec Command="test -f &quot;$(PublishDir)libopenusd_storm_child.so.7.0.0&quot; &amp;&amp; rm -f &quot;$(PublishDir)libopenusd_storm_child.so.7&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7.0.0&quot; &quot;$(PublishDir)libopenusd_storm_child.so.7&quot;" />
   </Target>
 
 </Project>
