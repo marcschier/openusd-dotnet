@@ -351,9 +351,10 @@ remains measured but ungated until the remaining divergence is eliminated.
 - Texture `repeat`, `clamp`, `mirror`, `useMetadata`/black, `sRGB`, diffuse `auto`, and raw/linear colour
   space are gated.
 - Specular, opacity, and occlusion texture slots have no parity scene.
-- `displacement` is not gated as an authored constant PreviewSurface input. The Vulkan
-  renderer-consumption path for emissive colour, occlusion, opacity threshold, clearcoat, clearcoat
-  roughness, and IOR is self-consistency-gated, but not yet Storm-gated from authored USD.
+- `displacement` is not implemented in hdSilk. The material ABI can carry the authored input, but the
+  checked mesh shader has no tessellation or vertex/fragment displacement path that changes pixels.
+- The Vulkan renderer-consumption path for emissive colour, occlusion, opacity threshold, clearcoat,
+  clearcoat roughness, and IOR is self-consistency-gated, but not yet Storm-gated from authored USD.
 - MaterialX images, normal maps, emission, non-zero metalness, and arithmetic chains have no Storm parity gate.
 - Sphere-light glossy shaping, dome textures, image-based lighting, and area-light texture inputs are not gated.
 - Multiple point-instancer prototypes/proto-index variation and instanced shadows are not gated.
@@ -361,14 +362,18 @@ remains measured but ungated until the remaining divergence is eliminated.
 - Authored `cullStyle=back` and the default `backUnlessDoubleSided` are gated for a single-sided mesh and
   a double-sided back-face divergence companion. `front`, `frontUnlessDoubleSided`, and `nothing` remain ungated.
 - Animated materials, textures, lights, and topology have no parity scene.
-- GPU skinning is not gated.
+- GPU skinning is not implemented or gated. `docs/rendering.md` records the ABI/shader design that
+  must land before this can become a backend gate.
+- OCIO final display/view/look correction is not implemented. OpenUSD exposes it through
+  `HdxColorCorrectionTask`, but hdSilk does not run the Hdx task graph and has no render-settings ABI
+  for OCIO config names, LUT resources, or generated colour-correction shader code.
 
 ### Unimplemented or deliberately excluded from the 1.0 parity claim
 
 - Full Catmull-Clark/Loop/bilinear subdivision, creases, and subdivision primvar refinement are not part of the
   1.0 parity claim.
-- Blend-shape rendering is not implemented in hdSilk. The data API can author and inspect
-  `UsdSkelBlendShape` data, but hdSilk still does not evaluate it in this parity matrix.
+- hdSilk evaluates the narrow CPU blend-shape subset described in `docs/rendering.md` before CPU
+  skinning. GPU blend-shape deformation and in-between/primvar/tangent deltas are not implemented.
 - Light linking is not implemented.
 
 ## hdSilk lighting parity

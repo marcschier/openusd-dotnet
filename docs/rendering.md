@@ -829,8 +829,9 @@ arbitrary clip planes do not.
 hdSilk still registers `extComputation` as a supported Sprim type so unsupported procedural deformations have a safe
 fallback, but the render path now evaluates the supported UsdSkel subset directly from the USD stage during Rprim sync.
 For a skinned `UsdGeomMesh`, hdSilk finds the containing `UsdSkelRoot`, resolves skeleton and skinning queries with
-`UsdSkelCache`, skips meshes with blend shapes for now, computes skinning transforms at the capture time, and publishes
-the resulting points before asking Hydra for computed primvars. The ExtComputation `points` pull remains only a fallback
+`UsdSkelCache`, applies bound blend-shape point offsets through `UsdSkelBlendShapeQuery` when a bound
+`UsdSkelAnimation` supplies linear weights, computes skinning transforms at the capture time, and publishes the
+resulting points before asking Hydra for computed primvars. The ExtComputation `points` pull remains only a fallback
 for unsupported or non-UsdSkel computed points, and topology refreshes still force a point refresh so deformed positions
 can never be indexed against a stale point array.
 
@@ -844,16 +845,48 @@ gated at timeCode 2: Storm, D3D12 WARP, and Vulkan SwiftShader agree at 1.000000
 
 The UsdSkel facade is present on the data side: native code exposes `UsdSkelRoot`, `UsdSkelSkeleton`,
 `UsdSkelAnimation`, `UsdSkelBindingAPI`, joints, bind/rest transforms, blend-shape targets, joint indices/weights, and
-validation helpers. Rendering now uses that data path for classic linear, joint-weighted meshes without blend shapes;
-unsupported blend-shape sites deliberately fall back to Hydra's computed points instead of publishing guessed data.
-hdSilk does not yet upload joints, weights, or blend-shape deltas to GPU buffers. No shader or compute path evaluates
-skinning. The measured `parity-skinned-pennant.usda` scene confirms Storm does deform a skinned mesh at timeCode 2:
-Storm, D3D12 WARP, and Vulkan SwiftShader all cover 2606 pixels with adjusted IoU 1.000000, while the undeformed
-timeCode 1 capture scores 0.534601. The supported blend-shape scope for the next rendering slice is therefore
-deliberately limited to OpenUSD blend-shape targets resolved through a bound `UsdSkelAnimation`, linear weights,
-point-position offsets, and normal offsets only; in-betweens, arbitrary primvar deltas, tangent deltas, and GPU
-deformation are out of scope. GPU compute skinning remains a separate ABI/shader design task because it must define the
-wire format for joint palettes, influence streams, blend-shape ranges, barriers, and backend-equivalent dispatch.
+validation helpers. Rendering now uses that data path for classic linear, joint-weighted meshes and for the narrow
+OpenUSD blend-shape subset whose target relationship resolves to point-position offsets with weights supplied by the
+bound animation. hdSilk still does not upload joints, weights, or blend-shape deltas to GPU buffers, and no shader or
+compute path evaluates skinning. The measured `parity-skinned-pennant.usda` scene confirms Storm does deform a skinned
+mesh at timeCode 2: Storm, D3D12 WARP, and Vulkan SwiftShader all cover 2606 pixels with adjusted IoU 1.000000, while
+the undeformed timeCode 1 capture scores 0.534601.
+
+The GPU skinning ABI/shader design is:
+
+1. Add an optional deformation block after the mesh attribute table, guarded by a page ABI bump and a capability bit, so
+   older consumers continue using CPU-resolved `points`.
+2. Encode one `SKINNING_UPSERT`-equivalent payload per deformed prototype, not per instance: bind-pose points/normals,
+   fixed-width influence streams (`uint4 jointIndices`, `float4 jointWeights`), a joint-palette range, and a blend-shape
+   range table. Instance records continue to reuse prototype geometry and supply only transforms/material state.
+3. Publish a frame-local or animation-revision-local joint palette as `float4x4` storage-buffer rows in skeleton order,
+   after OpenUSD joint remapping and rest/bind transform resolution. The shader never sees OpenUSD paths or tokens.
+4. Publish blend-shape deltas as sparse ranges: each range has `{firstDelta, deltaCount, weightIndex}`, each delta has
+   `{pointIndex, positionOffset, normalOffset}`. In-betweens and arbitrary primvar/tangent deltas require additional
+   range kinds and remain excluded until they are represented explicitly.
+5. Dispatch a compute pass before the mesh draw for each dirty deformation revision. The pass writes the existing
+   interleaved vertex buffer shape (`position`, `normal`, optional `uv`, optional `tangent`) into the retained GPU
+   geometry, then inserts a storage-write-to-vertex-read barrier through `ISilkGraphicsCommandList.Barrier()`.
+6. Keep CPU evaluation as the authoritative fallback and as the gate oracle until D3D12, Vulkan, and Metal expose the
+   same storage-buffer layouts, dispatch dimensions, and barriers. A valid gate must mutate only the GPU path and
+   compare against the CPU-resolved page; mutating the USD asset or the shared CPU resolver is not a falsification.
+
+That design deliberately keeps OpenUSD C++ types behind the existing native ABI, avoids per-element P/Invoke on hot
+paths, and separates Hydra translation from backend-specific compute dispatch.
+
+UsdPreviewSurface `displacement` remains deliberately unimplemented in hdSilk. The authored input can travel through the
+material ABI, but the retained mesh renderer has no tessellation stage, no vertex shader offset path, and no fragment
+height/parallax path that changes pixels. Writing it into an unused surface-constant slot would only gate plumbing, so
+the renderer leaves it unconsumed until a pixel-observable displacement design lands.
+
+OpenUSD exposes two different colour-management surfaces. `UsdColorSpaceAPI`/`GfColorSpace` describe scene-referred
+attribute colour spaces and can convert CPU colour spans to `lin_rec709_scene`; `HdxColorCorrectionTaskParams` describes
+final-frame OCIO display/view/look correction and creates OCIO GPU LUT resources inside the Hdx task graph. hdSilk does
+not run an Hdx task graph: it receives immutable Hydra pages and renders through the project-owned D3D12/Vulkan/Metal
+RHI. There is therefore no Hydra-render-delegate callback today that supplies an OCIO config, display, view, look, LUT
+textures, or generated OCIO shader to hdSilk. Implementing final OCIO in this architecture needs a new renderer-neutral
+render-settings ABI that carries those values plus a backend-neutral LUT/shader contract; threading only texture
+`sourceColorSpace` through material inputs is not OCIO and would be a false completion claim.
 
 Serialization isolates failures per prim. A record whose points, indices, or triangle mapping do not validate is
 skipped with a warning and counted by a rejected-mesh counter instead of aborting the page, so one malformed prim in
