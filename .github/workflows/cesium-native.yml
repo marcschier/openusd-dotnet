@@ -89,6 +89,9 @@ jobs:
       - name: Report Cesium output sizes
         shell: pwsh
         run: |
+          # Tee-Object does not create missing parents, so every leg of run
+          # 31210680530 failed here after a successful 18-minute build.
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           $install = Get-ChildItem native/install/cesium/${{ matrix.rid }} -Recurse -File |
             Measure-Object Length -Sum
           $libraries = Get-ChildItem native/install/cesium/${{ matrix.rid }}/lib -Recurse -File |
