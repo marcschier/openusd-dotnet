@@ -132,7 +132,23 @@ try
 {
     $env:PATH = $installRoot + [IO.Path]::PathSeparator + $oldPath
     $env:LD_LIBRARY_PATH = $installRoot + [IO.Path]::PathSeparator + $oldLdLibraryPath
-    $env:DYLD_LIBRARY_PATH = $installRoot + [IO.Path]::PathSeparator + $oldDyldLibraryPath
+
+    # Deliberately NOT set on macOS. DYLD_LIBRARY_PATH overrides dylib lookup by
+    # leaf name for the whole process, not just for this bundle, and macOS ships
+    # its own private OpenUSD inside ModelIO at /usr/lib/usd/libusd_ms.dylib.
+    # Pointing it at a directory holding our libusd_ms.dylib made dyld hand ours
+    # to ModelIO, which then found its symbols missing, poisoned them with
+    # 0xBAD4007 and took the process down with SIGSEGV before the Viewer drew a
+    # frame. A self-contained bundle must not need it: the macOS packaging
+    # already builds with CMAKE_INSTALL_NAME_DIR=@rpath and
+    # CMAKE_INSTALL_RPATH=@loader_path, so the bundle resolves its own
+    # dependencies relative to itself. If it ever cannot, that is a packaging
+    # defect to fix rather than to paper over with a process-wide override --
+    # any consumer that set the same variable would hit the same crash.
+    if (-not $IsMacOS)
+    {
+        $env:DYLD_LIBRARY_PATH = $installRoot + [IO.Path]::PathSeparator + $oldDyldLibraryPath
+    }
     $env:OPENUSD_PLUGIN_PATH = Join-Path $installRoot 'plugin/usd'
     $env:OPENUSD_STAGE_PATH = $stagedStage
     $env:OPENUSD_STATUS_FILE = $statusFile

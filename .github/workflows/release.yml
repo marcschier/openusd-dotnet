@@ -228,9 +228,16 @@ jobs:
       - name: Install Linux viewer smoke prerequisites
         if: matrix.rid == 'linux-x64'
         shell: bash
+        # libopengl0 and libglx0 carry libOpenGL.so.0 and libGLX.so.0. Without
+        # them the bundle cannot load openusd_storm_child and the Viewer aborted
+        # before drawing a frame. libgl1-mesa-dri alone supplies a driver, not
+        # the GLVND entry points the loader actually resolves against; the other
+        # jobs get them transitively from -dev packages a runtime smoke should
+        # not need.
         run: |
           sudo apt-get update
-          sudo apt-get install -y libfontconfig1 libgl1-mesa-dri libx11-6 xvfb
+          sudo apt-get install -y \
+            libfontconfig1 libgl1 libglx0 libopengl0 libgl1-mesa-dri libx11-6 xvfb
       - name: Stamp the release version from the tag
         shell: pwsh
         run: |
