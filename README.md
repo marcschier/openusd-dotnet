@@ -13,10 +13,10 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Current distribution:** public source repository and published packages, version `0.5.0-alpha`,
-> with pre-1.0 APIs. Managed and runtime packages are on
-> [NuGet.org](https://www.nuget.org/packages/OpenUsd) and on GitHub Packages; package identities and
-> public APIs may still change before 1.0.
+> **Current distribution:** public source repository and 17 published `0.5.0-alpha` packages,
+> with pre-1.0 APIs. The next alpha pack set adds the five Cesium package IDs enumerated below;
+> those Cesium packages are buildable from this tree but are not present on NuGet.org at `0.5.0-alpha`.
+> Package identities and public APIs may still change before 1.0.
 
 ```shell
 dotnet add package OpenUsd --version 0.5.0-alpha
@@ -41,7 +41,7 @@ RID-specific package IDs remain available when a project wants explicit asset se
 - **A managed Hydra renderer** over D3D12, Vulkan, and Metal covering materials, textures, `UsdLux`
   lighting, point instancing, curves, points, draw modes, clip planes, `UsdSkel` skinning, and
   time-varying values.
-- **Measured parity with Storm** on 19 hard-gated curated scenes at exactly `1.000000` adjusted IoU
+- **Measured parity with Storm** on 22 hard-gated curated scenes at exactly `1.000000` adjusted IoU
   for D3D12 WARP and Vulkan SwiftShader; the render workflow also attempts the same curated capture
   on macOS CGL/Metal, but that path remains pending hosted proof until a run records it.
 - **Cross-platform packaging gates** for `win-x64`, `linux-x64`, and `osx-arm64`.
@@ -113,8 +113,9 @@ See [Architecture](docs/architecture.md) and [Rendering](docs/rendering.md).
 
 ## 📦 Package matrix
 
-All package IDs below are published to NuGet.org and GitHub Packages, and are buildable from this
-repository.
+All package IDs below are buildable from this repository for the next alpha release. The 17
+non-Cesium IDs are published to NuGet.org at `0.5.0-alpha`; the five Cesium IDs are enabled in
+`eng/pack-packages.ps1` for the next alpha but have not yet been published.
 
 | Package | TFM | Purpose |
 | --- | --- | --- |
@@ -122,7 +123,7 @@ repository.
 | `OpenUsd` | 8/9/10 | Managed stage, layer, prim, value, and schema API |
 | `OpenUsd.Rendering` | 8/9/10 | Renderer-neutral state, capabilities, picking, and failover |
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Hydra/Storm adapter |
-| `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer |
+| `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer; next alpha, not on NuGet.org at `0.5.0-alpha` |
 | `OpenUsd.Rendering.Silk` | 8/9/10 | Hydra-fed managed renderer and backend-neutral RHI |
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Direct3D 12 backend |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Vulkan backend |
@@ -135,10 +136,10 @@ repository.
 | `OpenUsd.Runtime.Imaging.win-x64` | 8 carrier | Windows Hydra, Storm, hdSilk, and plugins |
 | `OpenUsd.Runtime.Imaging.linux-x64` | 8 carrier | Linux Hydra, Storm, hdSilk, and plugins |
 | `OpenUsd.Runtime.Imaging.osx-arm64` | 8 carrier | macOS Hydra, Storm, hdSilk, and plugins |
-| `OpenUsd.Runtime.Cesium` | 8 carrier | RID-agnostic Cesium metapackage for `win-x64`, `linux-x64`, and `osx-arm64` |
-| `OpenUsd.Runtime.Cesium.win-x64` | 8 carrier | Windows Cesium 3D Tiles native shim |
-| `OpenUsd.Runtime.Cesium.linux-x64` | 8 carrier | Linux Cesium 3D Tiles native shim |
-| `OpenUsd.Runtime.Cesium.osx-arm64` | 8 carrier | macOS Cesium 3D Tiles native shim |
+| `OpenUsd.Runtime.Cesium` | 8 carrier | Cesium metapackage; next alpha, not yet on NuGet.org |
+| `OpenUsd.Runtime.Cesium.win-x64` | 8 carrier | Windows Cesium 3D Tiles native shim; next alpha |
+| `OpenUsd.Runtime.Cesium.linux-x64` | 8 carrier | Linux Cesium 3D Tiles native shim; next alpha |
+| `OpenUsd.Runtime.Cesium.osx-arm64` | 8 carrier | macOS Cesium 3D Tiles native shim; next alpha |
 
 Runtime projects use `net8.0` as their NuGet asset-carrier TFM; the managed libraries they accompany
 target .NET 8, 9, and 10. Package layout and clean-consumer gates are documented in
@@ -250,7 +251,7 @@ not claim.
 | Blend shapes | Narrow CPU point-offset subset before skinning; GPU deformation excluded | Implemented subset |
 | Subdivision | Storm renders the control cage at harness complexity | Measured, ungated |
 | Draw batching | Sorted and batched by pipeline and material | Implemented |
-| Volumes, path tracing, full MaterialX coverage | — | Out of scope for 1.0 |
+| Volumes beyond Vulkan single-density OpenVDB, path tracing, full MaterialX | — | Out of current alpha scope |
 
 ## 🔬 What "parity with Storm" means here
 
@@ -258,11 +259,11 @@ Storm is the reference renderer. A parity harness renders the same USD stage thr
 through hdSilk and compares coverage and colour, and the claim this project makes is deliberately
 narrow:
 
-- **22 curated scenes are registered; 19 are hard gates** at exactly `1.000000` adjusted IoU against
+- **25 curated scenes are registered; 22 are hard gates** at exactly `1.000000` adjusted IoU against
   **D3D12 WARP and Vulkan SwiftShader**. A gate is only accepted with a perturbation
   margin of at least `0.18`, so a scene that would score well by symmetry alone cannot qualify.
-- **Metal is not covered by the curated set.** It is validated by a single macOS native pipeline
-  probe. Do not read three-backend scene parity into the backend table above.
+- **Metal is wired into the curated set but is not yet observed.** The macOS render job now runs the
+  same 25-scene capture and perturbation companion, but hosted proof is pending until an artifact records it.
 - **Three scenes are measured and deliberately left ungated**, because Storm in the offscreen
   harness renders the subdivision control cage, renders MaterialX black, and does not cast shadows
   at all. Those are recorded limits, not hidden failures.
@@ -274,7 +275,7 @@ workflow, *not* by ordinary CI, so a green `ci` badge does not mean parity ran. 
 
 | Environment | Backends | State |
 | --- | --- | --- |
-| Windows with a conformant GPU driver | D3D12 WARP, Vulkan SwiftShader | All 19 gates pass |
+| Windows with a conformant GPU driver | D3D12 WARP, Vulkan SwiftShader | All 22 gates pass |
 | Hosted Linux (`render`) | Vulkan SwiftShader | Runs and passes |
 | Hosted Windows (`render`, Mesa Storm) | — | Currently fails at `vkCreateInstance: ErrorIncompatibleDriver` |
 
@@ -389,10 +390,10 @@ tests and documentation. See [Contributing](CONTRIBUTING.md).
 
 ## Status
 
-OpenUsd is a substantial public `0.5.0-alpha` baseline, published to NuGet.org, but not a stable
-release. Data, rendering, Viewer, package, NativeAOT, shader, parity, and performance gates exist,
-and this README states what they do and do not prove. Public API and package identities may change
-before 1.0. Workflow badges above are the authoritative status for the default branch.
+OpenUsd is a substantial public `0.5.0-alpha` baseline with 17 packages published to NuGet.org,
+but it is not a stable release. Data, rendering, Viewer, package, NativeAOT, shader, parity, and
+performance gates exist, and this README states what they do and do not prove. Public API and package
+identities may change before 1.0. Workflow badges above are the authoritative status for the default branch.
 
 Before 1.0 the remaining work is code signing and notarization credentials for signed Viewer
 distributions, GPU-equipped self-hosted runners for the two Vulkan composition gates, and closing
@@ -411,4 +412,4 @@ the measured divergences recorded in [Testing](docs/testing.md).
 [license]: LICENSE
 [license-badge]: https://img.shields.io/badge/license-MIT-blue.svg
 [status]: #status
-[status-badge]: https://img.shields.io/badge/status-0.4.0--alpha%20%7C%20public-orange
+[status-badge]: https://img.shields.io/badge/status-0.5.0--alpha%20%7C%20public-orange

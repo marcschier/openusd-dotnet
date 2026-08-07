@@ -29,7 +29,7 @@ flowchart LR
 
 Data-only consumers pair the managed API with `OpenUsd.Runtime.Core`. Rendering consumers add a
 managed backend and `OpenUsd.Runtime.Imaging`, whose RID-specific dependencies also bring Core.
-The metapackages depend on the published `win-x64`, `linux-x64`, and `osx-arm64` runtime packages,
+The Core and Imaging metapackages depend on the published `win-x64`, `linux-x64`, and `osx-arm64` runtime packages,
 letting NuGet select the native asset group for the consuming app's `RuntimeIdentifier`.
 
 Projects that need explicit per-RID control can reference the RID packages directly:
@@ -55,8 +55,8 @@ packages for each supported RID:
   Consumers opt in by referencing `OpenUsd.Cesium`, which depends on the RID-agnostic
   `OpenUsd.Runtime.Cesium` metapackage.
 
-The current package set requires project-owned data ABI version 14 and native
-capabilities `0xFFFF`. Package-only execution prints and verifies both values
+The next alpha package set requires project-owned data ABI version 15 and native
+capabilities `0x3FFFF`. Package-only execution prints and verifies both values
 before exercising stage operations.
 
 The first package matrix covers `win-x64`, `linux-x64`, and `osx-arm64`. Package projects consume
@@ -120,7 +120,7 @@ links, regular duplicate copies, unversioned or arbitrary SONAMEs, absolute
 link targets, and extra `.so.*` entries fail packing. The nupkg records links using Unix ZIP
 symlink metadata and link-target payloads; its Linux build target rehydrates
 those links after NuGet extraction. They are never flattened into resources.
-Packing validates the source header as ABI v10, requires the ABI-query, v2/v3 frame,
+Packing validates the source header as ABI v7, requires the ABI-query, v2/v3 frame,
 pick, packed-selection, navigation-input, and framebuffer-capture exports, and parses
 `readelf --dynamic --wide` output for
 the Storm child, Hydra, and hdSilk.
@@ -220,13 +220,15 @@ generated local feed. After a Release build, run them with:
 
 ## Publish
 
-Seventeen packages are published: the eight managed libraries (`OpenUsd`, `OpenUsd.Interop`,
-`OpenUsd.Rendering`, `OpenUsd.Rendering.Silk`, the three hdSilk backends, and
-`OpenUsd.Rendering.Storm`), the embeddable `OpenUsd.Viewer` shell, the two runtime metapackages,
-and the six per-RID runtime packages. `eng/pack-packages.ps1` is the
-single source of truth for that set. It enumerates the packages explicitly rather than packing the
-solution, and asserts afterwards that the produced set matches exactly, so adding a project cannot
-silently ship it and a missing native input fails the run instead of publishing a partial release.
+Seventeen packages are published at `0.5.0-alpha`: the eight non-Cesium managed libraries
+(`OpenUsd`, `OpenUsd.Interop`, `OpenUsd.Rendering`, `OpenUsd.Rendering.Silk`, the three hdSilk
+backends, and `OpenUsd.Rendering.Storm`), the embeddable `OpenUsd.Viewer` shell, the two runtime
+metapackages, and the six per-RID Core/Imaging runtime packages. `eng/pack-packages.ps1` is the
+single source of truth for the next alpha pack set, which adds `OpenUsd.Cesium`,
+`OpenUsd.Runtime.Cesium`, and the three per-RID Cesium runtime packages. The script enumerates
+the packages explicitly rather than packing the solution. It asserts afterwards that the produced set
+matches exactly, so adding a project cannot silently ship it. Missing native input fails the run
+instead of publishing a partial release.
 `OpenUsd.LiveAuthoring` is intentionally outside this set because it is source-only sample code, not a
 supported package surface.
 
@@ -242,8 +244,8 @@ published: the Metal package embeds the macOS-only `mesh.metallib`, and the Linu
 packages run ELF and Mach-O validation that only their own platform can perform and whose evidence
 is embedded in the package. Each job stages its RID from the native archive of the same run, so the
 published bytes are the bytes the gates verified. The platform-neutral libraries are packed once, on
-Linux. A `publish` job then downloads every packed set, requires all seventeen packages to be
-present, and pushes.
+Linux. A `publish` job then downloads every packed set, requires every package from
+`eng/pack-packages.ps1 -ListPublished` to be present, and pushes.
 
 Both jobs depend on `ci`, `shaders`, `native` and `packages`, which together build, verify and
 execute the exact packages that get pushed, with `packages` running the package-only consumer gates
@@ -293,8 +295,8 @@ its working directory, and successful output contains:
 
 ```text
 PACKAGE_EXECUTION_OK
-ABI=12
-CAPABILITIES=0xFFFF
+ABI=15
+CAPABILITIES=0x3FFFF
 INPUT_OPENED=true
 CAMERA_STATE_QUERY=true
 ROUNDTRIP_SAVED=true
@@ -305,8 +307,8 @@ CWD_IS_PUBLISH=true
 The process output and generated consumer project must not contain repository source paths,
 `ProjectReference`, or `native/install`.
 A separate clean-feed managed consumer loads only `OpenUsd.Interop` from its
-nupkg and invokes the compatibility validator. Data ABI 11 with the complete
-v14 mask and Data ABI 14 with the former `0x2FFF` mask must both throw the typed
+nupkg and invokes the compatibility validator. Data ABI 14 with the complete
+v15 mask and Data ABI 15 with the previous `0x1FFFF` mask must both throw the typed
 `OpenUsdNativeException`.
 
 ## Package-only Imaging execution gate
@@ -435,7 +437,11 @@ OPENUSD_PACKAGE_EXECUTION_REQUIRED=true
 turns an unsupported host or missing OpenUSD, shim, or Windows Vulkan
 prerequisite into a test failure.
 
-`.github/workflows/package.yml` runs a required-mode matrix:
+`.github/workflows/package.yml` runs a required-mode matrix. It is reusable from `release.yml`,
+runs after successful `native artifact pipeline` completions on `main`, and also runs on pushes or
+pull requests that touch packaging paths, package tests, runtime package projects, Cesium inputs,
+or native hdSilk/package-validation inputs.
+
 
 | Runner | RID | Native/GPU prerequisites |
 | --- | --- | --- |
@@ -474,8 +480,8 @@ native source and header files. Generated `native/build`, `native/install`,
 
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
-the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 14 and
-capabilities `0xFFFF`, Storm ABI 6, hdSilk session/page ABI 4/9, and Storm child
+the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 15 and
+capabilities `0x3FFFF`, Storm ABI 6, hdSilk session/page ABI 5/11, and Storm child
 ABI 7. Metadata schema 3 records camera-state version 1, Storm-child navigation
 input version 1, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their
