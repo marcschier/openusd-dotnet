@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $openUsdInstallRoot = Join-Path $repoRoot "native/install/$Rid"
 $cesiumInstallRoot = Join-Path $repoRoot "native/install/cesium/$Rid"
-$shimInstallRoot = Join-Path $repoRoot "native/install/shim/$Rid"
+$shimInstallRoot = Join-Path $repoRoot "native/install/shim/$Rid-cesium"
 $preset = "$Rid-cesium"
 
 if (-not (Test-Path $openUsdInstallRoot))
