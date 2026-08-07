@@ -142,6 +142,63 @@ public sealed class WorkflowStructureContractTests
         }
     }
 
+    [Test]
+    public async Task PackageWorkflowRestoresTheCacheTheNativePipelineSaves()
+    {
+        string root = FindRepositoryRoot();
+        string package = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "package.yml"));
+        string native = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "native.yml"));
+
+        const string prefix = "native-${{ matrix.rid }}-";
+        IReadOnlyList<string> saved = HashFileInputs(native, prefix);
+        IReadOnlyList<string> restored = HashFileInputs(package, prefix);
+
+        // Non-vacuity: two empty lists compare equal and would prove nothing.
+        await Assert.That(saved.Count)
+            .IsGreaterThan(20)
+            .Because("native.yml must still key its install cache on hashFiles");
+        await Assert.That(restored.Count)
+            .IsGreaterThan(20)
+            .Because("package.yml must still restore that cache rather than rebuilding");
+        await Assert.That(restored)
+            .IsEquivalentTo(saved)
+            .Because(
+                "hashFiles over a different file list yields a different digest, " +
+                "so the restore would silently never hit and every packaging push " +
+                "would rebuild OpenUSD from source on all three RIDs");
+
+        // The producer saves; the consumer must not, or it can write a smaller
+        // archive under the producer's key. actions/cache never overwrites, so
+        // native.yml would restore a partial tree from then on.
+        await Assert.That(package)
+            .Contains("actions/cache/restore@", StringComparison.Ordinal)
+            .Because("package.yml consumes the native install and must not save it");
+    }
+
+    /// <summary>
+    /// Returns the quoted arguments of the <c>hashFiles</c> call anchored on a
+    /// cache key prefix, in declaration order.
+    /// </summary>
+    private static IReadOnlyList<string> HashFileInputs(string workflow, string prefix)
+    {
+        Match anchor = Regex.Match(
+            workflow,
+            Regex.Escape(prefix) + @"\$\{\{\s*hashFiles\((?<args>[^)]*)\)",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(5));
+
+        return anchor.Success
+            ? [.. Regex.Matches(
+                anchor.Groups["args"].Value,
+                @"'(?<file>[^']+)'",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(5))
+                .Select(match => match.Groups["file"].Value)]
+            : [];
+    }
+
     /// <summary>Splits a workflow into its jobs, keyed by job id.</summary>
     private static IEnumerable<(string Name, string Body)> ReadJobs(string workflow)
     {

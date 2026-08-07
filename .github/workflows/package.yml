@@ -75,6 +75,30 @@ on:
     workflows: ['native artifact pipeline']
     types: [completed]
     branches: [main]
+  # workflow_run alone is not enough: native.yml is path-filtered to native
+  # inputs, so it never fires for a change to the packaging targets or the
+  # package tests -- which is exactly what broke three of these gates. These
+  # paths cover the managed side, and the native install is restored from the
+  # cache native.yml already saved rather than rebuilt.
+  push:
+    branches: [ master, main ]
+    paths: &package-paths
+      - '.github/workflows/package.yml'
+      - 'eng/pack-packages.ps1'
+      - 'eng/run-native-probe.ps1'
+      - 'eng/run-silk-probe.ps1'
+      - 'eng/native-install-metadata.ps1'
+      - 'src/OpenUsd.Runtime.Packaging/**'
+      - 'src/OpenUsd.Runtime.Core*/**'
+      - 'src/OpenUsd.Runtime.Imaging*/**'
+      - 'src/OpenUsd.Runtime.Cesium*/**'
+      - 'tests/OpenUsd.Package.Tests/**'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'version.json'
+  pull_request:
+    branches: [ master, main ]
+    paths: *package-paths
 
 permissions:
   contents: read
@@ -156,24 +180,35 @@ jobs:
         if: runner.os == 'Windows' && env.WINDOWS_NATIVE_SOURCE == 'build'
         with:
           arch: x64
+      # Restore-only, and keyed character-identically to the cache native.yml
+      # saves. Identical because hashFiles over a different file list yields a
+      # different digest and the restore would silently never hit -- the same
+      # failure the coverage gate shipped with. Restore-only because this
+      # workflow consumes the native install rather than producing it: a save
+      # here could write a smaller archive under the producer's key, and
+      # actions/cache never overwrites, so native.yml would restore a partial
+      # tree from then on. On a miss the steps below build from source, which is
+      # slow but correct and only happens while the native pipeline is still
+      # producing the archive for a native change.
       - id: native-cache
         if: >-
           (matrix.rid != 'win-x64' || env.WINDOWS_NATIVE_SOURCE == 'build') &&
           (matrix.rid != 'linux-x64' || env.LINUX_NATIVE_SOURCE == 'build') &&
           (matrix.rid != 'osx-arm64' || env.MACOS_NATIVE_SOURCE == 'build')
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             native/install/${{ matrix.rid }}
             native/install/shim/${{ matrix.rid }}
             native/install/vulkan-sdk-1.4.321.0
+            native/build/shim/${{ matrix.rid }}
           key: >-
-            openusd-native-${{ matrix.rid }}-${{ hashFiles(
+            native-${{ matrix.rid }}-${{ hashFiles(
               'eng/openusd.lock.json',
               'eng/fetch-native.ps1',
               'eng/build-native.ps1',
               'eng/build-vulkan-sdk.ps1',
-              'eng/prepare-render-native.ps1',
+              'eng/check-linux-native-prerequisites.ps1',
               'eng/native-install-metadata.ps1',
               'native/CMakeLists.txt',
               'native/CMakePresets.json',
