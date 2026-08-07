@@ -42,6 +42,7 @@ constexpr char TextureShaderPath[] = "/World/ProbeMaterial/Texture";
 constexpr char MaterialTextureAsset[] = "textures/probe-albedo.png";
 constexpr char PrimvarMeshPath[] = "/World/PrimvarMesh";
 constexpr char BasisCurvesPath[] = "/World/ProbeBasisCurves";
+constexpr char BlendShapeMeshPath[] = "/World/Rig/BlendShapeTriangle";
 
 /// One parsed entry of the ABI 4 vertex attribute table.
 struct ParsedAttribute
@@ -155,6 +156,8 @@ struct ParsedPage
     std::vector<float> basis_curves_points;
     std::vector<uint32_t> basis_curves_indices;
     std::vector<uint32_t> basis_curves_subprims;
+    bool found_blend_shape_mesh = false;
+    float blend_shape_first_x = 0.0F;
     int32_t frame_width = 0;
     int32_t frame_height = 0;
     std::array<double, 16> frame_view{};
@@ -518,6 +521,15 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                                 break;
                             }
                         }
+                    }
+                    else if (path == BlendShapeMeshPath && pointCount > 0)
+                    {
+                        result.found_blend_shape_mesh = true;
+                        ReadValue(
+                            data,
+                            size,
+                            pointsOffset,
+                            &result.blend_shape_first_x);
                     }
                 }
             }
@@ -913,7 +925,8 @@ openusd_status Sync(
     openusd_silk_session* session,
     ParsedPage* parsed,
     openusd_error_buffer* error,
-    const openusd_render_camera* requestedCamera = nullptr)
+    const openusd_render_camera* requestedCamera = nullptr,
+    double timeCode = 0.0)
 {
     const openusd_render_camera automatic = AutomaticCamera();
     const openusd_render_camera* camera =
@@ -926,7 +939,7 @@ openusd_status Sync(
             session,
             64,
             64,
-            0.0,
+            timeCode,
             camera,
             &page,
             &view,
@@ -1754,6 +1767,40 @@ bool VerifyMaterialXBridge()
         document.textureNodeCount == 1 &&
         document.primvarNodeCount == 1;
 }
+
+std::string BlendShapeProbeStagePath(const char* probeStagePath)
+{
+    std::string path(probeStagePath);
+    const std::string fileName = "hdsilk-probe-stage.usda";
+    const size_t position = path.rfind(fileName);
+    if (position == std::string::npos)
+    {
+        return "hdsilk-blendshape-probe.usda";
+    }
+    path.replace(position, fileName.size(), "hdsilk-blendshape-probe.usda");
+    return path;
+}
+
+bool VerifyBlendShapeProbe(
+    const char* pluginPath,
+    const char* probeStagePath,
+    openusd_error_buffer* error)
+{
+    const std::string stagePath = BlendShapeProbeStagePath(probeStagePath);
+    openusd_silk_session* session = nullptr;
+    if (openusd_silk_session_create(pluginPath, stagePath.c_str(), &session, error) !=
+        OPENUSD_STATUS_OK)
+    {
+        return false;
+    }
+    ParsedPage page;
+    const openusd_status status = Sync(session, &page, error, nullptr, 2.0);
+    openusd_silk_session_release(session);
+    return status == OPENUSD_STATUS_OK &&
+        page.found_blend_shape_mesh &&
+        page.blend_shape_first_x > 0.49F &&
+        page.blend_shape_first_x < 0.51F;
+}
 }
 
 int main(int argc, char** argv)
@@ -1779,6 +1826,13 @@ int main(int argc, char** argv)
     if (!VerifyMaterialXBridge())
     {
         std::cerr << "hdSilk MaterialX bridge check failed.\n";
+        return 4;
+    }
+    if (!VerifyBlendShapeProbe(argv[1], argv[2], &error))
+    {
+        std::cerr
+            << "hdSilk blend-shape probe did not publish the expected "
+            << "deformed point: " << errorText.data() << "\n";
         return 4;
     }
 

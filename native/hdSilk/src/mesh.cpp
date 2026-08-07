@@ -22,6 +22,8 @@
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/usd/usdGeom/mesh.h"
 #include "pxr/usd/usdGeom/tokens.h"
+#include "pxr/usd/usdSkel/bindingAPI.h"
+#include "pxr/usd/usdSkel/blendShapeQuery.h"
 #include "pxr/usd/usdSkel/cache.h"
 #include "pxr/usd/usdSkel/root.h"
 #include "pxr/usd/usdSkel/skeletonQuery.h"
@@ -340,6 +342,77 @@ UsdSkelRoot FindSkelRoot(UsdPrim prim)
     return UsdSkelRoot();
 }
 
+bool TryApplyBlendShapes(
+    UsdSkelSkeletonQuery const& skeletonQuery,
+    UsdSkelSkinningQuery const& skinningQuery,
+    VtVec3fArray* points)
+{
+    if (!skinningQuery.HasBlendShapes() || points == nullptr)
+    {
+        return true;
+    }
+
+    const UsdSkelAnimQuery& animationQuery = skeletonQuery.GetAnimQuery();
+    if (!animationQuery)
+    {
+        return false;
+    }
+
+    VtFloatArray animationWeights;
+    if (!animationQuery.ComputeBlendShapeWeights(
+            &animationWeights,
+            _skelEvaluationTime))
+    {
+        return false;
+    }
+
+    VtFloatArray localWeights;
+    const UsdSkelAnimMapperRefPtr& mapper = skinningQuery.GetBlendShapeMapper();
+    if (mapper)
+    {
+        const float defaultWeight = 0.0F;
+        if (!mapper->Remap(animationWeights, &localWeights, 1, &defaultWeight))
+        {
+            return false;
+        }
+    }
+    else
+    {
+        localWeights = animationWeights;
+    }
+
+    const UsdSkelBlendShapeQuery blendShapeQuery(
+        UsdSkelBindingAPI(skinningQuery.GetPrim()));
+    if (!blendShapeQuery)
+    {
+        return false;
+    }
+
+    VtFloatArray subShapeWeights;
+    VtUIntArray blendShapeIndices;
+    VtUIntArray subShapeIndices;
+    if (!blendShapeQuery.ComputeSubShapeWeights(
+            TfMakeSpan(localWeights),
+            &subShapeWeights,
+            &blendShapeIndices,
+            &subShapeIndices))
+    {
+        return false;
+    }
+
+    const std::vector<VtIntArray> pointIndices =
+        blendShapeQuery.ComputeBlendShapePointIndices();
+    const std::vector<VtVec3fArray> pointOffsets =
+        blendShapeQuery.ComputeSubShapePointOffsets();
+    return blendShapeQuery.ComputeDeformedPoints(
+        TfMakeSpan(subShapeWeights),
+        TfMakeSpan(blendShapeIndices),
+        TfMakeSpan(subShapeIndices),
+        pointIndices,
+        pointOffsets,
+        TfMakeSpan(*points));
+}
+
 bool TryComputeUsdSkelPoints(SdfPath const& id, VtVec3fArray* points)
 {
     if (!_skelEvaluationStage || points == nullptr)
@@ -401,12 +474,15 @@ bool TryComputeUsdSkelPoints(SdfPath const& id, VtVec3fArray* points)
              binding.GetSkinningTargets())
         {
             if (!skinningQuery ||
-                skinningQuery.GetPrim().GetPath() != id ||
-                skinningQuery.HasBlendShapes())
+                skinningQuery.GetPrim().GetPath() != id)
             {
                 continue;
             }
             VtVec3fArray skinnedPoints = authoredPoints;
+            if (!TryApplyBlendShapes(skeletonQuery, skinningQuery, &skinnedPoints))
+            {
+                continue;
+            }
             if (skinningQuery.ComputeSkinnedPoints(
                     skinningTransforms,
                     &skinnedPoints,

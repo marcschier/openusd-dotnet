@@ -254,7 +254,7 @@ not claim.
 | Clip planes | Eye-space clip planes through the camera API | Parity-gated |
 | Time-varying values | Transforms and primvars resample without a full scene rebuild | Parity-gated |
 | `UsdSkel` skinning | CPU evaluation in hdSilk sync | Parity-gated |
-| Blend shapes | Direct skinning skips them; Hydra computed points remain a fallback | Not supported |
+| Blend shapes | Narrow CPU point-offset subset before skinning; GPU deformation excluded | Implemented subset |
 | Subdivision | Storm renders the control cage at harness complexity | Measured, ungated |
 | Draw batching | Sorted and batched by pipeline and material | Implemented |
 | Volumes, path tracing, full MaterialX coverage | — | Out of scope for 1.0 |

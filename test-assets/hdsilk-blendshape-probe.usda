@@ -1,0 +1,79 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 2
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def SkelRoot "Rig" (
+        prepend apiSchemas = ["SkelBindingAPI"]
+    )
+    {
+        rel skel:animationSource = </World/Rig/Animation>
+        rel skel:skeleton = </World/Rig/Skeleton>
+
+        def Skeleton "Skeleton"
+        {
+            uniform matrix4d[] bindTransforms = [
+                ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
+            ]
+            uniform token[] joints = ["Root"]
+            uniform matrix4d[] restTransforms = [
+                ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
+            ]
+            rel skel:animationSource = </World/Rig/Animation>
+        }
+
+        def SkelAnimation "Animation"
+        {
+            uniform token[] blendShapes = ["Bulge"]
+            float[] blendShapeWeights.timeSamples = {
+                1: [0],
+                2: [1]
+            }
+            uniform token[] joints = ["Root"]
+            quatf[] rotations = [(1, 0, 0, 0)]
+            half3[] scales = [(1, 1, 1)]
+            float3[] translations = [(0, 0, 0)]
+        }
+
+        def BlendShape "Bulge"
+        {
+            int[] pointIndices = [0]
+            vector3f[] offsets = [(0.5, 0, 0)]
+        }
+
+        def Mesh "BlendShapeTriangle" (
+            prepend apiSchemas = ["SkelBindingAPI"]
+        )
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            rel skel:animationSource = </World/Rig/Animation>
+            rel skel:skeleton = </World/Rig/Skeleton>
+            uniform token[] skel:blendShapes = ["Bulge"]
+            rel skel:blendShapeTargets = </World/Rig/Bulge>
+            matrix4d primvars:skel:geomBindTransform = (
+                (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)
+            )
+            int[] primvars:skel:jointIndices = [0, 0, 0] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            float[] primvars:skel:jointWeights = [1, 1, 1] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            color3f[] primvars:displayColor = [(0.8, 0.4, 0.2)]
+            uniform token primvars:displayColor:interpolation = "constant"
+        }
+    }
+}

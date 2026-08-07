@@ -23,7 +23,7 @@ internal static class SilkSurfaceUniformWriter
     /// float4 diffuseColor+opacity, emissiveColor+occlusion, specularColor+ior,
     /// (metallic, roughness, opacityThreshold, useSpecularWorkflow),
     /// (clearcoat, clearcoatRoughness, shaded, 0), lightDirection+intensity,
-    /// lightColor+ambient, and one reserved vector.
+    /// lightColor+ambient, and volume values.
     /// </remarks>
     internal const int ByteSize = 128;
 
@@ -77,7 +77,6 @@ internal static class SilkSurfaceUniformWriter
         bool sampledVolume = supportsVolumeTextures &&
             shaded?.GetTexture(SilkMaterialParameter.VolumeDensity) is not null;
         float density = Scalar(shaded, SilkMaterialParameter.VolumeDensity, 0);
-
         WriteVector4(destination, 0, diffuse.X, diffuse.Y, diffuse.Z, opacity);
         WriteVector4(destination, 16, emissive.X, emissive.Y, emissive.Z, occlusion);
         WriteVector4(destination, 32, specular.X, specular.Y, specular.Z, ior);
