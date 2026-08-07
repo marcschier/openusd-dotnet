@@ -276,7 +276,6 @@ jobs:
           clang
           libgl1-mesa-dev libgl1-mesa-dri libglu1-mesa-dev libx11-dev libxcursor-dev
           libxi-dev libxinerama-dev libxrandr-dev libwayland-dev zlib1g-dev
-          build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev
       - name: Install Linux native build prerequisites
         if: >-
           matrix.rid == 'linux-x64' &&
@@ -437,6 +436,17 @@ jobs:
               'eng/build-cesium-native.ps1',
               'eng/build-cesium-shim.ps1'
             ) }}
+      # Cesium compiles from source even when OpenUSD arrives as a verified
+      # archive, so it needs a toolchain the archive path otherwise does not.
+      # Kept as its own named step rather than folded into the common install:
+      # eng/test-linux-native-prerequisites.ps1 requires the archive-mode
+      # prerequisites to stay free of build-only packages, and that contract is
+      # what stops OpenUSD itself being quietly rebuilt on the archive path.
+      - name: Install Linux Cesium build prerequisites
+        if: matrix.rid == 'linux-x64' && steps.native-ready.outputs.ready == 'true'
+        run: >-
+          sudo apt-get install -y
+          build-essential cmake ninja-build pkg-config libxt-dev libxtst-dev
       - name: Build Cesium native install
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh

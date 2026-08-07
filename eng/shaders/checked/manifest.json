@@ -39,7 +39,7 @@
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "11622fd3be4a9624bb1f0051df7dfce2305ff3e1742bcec05a70ed9331a65f82"
+      "sha256": "b1b9266b3e0f16aecb5dbaedfa522989153ac18198f67867c1807328fe599097"
     },
     {
       "path": ".github/workflows/performance.yml",

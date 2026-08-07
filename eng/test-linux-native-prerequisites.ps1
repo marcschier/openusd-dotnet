@@ -131,6 +131,19 @@ foreach ($buildOnly in @('build-essential', 'cmake', 'ninja-build', 'pkg-config'
     Assert-DoesNotContain $packageCommonInstall $buildOnly 'Package archive prerequisites'
 }
 
+# Cesium compiles from source even on the archive path, so it needs a toolchain
+# the archive path otherwise does not. It gets its own named step so the check
+# above keeps meaning what it says -- that OpenUSD is not quietly rebuilt when a
+# verified archive was supposed to supply it.
+$packageCesiumInstall = Get-WorkflowStep `
+    $packageWorkflow `
+    'Install Linux Cesium build prerequisites'
+Assert-Contains $packageCesiumInstall 'build-essential cmake ninja-build' `
+    'Package Cesium prerequisites'
+Assert-Contains $packageCesiumInstall 'pkg-config libxt-dev' 'Package Cesium prerequisites'
+Assert-Contains $packageCesiumInstall "steps.native-ready.outputs.ready == 'true'" `
+    'Package Cesium prerequisites'
+
 $packageInstall = Get-WorkflowStep `
     $packageWorkflow `
     'Install Linux native build prerequisites'
