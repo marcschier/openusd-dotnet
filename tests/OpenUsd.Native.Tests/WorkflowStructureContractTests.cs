@@ -178,6 +178,93 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task PackageWorkflowDefersOnlySelfFiringCacheMisses()
+    {
+        string root = FindRepositoryRoot();
+        string package = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "package.yml"));
+        string packageExecution = ReadJob(package, "package-execution");
+
+        await Assert.That(packageExecution)
+            .Contains("ready: ${{ steps.native-ready.outputs.ready }}", StringComparison.Ordinal)
+            .Because("dependent jobs need a job output that can skip loudly after a deferred native miss");
+        await Assert.That(packageExecution)
+            .Contains("DEFER_ON_NATIVE_CACHE_MISS:", StringComparison.Ordinal)
+            .Because("the cache-miss deferral must be an explicit event-mode decision");
+        await Assert.That(packageExecution)
+            .Contains("github.event_name == 'push' || github.event_name == 'pull_request'", StringComparison.Ordinal)
+            .Because(
+                "only self-firing push and pull_request runs may defer; " +
+                "release and dispatch runs must not skip gates");
+        await Assert.That(packageExecution)
+            .Contains("PACKAGE_SMOKE_DEFERRED", StringComparison.Ordinal)
+            .Because("a deferred package smoke must leave a searchable notice rather than a silent skip");
+        await Assert.That(packageExecution)
+            .Contains("workflow_call and workflow_dispatch keep building from source", StringComparison.Ordinal)
+            .Because("the release path calls this workflow and must never silently defer package gates");
+
+        string fetchStep = ReadStep(packageExecution, "Fetch locked native sources");
+        string buildStep = ReadStep(packageExecution, "Build locked native install");
+        await Assert.That(fetchStep)
+            .Contains("env.DEFER_ON_NATIVE_CACHE_MISS != 'true'", StringComparison.Ordinal)
+            .Because("push and pull_request cache misses must not fetch native sources that will be thrown away");
+        await Assert.That(buildStep)
+            .Contains("env.DEFER_ON_NATIVE_CACHE_MISS != 'true'", StringComparison.Ordinal)
+            .Because("push and pull_request cache misses must not rebuild OpenUSD in the consumer workflow");
+
+        foreach (string step in new[]
+        {
+            "Download verified native pipeline archive",
+            "Extract immutable Windows native archive",
+            "Extract immutable Linux native archive",
+            "Extract immutable macOS native archive",
+            "Verify native install metadata",
+            "Build Cesium native install",
+            "Build Cesium shim",
+            "Execute managed NativeAOT probe",
+            "Execute hdSilk NativeAOT probe",
+            "Build package tests",
+            "Verify Metal package staging",
+            "Run required package execution gates",
+            "Require Linux ABI-7 SONAME topology and package-only evidence",
+            "Require macOS signed Storm child package-only evidence",
+        })
+        {
+            await Assert.That(ReadStep(packageExecution, step))
+                .Contains("steps.native-ready.outputs.ready == 'true'", StringComparison.Ordinal)
+                .Because($"{step} needs the native install and must skip when the smoke was deferred");
+        }
+    }
+
+    [Test]
+    public async Task ConsumerWorkflowsAnnounceValidatedCommitAndStaleWorkflowRunCheckouts()
+    {
+        string root = FindRepositoryRoot();
+        foreach (string workflowName in new[] { "package.yml", "viewer-distribution.yml" })
+        {
+            string workflow = await File.ReadAllTextAsync(
+                Path.Combine(root, ".github", "workflows", workflowName));
+
+            await Assert.That(workflow)
+                .Contains("WORKFLOW_CHECKOUT_VALIDATION", StringComparison.Ordinal)
+                .Because($"{workflowName} must say which commit its gates validate");
+            await Assert.That(workflow)
+                .Contains("WORKFLOW_CHECKOUT_STALE", StringComparison.Ordinal)
+                .Because($"{workflowName} must warn when workflow_run validates a commit behind the branch head");
+            await Assert.That(workflow)
+                .Contains(
+                    "this is the native artifact pipeline commit and can lag behind the branch head",
+                    StringComparison.Ordinal)
+                .Because(
+                    $"{workflowName} workflow_run failures must not be " +
+                    "mistaken for regressions at current branch head");
+            await Assert.That(workflow)
+                .Contains("git rev-parse \"origin/$branch\"", StringComparison.Ordinal)
+                .Because($"{workflowName} must compare the validated checkout with the current branch head");
+        }
+    }
+
+    [Test]
     public async Task ViewerDistributionRunsOutsideAReleaseOnEverySupportedRid()
     {
         string root = FindRepositoryRoot();
@@ -332,6 +419,34 @@ public sealed class WorkflowStructureContractTests
             .Where(job => job.Name == name)
             .Select(job => job.Body)
             .FirstOrDefault() ?? string.Empty;
+
+    /// <summary>Returns one workflow step body by display name, or an empty string when absent.</summary>
+    private static string ReadStep(string job, string name)
+    {
+        string header = $"      - name: {name}";
+        string[] lines = job.Split('\n');
+        int start = Array.FindIndex(
+            lines,
+            line => line.TrimEnd('\r') == header);
+        if (start < 0)
+        {
+            return string.Empty;
+        }
+
+        List<string> step = [];
+        for (int index = start; index < lines.Length; index++)
+        {
+            string line = lines[index].TrimEnd('\r');
+            if (index > start && line.StartsWith("      - ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            step.Add(line);
+        }
+
+        return string.Join("\n", step);
+    }
 
     /// <summary>Returns the <c>on:</c> block, up to the next top-level key.</summary>
     private static string ReadTriggerBlock(string workflow)
