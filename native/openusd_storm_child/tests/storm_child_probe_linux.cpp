@@ -238,6 +238,63 @@ bool DirectRenderingAvailable(std::string& reason)
     return false;
 }
 
+bool WindowLifecycleAvailable(Display* display, std::string& reason)
+{
+    int glx_request_code = 0;
+    int glx_event_code = 0;
+    int glx_error_code = 0;
+    if (XQueryExtension(
+            display,
+            "GLX",
+            &glx_request_code,
+            &glx_event_code,
+            &glx_error_code) == False)
+    {
+        reason = "the X server does not expose GLX";
+        return false;
+    }
+
+    const int attributes[] = {
+        GLX_X_RENDERABLE, True,
+        GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+        GLX_RENDER_TYPE, GLX_RGBA_BIT,
+        GLX_X_VISUAL_TYPE, GLX_TRUE_COLOR,
+        GLX_RED_SIZE, 8,
+        GLX_GREEN_SIZE, 8,
+        GLX_BLUE_SIZE, 8,
+        GLX_ALPHA_SIZE, 8,
+        GLX_DEPTH_SIZE, 24,
+        GLX_STENCIL_SIZE, 8,
+        GLX_DOUBLEBUFFER, True,
+        None};
+    int count = 0;
+    GLXFBConfig* configs = glXChooseFBConfig(
+        display,
+        DefaultScreen(display),
+        attributes,
+        &count);
+    if (configs == nullptr || count <= 0)
+    {
+        if (configs != nullptr)
+        {
+            XFree(configs);
+        }
+        reason = "GLX has no window framebuffer configuration";
+        return false;
+    }
+
+    XVisualInfo* visual = glXGetVisualFromFBConfig(display, configs[0]);
+    XFree(configs);
+    if (visual == nullptr)
+    {
+        reason = "the GLX framebuffer configuration has no X11 visual";
+        return false;
+    }
+
+    XFree(visual);
+    return true;
+}
+
 openusd_status RenderUntilConverged(
     openusd_storm_child* child,
     double time_code,
@@ -433,16 +490,247 @@ bool ValidateStormChildRuntimeTopology(const char* runtime_path)
         !error;
     return valid;
 }
+
+int RunLifecycleSmokeChild(
+    const char* plugin_path,
+    const char* stage_path,
+    const char* runtime_path)
+{
+    ReportStage("lifecycle smoke XInitThreads");
+    if (XInitThreads() == 0)
+    {
+        std::cerr << "XInitThreads failed.\n";
+        return 3;
+    }
+
+    ReportStage("lifecycle smoke dispatcher initialization");
+    char error_data[4096]{};
+    openusd_error_buffer error{error_data, sizeof(error_data), 0};
+    if (openusd_storm_child_initialize_linux(&error) != OPENUSD_STATUS_OK)
+    {
+        std::cerr << error_data << '\n';
+        return 3;
+    }
+
+    ReportStage("lifecycle smoke XOpenDisplay");
+    Display* display = XOpenDisplay(nullptr);
+    if (display == nullptr)
+    {
+        std::cerr << "Skipping Storm child lifecycle smoke: DISPLAY is unavailable.\n";
+        return CapabilityUnavailableExitCode;
+    }
+
+    std::string capability_reason;
+    if (!WindowLifecycleAvailable(display, capability_reason))
+    {
+        std::cerr << "Skipping Storm child lifecycle smoke: "
+                  << capability_reason << ".\n";
+        XCloseDisplay(display);
+        return CapabilityUnavailableExitCode;
+    }
+
+    const int screen = DefaultScreen(display);
+    Window parent = XCreateSimpleWindow(
+        display,
+        RootWindow(display, screen),
+        0,
+        0,
+        160,
+        120,
+        0,
+        BlackPixel(display, screen),
+        BlackPixel(display, screen));
+    XMapWindow(display, parent);
+    XSync(display, False);
+
+    size_t plugin_count = 0;
+    openusd_stage* stage = nullptr;
+    openusd_storm_child* child = nullptr;
+    bool passed =
+        Require(
+            ValidateStormChildRuntimeTopology(runtime_path),
+            "Storm child runtime does not contain the exact ABI-7 SONAME link chain.") &&
+        Require(
+            openusd_register_plugins(plugin_path, &plugin_count, &error) ==
+                OPENUSD_STATUS_OK,
+            error_data) &&
+        Require(
+            openusd_stage_open(stage_path, &stage, &error) ==
+                OPENUSD_STATUS_OK,
+            error_data);
+
+    if (passed)
+    {
+        // This mode is the CI coverage the direct-rendering probe skipped: it
+        // exercises X11 parent validation, colormap/window creation, render
+        // thread startup and teardown, then stops at the GPU boundary. Regressing
+        // the parent_trap/colormap_trap self-deadlock makes this timed child hang.
+        ReportStage("lifecycle smoke child create");
+        SetFailpoint("lifecycle-smoke-context-unavailable");
+        passed =
+            Require(
+                openusd_storm_child_create(
+                    reinterpret_cast<void*>(static_cast<uintptr_t>(parent)),
+                    plugin_path,
+                    stage,
+                    128,
+                    96,
+                    96,
+                    &child,
+                    &error) == OPENUSD_STATUS_OK &&
+                    child != nullptr,
+                error_data) &&
+            passed;
+    }
+
+    void* child_window_pointer = nullptr;
+    if (passed)
+    {
+        ReportStage("lifecycle smoke child window contract");
+        passed =
+            Require(
+                openusd_storm_child_get_window(
+                    child,
+                    &child_window_pointer,
+                    &error) == OPENUSD_STATUS_OK &&
+                    child_window_pointer != nullptr,
+                error_data) &&
+            passed;
+    }
+
+    if (passed)
+    {
+        const Window child_window = static_cast<Window>(
+            reinterpret_cast<uintptr_t>(child_window_pointer));
+        Window root = None;
+        Window actual_parent = None;
+        Window* children = nullptr;
+        unsigned int child_count = 0;
+        const bool queried = XQueryTree(
+            display,
+            child_window,
+            &root,
+            &actual_parent,
+            &children,
+            &child_count) != 0;
+        if (children != nullptr)
+        {
+            XFree(children);
+        }
+        passed =
+            Require(
+                queried && actual_parent == parent,
+                "Lifecycle smoke child has the wrong X11 parent.") &&
+            passed;
+    }
+
+    openusd_storm_child_diagnostics diagnostics{};
+    if (passed)
+    {
+        ReportStage("lifecycle smoke render thread startup");
+        for (int attempt = 0; attempt < 100; ++attempt)
+        {
+            if (openusd_storm_child_get_diagnostics(
+                    child,
+                    &diagnostics,
+                    &error) == OPENUSD_STATUS_OK &&
+                diagnostics.render_thread_id != 0)
+            {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        passed =
+            Require(
+                diagnostics.render_thread_id != 0 &&
+                    diagnostics.creator_thread_id == CurrentThreadId() &&
+                    diagnostics.width == 128 &&
+                    diagnostics.height == 96 &&
+                    diagnostics.dpi == 96,
+                "Lifecycle smoke did not start a distinct render thread.") &&
+            passed;
+    }
+
+    if (child != nullptr)
+    {
+        ReportStage("lifecycle smoke child destroy");
+        passed =
+            Require(
+                openusd_storm_child_destroy(child, &error) ==
+                    OPENUSD_STATUS_OK,
+                error_data) &&
+            passed;
+        SetFailpoint(nullptr);
+        passed =
+            Require(
+                openusd_storm_child_diagnostic_get_live_count() == 0,
+                "Lifecycle smoke leaked a native Storm child wrapper.") &&
+            Require(
+                openusd_storm_child_get_diagnostics(
+                    child,
+                    &diagnostics,
+                    &error) == OPENUSD_STATUS_INVALID_ARGUMENT,
+                "Lifecycle smoke left a valid stale child handle.") &&
+            passed;
+    }
+    else
+    {
+        SetFailpoint(nullptr);
+    }
+
+    if (stage != nullptr)
+    {
+        openusd_stage_release(stage);
+    }
+    XDestroyWindow(display, parent);
+    XCloseDisplay(display);
+    return passed ? 0 : 6;
+}
+
+int RunLifecycleSmoke(
+    const char* plugin_path,
+    const char* stage_path,
+    const char* runtime_path)
+{
+    const pid_t child = fork();
+    if (child == 0)
+    {
+        _exit(RunLifecycleSmokeChild(plugin_path, stage_path, runtime_path));
+    }
+    if (child < 0)
+    {
+        std::cerr << "The Storm child lifecycle smoke could not be forked.\n";
+        return 3;
+    }
+
+    int status = 0;
+    if (!WaitForChildExit(child, &status, 45))
+    {
+        std::cerr << "The Storm child lifecycle smoke timed out.\n";
+        return 6;
+    }
+    if (WIFEXITED(status))
+    {
+        return WEXITSTATUS(status);
+    }
+    std::cerr << "The Storm child lifecycle smoke did not exit normally.\n";
+    return 6;
+}
 }
 
 extern "C" int32_t openusd_storm_child_test_xerror_trap_reentry_is_detected();
 
 int main(int argc, char** argv)
 {
+    if (argc == 5 && std::string(argv[1]) == "--lifecycle-smoke")
+    {
+        return RunLifecycleSmoke(argv[2], argv[3], argv[4]);
+    }
     if (argc != 4)
     {
         std::cerr <<
-            "Usage: storm_child_probe <plugin-path> <stage-path> <runtime-path>\n";
+            "Usage: storm_child_probe [--lifecycle-smoke] "
+            "<plugin-path> <stage-path> <runtime-path>\n";
         return 2;
     }
     ReportStage("XInitThreads");

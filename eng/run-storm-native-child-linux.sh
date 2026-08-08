@@ -125,13 +125,27 @@ if [[ "$platform" == "x11" ]]; then
   else
     installed_probe="$repo_root/native/install/shim/linux-x64/bin/openusd_storm_child_probe"
     if [[ -x "$installed_probe" ]]; then
+      probe_library_path="$repo_root/native/install/shim/linux-x64/lib"
+      probe_library_path+=":$repo_root/native/install/linux-x64/lib"
+      probe_library_path+=":${LD_LIBRARY_PATH:-}"
       set +e
-      LD_LIBRARY_PATH="$repo_root/native/install/shim/linux-x64/lib:$repo_root/native/install/linux-x64/lib:${LD_LIBRARY_PATH:-}" \
+      LD_LIBRARY_PATH="$probe_library_path" \
         "$installed_probe" \
+        --lifecycle-smoke \
         "$repo_root/native/install/linux-x64/plugin/usd" \
         "$repo_root/test-assets/minimal.usda" \
         "$repo_root/native/install/shim/linux-x64/lib" 2>&1 | tee "$probe_log"
-      probe_exit=${PIPESTATUS[0]}
+      lifecycle_exit=${PIPESTATUS[0]}
+      if [[ "$lifecycle_exit" -ne 0 && "$lifecycle_exit" -ne 125 ]]; then
+        probe_exit="$lifecycle_exit"
+      else
+        LD_LIBRARY_PATH="$probe_library_path" \
+          "$installed_probe" \
+          "$repo_root/native/install/linux-x64/plugin/usd" \
+          "$repo_root/test-assets/minimal.usda" \
+          "$repo_root/native/install/shim/linux-x64/lib" 2>&1 | tee -a "$probe_log"
+        probe_exit=${PIPESTATUS[0]}
+      fi
       set -e
     else
       echo "The linux-x64 archive omitted the installed Storm child probe." | tee "$probe_log"

@@ -144,6 +144,14 @@ endif()
 add_test(
     NAME openusd_storm_child_probe
     COMMAND openusd_storm_child_probe ${STORM_CHILD_PROBE_ARGUMENTS})
+if(UNIX AND NOT APPLE)
+    add_test(
+        NAME openusd_storm_child_lifecycle_smoke
+        COMMAND
+            openusd_storm_child_probe
+            --lifecycle-smoke
+            ${STORM_CHILD_PROBE_ARGUMENTS})
+endif()
 if(WIN32)
     set_tests_properties(
         openusd_storm_child_probe
@@ -154,6 +162,7 @@ if(WIN32)
 elseif(UNIX AND NOT APPLE)
     set_tests_properties(
         openusd_storm_child_probe
+        openusd_storm_child_lifecycle_smoke
         PROPERTIES
             SKIP_RETURN_CODE 125
             ENVIRONMENT_MODIFICATION
@@ -185,3 +194,8 @@ endif()
 set_tests_properties(
     openusd_storm_child_probe
     PROPERTIES TIMEOUT 300)
+if(UNIX AND NOT APPLE)
+    set_tests_properties(
+        openusd_storm_child_lifecycle_smoke
+        PROPERTIES TIMEOUT 60)
+endif()

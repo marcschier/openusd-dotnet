@@ -988,6 +988,11 @@ void PumpEvents(ChildState* child)
 
 openusd_status CreateContext(ChildState* child, std::string& error)
 {
+    if (IsFailpoint("lifecycle-smoke-context-unavailable"))
+    {
+        error = "Injected lifecycle smoke context boundary.";
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
     int glx_request_code = 0;
     int glx_event_code = 0;
     int glx_error_code = 0;

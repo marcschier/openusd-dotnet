@@ -517,6 +517,52 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task LinuxStormChildLifecycleSmokeCannotBeSilentlyDropped()
+    {
+        string root = FindRepositoryRoot();
+        string probeCmake = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "native",
+            "openusd_storm_child",
+            "tests",
+            "CMakeLists.txt"));
+        string probeSource = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "native",
+            "openusd_storm_child",
+            "tests",
+            "storm_child_probe_linux.cpp"));
+        string runner = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "run-storm-native-child-linux.sh"));
+        string render = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "render.yml"));
+
+        await Assert.That(probeCmake)
+            .Contains("NAME openusd_storm_child_lifecycle_smoke\n        COMMAND")
+            .Because(
+                "the direct-rendering probe skips on hosted Linux Xvfb, so CTest needs a " +
+                "separate non-GPU lifecycle smoke that cannot disappear into the old skip");
+        await Assert.That(probeCmake)
+            .Contains("--lifecycle-smoke", StringComparison.Ordinal)
+            .Because("the lifecycle smoke must be a capability-scoped mode of the Linux probe binary");
+        await Assert.That(probeCmake)
+            .Contains("openusd_storm_child_lifecycle_smoke\n        PROPERTIES TIMEOUT 60")
+            .Because("the parent_trap/colormap_trap regression hangs, so the smoke must time out");
+        await Assert.That(probeSource)
+            .Contains("lifecycle-smoke-context-unavailable", StringComparison.Ordinal)
+            .Because("the hosted smoke stops explicitly at the GL context boundary instead of faking GPU proof");
+        await Assert.That(probeSource)
+            .Contains("The Storm child lifecycle smoke timed out.", StringComparison.Ordinal)
+            .Because("a create/destroy hang must fail loudly rather than consuming the whole CI job");
+        await Assert.That(runner)
+            .Contains("--lifecycle-smoke", StringComparison.Ordinal)
+            .Because("archive-mode render jobs run the installed probe directly, not CTest");
+        await Assert.That(render)
+            .Contains("'eng/run-storm-native-child-linux.sh'", StringComparison.Ordinal)
+            .Because("changes to the installed-probe runner must keep triggering the render workflow");
+    }
+
+    [Test]
     public async Task RenderWorkflowTagReleaseArchiveModeCannotDeferGates()
     {
         string root = FindRepositoryRoot();
