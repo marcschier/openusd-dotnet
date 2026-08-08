@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
 import re
@@ -53,11 +54,8 @@ def read_json(relative: str) -> dict[str, Any]:
 
 
 def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    content = path.read_bytes()
+    return hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def normalized_json(data: dict[str, Any]) -> str:
@@ -311,7 +309,7 @@ def refresh_vcpkg_components(cache_root: Path, output: Path) -> None:
         "components": components,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(normalized_json(data), encoding="utf-8")
+    output.write_text(normalized_json(data), encoding="utf-8", newline="\n")
     print(f"Wrote resolved vcpkg component data: {output} ({len(components)} components)")
 
 
@@ -495,7 +493,6 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
         "serialNumber": "urn:uuid:1fd11c24-482a-50a8-9e2c-7a97f5d7d1e6",
         "version": 1,
         "metadata": {
-            "timestamp": "1970-01-01T00:00:00Z",
             "tools": {
                 "components": [
                     {
@@ -549,6 +546,34 @@ def validate(bom: dict[str, Any]) -> None:
             raise ValueError("dependency entries require ref and dependsOn.")
 
 
+def stale_difference(path: Path, expected: str, maximum_lines: int = 200) -> str:
+    current_bytes = path.read_bytes() if path.exists() else b""
+    expected_bytes = expected.encode("utf-8")
+    current_text = current_bytes.decode("utf-8", errors="replace")
+    current_lines = current_text.splitlines()
+    expected_lines = expected.splitlines()
+    diff = list(difflib.unified_diff(
+        current_lines,
+        expected_lines,
+        fromfile=f"{path} (current)",
+        tofile=f"{path} (generated)",
+        lineterm=""))
+    truncated = len(diff) > maximum_lines
+    diff = diff[:maximum_lines]
+    current_crlf = current_bytes.count(b"\r\n")
+    expected_crlf = expected_bytes.count(b"\r\n")
+    lines = [
+        f"Current SHA-256:  {hashlib.sha256(current_bytes).hexdigest() if current_bytes else '<missing>'}",
+        f"Generated SHA-256: {hashlib.sha256(expected_bytes).hexdigest()}",
+        f"Current CRLF lines: {current_crlf}; generated CRLF lines: {expected_crlf}",
+        "Unified diff (current -> generated):",
+        *diff,
+    ]
+    if truncated:
+        lines.append(f"... diff truncated after {maximum_lines} lines ...")
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -572,17 +597,19 @@ def main() -> int:
     bom = generate(args.cache_root, args.vcpkg_components)
     validate(bom)
     text = normalized_json(bom)
+    expected_bytes = text.encode("utf-8")
 
     if args.check:
-        current = args.output.read_text(encoding="utf-8") if args.output.exists() else ""
-        if current != text:
+        current = args.output.read_bytes() if args.output.exists() else b""
+        if current != expected_bytes:
             print(f"SBOM is stale: regenerate {args.output}", file=sys.stderr)
+            print(stale_difference(args.output, text), file=sys.stderr)
             return 1
         print(f"SBOM is current: {args.output} ({len(bom['components'])} components)")
         return 0
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(text, encoding="utf-8")
+    args.output.write_text(text, encoding="utf-8", newline="\n")
     print(f"Wrote CycloneDX SBOM: {args.output} ({len(bom['components'])} components)")
     return 0
 

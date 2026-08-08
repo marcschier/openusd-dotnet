@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Diagnostics;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace OpenUsd.Native.Tests;
@@ -251,6 +253,48 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(uploadRelease)
             .Contains("openusd-release.cdx.json", StringComparison.Ordinal)
             .Because("supply-chain scanners need the standardized CycloneDX JSON asset");
+    }
+
+    [Test]
+    public async Task ReleaseSbomGenerationIsByteStableAndPortable()
+    {
+        string root = FindRepositoryRoot();
+        string work = Path.Combine(root, "artifacts", "sbom-determinism-tests");
+        Directory.CreateDirectory(work);
+        string first = Path.Combine(work, "first.cdx.json");
+        string second = Path.Combine(work, "second.cdx.json");
+
+        await RunPythonAsync(
+            root,
+            Path.Combine(root, "eng", "generate-sbom.py"),
+            "--output",
+            first);
+        await RunPythonAsync(
+            root,
+            Path.Combine(root, "eng", "generate-sbom.py"),
+            "--output",
+            second);
+
+        byte[] firstBytes = await File.ReadAllBytesAsync(first);
+        byte[] secondBytes = await File.ReadAllBytesAsync(second);
+        await Assert.That(secondBytes.SequenceEqual(firstBytes))
+            .IsTrue()
+            .Because("SBOM generation must be byte-for-byte stable within one checkout");
+
+        using JsonDocument document = JsonDocument.Parse(firstBytes);
+        await Assert.That(document.RootElement.GetProperty("metadata").TryGetProperty("timestamp", out _))
+            .IsFalse()
+            .Because("even a fixed timestamp creates an unnecessary portability hazard");
+
+        foreach ((string location, string value) in EnumerateSbomPortableValues(document.RootElement))
+        {
+            await Assert.That(value)
+                .DoesNotContain("\\", StringComparison.Ordinal)
+                .Because($"{location} must not contain Windows path separators");
+            await Assert.That(Regex.IsMatch(value, @"(^/|^[A-Za-z]:[\\/])", RegexOptions.CultureInvariant))
+                .IsFalse()
+                .Because($"{location} must not contain an absolute filesystem path");
+        }
     }
 
 
@@ -1181,6 +1225,64 @@ public sealed class WorkflowStructureContractTests
         }
 
         return string.Join("\n", block);
+    }
+
+    private static async Task RunPythonAsync(string workingDirectory, params string[] arguments)
+    {
+        ProcessStartInfo startInfo = new("python")
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+        };
+        foreach (string argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using Process process = Process.Start(startInfo) ??
+            throw new InvalidOperationException("Could not start python.");
+        string output = await process.StandardOutput.ReadToEndAsync();
+        string error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"python {string.Join(" ", arguments)} failed with exit code {process.ExitCode}.\n" +
+                output + error);
+        }
+    }
+
+    private static IEnumerable<(string Location, string Value)> EnumerateSbomPortableValues(JsonElement root)
+    {
+        foreach (JsonElement component in root.GetProperty("components").EnumerateArray())
+        {
+            if (component.TryGetProperty("bom-ref", out JsonElement bomRef))
+            {
+                yield return ($"component {component.GetProperty("name").GetString()} bom-ref", bomRef.GetString()!);
+            }
+
+            if (component.TryGetProperty("properties", out JsonElement properties))
+            {
+                foreach (JsonElement property in properties.EnumerateArray())
+                {
+                    yield return (
+                        $"component {component.GetProperty("name").GetString()} property " +
+                        property.GetProperty("name").GetString(),
+                        property.GetProperty("value").GetString()!);
+                }
+            }
+        }
+
+        if (root.GetProperty("metadata").TryGetProperty("properties", out JsonElement metadataProperties))
+        {
+            foreach (JsonElement property in metadataProperties.EnumerateArray())
+            {
+                yield return (
+                    $"metadata property {property.GetProperty("name").GetString()}",
+                    property.GetProperty("value").GetString()!);
+            }
+        }
     }
 
     private static string FindRepositoryRoot()
