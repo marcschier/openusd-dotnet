@@ -592,7 +592,6 @@ jobs:
         shell: pwsh
         run: ./eng/test-render-native-archive.ps1
       - name: Install native build prerequisites
-        if: env.NATIVE_SOURCE == 'build'
         run: brew install cmake ninja
       - name: Build and validate six-entry Metal library
         shell: pwsh
@@ -627,6 +626,27 @@ jobs:
             -ArchiveUri $env:NATIVE_URL `
             -ArchiveSha256 $env:NATIVE_SHA256 `
             -PipelineRoot $pipelineRoot
+      - id: cesium-vcpkg-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            native/.cache/vcpkg-*
+            native/build/cesium/osx-arm64/vcpkg_installed
+          key: >-
+            cesium-vcpkg-osx-arm64-${{ hashFiles(
+              'eng/cesium.lock.json',
+              'eng/fetch-cesium-native.ps1',
+              'eng/build-cesium-native.ps1',
+              'eng/build-cesium-shim.ps1'
+            ) }}
+      # Release run 31251906449 failed because the full package gates required
+      # libopenusd_cesium.dylib from the package-only archive path.
+      - name: Build Cesium native install
+        shell: pwsh
+        run: ./eng/build-cesium-native.ps1 -Rid osx-arm64 -SkipSmokeProbe
+      - name: Build Cesium shim
+        shell: pwsh
+        run: ./eng/build-cesium-shim.ps1 -Rid osx-arm64
       - name: Execute immutable macOS package-only gates
         shell: pwsh
         run: |

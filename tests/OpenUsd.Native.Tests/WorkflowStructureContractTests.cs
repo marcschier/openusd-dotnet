@@ -371,6 +371,48 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task RenderWorkflowBuildsCesiumShimOnlyForFullPackageGates()
+    {
+        string root = FindRepositoryRoot();
+        string render = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "render.yml"));
+
+        string macos = ReadJob(render, "macos-arm64");
+        string linux = ReadJob(render, "linux-presentation");
+
+        await Assert.That(macos)
+            .Contains("OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'", StringComparison.Ordinal)
+            .Because("the macOS render job executes the full package suite under the required-execution gate");
+        await Assert.That(macos)
+            .Contains("--minimum-expected-tests 22", StringComparison.Ordinal)
+            .Because("the macOS render job runs the full package suite, including Cesium package execution");
+        await Assert.That(ReadStep(macos, "Build Cesium native install"))
+            .Contains("./eng/build-cesium-native.ps1 -Rid osx-arm64 -SkipSmokeProbe", StringComparison.Ordinal)
+            .Because(
+                "release run 31251906449 failed when the macOS package gate could not find " +
+                "libopenusd_cesium.dylib");
+        await Assert.That(ReadStep(macos, "Build Cesium shim"))
+            .Contains("./eng/build-cesium-shim.ps1 -Rid osx-arm64", StringComparison.Ordinal)
+            .Because("the package tests require the runtime shim, not only the Cesium native install");
+        await Assert.That(macos)
+            .Contains("cesium-vcpkg-osx-arm64-${{ hashFiles(", StringComparison.Ordinal)
+            .Because("the expensive Cesium vcpkg graph must be cached on the same inputs as package.yml");
+        await Assert.That(macos)
+            .Contains("eng/build-cesium-shim.ps1", StringComparison.Ordinal)
+            .Because("the cache key must change when the shim build changes");
+
+        await Assert.That(linux)
+            .Contains("OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'", StringComparison.Ordinal)
+            .Because("the Linux render job still runs package-test executable gates");
+        await Assert.That(linux)
+            .DoesNotContain("--minimum-expected-tests 22", StringComparison.Ordinal)
+            .Because("Linux render intentionally runs two filtered non-Cesium package gates, not the full suite");
+        await Assert.That(ReadStep(linux, "Build Cesium shim"))
+            .IsEmpty()
+            .Because("the Linux render job must not spend a half-hour building Cesium for filtered non-Cesium gates");
+    }
+
+    [Test]
     public async Task CesiumNativeBuildConfiguresPositionIndependentCode()
     {
         string root = FindRepositoryRoot();
