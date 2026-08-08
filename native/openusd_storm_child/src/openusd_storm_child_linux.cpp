@@ -1597,6 +1597,36 @@ void CancelPendingCommands(ChildState* child)
     }
 }
 
+void FailPendingCommands(
+    ChildState* child,
+    openusd_status status,
+    const std::string& error)
+{
+    for (const std::shared_ptr<Command>& pending :
+         child->synchronous_commands)
+    {
+        if (pending->pick != nullptr)
+        {
+            pending->pick->Cancel(
+                child->context_generation.load(std::memory_order_relaxed));
+        }
+        pending->status = status;
+        pending->error = error;
+        pending->done = true;
+        if (pending->wait)
+        {
+            pending->completion.notify_all();
+        }
+        child->cancelled_command_count.fetch_add(1, std::memory_order_relaxed);
+    }
+    child->synchronous_commands.clear();
+    if (child->asynchronous_render != nullptr)
+    {
+        child->asynchronous_render.reset();
+        child->cancelled_command_count.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
 void RenderThreadMain(ChildState* child)
 {
     child->render_thread_id.store(CurrentThreadId(), std::memory_order_relaxed);
@@ -1611,6 +1641,11 @@ void RenderThreadMain(ChildState* child)
         child->initialization_status = status;
         child->initialization_error = error;
         child->initialization_complete = true;
+        if (status != OPENUSD_STATUS_OK)
+        {
+            child->lifecycle = LifecycleState::Stopped;
+            FailPendingCommands(child, status, error);
+        }
         child->initialized.notify_all();
     }
     if (status != OPENUSD_STATUS_OK)
@@ -1736,6 +1771,22 @@ openusd_status RequireRunning(
     return OPENUSD_STATUS_OK;
 }
 
+openusd_status WaitForInitialization(
+    ChildState* child,
+    openusd_error_buffer* error)
+{
+    std::unique_lock lock(child->gate);
+    child->initialized.wait(
+        lock,
+        [child] { return child->initialization_complete; });
+    if (child->initialization_status != OPENUSD_STATUS_OK)
+    {
+        WriteError(error, child->initialization_error);
+        return child->initialization_status;
+    }
+    return OPENUSD_STATUS_OK;
+}
+
 openusd_status QueueCommand(
     ChildState* child,
     CommandKind kind,
@@ -1776,6 +1827,12 @@ openusd_status QueueCommand(
     {
         WriteError(error, "The Storm child is closing or stopped.");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (child->initialization_complete &&
+        child->initialization_status != OPENUSD_STATUS_OK)
+    {
+        WriteError(error, child->initialization_error);
+        return child->initialization_status;
     }
     if (!wait && kind == CommandKind::Render)
     {
@@ -2361,27 +2418,6 @@ extern "C" openusd_status openusd_storm_child_create(
         result->window.store(created, std::memory_order_relaxed);
 
         result->render_thread = std::thread(RenderThreadMain, result.get());
-        {
-            std::unique_lock lock(result->gate);
-            result->initialized.wait(
-                lock,
-                [&result] { return result->initialization_complete; });
-            status = result->initialization_status;
-            if (status != OPENUSD_STATUS_OK)
-            {
-                WriteError(error, result->initialization_error);
-            }
-        }
-        if (status != OPENUSD_STATUS_OK)
-        {
-            result->render_thread.join();
-            XDestroyWindow(result->display, created);
-            XFreeColormap(result->display, result->colormap);
-            XFree(result->visual);
-            XCloseDisplay(result->display);
-            openusd_stage_release(stage);
-            return status;
-        }
         openusd_storm_child* token = RegisterChild(result);
         const size_t live =
             g_live_count.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -2411,10 +2447,20 @@ extern "C" openusd_status openusd_storm_child_destroy(
         std::lock_guard destroy_lock(state->destroy_gate);
         if (state->render_thread.joinable())
         {
-            status = QueueStop(state.get(), error);
-            if (status != OPENUSD_STATUS_OK)
+            bool initialization_failed = false;
             {
-                return status;
+                std::lock_guard lock(state->gate);
+                initialization_failed =
+                    state->initialization_complete &&
+                    state->initialization_status != OPENUSD_STATUS_OK;
+            }
+            if (!initialization_failed)
+            {
+                status = QueueStop(state.get(), error);
+                if (status != OPENUSD_STATUS_OK)
+                {
+                    return status;
+                }
             }
             state->render_thread.join();
         }
@@ -2504,6 +2550,12 @@ extern "C" openusd_status openusd_storm_child_get_renderer_name(
     if (status != OPENUSD_STATUS_OK)
     {
         return status;
+    }
+    const openusd_status initialization_status =
+        WaitForInitialization(state.get(), error);
+    if (initialization_status != OPENUSD_STATUS_OK)
+    {
+        return initialization_status;
     }
     if (required == nullptr)
     {

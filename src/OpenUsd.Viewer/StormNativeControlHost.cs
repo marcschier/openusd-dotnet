@@ -182,19 +182,27 @@ internal sealed class StormNativeControlHost : NativeControlHost
             int width = Math.Max(1, viewport.Width);
             int height = Math.Max(1, viewport.Height);
             LinuxX11Threading.RebindAfterPlatformSetup();
-            OpenUsdStormChildSession session = OpenUsdStormChildRuntime.Create(
+            OpenUsdStormChildSession session = OpenUsdStormChildRuntime.CreateForNativeHost(
                 parent.Handle,
                 _pluginPath,
                 _source,
                 width,
                 height,
-                GetDpi());
+                GetDpi(),
+                deferNativeInitialization: linux);
             Volatile.Write(
                 ref _frameAdapter,
                 new OpenUsdStormFrameAdapter(session));
             Volatile.Write(ref _session, session);
             session.SetVisible(IsVisible);
-            _initialized.TrySetResult(session.RendererName);
+            if (linux)
+            {
+                CompleteLinuxInitializationAsync(session);
+            }
+            else
+            {
+                _initialized.TrySetResult(session.RendererName);
+            }
             string descriptor = windows
                 ? "HWND"
                 : macOS
@@ -208,6 +216,20 @@ internal sealed class StormNativeControlHost : NativeControlHost
             throw;
         }
     }
+
+    private void CompleteLinuxInitializationAsync(OpenUsdStormChildSession session) =>
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                // Linux CI job 93119646386 showed this path on the Avalonia UI-thread stack.
+                _initialized.TrySetResult(session.CompleteDeferredInitialization());
+            }
+            catch (Exception exception)
+            {
+                _initialized.TrySetException(exception);
+            }
+        });
 
     protected override void DestroyNativeControlCore(IPlatformHandle control)
     {

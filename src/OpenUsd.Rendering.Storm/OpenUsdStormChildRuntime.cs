@@ -161,7 +161,7 @@ public sealed class OpenUsdStormChildSession : IDisposable
     public nint Window { get; }
 
     /// <summary>Gets the immutable Storm renderer name captured on its render thread.</summary>
-    public string RendererName { get; }
+    public string RendererName { get; private set; }
 
     /// <summary>Gets the renderer-neutral backend identity.</summary>
     [SuppressMessage(
@@ -363,6 +363,22 @@ public sealed class OpenUsdStormChildSession : IDisposable
         }
     }
 
+    internal string CompleteDeferredInitialization()
+    {
+        lock (_gate)
+        {
+            nint handle = GetHandleLocked();
+            string rendererName = OpenUsdStormChildRuntime.GetRendererName(handle);
+            OpenUsdStormChildDiagnostics diagnostics =
+                OpenUsdStormChildRuntime.GetDiagnostics(handle);
+            _contextGeneration = diagnostics.ContextGeneration;
+            _width = diagnostics.Width;
+            _height = diagnostics.Height;
+            RendererName = rendererName;
+            return rendererName;
+        }
+    }
+
     /// <summary>Stops the render thread, destroys Storm with its context current, and releases the stage.</summary>
     public void Dispose()
     {
@@ -445,7 +461,41 @@ public static unsafe partial class OpenUsdStormChildRuntime
         UsdStageRenderSource source,
         int width,
         int height,
-        uint dpi)
+        uint dpi) =>
+        CreateCore(
+            parentWindow,
+            pluginPath,
+            source,
+            width,
+            height,
+            dpi,
+            deferNativeInitialization: false);
+
+    internal static OpenUsdStormChildSession CreateForNativeHost(
+        nint parentWindow,
+        string pluginPath,
+        UsdStageRenderSource source,
+        int width,
+        int height,
+        uint dpi,
+        bool deferNativeInitialization) =>
+        CreateCore(
+            parentWindow,
+            pluginPath,
+            source,
+            width,
+            height,
+            dpi,
+            deferNativeInitialization);
+
+    private static OpenUsdStormChildSession CreateCore(
+        nint parentWindow,
+        string pluginPath,
+        UsdStageRenderSource source,
+        int width,
+        int height,
+        uint dpi,
+        bool deferNativeInitialization)
     {
         if (!OperatingSystem.IsWindows() &&
             !OperatingSystem.IsLinux() &&
@@ -488,6 +538,16 @@ public static unsafe partial class OpenUsdStormChildRuntime
                             NativeMethods.GetWindow(handle, out nint createdWindow, ref error);
                         return (status, createdWindow);
                     });
+                if (deferNativeInitialization)
+                {
+                    return new OpenUsdStormChildSession(
+                        handle,
+                        window,
+                        lease,
+                        string.Empty,
+                        width: width,
+                        height: height);
+                }
                 string rendererName = GetRendererName(handle);
                 OpenUsdStormChildDiagnostics diagnostics = GetDiagnostics(handle);
                 return new OpenUsdStormChildSession(
@@ -749,7 +809,7 @@ public static unsafe partial class OpenUsdStormChildRuntime
             checked((long)NativeMethods.GetPeakCount())
         );
 
-    private static string GetRendererName(nint handle)
+    internal static string GetRendererName(nint handle)
     {
         nuint required = 0;
         InvokeExpectedBufferTooSmall(

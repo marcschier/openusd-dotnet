@@ -456,7 +456,7 @@ public sealed class StormNativeChildHostTests
             "LinuxX11Threading.RebindAfterPlatformSetup();",
             StringComparison.Ordinal);
         int createSession = hostSource.IndexOf(
-            "OpenUsdStormChildRuntime.Create(",
+            "OpenUsdStormChildRuntime.CreateForNativeHost(",
             StringComparison.Ordinal);
         await Assert.That(rebind).IsGreaterThanOrEqualTo(0);
         await Assert.That(createSession).IsGreaterThan(rebind);
@@ -542,6 +542,41 @@ public sealed class StormNativeChildHostTests
         await Assert.That(initializedDuringCallbacks[0]).IsFalse();
         await Assert.That(initializedDuringCallbacks[1]).IsFalse();
         await Assert.That(state.IsInitialized).IsTrue();
+    }
+
+    [Test]
+    public async Task LinuxNativeChildAttachmentDoesNotWaitForRenderThreadInitializationOnUiThread()
+    {
+        string root = FindRepositoryRoot();
+        string hostSource = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "StormNativeControlHost.cs"));
+        await Assert.That(hostSource).Contains("deferNativeInitialization: linux");
+        await Assert.That(hostSource).Contains("CompleteLinuxInitializationAsync");
+
+        string runtimeSource = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Rendering.Storm",
+            "OpenUsdStormChildRuntime.cs"));
+        await Assert.That(runtimeSource).Contains("deferNativeInitialization");
+
+        string linuxSource = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "native",
+            "openusd_storm_child",
+            "src",
+            "openusd_storm_child_linux.cpp"));
+        string createBody = linuxSource[linuxSource.IndexOf(
+            "extern \"C\" openusd_status openusd_storm_child_create",
+            StringComparison.Ordinal)..linuxSource.IndexOf(
+            "extern \"C\" openusd_status openusd_storm_child_destroy",
+            StringComparison.Ordinal)];
+        await Assert.That(createBody).DoesNotContain("initialized.wait");
+        await Assert.That(createBody).DoesNotContain("render_thread.join()");
+        await Assert.That(linuxSource).Contains("WaitForInitialization");
     }
 
     [Test]
