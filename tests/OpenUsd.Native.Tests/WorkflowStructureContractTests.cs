@@ -220,6 +220,35 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task NarrowOpenUsdInstallCacheYieldsToTheFullNativeCache()
+    {
+        string root = FindRepositoryRoot();
+        string native = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "native.yml"));
+
+        int narrow = native.IndexOf(
+            "openusd-install-linux-x64-",
+            StringComparison.Ordinal);
+        await Assert.That(narrow)
+            .IsGreaterThan(0)
+            .Because("native.yml must still save the narrow OpenUSD install cache for ci.yml");
+
+        string guard = native[..narrow];
+        int step = guard.LastIndexOf("- uses: actions/cache@", StringComparison.Ordinal);
+        await Assert.That(step)
+            .IsGreaterThan(0)
+            .Because("the narrow key must belong to a cache step");
+
+        await Assert.That(guard[step..])
+            .Contains("steps.native-cache.outputs.cache-hit != 'true'", StringComparison.Ordinal)
+            .Because(
+                "both caches write native/install/linux-x64 and the narrow key omits the " +
+                "shim headers, so restoring it after a native-cache hit overwrites the " +
+                "install metadata sidecar with an older ABI and fails verification, which " +
+                "is how release run 31249949333 died");
+    }
+
+    [Test]
     public async Task PackageWorkflowRestoresTheCacheTheNativePipelineSaves()
     {
         string root = FindRepositoryRoot();

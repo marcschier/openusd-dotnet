@@ -172,8 +172,18 @@ jobs:
       # This key and path list must stay character-identical to the
       # `openusd-cache` step in ci.yml, because hashFiles over a different file
       # list yields a different digest and the restore would silently never hit.
+      #
+      # It must not run when the native cache above hit. Both write
+      # native/install/linux-x64, and this narrower key excludes the shim
+      # headers, so restoring it second overwrites the freshly cached
+      # .openusd-install-metadata.json with an older one. Release run
+      # 31249949333 failed exactly that way: the shim was ABI 5 but the
+      # clobbered sidecar still said 4, and the build that would have rewritten
+      # it was skipped because the native cache had hit.
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        if: matrix.rid == 'linux-x64'
+        if: >-
+          matrix.rid == 'linux-x64' &&
+          steps.native-cache.outputs.cache-hit != 'true'
         with:
           path: |
             native/install/linux-x64
