@@ -143,6 +143,58 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task NuGetPromotionStagesSymbolsFromReleaseArtifacts()
+    {
+        string root = FindRepositoryRoot();
+        string nuget = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "nuget.yml"));
+        string release = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "release.yml"));
+
+        string promote = ReadJob(nuget, "promote");
+        await Assert.That(nuget)
+            .Contains("actions: read", StringComparison.Ordinal)
+            .Because("nuget.yml must read release artifacts to recover snupkg files");
+        await Assert.That(nuget)
+            .Contains("release_run_id:", StringComparison.Ordinal)
+            .Because("manual promotion needs an override when the tag run cannot be inferred");
+        await Assert.That(promote)
+            .Contains("release.yml/runs", StringComparison.Ordinal)
+            .Because("symbols are stored on the tag release run, not in the GitHub feed");
+        await Assert.That(promote)
+            .Contains("name: openusd-published-nupkgs", StringComparison.Ordinal)
+            .Because("the published release artifact is where snupkg files survive packing");
+
+        string stageSymbols = ReadStep(promote, "Stage symbol packages for nuget.org");
+        await Assert.That(stageSymbols)
+            .Contains("Get-ChildItem release-artifacts/nupkg -Filter '*.snupkg'", StringComparison.Ordinal)
+            .Because("promotion must stage symbols from release artifacts before pushing");
+        await Assert.That(stageSymbols)
+            .Contains("Copy-Item", StringComparison.Ordinal)
+            .Because("each snupkg must be copied beside its matching nupkg");
+        await Assert.That(stageSymbols)
+            .Contains("openusd.0.6.0-alpha.snupkg 404", StringComparison.Ordinal)
+            .Because("the workflow should explain the concrete symbol-publish regression");
+
+        string push = ReadStep(promote, "Push to nuget.org");
+        await Assert.That(push)
+            .Contains("dotnet nuget push \"artifacts/*.nupkg\"", StringComparison.Ordinal)
+            .Because("the nupkg bytes still come from the GitHub Packages feed");
+        await Assert.That(push)
+            .DoesNotContain("--no-symbols", StringComparison.Ordinal)
+            .Because("dotnet nuget push uploads an adjacent snupkg unless this option disables it");
+
+        string uploadPublished = ReadStep(ReadJob(release, "publish"), "Upload the published packages");
+        await Assert.That(uploadPublished)
+            .Contains("path: artifacts/nupkg", StringComparison.Ordinal)
+            .Because("release artifacts must include both nupkg and snupkg files from pack");
+        await Assert.That(uploadPublished)
+            .DoesNotContain("*.nupkg", StringComparison.Ordinal)
+            .Because("the release artifact must not filter out the adjacent snupkg files");
+    }
+
+
+    [Test]
     public async Task NativeWorkflowPathFiltersExcludeValidationOnlyInputs()
     {
         string root = FindRepositoryRoot();

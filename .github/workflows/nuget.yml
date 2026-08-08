@@ -3,18 +3,21 @@ name: nuget
 # Manual action: promote the published package set from the GitHub Packages NuGet feed
 # to nuget.org using NuGet trusted publishing (OIDC) instead of a long-lived API key.
 #
-# The release workflow already pushes to both feeds on a tag. This exists for the cases
-# where that push did not reach nuget.org: the NUGET_API_KEY secret was absent or
-# expired, the push failed after the GitHub feed succeeded, or a version was built
-# before the nuget.org account was ready. It re-pushes the exact bytes that were
-# released rather than rebuilding them, so promotion cannot alter what was verified.
+# The release workflow pushes tagged packages to the GitHub Packages feed, then this
+# workflow promotes them to nuget.org. It exists for releases where the GitHub feed
+# succeeded but nuget.org promotion still has to run, or has to be retried. It
+# re-pushes the exact bytes that were released rather than rebuilding them, so
+# promotion cannot alter what was verified.
 #
 # What it does when run:
 #   1. Probes the GitHub Packages NuGet feed (flat-container protocol) for each
 #      published id and the versions it has.
 #   2. Picks the latest published version, or the version supplied as input.
-#   3. Downloads every package at that version straight from the GitHub feed.
-#   4. Exchanges the workflow's OIDC token for a short-lived nuget.org key via
+#   3. Downloads every nupkg at that version straight from the GitHub feed.
+#   4. Downloads the matching release run artifact to place each snupkg beside
+#      its nupkg. The GitHub feed rejects snupkg files, so symbols cannot be
+#      recovered from the feed even though release packing produced them.
+#   5. Exchanges the workflow's OIDC token for a short-lived nuget.org key via
 #      NuGet/login and pushes to nuget.org (idempotent).
 #
 # One-time setup on nuget.org (https://www.nuget.org/account/trustedpublishing):
@@ -32,10 +35,17 @@ on:
           Leave blank to promote the latest published version.
         required: false
         type: string
+      release_run_id:
+        description: >-
+          Optional release.yml run id holding openusd-published-nupkgs. Leave blank
+          to use the latest completed v<version> release run.
+        required: false
+        type: string
 
 permissions:
   id-token: write   # required: OIDC token for NuGet trusted publishing to nuget.org
   packages: read    # required: read packages from the GitHub Packages NuGet feed
+  actions: read     # required: download snupkg files from the release run artifact
   contents: read
 
 concurrency:
@@ -60,7 +70,9 @@ jobs:
           # NuGet feed over the NuGet V3 protocol, so no read:packages PAT is needed.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
+          REPOSITORY: ${{ github.repository }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_RELEASE_RUN_ID: ${{ github.event.inputs.release_run_id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -95,7 +107,8 @@ jobs:
           )
 
           mkdir -p artifacts versions
-          ALL_VERSIONS="$(mktemp)"
+          ALL_VERSIONS="versions/all.txt"
+          : > "$ALL_VERSIONS"
           PUBLISHED=()
 
           for id in "${CANDIDATES[@]}"; do
@@ -111,7 +124,8 @@ jobs:
           done
 
           if [ "${#PUBLISHED[@]}" -eq 0 ]; then
-            echo "::error::No packages found on the GitHub feed for ${OWNER}. Confirm the release workflow pushed to https://nuget.pkg.github.com/${OWNER}/index.json."
+            echo "::error::No packages found on the GitHub feed for ${OWNER}."
+            echo "::error::Confirm release.yml pushed to the GitHub Packages feed."
             exit 1
           fi
           echo "Found ${#PUBLISHED[@]} published package(s) on the GitHub feed."
@@ -129,6 +143,24 @@ jobs:
               exit 1
             fi
             echo "Auto-selected latest published version: ${TARGET}"
+          fi
+
+          if [ -n "${INPUT_RELEASE_RUN_ID}" ]; then
+            release_run_id="${INPUT_RELEASE_RUN_ID}"
+            echo "Using requested release workflow run: ${release_run_id}"
+          else
+            tag="v${TARGET}"
+            runs_url="https://api.github.com/repos/${REPOSITORY}/actions/workflows/release.yml/runs"
+            release_run_id="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+              "${runs_url}?event=push&status=completed&per_page=100" | \
+              jq -r --arg tag "$tag" \
+                '.workflow_runs[] | select(.head_branch == $tag) | .id' | head -n1)"
+            if [ -z "${release_run_id}" ]; then
+              echo "::error::Could not find a completed release.yml run for ${tag}."
+              echo "::error::Re-run with the release_run_id input so symbols can be downloaded."
+              exit 1
+            fi
+            echo "Using release workflow run: ${release_run_id}"
           fi
 
           downloaded=0
@@ -155,7 +187,57 @@ jobs:
           {
             echo "version=${TARGET}"
             echo "count=${downloaded}"
+            echo "release-run-id=${release_run_id}"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Download release symbol packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.resolve.outputs.release-run-id }}
+          name: openusd-published-nupkgs
+          path: release-artifacts/nupkg
+
+      - name: Stage symbol packages for nuget.org
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem artifacts -Filter '*.nupkg')
+          $symbols = @(Get-ChildItem release-artifacts/nupkg -Filter '*.snupkg')
+          if ($symbols.Count -eq 0)
+          {
+            throw (
+              'The release artifact did not contain .snupkg files. ' +
+              'Release packing produced symbols, but dropping them made ' +
+              'https://globalcdn.nuget.org/symbol-packages/openusd.0.6.0-alpha.snupkg 404.')
+          }
+
+          $byName = @{}
+          foreach ($symbol in $symbols)
+          {
+            $byName[$symbol.Name.ToLowerInvariant()] = $symbol.FullName
+          }
+
+          $missing = @()
+          foreach ($package in $packages)
+          {
+            $symbolName = [IO.Path]::GetFileNameWithoutExtension($package.Name) + '.snupkg'
+            $key = $symbolName.ToLowerInvariant()
+            if (-not $byName.ContainsKey($key))
+            {
+              $missing += $symbolName
+              continue
+            }
+
+            Copy-Item -LiteralPath $byName[$key] -Destination (Join-Path 'artifacts' $symbolName) -Force
+          }
+
+          if ($missing.Count -gt 0)
+          {
+            throw "Missing symbol package(s) in the release artifact: $($missing -join ', ')."
+          }
+
+          $staged = @(Get-ChildItem artifacts -Filter '*.snupkg')
+          Write-Host "Staged $($staged.Count) symbol package(s) beside the nupkg files."
 
       # NuGet login happens right before the push so the short-lived token is fresh.
       - name: NuGet login (OIDC trusted publishing)
@@ -179,5 +261,6 @@ jobs:
             echo ""
             echo "- Version: \`${{ steps.resolve.outputs.version }}\`"
             echo "- Packages promoted: \`${{ steps.resolve.outputs.count }}\`"
-            echo "- Source: GitHub Packages feed to nuget.org (trusted publishing)"
+            echo "- Release artifact run: `${{ steps.resolve.outputs.release-run-id }}`"
+            echo "- Source: GitHub Packages nupkg bytes plus release-artifact snupkg symbols"
           } >> "$GITHUB_STEP_SUMMARY"

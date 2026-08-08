@@ -261,20 +261,25 @@ windowing behaviour that no published package relies on and is currently a known
 release aggregate still requires `render`, so a release run stays red until that is fixed rather
 than the failure being dropped.
 
-Packages go to two feeds:
+Packages flow through two feeds/artifact stores:
 
 - The GitHub Packages feed at `https://nuget.pkg.github.com/marcschier/index.json`, authenticated
-  with the auto-issued `GITHUB_TOKEN`. Symbol packages are excluded because that feed rejects
-  `.snupkg`.
-- `nuget.org`, using the `NUGET_API_KEY` secret from the `release` environment. The step is skipped
-  when the secret is absent, so the rest of the release still completes.
+  with the auto-issued `GITHUB_TOKEN`, receives every `.nupkg` from `release.yml`. The push uses
+  `--no-symbols` because `dotnet nuget push` uploads an adjacent `.snupkg` automatically and the
+  GitHub feed rejects symbol packages.
+- The `openusd-published-nupkgs` release artifact keeps the packed `.nupkg` and `.snupkg` files
+  together for 90 days. The artifact is the symbol source for nuget.org promotion because the GitHub
+  feed cannot store `.snupkg` files.
+- `nuget.org` promotion is performed by `.github/workflows/nuget.yml` using NuGet trusted publishing
+  (OIDC), not by `release.yml`. The trusted-publishing policy is bound to this repository, the
+  `nuget.yml` workflow file, and the `release` environment, plus a `NUGET_USER` secret holding the
+  nuget.org username.
 
-`.github/workflows/nuget.yml` is a manual promotion path for when the tagged run reached the GitHub
-feed but not `nuget.org`. It downloads the exact released bytes from the GitHub feed and pushes them
-using NuGet trusted publishing (OIDC) rather than a long-lived key, so promotion cannot alter what
-was verified. It requires a trusted-publishing policy on nuget.org bound to this repository, the
-`nuget.yml` workflow file, and the `release` environment, plus a `NUGET_USER` secret holding the
-nuget.org username.
+`.github/workflows/nuget.yml` remains the manual promotion path for the tagged release bytes. It
+downloads each `.nupkg` from the GitHub feed so the promoted package bytes are exactly the bytes that
+were already released, then downloads the matching `openusd-published-nupkgs` artifact from the
+release run and stages each `.snupkg` beside its `.nupkg`. The nuget.org push intentionally omits
+`--no-symbols`, so `dotnet nuget push` uploads the adjacent symbol packages implicitly.
 
 Both pushes use `--skip-duplicate`, so re-running a partially failed publish is safe. A version
 pushed to nuget.org can be unlisted but never withdrawn or replaced.
