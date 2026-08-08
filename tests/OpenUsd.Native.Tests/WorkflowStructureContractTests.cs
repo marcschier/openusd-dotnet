@@ -468,6 +468,30 @@ public sealed class WorkflowStructureContractTests
             .Contains("Copy-MacOSCrashReports -SinceUtc $processStartUtc", StringComparison.Ordinal);
     }
 
+    [Test]
+    public async Task ViewerBundleSmokeCapturesLiveHangDiagnosticsBeforeKilling()
+    {
+        string root = FindRepositoryRoot();
+        string smoke = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "test-viewer-bundle-smoke.ps1"));
+
+        await Assert.That(smoke)
+            .Contains("function Capture-HangDiagnostics", StringComparison.Ordinal)
+            .Because("run 31245824359 proved the Linux Viewer smoke can hang without crashing");
+        await Assert.That(smoke)
+            .Contains("dotnet-stack", StringComparison.Ordinal)
+            .Because("a managed stack at timeout distinguishes stage-open deadlocks");
+        await Assert.That(smoke)
+            .Contains("createdump", StringComparison.Ordinal)
+            .Because("live process dumps are needed when a hang produces no crash dump");
+        await Assert.That(smoke)
+            .Contains("Capture-HangDiagnostics -ViewerProcess $process", StringComparison.Ordinal)
+            .Because("the process must be captured while it is still hung, before finally kills it");
+        await Assert.That(smoke)
+            .Contains("viewer hang stack", StringComparison.Ordinal)
+            .Because("the timeout diagnostics must appear in the CI log, not only in artifacts");
+    }
+
     /// <summary>
     /// Returns the quoted arguments of the <c>hashFiles</c> call anchored on a
     /// cache key prefix, in declaration order.

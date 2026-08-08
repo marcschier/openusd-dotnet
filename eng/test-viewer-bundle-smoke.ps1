@@ -98,7 +98,13 @@ $stdoutFile = Join-Path $installRoot 'viewer.stdout.log'
 $stderrFile = Join-Path $installRoot 'viewer.stderr.log'
 $crashReportRoot = Join-Path $installRoot 'viewer-crash-reports'
 $dumpPattern = Join-Path $installRoot 'viewer-crash-%p.dmp'
+$hangStackFile = Join-Path $installRoot 'viewer-hang-stack.txt'
+$hangDumpFile = Join-Path $installRoot 'viewer-hang.dmp'
+$createdumpOutputFile = Join-Path $installRoot 'viewer-createdump.log'
 Remove-Item $statusFile, $logFile, $stdoutFile, $stderrFile `
+    -Force `
+    -ErrorAction SilentlyContinue
+Remove-Item $hangStackFile, $hangDumpFile, $createdumpOutputFile `
     -Force `
     -ErrorAction SilentlyContinue
 Remove-Item $crashReportRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -122,8 +128,31 @@ function Write-ViewerDiagnostics
         }
     }
 
+    Write-Host '----- viewer hang stack -----'
+    if (Test-Path $hangStackFile)
+    {
+        Get-Content $hangStackFile | Write-Host
+    }
+    else
+    {
+        Write-Host '(not produced)'
+    }
+
+    Write-Host '----- viewer createdump output -----'
+    if (Test-Path $createdumpOutputFile)
+    {
+        Get-Content $createdumpOutputFile | Write-Host
+    }
+    else
+    {
+        Write-Host '(not produced)'
+    }
+
     Write-Host '----- viewer crash dumps -----'
-    $dumps = @(Get-ChildItem $installRoot -Filter 'viewer-crash-*.dmp' -ErrorAction SilentlyContinue)
+    $dumps = @(
+        Get-ChildItem $installRoot -Filter 'viewer-crash-*.dmp' -ErrorAction SilentlyContinue
+        Get-ChildItem $installRoot -Filter 'viewer-hang*.dmp' -ErrorAction SilentlyContinue
+    )
     if ($dumps.Count -eq 0)
     {
         Write-Host '(not produced)'
@@ -143,6 +172,75 @@ function Write-ViewerDiagnostics
     {
         Write-Host "----- $($report.Name) -----"
         Get-Content $report.FullName -TotalCount 200 | Write-Host
+    }
+}
+
+function Invoke-DiagnosticProcess
+{
+    param(
+        [string]$FilePath,
+        [string[]]$ArgumentList,
+        [string]$OutputPath,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $errorPath = "$OutputPath.err"
+    Remove-Item $OutputPath, $errorPath -Force -ErrorAction SilentlyContinue
+    $tool = Start-Process $FilePath `
+        -ArgumentList $ArgumentList `
+        -PassThru `
+        -RedirectStandardOutput $OutputPath `
+        -RedirectStandardError $errorPath
+    if (-not $tool.WaitForExit($TimeoutSeconds * 1000))
+    {
+        Stop-Process -Id $tool.Id -ErrorAction SilentlyContinue
+        $tool.WaitForExit()
+        Add-Content $OutputPath "Timed out after $TimeoutSeconds seconds."
+    }
+    if (Test-Path $errorPath)
+    {
+        Add-Content $OutputPath '----- stderr -----'
+        Get-Content $errorPath | Add-Content $OutputPath
+        Remove-Item $errorPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Capture-HangDiagnostics
+{
+    param([Diagnostics.Process]$ViewerProcess)
+
+    $ViewerProcess.Refresh()
+    if ($ViewerProcess.HasExited)
+    {
+        return
+    }
+
+    Set-Content $hangStackFile "Viewer PID $($ViewerProcess.Id) was still running at timeout."
+    $stack = Get-Command dotnet-stack -ErrorAction SilentlyContinue
+    if ($null -ne $stack)
+    {
+        Invoke-DiagnosticProcess `
+            -FilePath $stack.Source `
+            -ArgumentList @('report', '-p', [string]$ViewerProcess.Id) `
+            -OutputPath $hangStackFile
+    }
+    else
+    {
+        Add-Content $hangStackFile 'dotnet-stack was not available on PATH.'
+    }
+
+    $createdumpName = if ($IsWindows) { 'createdump.exe' } else { 'createdump' }
+    $createdump = Join-Path $installRoot $createdumpName
+    if (Test-Path $createdump)
+    {
+        Invoke-DiagnosticProcess `
+            -FilePath $createdump `
+            -ArgumentList @('--full', '--name', $hangDumpFile, [string]$ViewerProcess.Id) `
+            -OutputPath $createdumpOutputFile
+    }
+    else
+    {
+        Set-Content $createdumpOutputFile "createdump was not found at $createdump."
     }
 }
 
@@ -269,6 +367,7 @@ try
     }
     if ($null -eq $renderedStatus)
     {
+        Capture-HangDiagnostics -ViewerProcess $process
         throw "Viewer did not report pattern '$ExpectedStatusPattern' within $SmokeSeconds seconds."
     }
     if ($process.HasExited)

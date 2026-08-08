@@ -25,6 +25,48 @@ public sealed class ViewerSourceContractTests
     }
 
     [Test]
+    public async Task AutomatedStageOpenReportsEachBlockingBoundary()
+    {
+        string root = FindRepositoryRoot();
+        string window = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "MainWindow.axaml.cs"));
+        string coordinator = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "ViewerRenderCoordinator.cs"));
+
+        foreach (string status in new[]
+        {
+            "Viewer stage open: resolved",
+            "Viewer stage open: validation scheduler starting",
+            "Viewer stage open: validation root layer query starting",
+            "Viewer stage open: validation root layer query completed",
+            "Viewer stage open: render coordinator starting",
+            "Viewer stage open: document snapshot starting",
+            "Viewer stage open: document snapshot completed"
+        })
+        {
+            await Assert.That(window).Contains(status);
+        }
+
+        foreach (string status in new[]
+        {
+            "Renderer coordinator: stage scheduler starting",
+            "Renderer coordinator: render source acquiring",
+            "Renderer coordinator: render source acquired",
+            "Renderer coordinator: root layer query starting",
+            "Renderer coordinator: backend initialization starting"
+        })
+        {
+            await Assert.That(coordinator).Contains(status);
+        }
+    }
+
+    [Test]
     public async Task ViewerSourceKeepsDetachedTraversalAndSerializedDocumentLifecycle()
     {
         string root = FindRepositoryRoot();

@@ -94,20 +94,26 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(stagePath);
         ArgumentNullException.ThrowIfNull(hostFactory);
 
+        ViewerStartupOptions.WriteStatus("Renderer coordinator: stage scheduler starting");
         UsdStageScheduler scheduler = UsdStageScheduler.Open(
             stagePath,
             capacity: 1024,
             notificationCapacity: 32);
+        ViewerStartupOptions.WriteStatus("Renderer coordinator: stage scheduler created");
         UsdStageRenderSource? source = null;
         RenderBackendManager? manager = null;
         ViewerRenderCoordinator? coordinator = null;
         try
         {
+            ViewerStartupOptions.WriteStatus("Renderer coordinator: render source acquiring");
             source = await scheduler.AcquireRenderSourceAsync(cancellationToken)
                 .ConfigureAwait(false);
+            ViewerStartupOptions.WriteStatus("Renderer coordinator: render source acquired");
+            ViewerStartupOptions.WriteStatus("Renderer coordinator: root layer query starting");
             string identifier = await scheduler.InvokeAsync(
                 static stage => stage.RootLayerIdentifier,
                 cancellationToken).ConfigureAwait(false);
+            ViewerStartupOptions.WriteStatus("Renderer coordinator: root layer query completed");
             StageRenderState state = StageRenderState.Create(new StageIdentity(identifier));
             IViewerRenderBackendHost host = hostFactory(scheduler, source);
             RenderPlatform platform = GetPlatform();
@@ -127,9 +133,11 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
                 state);
             manager = null;
             source = null;
+            ViewerStartupOptions.WriteStatus("Renderer coordinator: backend initialization starting");
             RenderBackendManagerResult initialization = await coordinator._manager
                 .InitializeAsync(state, requestedBackend, cancellationToken)
                 .ConfigureAwait(false);
+            ViewerStartupOptions.WriteStatus("Renderer coordinator: backend initialization completed");
             coordinator.PublishResult("Renderer initialization", initialization);
             return coordinator;
         }

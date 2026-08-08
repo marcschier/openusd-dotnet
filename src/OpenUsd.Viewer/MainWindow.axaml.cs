@@ -3172,6 +3172,7 @@ public sealed partial class MainWindow : Window, IDisposable
         CancellationToken cancellationToken)
     {
         string normalizedPath = Path.GetFullPath(stagePath);
+        ViewerStartupOptions.WriteStatus($"Viewer stage open: resolved {normalizedPath}");
         if (!File.Exists(normalizedPath))
         {
             throw new FileNotFoundException("The selected USD stage does not exist.", normalizedPath);
@@ -3188,13 +3189,20 @@ public sealed partial class MainWindow : Window, IDisposable
             SetBusy($"Opening {Path.GetFileName(normalizedPath)}...");
             if (!IsAutomatedViewerRun())
             {
+                ViewerStartupOptions.WriteStatus(
+                    "Viewer stage open: validation scheduler starting");
                 await using UsdStageScheduler validationScheduler =
                     UsdStageScheduler.Open(normalizedPath);
+                ViewerStartupOptions.WriteStatus(
+                    "Viewer stage open: validation root layer query starting");
                 _ = await validationScheduler.InvokeAsync(
                     static stage => stage.RootLayerIdentifier,
                     cancellationToken);
+                ViewerStartupOptions.WriteStatus(
+                    "Viewer stage open: validation root layer query completed");
             }
 
+            ViewerStartupOptions.WriteStatus("Viewer stage open: stopping previous document");
             await StopCurrentDocumentAsync();
             _cameraNavigation.ResetToAutomatic();
             UpdateCameraStatus();
@@ -3204,6 +3212,7 @@ public sealed partial class MainWindow : Window, IDisposable
             AvaloniaViewerRenderBackendHost? backendHost = null;
             try
             {
+                ViewerStartupOptions.WriteStatus("Viewer stage open: render coordinator starting");
                 coordinator = await ViewerRenderCoordinator.OpenAsync(
                     normalizedPath,
                     (scheduler, source) =>
@@ -3218,9 +3227,11 @@ public sealed partial class MainWindow : Window, IDisposable
                     },
                     GetSelectedBackend(),
                     documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: document snapshot starting");
                 ViewerDocumentSnapshot document = await coordinator.Scheduler.InvokeAsync(
                     ViewerStageSnapshotBuilder.BuildDocument,
                     documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: document snapshot completed");
 
                 _documentLifetime = documentLifetime;
                 _coordinator = coordinator;
