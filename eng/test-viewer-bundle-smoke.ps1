@@ -51,18 +51,234 @@ else
 $installRoot = Join-Path $outputRoot $Rid
 Remove-Item $installRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
-if ($bundle.EndsWith('.zip', [StringComparison]::OrdinalIgnoreCase))
+
+$statusFile = Join-Path $installRoot 'viewer-status.txt'
+$logFile = Join-Path $installRoot 'viewer.log'
+$stdoutFile = Join-Path $installRoot 'viewer.stdout.log'
+$stderrFile = Join-Path $installRoot 'viewer.stderr.log'
+$crashReportRoot = Join-Path $installRoot 'viewer-crash-reports'
+$dumpPattern = Join-Path $installRoot 'viewer-crash-%p.dmp'
+$hangStackFile = Join-Path $installRoot 'viewer-hang-stack.txt'
+$nativeStackFile = Join-Path $installRoot 'viewer-native-stack.txt'
+$hangDumpFile = Join-Path $installRoot 'viewer-hang.dmp'
+$createdumpOutputFile = Join-Path $installRoot 'viewer-createdump.log'
+Remove-Item $statusFile, $logFile, $stdoutFile, $stderrFile `
+    -Force `
+    -ErrorAction SilentlyContinue
+Remove-Item $hangStackFile, $nativeStackFile, $hangDumpFile, $createdumpOutputFile `
+    -Force `
+    -ErrorAction SilentlyContinue
+Remove-Item $crashReportRoot -Recurse -Force -ErrorAction SilentlyContinue
+
+# Job 93147442138 sat past twenty minutes in a step whose only intended bound
+# was a 120-second render wait; keep live hang capture, then fail far below the
+# 120-minute job timeout.
+$overallSmokeTimeoutSeconds = $SmokeSeconds + 180
+$overallDeadlineUtc = [DateTime]::UtcNow.AddSeconds($overallSmokeTimeoutSeconds)
+$processExitTimeoutSeconds = 5
+
+function Get-RemainingWaitMilliseconds
 {
-    Expand-Archive -Path $bundle -DestinationPath $installRoot -Force
-}
-else
-{
-    & tar -xzf $bundle -C $installRoot
-    if ($LASTEXITCODE -ne 0)
+    param(
+        [string]$WaitName,
+        [int]$RequestedSeconds
+    )
+
+    $remainingMilliseconds = [int][Math]::Floor(
+        ($overallDeadlineUtc - [DateTime]::UtcNow).TotalMilliseconds)
+    if ($remainingMilliseconds -le 0)
     {
-        throw "tar failed while extracting $bundle."
+        throw "Viewer bundle smoke overall ceiling expired before wait '$WaitName'. " +
+            "The ceiling is $overallSmokeTimeoutSeconds seconds."
+    }
+
+    return [Math]::Max(1, [Math]::Min($RequestedSeconds * 1000, $remainingMilliseconds))
+}
+
+function Wait-ProcessExitBounded
+{
+    param(
+        [Diagnostics.Process]$Process,
+        [string]$WaitName,
+        [int]$TimeoutSeconds
+    )
+
+    $timeoutMilliseconds = Get-RemainingWaitMilliseconds `
+        -WaitName $WaitName `
+        -RequestedSeconds $TimeoutSeconds
+    if ($Process.WaitForExit($timeoutMilliseconds))
+    {
+        return $true
+    }
+
+    Write-Warning "Wait '$WaitName' expired after $timeoutMilliseconds ms for PID $($Process.Id)."
+    return $false
+}
+
+function Stop-ProcessBounded
+{
+    param(
+        [Diagnostics.Process]$Process,
+        [string]$Reason
+    )
+
+    $Process.Refresh()
+    if ($Process.HasExited)
+    {
+        return $true
+    }
+
+    Write-Host "Stopping PID $($Process.Id) because $Reason."
+    Stop-Process -Id $Process.Id -ErrorAction SilentlyContinue
+    if (Wait-ProcessExitBounded `
+            -Process $Process `
+            -WaitName "$Reason graceful exit after Stop-Process" `
+            -TimeoutSeconds $processExitTimeoutSeconds)
+    {
+        return $true
+    }
+
+    $Process.Refresh()
+    if ($Process.HasExited)
+    {
+        return $true
+    }
+
+    if ($IsWindows)
+    {
+        Write-Warning "PID $($Process.Id) ignored Stop-Process for '$Reason'; escalating with Stop-Process -Force."
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        $killWaitName = "$Reason forced exit after Stop-Process -Force"
+    }
+    else
+    {
+        Write-Warning "PID $($Process.Id) ignored Stop-Process for '$Reason'; escalating with SIGKILL."
+        & kill -KILL $Process.Id 2>$null
+        $killWaitName = "$Reason forced exit after SIGKILL"
+    }
+
+    if (Wait-ProcessExitBounded `
+            -Process $Process `
+            -WaitName $killWaitName `
+            -TimeoutSeconds $processExitTimeoutSeconds)
+    {
+        return $true
+    }
+
+    Write-Warning "PID $($Process.Id) still did not exit after '$killWaitName'; continuing with diagnostics."
+    return $false
+}
+
+function Invoke-ProcessWithBoundedWait
+{
+    param(
+        [string]$FilePath,
+        [string[]]$ArgumentList,
+        [string]$WaitName,
+        [int]$TimeoutSeconds,
+        [string]$StandardOutputPath,
+        [string]$StandardErrorPath
+    )
+
+    $startProcessArguments = @{
+        FilePath = $FilePath
+        ArgumentList = $ArgumentList
+        PassThru = $true
+    }
+    if (-not [string]::IsNullOrEmpty($StandardOutputPath))
+    {
+        $startProcessArguments['RedirectStandardOutput'] = $StandardOutputPath
+    }
+    if (-not [string]::IsNullOrEmpty($StandardErrorPath))
+    {
+        $startProcessArguments['RedirectStandardError'] = $StandardErrorPath
+    }
+
+    $child = Start-Process @startProcessArguments
+    if (Wait-ProcessExitBounded -Process $child -WaitName $WaitName -TimeoutSeconds $TimeoutSeconds)
+    {
+        return $child.ExitCode
+    }
+
+    Stop-ProcessBounded -Process $child -Reason "wait '$WaitName' timed out" | Out-Null
+    return $null
+}
+
+function ConvertTo-EncodedCommand
+{
+    param([string]$Command)
+
+    return [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
+}
+
+function Quote-PowerShellLiteral
+{
+    param([string]$Value)
+
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function Invoke-ArchiveExtraction
+{
+    $waitName = "archive extraction for $bundle"
+    $timeoutSeconds = [int][Math]::Ceiling(
+        ($overallDeadlineUtc - [DateTime]::UtcNow).TotalSeconds)
+    if ($timeoutSeconds -le 0)
+    {
+        throw "Viewer bundle smoke overall ceiling expired before wait '$waitName'. " +
+            "The ceiling is $overallSmokeTimeoutSeconds seconds."
+    }
+
+    $extractOutput = Join-Path $installRoot 'viewer-extract.stdout.log'
+    $extractError = Join-Path $installRoot 'viewer-extract.stderr.log'
+    Remove-Item $extractOutput, $extractError -Force -ErrorAction SilentlyContinue
+    if ($bundle.EndsWith('.zip', [StringComparison]::OrdinalIgnoreCase))
+    {
+        $pwshName = if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' }
+        $pwsh = Join-Path $PSHOME $pwshName
+        $command = @"
+`$ErrorActionPreference = 'Stop'
+Expand-Archive ``
+    -LiteralPath $(Quote-PowerShellLiteral $bundle) ``
+    -DestinationPath $(Quote-PowerShellLiteral $installRoot) ``
+    -Force
+"@
+        $exitCode = Invoke-ProcessWithBoundedWait `
+            -FilePath $pwsh `
+            -ArgumentList @(
+                '-NoLogo',
+                '-NoProfile',
+                '-NonInteractive',
+                '-EncodedCommand',
+                (ConvertTo-EncodedCommand $command)) `
+            -WaitName $waitName `
+            -TimeoutSeconds $timeoutSeconds `
+            -StandardOutputPath $extractOutput `
+            -StandardErrorPath $extractError
+    }
+    else
+    {
+        $exitCode = Invoke-ProcessWithBoundedWait `
+            -FilePath 'tar' `
+            -ArgumentList @('-xzf', $bundle, '-C', $installRoot) `
+            -WaitName $waitName `
+            -TimeoutSeconds $timeoutSeconds `
+            -StandardOutputPath $extractOutput `
+            -StandardErrorPath $extractError
+    }
+
+    if ($null -eq $exitCode)
+    {
+        throw "Archive extraction wait '$waitName' exceeded the " +
+            "$overallSmokeTimeoutSeconds-second smoke ceiling."
+    }
+    if ($exitCode -ne 0)
+    {
+        throw "Archive extraction wait '$waitName' failed with exit code $exitCode."
     }
 }
+
+Invoke-ArchiveExtraction
 
 foreach ($requiredPath in @(
     (Join-Path $installRoot 'plugin/usd/plugInfo.json'),
@@ -91,24 +307,6 @@ if (-not (Test-Path $executable))
 {
     throw "Viewer executable not found: $executable"
 }
-
-$statusFile = Join-Path $installRoot 'viewer-status.txt'
-$logFile = Join-Path $installRoot 'viewer.log'
-$stdoutFile = Join-Path $installRoot 'viewer.stdout.log'
-$stderrFile = Join-Path $installRoot 'viewer.stderr.log'
-$crashReportRoot = Join-Path $installRoot 'viewer-crash-reports'
-$dumpPattern = Join-Path $installRoot 'viewer-crash-%p.dmp'
-$hangStackFile = Join-Path $installRoot 'viewer-hang-stack.txt'
-$nativeStackFile = Join-Path $installRoot 'viewer-native-stack.txt'
-$hangDumpFile = Join-Path $installRoot 'viewer-hang.dmp'
-$createdumpOutputFile = Join-Path $installRoot 'viewer-createdump.log'
-Remove-Item $statusFile, $logFile, $stdoutFile, $stderrFile `
-    -Force `
-    -ErrorAction SilentlyContinue
-Remove-Item $hangStackFile, $nativeStackFile, $hangDumpFile, $createdumpOutputFile `
-    -Force `
-    -ErrorAction SilentlyContinue
-Remove-Item $crashReportRoot -Recurse -Force -ErrorAction SilentlyContinue
 
 function Write-ViewerDiagnostics
 {
@@ -202,16 +400,16 @@ function Invoke-DiagnosticProcess
 
     $errorPath = "$OutputPath.err"
     Remove-Item $OutputPath, $errorPath -Force -ErrorAction SilentlyContinue
-    $tool = Start-Process $FilePath `
+    $exitCode = Invoke-ProcessWithBoundedWait `
+        -FilePath $FilePath `
         -ArgumentList $ArgumentList `
-        -PassThru `
-        -RedirectStandardOutput $OutputPath `
-        -RedirectStandardError $errorPath
-    if (-not $tool.WaitForExit($TimeoutSeconds * 1000))
+        -WaitName "diagnostic tool '$FilePath'" `
+        -TimeoutSeconds $TimeoutSeconds `
+        -StandardOutputPath $OutputPath `
+        -StandardErrorPath $errorPath
+    if ($null -eq $exitCode)
     {
-        Stop-Process -Id $tool.Id -ErrorAction SilentlyContinue
-        $tool.WaitForExit()
-        Add-Content $OutputPath "Timed out after $TimeoutSeconds seconds."
+        Add-Content $OutputPath "Diagnostic tool '$FilePath' timed out after $TimeoutSeconds seconds."
     }
     if (Test-Path $errorPath)
     {
@@ -388,8 +586,20 @@ try
         -RedirectStandardError $stderrFile
     $deadline = [DateTime]::UtcNow.AddSeconds($SmokeSeconds)
     $renderedStatus = $null
-    while ([DateTime]::UtcNow -lt $deadline)
+    $hitOverallCeiling = $false
+    while ($true)
     {
+        $now = [DateTime]::UtcNow
+        if ($now -ge $overallDeadlineUtc)
+        {
+            $hitOverallCeiling = $true
+            break
+        }
+        if ($now -ge $deadline)
+        {
+            break
+        }
+
         $process.Refresh()
         if (Test-Path $statusFile)
         {
@@ -422,14 +632,22 @@ try
     if ($null -eq $renderedStatus)
     {
         Capture-HangDiagnostics -ViewerProcess $process
+        if ($hitOverallCeiling)
+        {
+            throw "Viewer bundle smoke overall ceiling expired while waiting for " +
+                "pattern '$ExpectedStatusPattern'. The ceiling is " +
+                "$overallSmokeTimeoutSeconds seconds."
+        }
         throw "Viewer did not report pattern '$ExpectedStatusPattern' within $SmokeSeconds seconds."
     }
     if ($process.HasExited)
     {
         throw "Viewer exited after reporting a frame with code $($process.ExitCode)."
     }
-    Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
-    $process.WaitForExit()
+    if (-not (Stop-ProcessBounded -Process $process -Reason "viewer rendered status was observed"))
+    {
+        throw "Viewer rendered a frame but did not exit after the bounded shutdown waits."
+    }
     Write-Output "VIEWER_BUNDLE_SMOKE_RENDERED rid=$Rid status=$renderedStatus"
 }
 catch
@@ -442,8 +660,7 @@ finally
 {
     if ($process -is [Diagnostics.Process] -and -not $process.HasExited)
     {
-        Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
-        $process.WaitForExit()
+        Stop-ProcessBounded -Process $process -Reason "viewer smoke cleanup" | Out-Null
     }
     $env:PATH = $oldPath
     $env:OPENUSD_PLUGIN_PATH = $oldPluginPath

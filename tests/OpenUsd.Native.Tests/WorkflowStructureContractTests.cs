@@ -807,6 +807,50 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task ViewerBundleSmokeBoundsEveryProcessWaitAndOverallRuntime()
+    {
+        string root = FindRepositoryRoot();
+        string smoke = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "test-viewer-bundle-smoke.ps1"));
+
+        await Assert.That(Regex.Count(
+                smoke,
+                @"\.WaitForExit\(\s*\)",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(5)))
+            .IsEqualTo(0)
+            .Because("the Viewer smoke must not reintroduce unbounded process waits");
+        await Assert.That(smoke)
+            .Contains("$overallSmokeTimeoutSeconds = $SmokeSeconds + 180", StringComparison.Ordinal)
+            .Because(
+                "job 93147442138 sat past twenty minutes in a step with a 120-second render wait; " +
+                "the script needs a hard smoke ceiling far below the 120-minute job timeout");
+        await Assert.That(smoke)
+            .Contains("function Stop-ProcessBounded", StringComparison.Ordinal)
+            .Because("Stop-Process must be followed by attributed, bounded exit waits");
+        await Assert.That(smoke)
+            .Contains("SIGKILL", StringComparison.Ordinal)
+            .Because("Unix processes that ignore Stop-Process need an explicit forced-kill escalation");
+        await Assert.That(smoke)
+            .Contains("Archive extraction wait", StringComparison.Ordinal)
+            .Because("bundle extraction is a process wait and must report its own expired bound");
+        await Assert.That(smoke)
+            .Contains("diagnostic tool '$FilePath'", StringComparison.Ordinal)
+            .Because("diagnostic helper waits must stay bounded without anonymous timeout messages");
+
+        int capture = smoke.IndexOf("Capture-HangDiagnostics -ViewerProcess $process", StringComparison.Ordinal);
+        int renderedStop = smoke.IndexOf(
+            "Stop-ProcessBounded -Process $process -Reason \"viewer rendered status was observed\"",
+            StringComparison.Ordinal);
+        await Assert.That(capture)
+            .IsGreaterThan(0)
+            .Because("live hang diagnostics must still be captured before any cleanup kill");
+        await Assert.That(renderedStop)
+            .IsGreaterThan(capture)
+            .Because("the bounded normal shutdown must not move ahead of live hang capture");
+    }
+
+    [Test]
     public async Task ViewerBundleSmokeInstallsAndEnablesLinuxManagedHangStackCapture()
     {
         string root = FindRepositoryRoot();
