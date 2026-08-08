@@ -351,7 +351,7 @@ jobs:
     timeout-minutes: 60
     environment: release
     permissions:
-      contents: read
+      contents: write
       actions: read
       packages: write
     steps:
@@ -398,6 +398,14 @@ jobs:
               "Missing: $($missing -join ', '). Unexpected: $($unexpected -join ', ').")
           }
           Write-Host "Verified all $($expected.Count) published package(s)."
+      - name: Generate release SBOM
+        shell: pwsh
+        run: |
+          python eng/generate-sbom.py `
+            --output artifacts/sbom/openusd-release.cdx.json
+          python eng/generate-sbom.py `
+            --output artifacts/sbom/openusd-release.cdx.json `
+            --validate
       # GITHUB_TOKEN is auto-issued and this job requests packages: write, so the
       # GitHub Packages feed needs no additional secret. Every package goes here.
       # --no-symbols is required: dotnet nuget push uploads an adjacent .snupkg
@@ -439,3 +447,20 @@ jobs:
           path: artifacts/nupkg
           if-no-files-found: error
           retention-days: 90
+      - name: Upload the release SBOM artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openusd-release-sbom
+          path: artifacts/sbom/openusd-release.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload the SBOM to the GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release upload
+          '${{ github.ref_name }}'
+          artifacts/sbom/openusd-release.cdx.json
+          --clobber

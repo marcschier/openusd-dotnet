@@ -7,6 +7,12 @@ The native runtime is built from Pixar OpenUSD, licensed under the Apache Licens
 URLs, revisions, and archive SHA-256 hashes are pinned in eng/openusd.lock.json.
 
 Runtime packages also include THIRD-PARTY-NOTICES.md generated from the locked native install.
+Those notices provide attribution and license text. The release also publishes
+`openusd-release.cdx.json`, a generated CycloneDX software bill of materials (SBOM) that lists the
+published package and Viewer components, pinned native inputs, central NuGet package versions, and
+vcpkg components resolved from the locked baseline. The Viewer bundle is self-contained; the SBOM
+records the .NET runtime as SDK-resolved because the repository pins the SDK but not the restored
+runtime pack patch.
 
 The locked OpenUSD native runtime profile additionally enables these direct third-party components:
 

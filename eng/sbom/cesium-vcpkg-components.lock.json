@@ -1,0 +1,253 @@
+{
+  "$schemaVersion": 1,
+  "description": "Resolved Cesium vcpkg component data used by the hermetic release SBOM generator. Refresh deliberately with python eng/generate-sbom.py --refresh-vcpkg.",
+  "source": "eng/cesium.lock.json",
+  "vcpkg": {
+    "repository": "https://github.com/microsoft/vcpkg.git",
+    "baseline": "56bb2411609227288b70117ead2c47585ba07713"
+  },
+  "directVcpkgDependencies": [
+    "ada-url",
+    "asmjit",
+    "asyncplusplus",
+    "blend2d[jit]",
+    "cpp-httplib",
+    "curl",
+    "doctest",
+    "draco",
+    "earcut-hpp",
+    "expected-lite",
+    "glm",
+    "ktx",
+    "libjpeg-turbo",
+    "libmorton",
+    "libwebp",
+    "meshoptimizer",
+    "modp-base64",
+    "ms-gsl",
+    "openssl",
+    "picosha2",
+    "rapidjson",
+    "s2geometry",
+    "spdlog",
+    "spz",
+    "sqlite3",
+    "stb",
+    "tinyxml2",
+    "zlib",
+    "zlib-ng",
+    "zstd"
+  ],
+  "components": [
+    {
+      "name": "abseil",
+      "version": "20260107.1#2",
+      "license": "Apache-2.0",
+      "features": ""
+    },
+    {
+      "name": "ada-url",
+      "version": "3.4.4",
+      "license": "MIT OR Apache-2.0",
+      "features": ""
+    },
+    {
+      "name": "asmjit",
+      "version": "2025-10-13",
+      "license": "Zlib",
+      "features": ""
+    },
+    {
+      "name": "asyncplusplus",
+      "version": "1.2",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "blend2d",
+      "version": "2025-03-08#1",
+      "license": "Zlib",
+      "features": "jit"
+    },
+    {
+      "name": "brotli",
+      "version": "1.2.0",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "cpp-httplib",
+      "version": "0.43.1",
+      "license": "MIT",
+      "features": "brotli"
+    },
+    {
+      "name": "curl",
+      "version": "8.19.0",
+      "license": "curl AND ISC AND BSD-3-Clause",
+      "features": "non-http,openssl,ssl,sspi"
+    },
+    {
+      "name": "doctest",
+      "version": "2.5.2",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "draco",
+      "version": "1.5.7",
+      "license": "Apache-2.0",
+      "features": ""
+    },
+    {
+      "name": "earcut-hpp",
+      "version": "2.2.4",
+      "license": "ISC",
+      "features": ""
+    },
+    {
+      "name": "egl-registry",
+      "version": "2025-05-27",
+      "license": "Apache-2.0",
+      "features": ""
+    },
+    {
+      "name": "expected-lite",
+      "version": "0.10.0",
+      "license": "BSL-1.0",
+      "features": ""
+    },
+    {
+      "name": "fmt",
+      "version": "12.1.0",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "glm",
+      "version": "1.0.3",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "ktx",
+      "version": "4.4.2",
+      "license": "None",
+      "features": ""
+    },
+    {
+      "name": "libjpeg-turbo",
+      "version": "3.1.4.1",
+      "license": "BSD-3-Clause",
+      "features": ""
+    },
+    {
+      "name": "libmorton",
+      "version": "0.2.12",
+      "license": "NOASSERTION",
+      "features": ""
+    },
+    {
+      "name": "libwebp",
+      "version": "1.6.0#2",
+      "license": "BSD-3-Clause",
+      "features": "libwebpmux,nearlossless,simd,unicode"
+    },
+    {
+      "name": "meshoptimizer",
+      "version": "1.1",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "modp-base64",
+      "version": "2020-09-26#2",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "ms-gsl",
+      "version": "4.2.1",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "opengl-registry",
+      "version": "2026-01-26",
+      "license": "NOASSERTION",
+      "features": ""
+    },
+    {
+      "name": "openssl",
+      "version": "3.6.2",
+      "license": "Apache-2.0",
+      "features": ""
+    },
+    {
+      "name": "picosha2",
+      "version": "1.0.1",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "rapidjson",
+      "version": "2025-02-26",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "s2geometry",
+      "version": "0.13.1",
+      "license": "Apache-2.0",
+      "features": ""
+    },
+    {
+      "name": "spdlog",
+      "version": "1.17.0",
+      "license": "MIT",
+      "features": "fmt,tz-offset"
+    },
+    {
+      "name": "spz",
+      "version": "2.1.0",
+      "license": "MIT",
+      "features": ""
+    },
+    {
+      "name": "sqlite3",
+      "version": "3.53.0",
+      "license": "blessing",
+      "features": "json1"
+    },
+    {
+      "name": "stb",
+      "version": "2024-07-29#1",
+      "license": "MIT OR CC-PDDC",
+      "features": ""
+    },
+    {
+      "name": "tinyxml2",
+      "version": "11.0.0",
+      "license": "Zlib",
+      "features": ""
+    },
+    {
+      "name": "zlib",
+      "version": "1.3.2",
+      "license": "Zlib",
+      "features": ""
+    },
+    {
+      "name": "zlib-ng",
+      "version": "2.3.3",
+      "license": "Zlib",
+      "features": ""
+    },
+    {
+      "name": "zstd",
+      "version": "1.5.7",
+      "license": "BSD-3-Clause OR GPL-2.0-only",
+      "features": ""
+    }
+  ]
+}

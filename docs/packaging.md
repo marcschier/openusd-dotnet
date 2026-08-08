@@ -191,6 +191,17 @@ Canonical evidence is generated with the build it describes:
 - `native/install/<rid>/.openusd-install-metadata.json` binds the current native
   sources, headers, installed libraries, and their hashes. Verify it with
   `./eng/native-install-metadata.ps1 -Operation Verify -Rid <rid>`.
+- `eng/sbom/openusd-release.cdx.json` is the checked CycloneDX 1.6 SBOM generated from
+  `eng/openusd.install.lock.json`, `eng/cesium.lock.json`, `eng/physx.lock.json`,
+  `eng/shaders/toolchain.lock.json`, `Directory.Packages.props`, `global.json`, the Viewer publish
+  script, the published package list in `eng/pack-packages.ps1`, and the committed resolved vcpkg
+  data in `eng/sbom/cesium-vcpkg-components.lock.json`. The check path is hermetic and performs no
+  network I/O; after intentionally changing the Cesium vcpkg pin, refresh that data with
+  `python eng/generate-sbom.py --refresh-vcpkg`, then regenerate and validate the SBOM with
+  `./eng/check-sbom.ps1 -Update`. CI runs `./eng/check-sbom.ps1` so dependency lock changes cannot
+  leave the checked SBOM stale. Release runs regenerate the same SBOM after stamping the tag version
+  and upload it as
+  `openusd-release.cdx.json`.
 - `artifacts/package-linux-storm-child/package-evidence.json` records the Linux
   nupkg and validation-manifest hashes, exact ABI-7 SONAME topology, RUNPATH
   policy, package-only ABI output, and loaded-library confinement.

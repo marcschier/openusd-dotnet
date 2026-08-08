@@ -193,6 +193,66 @@ public sealed class WorkflowStructureContractTests
             .Because("the release artifact must not filter out the adjacent snupkg files");
     }
 
+    [Test]
+    public async Task ReleasePublishesTheGeneratedSbom()
+    {
+        string root = FindRepositoryRoot();
+        string ci = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "ci.yml"));
+        string release = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "release.yml"));
+        string generator = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "generate-sbom.py"));
+
+        await Assert.That(ci)
+            .Contains("./eng/check-sbom.ps1", StringComparison.Ordinal)
+            .Because("the checked SBOM must fail CI when pinned dependency inputs change");
+
+        foreach (string pinnedInput in new[]
+        {
+            "eng/openusd.install.lock.json",
+            "eng/cesium.lock.json",
+            "eng/physx.lock.json",
+            "eng/shaders/toolchain.lock.json",
+            "global.json",
+            "Directory.Packages.props",
+            "eng/pack-packages.ps1",
+            "eng/publish-viewer-bundle.ps1",
+            "eng/sbom/cesium-vcpkg-components.lock.json",
+        })
+        {
+            await Assert.That(generator)
+                .Contains(pinnedInput, StringComparison.Ordinal)
+                .Because($"{pinnedInput} contributes to the release SBOM and its drift hash");
+        }
+
+        string publish = ReadJob(release, "publish");
+        await Assert.That(publish)
+            .Contains("contents: write", StringComparison.Ordinal)
+            .Because("publishing the SBOM as a GitHub release asset requires contents: write");
+
+        string generate = ReadStep(publish, "Generate release SBOM");
+        await Assert.That(generate)
+            .Contains("eng/generate-sbom.py", StringComparison.Ordinal)
+            .Because("the release must generate from pinned inputs rather than uploading a stale file");
+        await Assert.That(generate)
+            .Contains("--validate", StringComparison.Ordinal)
+            .Because("a generated SBOM must be validated before it is published");
+
+        string uploadArtifact = ReadStep(publish, "Upload the release SBOM artifact");
+        await Assert.That(uploadArtifact)
+            .Contains("openusd-release.cdx.json", StringComparison.Ordinal)
+            .Because("the workflow artifact keeps the SBOM tied to the release run evidence");
+
+        string uploadRelease = ReadStep(publish, "Upload the SBOM to the GitHub release");
+        await Assert.That(uploadRelease)
+            .Contains("gh release upload", StringComparison.Ordinal)
+            .Because("the GitHub release asset is the durable home beside the published artifacts");
+        await Assert.That(uploadRelease)
+            .Contains("openusd-release.cdx.json", StringComparison.Ordinal)
+            .Because("supply-chain scanners need the standardized CycloneDX JSON asset");
+    }
+
 
     [Test]
     public async Task NativeWorkflowPathFiltersExcludeValidationOnlyInputs()

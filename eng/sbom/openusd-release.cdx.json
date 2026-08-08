@@ -1,0 +1,2925 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:1fd11c24-482a-50a8-9e2c-7a97f5d7d1e6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "1970-01-01T00:00:00Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "eng/generate-sbom.py",
+          "version": "1"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "bom-ref": "pkg:nuget/OpenUsd@0.6.0-alpha",
+      "name": "OpenUsd release artifacts",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd@0.6.0-alpha"
+    },
+    "properties": [
+      {
+        "name": "openusd:input:Directory.Packages.props:sha256",
+        "value": "0117bfb3f2a1ad5527e99a8aac5a7462fb8297dc1df21adb3ae21834385d98d9"
+      },
+      {
+        "name": "openusd:input:eng/cesium.lock.json:sha256",
+        "value": "0074d7ab113c0299e35cb023ed5d78bc84eeb3573ad6001caa5a5d4493edb7cd"
+      },
+      {
+        "name": "openusd:input:eng/openusd.install.lock.json:sha256",
+        "value": "e057c2d156607f60402812688c1d2678038e0e3e14a5bca4b87fcb932c4a6a2b"
+      },
+      {
+        "name": "openusd:input:eng/pack-packages.ps1:sha256",
+        "value": "2e7726208eb7d7d5880a990b006ef4a3a65f15f6e32dc96c7864a85117b2a675"
+      },
+      {
+        "name": "openusd:input:eng/physx.lock.json:sha256",
+        "value": "8f88514bd1fca0c9ae02c86209b74cd10bccf39ee47cfa0ffac9bc264d8fefd1"
+      },
+      {
+        "name": "openusd:input:eng/publish-viewer-bundle.ps1:sha256",
+        "value": "3ca190cae2b9c8f4d947527d9c9cd632f18f3e561bb372b5feab65fd9a87b5c3"
+      },
+      {
+        "name": "openusd:input:eng/sbom/cesium-vcpkg-components.lock.json:sha256",
+        "value": "b2555fd04dcbd461d9e1d8b458d40112f712fed844a23a05dccfd32eace7aafa"
+      },
+      {
+        "name": "openusd:input:eng/shaders/toolchain.lock.json:sha256",
+        "value": "265bb80ff627b868cbdbafe92df08b75872e480e0996d587f2ff35772267d70e"
+      },
+      {
+        "name": "openusd:input:global.json:sha256",
+        "value": "60797e87793072fab653b0a8b38f7577d75a681747392c3909e9663b79d24a93"
+      },
+      {
+        "name": "openusd:input:version.json:sha256",
+        "value": "a3b94cbc6007b2df1602893d33cd6ca98c63e86c213de07bc0d2fd1b650ee05f"
+      },
+      {
+        "name": "openusd:scope",
+        "value": "Published NuGet packages and Viewer bundles; PhysX is recorded as optional native CI input."
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "framework",
+      "bom-ref": "dotnet-runtime:Microsoft.NETCore.App",
+      "name": "Microsoft.NETCore.App",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "global.json; eng/publish-viewer-bundle.ps1"
+        },
+        {
+          "name": "openusd:release-artifact",
+          "value": "Viewer self-contained bundle"
+        },
+        {
+          "name": "openusd:unresolved",
+          "value": "Exact runtime pack patch is selected by the pinned .NET SDK during restore; the repository pins SDK 10.0.301 but does not record the restored runtime pack version."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Alembic:1.8.5:win-x64,linux-x64,osx-arm64",
+      "name": "Alembic",
+      "version": "1.8.5",
+      "purl": "pkg:github/alembic/alembic@f4e3cc33e4270ade9d076a2cac7a2a4409c61675",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9196561B785102B48A731359642E9FBDF62C3A5183DE5CACA7C6F03292F474DF"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/alembic/alembic/archive/refs/tags/1.8.5.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Blosc:1.20.1:win-x64,linux-x64",
+      "name": "Blosc",
+      "version": "1.20.1",
+      "purl": "pkg:github/Blosc/c-blosc@a44e961498cdca2eb893fa897cd15dd007fad496",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9717F7C9D8288C343A743618E8D47ACEA48F835306782F2F9EBF825CC8DFAA34"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/Blosc/c-blosc/archive/v1.20.1.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Blosc:1.21.6:osx-arm64",
+      "name": "Blosc",
+      "version": "1.21.6",
+      "purl": "pkg:github/Blosc/c-blosc@616f4b7343a8479f7e71dd3d7025bd92c9a6bbd0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1919C97D55023C04AA8771EA8235B63E9DA3C22E3D2A68340B33710D19C2A2EB"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/Blosc/c-blosc/archive/v1.21.6.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Boost:1.80.0:linux-x64",
+      "name": "Boost",
+      "version": "1.80.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "E34756F63ABE8AC34B35352743F17D061FCC825969A2DD8458264EDB38781782"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://archives.boost.io/release/1.80.0/source/boost_1_80_0.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "linux-x64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Boost:1.82.0:osx-arm64",
+      "name": "Boost",
+      "version": "1.82.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "F7C9E28D242ABCD7A2C1B962039FCDD463CA149D1883C3A950BBCC0CE6F7C6D9"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://archives.boost.io/release/1.82.0/source/boost_1_82_0.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Boost:1.86.0:win-x64",
+      "name": "Boost",
+      "version": "1.86.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "CD20A5694E753683E1DC2EE10E2D1BB11704E65893EBCC6CED234BA68E5D8646"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://archives.boost.io/release/1.86.0/source/boost_1_86_0.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Draco:1.5.6:win-x64,linux-x64,osx-arm64",
+      "name": "Draco",
+      "version": "1.5.6",
+      "purl": "pkg:github/google/draco@9f856abaafb4b39f1f013763ff061522e0261c6f",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "40ED351FBB4EE4E37D84197A3394567C2F6E4B444F693C1FD37C7BDFC961B0EA"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/google/draco/archive/refs/tags/1.5.6.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:MaterialX:1.39.4:win-x64,linux-x64,osx-arm64",
+      "name": "MaterialX",
+      "version": "1.39.4",
+      "purl": "pkg:github/AcademySoftwareFoundation/MaterialX@270b5cf2ae2be24a3b6ef4b0569f1c93038dda1d",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3910B2498D7DA6C8E5AC150B9E6A74E530626044309EDB077829C024ED691E0E"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/AcademySoftwareFoundation/MaterialX/archive/v1.39.4.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:OpenColorIO:2.2.1:win-x64,linux-x64",
+      "name": "OpenColorIO",
+      "version": "2.2.1",
+      "purl": "pkg:github/AcademySoftwareFoundation/OpenColorIO@d1ef24cbf8021f642e42f45f50c2cd4cc77141ce",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "BE58D991A9449631D14C605F24ECC0FAC9CB7E03A289A9D289359C7A7BAE945F"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v2.2.1.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:OpenColorIO:2.4.2:osx-arm64",
+      "name": "OpenColorIO",
+      "version": "2.4.2",
+      "purl": "pkg:github/AcademySoftwareFoundation/OpenColorIO@6918fad3f5d22ac3ef2397c754bf4268c2b58dd0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0A30F0BB8DD2E436B0751CD9DA1B67A4186FF36AB41A7114B662E02F87E0D1F0"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO/archive/refs/tags/v2.4.2.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:OpenEXR:3.1.13:win-x64,linux-x64,osx-arm64",
+      "name": "OpenEXR",
+      "version": "3.1.13",
+      "purl": "pkg:github/AcademySoftwareFoundation/openexr@fad1d1a9dc188aceabbea1313580d73b7236b79b",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "28CD733DBF1E25B942BD31594FFD29C85929822C85116EEDA9A67B71FA0B13E8"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v3.1.13.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:OpenImageIO:2.5.16.0:win-x64,linux-x64,osx-arm64",
+      "name": "OpenImageIO",
+      "version": "2.5.16.0",
+      "purl": "pkg:github/OpenImageIO/oiio@73acd658769be18eeb618791a11ecbfad8c2372c",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "867C32FC6FC4ACF286B0018A8582DC799779CEDCA41549BF5D19C5BE004DD207"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/OpenImageIO/oiio/archive/refs/tags/v2.5.16.0.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:OpenSubdiv:3.6.1:win-x64,linux-x64,osx-arm64",
+      "name": "OpenSubdiv",
+      "version": "3.6.1",
+      "purl": "pkg:github/PixarAnimationStudios/OpenSubdiv@f26d0dedeaf846ea321865a527bb4489691c2f04",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "F2A42D8AF5B3E1D51B9D6B243C1C3BAC9D6044E3715CD19968723B49231039CC"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/PixarAnimationStudios/OpenSubdiv/archive/v3_6_1.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:OpenUSD",
+      "name": "OpenUSD",
+      "version": "26.05",
+      "purl": "pkg:github/PixarAnimationStudios/OpenUSD@2095fafafd033fa23386d7ec6d58c7cc33974518",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "694274F5B5751BA49C229F8413B4437E83AD8CD9472FCCE943DE577D42D7DE31"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://codeload.github.com/PixarAnimationStudios/OpenUSD/tar.gz/2095fafafd033fa23386d7ec6d58c7cc33974518"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:OpenVDB:10.1.0:win-x64,linux-x64,osx-arm64",
+      "name": "OpenVDB",
+      "version": "10.1.0",
+      "purl": "pkg:github/AcademySoftwareFoundation/openvdb@87a508ca48a69f06d149be6cb0d8289fc1314f72",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "611B319B30F73C9739882BAD2FF9AD3200E12409003AB6F64E2CCCDB899B4896"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/AcademySoftwareFoundation/openvdb/archive/refs/tags/v10.1.0.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:PhysX",
+      "name": "PhysX",
+      "version": "5.5.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/NVIDIA-Omniverse/PhysX.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/physx.lock.json"
+        },
+        {
+          "name": "openusd:release-scope",
+          "value": "optional shim is built in native CI but not published as a release artifact"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Ptex:2.4.2:win-x64,linux-x64,osx-arm64",
+      "name": "Ptex",
+      "version": "2.4.2",
+      "purl": "pkg:github/wdas/ptex@4e970554cea68eb5f2173bf261b61404fd9cc772",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "83A0DAC7DFE993970DA6384888A49CB3A7CD8952B3B615A6C1A5E356259E78AA"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/wdas/ptex/archive/refs/tags/v2.4.2.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Vulkan-Headers:2cd90f9d20df57eac214c148f3aed885372ddcfe",
+      "name": "Vulkan-Headers",
+      "version": "2cd90f9d20df57eac214c148f3aed885372ddcfe",
+      "purl": "pkg:github/KhronosGroup/Vulkan-Headers@2cd90f9d20df57eac214c148f3aed885372ddcfe",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/KhronosGroup/Vulkan-Headers.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:vulkanSdk",
+          "value": "1.4.321.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Vulkan-Loader:da8d2caad9341ca8c5a7c3deba217d7da50a7c24",
+      "name": "Vulkan-Loader",
+      "version": "da8d2caad9341ca8c5a7c3deba217d7da50a7c24",
+      "purl": "pkg:github/KhronosGroup/Vulkan-Loader@da8d2caad9341ca8c5a7c3deba217d7da50a7c24",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/KhronosGroup/Vulkan-Loader.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:vulkanSdk",
+          "value": "1.4.321.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:Vulkan-Utility-Libraries:ec329e2721921f79743b90307ee047d08e057788",
+      "name": "Vulkan-Utility-Libraries",
+      "version": "ec329e2721921f79743b90307ee047d08e057788",
+      "purl": "pkg:github/KhronosGroup/Vulkan-Utility-Libraries@ec329e2721921f79743b90307ee047d08e057788",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/KhronosGroup/Vulkan-Utility-Libraries.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:vulkanSdk",
+          "value": "1.4.321.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:VulkanMemoryAllocator:1d8f600fd424278486eade7ed3e877c99f0846b1",
+      "name": "VulkanMemoryAllocator",
+      "version": "1d8f600fd424278486eade7ed3e877c99f0846b1",
+      "purl": "pkg:github/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator@1d8f600fd424278486eade7ed3e877c99f0846b1",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:vulkanSdk",
+          "value": "1.4.321.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:cesium-native",
+      "name": "cesium-native",
+      "version": "0.63.0",
+      "purl": "pkg:github/CesiumGS/cesium-native@b4137763914820b01a42b52ee886a55b036cd6ac",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3E756FB8EE9FB69167215D038E79AB50E60AD524F970481F14309E687B887B3B"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://codeload.github.com/CesiumGS/cesium-native/tar.gz/b4137763914820b01a42b52ee886a55b036cd6ac"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:libjpeg-turbo:2.0.1:win-x64,linux-x64,osx-arm64",
+      "name": "libjpeg-turbo",
+      "version": "2.0.1",
+      "purl": "pkg:github/libjpeg-turbo/libjpeg-turbo@bb3d325624526c91646bb9af9578d7198c082d51",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "DAB9F12655D244B9F8E6C88FCEDF4B109560B7B2C5429B85E92792008A28954B"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.1.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:libpng:1.6.47:win-x64,linux-x64,osx-arm64",
+      "name": "libpng",
+      "version": "1.6.47",
+      "purl": "pkg:github/pnggroup/libpng@872555f4ba910252783af1507f9e7fe1653be252",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "D7EFC089968972FB79A4AB71BD9311F56C58A51B858A17BAB85D806EC48CC77A"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.47.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:libtiff:4.0.7:win-x64,linux-x64,osx-arm64",
+      "name": "libtiff",
+      "version": "4.0.7",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "53531D33D1FD3B4303520D53FDC146FBD117AB39BA8B6C6359483AF0064276FF"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://gitlab.com/libtiff/libtiff/-/archive/v4.0.7/libtiff-v4.0.7.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:oneTBB:2021.12.0:win-x64,linux-x64,osx-arm64",
+      "name": "oneTBB",
+      "version": "2021.12.0",
+      "purl": "pkg:github/oneapi-src/oneTBB@9afd759b72c0c233cd5ea3c3c06b0894c9da9c54",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "FE6CA052B5BDD2C6E0616B360C9B0DCBCC46E01BBD0AA8FD0517C17FC58931DB"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.12.0.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64,linux-x64,osx-arm64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:shaderc-source-manifest:a298b382ea7af052b549c08a799a56e9ec4bf471",
+      "name": "shaderc-source-manifest",
+      "version": "a298b382ea7af052b549c08a799a56e9ec4bf471",
+      "purl": "pkg:github/google/shaderc@a298b382ea7af052b549c08a799a56e9ec4bf471",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/google/shaderc.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:vulkanSdk",
+          "value": "1.4.321.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native:zlib:1.2.13:win-x64",
+      "name": "zlib",
+      "version": "1.2.13",
+      "purl": "pkg:github/madler/zlib@04f42ceca40f73e2978b50e93806c2a18c1281fc",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "C2856951BBF30E30861ACE3765595D86BA13F2CF01279D901F6C62258C57F4FF"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/madler/zlib/archive/v1.2.13.zip"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/openusd.install.lock.json"
+        },
+        {
+          "name": "openusd:platforms",
+          "value": "win-x64"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Avalonia",
+      "name": "Avalonia",
+      "version": "12.1.0",
+      "purl": "pkg:nuget/Avalonia@12.1.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Avalonia.Desktop",
+      "name": "Avalonia.Desktop",
+      "version": "12.1.0",
+      "purl": "pkg:nuget/Avalonia.Desktop@12.1.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Avalonia.Fonts.Inter",
+      "name": "Avalonia.Fonts.Inter",
+      "version": "12.1.0",
+      "purl": "pkg:nuget/Avalonia.Fonts.Inter@12.1.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Avalonia.Themes.Fluent",
+      "name": "Avalonia.Themes.Fluent",
+      "version": "12.1.0",
+      "purl": "pkg:nuget/Avalonia.Themes.Fluent@12.1.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Avalonia.Wayland",
+      "name": "Avalonia.Wayland",
+      "version": "12.1.0",
+      "purl": "pkg:nuget/Avalonia.Wayland@12.1.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:BenchmarkDotNet",
+      "name": "BenchmarkDotNet",
+      "version": "0.15.8",
+      "purl": "pkg:nuget/BenchmarkDotNet@0.15.8",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Microsoft.CodeAnalysis.PublicApiAnalyzers",
+      "name": "Microsoft.CodeAnalysis.PublicApiAnalyzers",
+      "version": "5.6.0",
+      "purl": "pkg:nuget/Microsoft.CodeAnalysis.PublicApiAnalyzers@5.6.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Microsoft.Direct3D.DXC",
+      "name": "Microsoft.Direct3D.DXC",
+      "version": "1.8.2505.32",
+      "purl": "pkg:nuget/Microsoft.Direct3D.DXC@1.8.2505.32",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Microsoft.SourceLink.GitHub",
+      "name": "Microsoft.SourceLink.GitHub",
+      "version": "10.0.301",
+      "purl": "pkg:nuget/Microsoft.SourceLink.GitHub@10.0.301",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Microsoft.Testing.Extensions.CodeCoverage",
+      "name": "Microsoft.Testing.Extensions.CodeCoverage",
+      "version": "18.9.0",
+      "purl": "pkg:nuget/Microsoft.Testing.Extensions.CodeCoverage@18.9.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Nerdbank.GitVersioning",
+      "name": "Nerdbank.GitVersioning",
+      "version": "3.10.91",
+      "purl": "pkg:nuget/Nerdbank.GitVersioning@3.10.91",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Roslynator.Analyzers",
+      "name": "Roslynator.Analyzers",
+      "version": "4.15.0",
+      "purl": "pkg:nuget/Roslynator.Analyzers@4.15.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Roslynator.Formatting.Analyzers",
+      "name": "Roslynator.Formatting.Analyzers",
+      "version": "4.15.0",
+      "purl": "pkg:nuget/Roslynator.Formatting.Analyzers@4.15.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:SPIRV-Cross.NET",
+      "name": "SPIRV-Cross.NET",
+      "version": "1.0.2",
+      "purl": "pkg:nuget/SPIRV-Cross.NET@1.0.2",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:SharpMetal",
+      "name": "SharpMetal",
+      "version": "1.1.0",
+      "purl": "pkg:nuget/SharpMetal@1.1.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Silk.NET.Core",
+      "name": "Silk.NET.Core",
+      "version": "2.23.0",
+      "purl": "pkg:nuget/Silk.NET.Core@2.23.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Silk.NET.DXGI",
+      "name": "Silk.NET.DXGI",
+      "version": "2.23.0",
+      "purl": "pkg:nuget/Silk.NET.DXGI@2.23.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Silk.NET.Direct3D11",
+      "name": "Silk.NET.Direct3D11",
+      "version": "2.23.0",
+      "purl": "pkg:nuget/Silk.NET.Direct3D11@2.23.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Silk.NET.Direct3D12",
+      "name": "Silk.NET.Direct3D12",
+      "version": "2.23.0",
+      "purl": "pkg:nuget/Silk.NET.Direct3D12@2.23.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Silk.NET.Vulkan",
+      "name": "Silk.NET.Vulkan",
+      "version": "2.23.0",
+      "purl": "pkg:nuget/Silk.NET.Vulkan@2.23.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Silk.NET.Vulkan.Loader.Native",
+      "name": "Silk.NET.Vulkan.Loader.Native",
+      "version": "2025.9.12",
+      "purl": "pkg:nuget/Silk.NET.Vulkan.Loader.Native@2025.9.12",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Stride.Dependencies.SwiftShader",
+      "name": "Stride.Dependencies.SwiftShader",
+      "version": "2026.4.14",
+      "purl": "pkg:nuget/Stride.Dependencies.SwiftShader@2026.4.14",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:TUnit",
+      "name": "TUnit",
+      "version": "1.59.0",
+      "purl": "pkg:nuget/TUnit@1.59.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd",
+      "name": "OpenUsd",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Cesium",
+      "name": "OpenUsd.Cesium",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Cesium@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Interop",
+      "name": "OpenUsd.Interop",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Interop@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Rendering",
+      "name": "OpenUsd.Rendering",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Rendering.Silk",
+      "name": "OpenUsd.Rendering.Silk",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Rendering.Silk.D3D12",
+      "name": "OpenUsd.Rendering.Silk.D3D12",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.D3D12@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Rendering.Silk.Metal",
+      "name": "OpenUsd.Rendering.Silk.Metal",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.Metal@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Rendering.Silk.Vulkan",
+      "name": "OpenUsd.Rendering.Silk.Vulkan",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.Vulkan@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Rendering.Storm",
+      "name": "OpenUsd.Rendering.Storm",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Storm@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Cesium",
+      "name": "OpenUsd.Runtime.Cesium",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Cesium.linux-x64",
+      "name": "OpenUsd.Runtime.Cesium.linux-x64",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.linux-x64@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Cesium.osx-arm64",
+      "name": "OpenUsd.Runtime.Cesium.osx-arm64",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.osx-arm64@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Cesium.win-x64",
+      "name": "OpenUsd.Runtime.Cesium.win-x64",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.win-x64@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Core",
+      "name": "OpenUsd.Runtime.Core",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Core.linux-x64",
+      "name": "OpenUsd.Runtime.Core.linux-x64",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core.linux-x64@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Core.osx-arm64",
+      "name": "OpenUsd.Runtime.Core.osx-arm64",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core.osx-arm64@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Core.win-x64",
+      "name": "OpenUsd.Runtime.Core.win-x64",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core.win-x64@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Imaging",
+      "name": "OpenUsd.Runtime.Imaging",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Imaging.linux-x64",
+      "name": "OpenUsd.Runtime.Imaging.linux-x64",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.linux-x64@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Imaging.osx-arm64",
+      "name": "OpenUsd.Runtime.Imaging.osx-arm64",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.osx-arm64@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Imaging.win-x64",
+      "name": "OpenUsd.Runtime.Imaging.win-x64",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.win-x64@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Viewer",
+      "name": "OpenUsd.Viewer",
+      "version": "0.6.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Viewer@0.6.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "shader-toolchain:SPIRV-Headers",
+      "name": "SPIRV-Headers",
+      "version": "ad9184e76a66b1001c29db9b0a3e87f646c64de0",
+      "purl": "pkg:github/KhronosGroup/SPIRV-Headers@ad9184e76a66b1001c29db9b0a3e87f646c64de0",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/KhronosGroup/SPIRV-Headers"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/shaders/toolchain.lock.json"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "shader-toolchain:SPIRV-Tools",
+      "name": "SPIRV-Tools",
+      "version": "vulkan-sdk-1.4.350.1",
+      "purl": "pkg:github/KhronosGroup/SPIRV-Tools@0539c81f69a3daeb706fd3477dca61435b475156",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/KhronosGroup/SPIRV-Tools"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/shaders/toolchain.lock.json"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "shader-toolchain:Slang",
+      "name": "Slang",
+      "version": "2026.13.1",
+      "purl": "pkg:github/shader-slang/slang@c0952c29d3664b60ada5e5edb3fff9ffd6f98d2d",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/shader-slang/slang"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/shaders/toolchain.lock.json"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:abseil",
+      "name": "abseil",
+      "version": "20260107.1#2",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "Apache-2.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:ada-url",
+      "name": "ada-url",
+      "version": "3.4.4",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT OR Apache-2.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:asmjit",
+      "name": "asmjit",
+      "version": "2025-10-13",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "Zlib"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:asyncplusplus",
+      "name": "asyncplusplus",
+      "version": "1.2",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:blend2d",
+      "name": "blend2d",
+      "version": "2025-03-08#1",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": "jit"
+        },
+        {
+          "name": "openusd:license",
+          "value": "Zlib"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:brotli",
+      "name": "brotli",
+      "version": "1.2.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:cpp-httplib",
+      "name": "cpp-httplib",
+      "version": "0.43.1",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": "brotli"
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:curl",
+      "name": "curl",
+      "version": "8.19.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": "non-http,openssl,ssl,sspi"
+        },
+        {
+          "name": "openusd:license",
+          "value": "curl AND ISC AND BSD-3-Clause"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:doctest",
+      "name": "doctest",
+      "version": "2.5.2",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:draco",
+      "name": "draco",
+      "version": "1.5.7",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "Apache-2.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:earcut-hpp",
+      "name": "earcut-hpp",
+      "version": "2.2.4",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "ISC"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:egl-registry",
+      "name": "egl-registry",
+      "version": "2025-05-27",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "Apache-2.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:expected-lite",
+      "name": "expected-lite",
+      "version": "0.10.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "BSL-1.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:fmt",
+      "name": "fmt",
+      "version": "12.1.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:glm",
+      "name": "glm",
+      "version": "1.0.3",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:ktx",
+      "name": "ktx",
+      "version": "4.4.2",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "None"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:libjpeg-turbo",
+      "name": "libjpeg-turbo",
+      "version": "3.1.4.1",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "BSD-3-Clause"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:libmorton",
+      "name": "libmorton",
+      "version": "0.2.12",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "NOASSERTION"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:libwebp",
+      "name": "libwebp",
+      "version": "1.6.0#2",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": "libwebpmux,nearlossless,simd,unicode"
+        },
+        {
+          "name": "openusd:license",
+          "value": "BSD-3-Clause"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:meshoptimizer",
+      "name": "meshoptimizer",
+      "version": "1.1",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:modp-base64",
+      "name": "modp-base64",
+      "version": "2020-09-26#2",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:ms-gsl",
+      "name": "ms-gsl",
+      "version": "4.2.1",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:opengl-registry",
+      "name": "opengl-registry",
+      "version": "2026-01-26",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "NOASSERTION"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:openssl",
+      "name": "openssl",
+      "version": "3.6.2",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "Apache-2.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:picosha2",
+      "name": "picosha2",
+      "version": "1.0.1",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:rapidjson",
+      "name": "rapidjson",
+      "version": "2025-02-26",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:s2geometry",
+      "name": "s2geometry",
+      "version": "0.13.1",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "Apache-2.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:spdlog",
+      "name": "spdlog",
+      "version": "1.17.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": "fmt,tz-offset"
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:spz",
+      "name": "spz",
+      "version": "2.1.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:sqlite3",
+      "name": "sqlite3",
+      "version": "3.53.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": "json1"
+        },
+        {
+          "name": "openusd:license",
+          "value": "blessing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:stb",
+      "name": "stb",
+      "version": "2024-07-29#1",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "MIT OR CC-PDDC"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:tinyxml2",
+      "name": "tinyxml2",
+      "version": "11.0.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "Zlib"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:zlib",
+      "name": "zlib",
+      "version": "1.3.2",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "Zlib"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:zlib-ng",
+      "name": "zlib-ng",
+      "version": "2.3.3",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "Zlib"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "vcpkg:zstd",
+      "name": "zstd",
+      "version": "1.5.7",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/cesium.lock.json"
+        },
+        {
+          "name": "openusd:vcpkg-baseline",
+          "value": "56bb2411609227288b70117ead2c47585ba07713"
+        },
+        {
+          "name": "openusd:vcpkg-features",
+          "value": ""
+        },
+        {
+          "name": "openusd:license",
+          "value": "BSD-3-Clause OR GPL-2.0-only"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:nuget/OpenUsd@0.6.0-alpha",
+      "dependsOn": [
+        "nuget:OpenUsd",
+        "nuget:OpenUsd.Interop",
+        "nuget:OpenUsd.Rendering",
+        "nuget:OpenUsd.Rendering.Silk",
+        "nuget:OpenUsd.Rendering.Silk.D3D12",
+        "nuget:OpenUsd.Rendering.Silk.Metal",
+        "nuget:OpenUsd.Rendering.Silk.Vulkan",
+        "nuget:OpenUsd.Rendering.Storm",
+        "nuget:OpenUsd.Cesium",
+        "nuget:OpenUsd.Viewer",
+        "nuget:OpenUsd.Runtime.Core",
+        "nuget:OpenUsd.Runtime.Core.win-x64",
+        "nuget:OpenUsd.Runtime.Core.linux-x64",
+        "nuget:OpenUsd.Runtime.Core.osx-arm64",
+        "nuget:OpenUsd.Runtime.Imaging",
+        "nuget:OpenUsd.Runtime.Imaging.win-x64",
+        "nuget:OpenUsd.Runtime.Imaging.linux-x64",
+        "nuget:OpenUsd.Runtime.Imaging.osx-arm64",
+        "nuget:OpenUsd.Runtime.Cesium",
+        "nuget:OpenUsd.Runtime.Cesium.win-x64",
+        "nuget:OpenUsd.Runtime.Cesium.linux-x64",
+        "nuget:OpenUsd.Runtime.Cesium.osx-arm64",
+        "nuget-dependency:Avalonia",
+        "nuget-dependency:Avalonia.Desktop",
+        "nuget-dependency:Avalonia.Fonts.Inter",
+        "nuget-dependency:Avalonia.Themes.Fluent",
+        "nuget-dependency:Avalonia.Wayland",
+        "nuget-dependency:BenchmarkDotNet",
+        "nuget-dependency:Microsoft.CodeAnalysis.PublicApiAnalyzers",
+        "nuget-dependency:Microsoft.Direct3D.DXC",
+        "nuget-dependency:Microsoft.SourceLink.GitHub",
+        "nuget-dependency:Microsoft.Testing.Extensions.CodeCoverage",
+        "nuget-dependency:Nerdbank.GitVersioning",
+        "nuget-dependency:Roslynator.Analyzers",
+        "nuget-dependency:Roslynator.Formatting.Analyzers",
+        "nuget-dependency:SharpMetal",
+        "nuget-dependency:Silk.NET.Core",
+        "nuget-dependency:Silk.NET.Direct3D11",
+        "nuget-dependency:Silk.NET.Direct3D12",
+        "nuget-dependency:Silk.NET.DXGI",
+        "nuget-dependency:Silk.NET.Vulkan",
+        "nuget-dependency:Silk.NET.Vulkan.Loader.Native",
+        "nuget-dependency:SPIRV-Cross.NET",
+        "nuget-dependency:Stride.Dependencies.SwiftShader",
+        "nuget-dependency:TUnit",
+        "dotnet-runtime:Microsoft.NETCore.App",
+        "native:OpenUSD",
+        "native:oneTBB:2021.12.0:win-x64,linux-x64,osx-arm64",
+        "native:zlib:1.2.13:win-x64",
+        "native:Boost:1.86.0:win-x64",
+        "native:Boost:1.80.0:linux-x64",
+        "native:Boost:1.82.0:osx-arm64",
+        "native:libjpeg-turbo:2.0.1:win-x64,linux-x64,osx-arm64",
+        "native:libtiff:4.0.7:win-x64,linux-x64,osx-arm64",
+        "native:libpng:1.6.47:win-x64,linux-x64,osx-arm64",
+        "native:OpenEXR:3.1.13:win-x64,linux-x64,osx-arm64",
+        "native:OpenImageIO:2.5.16.0:win-x64,linux-x64,osx-arm64",
+        "native:OpenColorIO:2.2.1:win-x64,linux-x64",
+        "native:OpenColorIO:2.4.2:osx-arm64",
+        "native:OpenSubdiv:3.6.1:win-x64,linux-x64,osx-arm64",
+        "native:MaterialX:1.39.4:win-x64,linux-x64,osx-arm64",
+        "native:Ptex:2.4.2:win-x64,linux-x64,osx-arm64",
+        "native:Blosc:1.20.1:win-x64,linux-x64",
+        "native:Blosc:1.21.6:osx-arm64",
+        "native:OpenVDB:10.1.0:win-x64,linux-x64,osx-arm64",
+        "native:Alembic:1.8.5:win-x64,linux-x64,osx-arm64",
+        "native:Draco:1.5.6:win-x64,linux-x64,osx-arm64",
+        "native:Vulkan-Headers:2cd90f9d20df57eac214c148f3aed885372ddcfe",
+        "native:Vulkan-Loader:da8d2caad9341ca8c5a7c3deba217d7da50a7c24",
+        "native:shaderc-source-manifest:a298b382ea7af052b549c08a799a56e9ec4bf471",
+        "native:VulkanMemoryAllocator:1d8f600fd424278486eade7ed3e877c99f0846b1",
+        "native:Vulkan-Utility-Libraries:ec329e2721921f79743b90307ee047d08e057788",
+        "native:cesium-native",
+        "vcpkg:abseil",
+        "vcpkg:ada-url",
+        "vcpkg:asmjit",
+        "vcpkg:asyncplusplus",
+        "vcpkg:blend2d",
+        "vcpkg:brotli",
+        "vcpkg:cpp-httplib",
+        "vcpkg:curl",
+        "vcpkg:doctest",
+        "vcpkg:draco",
+        "vcpkg:earcut-hpp",
+        "vcpkg:egl-registry",
+        "vcpkg:expected-lite",
+        "vcpkg:fmt",
+        "vcpkg:glm",
+        "vcpkg:ktx",
+        "vcpkg:libjpeg-turbo",
+        "vcpkg:libmorton",
+        "vcpkg:libwebp",
+        "vcpkg:meshoptimizer",
+        "vcpkg:modp-base64",
+        "vcpkg:ms-gsl",
+        "vcpkg:opengl-registry",
+        "vcpkg:openssl",
+        "vcpkg:picosha2",
+        "vcpkg:rapidjson",
+        "vcpkg:s2geometry",
+        "vcpkg:spdlog",
+        "vcpkg:spz",
+        "vcpkg:sqlite3",
+        "vcpkg:stb",
+        "vcpkg:tinyxml2",
+        "vcpkg:zlib",
+        "vcpkg:zlib-ng",
+        "vcpkg:zstd",
+        "native:PhysX",
+        "shader-toolchain:Slang",
+        "shader-toolchain:SPIRV-Tools",
+        "shader-toolchain:SPIRV-Headers"
+      ]
+    },
+    {
+      "ref": "nuget:OpenUsd",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Interop",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Rendering",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Rendering.Silk",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Rendering.Silk.D3D12",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Rendering.Silk.Metal",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Rendering.Silk.Vulkan",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Rendering.Storm",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Cesium",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Viewer",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Core",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Core.win-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Core.linux-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Core.osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Imaging",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Imaging.win-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Imaging.linux-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Imaging.osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Cesium",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Cesium.win-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Cesium.linux-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Cesium.osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Avalonia",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Avalonia.Desktop",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Avalonia.Fonts.Inter",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Avalonia.Themes.Fluent",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Avalonia.Wayland",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:BenchmarkDotNet",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Microsoft.CodeAnalysis.PublicApiAnalyzers",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Microsoft.Direct3D.DXC",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Microsoft.SourceLink.GitHub",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Microsoft.Testing.Extensions.CodeCoverage",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Nerdbank.GitVersioning",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Roslynator.Analyzers",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Roslynator.Formatting.Analyzers",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:SharpMetal",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Silk.NET.Core",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Silk.NET.Direct3D11",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Silk.NET.Direct3D12",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Silk.NET.DXGI",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Silk.NET.Vulkan",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Silk.NET.Vulkan.Loader.Native",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:SPIRV-Cross.NET",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:Stride.Dependencies.SwiftShader",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:TUnit",
+      "dependsOn": []
+    },
+    {
+      "ref": "dotnet-runtime:Microsoft.NETCore.App",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:OpenUSD",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:oneTBB:2021.12.0:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:zlib:1.2.13:win-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Boost:1.86.0:win-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Boost:1.80.0:linux-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Boost:1.82.0:osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:libjpeg-turbo:2.0.1:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:libtiff:4.0.7:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:libpng:1.6.47:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:OpenEXR:3.1.13:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:OpenImageIO:2.5.16.0:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:OpenColorIO:2.2.1:win-x64,linux-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:OpenColorIO:2.4.2:osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:OpenSubdiv:3.6.1:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:MaterialX:1.39.4:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Ptex:2.4.2:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Blosc:1.20.1:win-x64,linux-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Blosc:1.21.6:osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:OpenVDB:10.1.0:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Alembic:1.8.5:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Draco:1.5.6:win-x64,linux-x64,osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Vulkan-Headers:2cd90f9d20df57eac214c148f3aed885372ddcfe",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Vulkan-Loader:da8d2caad9341ca8c5a7c3deba217d7da50a7c24",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:shaderc-source-manifest:a298b382ea7af052b549c08a799a56e9ec4bf471",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:VulkanMemoryAllocator:1d8f600fd424278486eade7ed3e877c99f0846b1",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:Vulkan-Utility-Libraries:ec329e2721921f79743b90307ee047d08e057788",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:cesium-native",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:abseil",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:ada-url",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:asmjit",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:asyncplusplus",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:blend2d",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:brotli",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:cpp-httplib",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:curl",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:doctest",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:draco",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:earcut-hpp",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:egl-registry",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:expected-lite",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:fmt",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:glm",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:ktx",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:libjpeg-turbo",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:libmorton",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:libwebp",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:meshoptimizer",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:modp-base64",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:ms-gsl",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:opengl-registry",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:openssl",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:picosha2",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:rapidjson",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:s2geometry",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:spdlog",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:spz",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:sqlite3",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:stb",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:tinyxml2",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:zlib",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:zlib-ng",
+      "dependsOn": []
+    },
+    {
+      "ref": "vcpkg:zstd",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:PhysX",
+      "dependsOn": []
+    },
+    {
+      "ref": "shader-toolchain:Slang",
+      "dependsOn": []
+    },
+    {
+      "ref": "shader-toolchain:SPIRV-Tools",
+      "dependsOn": []
+    },
+    {
+      "ref": "shader-toolchain:SPIRV-Headers",
+      "dependsOn": []
+    }
+  ]
+}

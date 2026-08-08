@@ -42,6 +42,10 @@ jobs:
         run: python eng/generate-interop.py --verify
       - name: Verify generated capability contract
         run: python eng/generate-capabilities.py --verify
+      - name: Verify checked release SBOM
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./eng/check-sbom.ps1
       - name: Verify checked shader identity
         if: runner.os == 'Linux'
         run: >
