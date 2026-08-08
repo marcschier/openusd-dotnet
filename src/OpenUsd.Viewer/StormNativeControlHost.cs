@@ -181,6 +181,7 @@ internal sealed class StormNativeControlHost : NativeControlHost
             ViewportDimensions viewport = GetPixelSize();
             int width = Math.Max(1, viewport.Width);
             int height = Math.Max(1, viewport.Height);
+            LinuxX11Threading.RebindAfterPlatformSetup();
             OpenUsdStormChildSession session = OpenUsdStormChildRuntime.Create(
                 parent.Handle,
                 _pluginPath,

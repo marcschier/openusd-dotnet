@@ -276,10 +276,12 @@ public sealed partial class MainWindow : Window, IDisposable
     private async void OnViewerOpened(object? sender, EventArgs e)
     {
         Opened -= OnViewerOpened;
+        ViewerStartupOptions.WriteStatus("Viewer window opened");
         try
         {
             if (!IsAutomatedViewerRun())
             {
+                ViewerStartupOptions.WriteStatus("Viewer startup: loading user state");
                 await LoadSettingsAsync(_viewerLifetime.Token);
                 await LoadRecentStagesAsync(_viewerLifetime.Token);
             }
@@ -291,6 +293,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 return;
             }
 
+            ViewerStartupOptions.WriteStatus("Viewer startup: opening stage");
             await OpenStageCoreAsync(
                 ViewerStartupOptions.StagePath,
                 addToRecent: !IsAutomatedViewerRun(),

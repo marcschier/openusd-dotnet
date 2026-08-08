@@ -15,7 +15,6 @@ public sealed class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        LinuxX11Threading.RebindAfterPlatformSetup();
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.MainWindow = new MainWindow();
@@ -25,5 +24,8 @@ public sealed class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+        ViewerStartupOptions.WriteStatus(
+            $"Platform backend: {ViewerStartupOptions.PlatformDecision.BackendName}; " +
+            "framework initialized");
     }
 }

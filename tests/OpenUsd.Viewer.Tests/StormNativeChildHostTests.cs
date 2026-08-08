@@ -442,12 +442,32 @@ public sealed class StormNativeChildHostTests
             "src",
             "OpenUsd.Viewer",
             "App.axaml.cs"));
-        int rebind = appSource.IndexOf(
+        await Assert.That(appSource)
+            .DoesNotContain("LinuxX11Threading.RebindAfterPlatformSetup();");
+        await Assert.That(appSource)
+            .Contains("framework initialized");
+
+        string hostSource = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "StormNativeControlHost.cs"));
+        int rebind = hostSource.IndexOf(
             "LinuxX11Threading.RebindAfterPlatformSetup();",
             StringComparison.Ordinal);
-        int windowCreation = appSource.IndexOf("new MainWindow()", StringComparison.Ordinal);
+        int createSession = hostSource.IndexOf(
+            "OpenUsdStormChildRuntime.Create(",
+            StringComparison.Ordinal);
         await Assert.That(rebind).IsGreaterThanOrEqualTo(0);
-        await Assert.That(windowCreation).IsGreaterThan(rebind);
+        await Assert.That(createSession).IsGreaterThan(rebind);
+
+        string windowSource = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "MainWindow.axaml.cs"));
+        await Assert.That(windowSource).Contains("Viewer window opened");
+        await Assert.That(windowSource).Contains("Viewer startup: opening stage");
 
         string viewportSource = await File.ReadAllTextAsync(Path.Combine(
             root,

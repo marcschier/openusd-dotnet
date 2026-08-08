@@ -34,6 +34,11 @@ internal static class LinuxX11Threading
             throw new InvalidOperationException(
                 "Linux X11 threading must be initialized before platform dispatcher rebinding.");
         }
+        // Run 31215759239 hung on Linux with the X11 window never opened, and
+        // this was the only Linux-specific call between platform setup and the
+        // window being shown. Moving it here is not a proven cause, but the
+        // Storm child is the only thing that needs the error handler, and it
+        // needs it only immediately before it creates its native child.
         OpenUsdStormChildRuntime.InitializeLinuxX11Dispatcher();
     }
 
