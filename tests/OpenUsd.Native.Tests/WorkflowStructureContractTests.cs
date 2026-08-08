@@ -220,6 +220,34 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task ConsumerCheckoutReportsSurviveATagRelease()
+    {
+        string root = FindRepositoryRoot();
+        foreach (string workflow in new[] { "package.yml", "viewer-distribution.yml" })
+        {
+            string text = await File.ReadAllTextAsync(
+                Path.Combine(root, ".github", "workflows", workflow));
+
+            await Assert.That(text)
+                .DoesNotContain("git rev-parse \"origin/$branch\"", StringComparison.Ordinal)
+                .Because(
+                    "a tag release sets ref_name to the tag, so origin/<ref> does not resolve; " +
+                    "plain git rev-parse echoes the argument and exits 128, which pwsh " +
+                    "propagates and fails the step");
+            await Assert.That(text)
+                .Contains(
+                    "git rev-parse --verify --quiet \"refs/remotes/origin/$branch\"",
+                    StringComparison.Ordinal)
+                .Because("the resolution must fail quietly so the fallback SHA can be used");
+            await Assert.That(text)
+                .Contains("$global:LASTEXITCODE = 0", StringComparison.Ordinal)
+                .Because(
+                    "release run 31250563169 lost all three package jobs because the failed " +
+                    "rev-parse left a non-zero exit code that the pwsh shell propagated");
+        }
+    }
+
+    [Test]
     public async Task NarrowOpenUsdInstallCacheYieldsToTheFullNativeCache()
     {
         string root = FindRepositoryRoot();
@@ -380,7 +408,9 @@ public sealed class WorkflowStructureContractTests
                     $"{workflowName} workflow_run failures must not be " +
                     "mistaken for regressions at current branch head");
             await Assert.That(workflow)
-                .Contains("git rev-parse \"origin/$branch\"", StringComparison.Ordinal)
+                .Contains(
+                    "git rev-parse --verify --quiet \"refs/remotes/origin/$branch\"",
+                    StringComparison.Ordinal)
                 .Because($"{workflowName} must compare the validated checkout with the current branch head");
         }
     }
