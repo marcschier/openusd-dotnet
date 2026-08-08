@@ -1,7 +1,12 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Diagnostics;
+using System.Globalization;
+using System.Reflection;
+using System.Text.RegularExpressions;
+using OpenUsd.Interop;
 using OpenUsd.Rendering.Silk;
+using OpenUsd.Rendering.Storm;
 
 namespace OpenUsd.Rendering.Tests;
 
@@ -56,12 +61,57 @@ public sealed class SharedStageSoakTests
         await Assert.That(json).Contains("\"silkSessionTeardownSimulated\": true");
         await Assert.That(json).Contains("\"activeChildRejectionObserved\": true");
         await Assert.That(json).Contains("\"sourceHash\": \"SOURCE\"");
-        await Assert.That(json).Contains("\"dataAbi\": 8");
-        await Assert.That(json).Contains("\"stormAbi\": 4");
+        await Assert.That(json).Contains("\"dataAbi\": 15");
+        await Assert.That(json).Contains("\"stormAbi\": 6");
         await Assert.That(json).Contains("\"silkSessionAbi\": 5");
-        await Assert.That(json).Contains("\"silkPageAbi\": 1");
+        await Assert.That(json).Contains("\"silkPageAbi\": 11");
         await Assert.That(json).Contains("\"expectedFinalMeshes\"");
         await Assert.That(json).Contains("\"actualFinalDisplayColor\"");
+    }
+
+    [Test]
+    public async Task SoakAbiIdentityMatchesAuthoritativeContracts()
+    {
+        uint soakData = GetConstant<uint>(
+            typeof(SharedStageBuildIdentity),
+            nameof(SharedStageBuildIdentity.DataAbi));
+        uint soakStorm = GetConstant<uint>(
+            typeof(SharedStageBuildIdentity),
+            nameof(SharedStageBuildIdentity.StormAbi));
+        uint soakSilkSession = GetConstant<uint>(
+            typeof(SharedStageBuildIdentity),
+            nameof(SharedStageBuildIdentity.SilkSessionAbi));
+        uint soakSilkPage = GetConstant<uint>(
+            typeof(SharedStageBuildIdentity),
+            nameof(SharedStageBuildIdentity.SilkPageAbi));
+        uint stormExpected = GetConstant<uint>(
+            typeof(OpenUsdStormRuntime),
+            nameof(OpenUsdStormRuntime.ExpectedAbiVersion));
+        uint renderStorm = GetConstant<uint>(
+            typeof(RenderNativeAbiVersions),
+            nameof(RenderNativeAbiVersions.StormAbi));
+        uint renderSilkSession = GetConstant<uint>(
+            typeof(RenderNativeAbiVersions),
+            nameof(RenderNativeAbiVersions.SilkSessionAbi));
+
+        await Assert.That(soakData).IsEqualTo(OpenUsdNativeContract.AbiVersion);
+        await Assert.That(soakStorm).IsEqualTo(stormExpected);
+        await Assert.That(stormExpected).IsEqualTo(renderStorm);
+        await Assert.That(soakSilkSession).IsEqualTo(renderSilkSession);
+        await Assert.That(soakSilkPage).IsEqualTo(SilkCommandParser.PageAbiVersion);
+
+        string root = FindRepositoryRoot();
+        uint stormHeader = await ReadNativeHeaderAbiVersionAsync(
+            root,
+            Path.Combine("native", "openusd_hydra", "include", "openusd_hydra.h"),
+            @"#define\s+OPENUSD_STORM_ABI_VERSION\s+(\d+)u");
+        uint silkSessionHeader = await ReadNativeHeaderAbiVersionAsync(
+            root,
+            Path.Combine("native", "hdSilk", "include", "openusd_hdsilk.h"),
+            @"#define\s+OPENUSD_SILK_SESSION_ABI_VERSION\s+(\d+)u");
+
+        await Assert.That(stormHeader).IsEqualTo(soakStorm);
+        await Assert.That(silkSessionHeader).IsEqualTo(soakSilkSession);
     }
 
     [Test]
@@ -279,4 +329,26 @@ public sealed class SharedStageSoakTests
         }
         throw new DirectoryNotFoundException("Could not locate the repository root.");
     }
+
+    private static async Task<uint> ReadNativeHeaderAbiVersionAsync(
+        string root,
+        string relativePath,
+        string pattern)
+    {
+        string header = await File.ReadAllTextAsync(Path.Combine(root, relativePath));
+        Match match = Regex.Match(
+            header,
+            pattern,
+            RegexOptions.None,
+            TimeSpan.FromSeconds(5));
+        if (!match.Success)
+        {
+            throw new InvalidOperationException($"Could not find ABI version in {relativePath}.");
+        }
+        return uint.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+    }
+
+    private static T GetConstant<T>(Type type, string name) =>
+        (T)(type.GetField(name, BindingFlags.NonPublic | BindingFlags.Static)?.GetRawConstantValue()
+            ?? throw new MissingFieldException(type.FullName, name));
 }

@@ -15,7 +15,7 @@ public static unsafe partial class OpenUsdStormRuntime
 {
     private const string LibraryName = "openusd_hydra";
     private const int ErrorBufferSize = 4096;
-    private const uint ExpectedAbiVersion = 6;
+    internal const uint ExpectedAbiVersion = RenderNativeAbiVersions.StormAbi;
     private const uint RenderHasSceneRevision = 0x1u;
     private const uint RenderUseSceneLights = 0x2u;
 

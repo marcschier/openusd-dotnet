@@ -111,10 +111,10 @@ internal readonly record struct SharedStageMemoryCheckpoint(
 
 internal sealed record SharedStageBuildIdentity
 {
-    internal const uint DataAbi = 8;
-    internal const uint StormAbi = 4;
-    internal const uint SilkSessionAbi = 5;
-    internal const uint SilkPageAbi = 1;
+    internal const uint DataAbi = OpenUsdNativeContract.AbiVersion;
+    internal const uint StormAbi = RenderNativeAbiVersions.StormAbi;
+    internal const uint SilkSessionAbi = RenderNativeAbiVersions.SilkSessionAbi;
+    internal const uint SilkPageAbi = SilkCommandParser.PageAbiVersion;
 
     internal required string SourceHash { get; init; }
 
