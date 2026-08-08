@@ -824,6 +824,9 @@ public sealed class WorkflowStructureContractTests
             .Contains("dotnet tool update --global dotnet-stack", StringComparison.Ordinal)
             .Because("run 31251898756 had no dotnet-stack on PATH, so no managed stack was captured");
         await Assert.That(diagnosticStep)
+            .Contains("sudo apt-get install -y gdb", StringComparison.Ordinal)
+            .Because("run 93142409201 still had opaque native frames, so gdb must capture them");
+        await Assert.That(diagnosticStep)
             .Contains("echo \"$HOME/.dotnet/tools\" >> \"$GITHUB_PATH\"", StringComparison.Ordinal)
             .Because("global .NET tools are invisible to later GitHub Actions steps until this path is exported");
         await Assert.That(diagnosticStep)
@@ -839,6 +842,18 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(smoke)
             .Contains("dotnet-stack was not available on PATH.", StringComparison.Ordinal)
             .Because("absence of the optional diagnostic tool should be reported rather than throwing");
+        await Assert.That(smoke)
+            .Contains("viewer-native-stack.txt", StringComparison.Ordinal)
+            .Because("the full gdb native backtrace must be uploaded with the smoke diagnostics");
+        await Assert.That(smoke)
+            .Contains("Get-Command gdb -ErrorAction SilentlyContinue", StringComparison.Ordinal)
+            .Because("the smoke script must tolerate local and hosted runs where gdb is absent");
+        await Assert.That(smoke)
+            .Contains("'thread apply all bt full'", StringComparison.Ordinal)
+            .Because("gdb must capture native frames and locals to identify the blocking X/GLX call");
+        await Assert.That(smoke)
+            .Contains("gdb was not available on PATH.", StringComparison.Ordinal)
+            .Because("absence of the optional native diagnostic tool should be reported rather than throwing");
     }
 
     /// <summary>

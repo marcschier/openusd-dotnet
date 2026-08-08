@@ -99,12 +99,13 @@ $stderrFile = Join-Path $installRoot 'viewer.stderr.log'
 $crashReportRoot = Join-Path $installRoot 'viewer-crash-reports'
 $dumpPattern = Join-Path $installRoot 'viewer-crash-%p.dmp'
 $hangStackFile = Join-Path $installRoot 'viewer-hang-stack.txt'
+$nativeStackFile = Join-Path $installRoot 'viewer-native-stack.txt'
 $hangDumpFile = Join-Path $installRoot 'viewer-hang.dmp'
 $createdumpOutputFile = Join-Path $installRoot 'viewer-createdump.log'
 Remove-Item $statusFile, $logFile, $stdoutFile, $stderrFile `
     -Force `
     -ErrorAction SilentlyContinue
-Remove-Item $hangStackFile, $hangDumpFile, $createdumpOutputFile `
+Remove-Item $hangStackFile, $nativeStackFile, $hangDumpFile, $createdumpOutputFile `
     -Force `
     -ErrorAction SilentlyContinue
 Remove-Item $crashReportRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -132,6 +133,21 @@ function Write-ViewerDiagnostics
     if (Test-Path $hangStackFile)
     {
         Get-Content $hangStackFile | Write-Host
+    }
+    else
+    {
+        Write-Host '(not produced)'
+    }
+
+    Write-Host '----- viewer native stack -----'
+    if (Test-Path $nativeStackFile)
+    {
+        Get-Content $nativeStackFile -TotalCount 250 | Write-Host
+        $nativeStackLineCount = (Get-Content $nativeStackFile | Measure-Object -Line).Lines
+        if ($nativeStackLineCount -gt 250)
+        {
+            Write-Host "----- viewer native stack truncated in log; full $nativeStackLineCount lines in artifact -----"
+        }
     }
     else
     {
@@ -219,14 +235,58 @@ function Capture-HangDiagnostics
     $stack = Get-Command dotnet-stack -ErrorAction SilentlyContinue
     if ($null -ne $stack)
     {
-        Invoke-DiagnosticProcess `
-            -FilePath $stack.Source `
-            -ArgumentList @('report', '-p', [string]$ViewerProcess.Id) `
-            -OutputPath $hangStackFile
+        try
+        {
+            Invoke-DiagnosticProcess `
+                -FilePath $stack.Source `
+                -ArgumentList @('report', '-p', [string]$ViewerProcess.Id) `
+                -OutputPath $hangStackFile
+        }
+        catch
+        {
+            Add-Content $hangStackFile "dotnet-stack failed: $($_.Exception.Message)"
+        }
     }
     else
     {
         Add-Content $hangStackFile 'dotnet-stack was not available on PATH.'
+    }
+
+    Set-Content $nativeStackFile "Viewer PID $($ViewerProcess.Id) was still running at timeout."
+    $gdb = Get-Command gdb -ErrorAction SilentlyContinue
+    if ($null -ne $gdb)
+    {
+        try
+        {
+            Invoke-DiagnosticProcess `
+                -FilePath $gdb.Source `
+                -ArgumentList @(
+                    '-q',
+                    '-batch',
+                    '-ex',
+                    'set pagination off',
+                    '-ex',
+                    'set confirm off',
+                    '-ex',
+                    'set debuginfod enabled off',
+                    '-ex',
+                    'info threads',
+                    '-ex',
+                    'thread apply all bt full',
+                    '-ex',
+                    'detach',
+                    '-p',
+                    [string]$ViewerProcess.Id) `
+                -OutputPath $nativeStackFile
+        }
+        catch
+        {
+            Add-Content $nativeStackFile "gdb failed: $($_.Exception.Message)"
+        }
+    }
+    else
+    {
+        Add-Content $nativeStackFile 'gdb was not available on PATH.'
     }
 
     $createdumpName = if ($IsWindows) { 'createdump.exe' } else { 'createdump' }

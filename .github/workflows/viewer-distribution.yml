@@ -346,6 +346,7 @@ jobs:
         if: matrix.rid == 'linux-x64'
         shell: bash
         run: |
+          sudo apt-get install -y gdb
           dotnet tool update --global dotnet-stack
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
           # Run 31251898756 reached the timeout path but createdump could not
