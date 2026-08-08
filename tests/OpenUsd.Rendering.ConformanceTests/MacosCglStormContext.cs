@@ -34,6 +34,7 @@ internal sealed partial class MacosCglStormContext : IStormGlContext
     private const int CglPfaDepthSize = 12;
     private const int CglPfaStencilSize = 13;
     private const int CglPfaAccelerated = 73;
+    private const int CglPfaAllowOfflineRenderers = 96;
     private const int CglPfaOpenGlProfile = 99;
     private const int CglOglPVersion32Core = 0x3200;
     private const uint GlColorBufferBit = 0x00004000;
@@ -95,6 +96,7 @@ internal sealed partial class MacosCglStormContext : IStormGlContext
         [
             CglPfaOpenGlProfile, CglOglPVersion32Core,
             CglPfaAccelerated,
+            CglPfaAllowOfflineRenderers,
             CglPfaColorSize, 32,
             CglPfaAlphaSize, 8,
             CglPfaDepthSize, 24,

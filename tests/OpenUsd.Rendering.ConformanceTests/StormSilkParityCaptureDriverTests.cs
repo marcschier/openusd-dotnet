@@ -2962,11 +2962,22 @@ def Xform "World"
     }
 
     [SupportedOSPlatform("windows")]
-    private static SilkParityBackend[] CreateWindowsBackends() =>
+    private static SilkParityBackend[] CreateWindowsBackends()
+    {
+        if (string.Equals(
+            Environment.GetEnvironmentVariable("OPENUSD_PARITY_WINDOWS_BACKENDS"),
+            "D3D12",
+            StringComparison.OrdinalIgnoreCase))
+        {
+            return [CreateD3D12WarpBackend()];
+        }
+
+        return
         [
             CreateD3D12WarpBackend(),
             CreateVulkanBackend(),
         ];
+    }
 
     private static float[] PlaneValues(Vector4 plane) =>
         [plane.X, plane.Y, plane.Z, plane.W];

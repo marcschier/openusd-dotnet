@@ -668,7 +668,12 @@ jobs:
           ./eng/run-native-probe.ps1 -Rid osx-arm64 -SkipNativeAbiProbe
           ./eng/run-silk-probe.ps1 -Rid osx-arm64
           ./eng/run-silk-probe.ps1 -Rid osx-arm64 -MetalComposition
+      - name: Resolve macOS CGL parity capability
+        id: macos-cgl
+        shell: pwsh
+        run: ./eng/resolve-macos-cgl-capability.ps1
       - name: Execute macOS CGL Storm-to-Metal parity capture
+        if: steps.macos-cgl.outputs.available == 'true'
         shell: pwsh
         run: ./eng/run-parity-capture.ps1 -Rid osx-arm64 -Configuration Release
       - name: Execute actual IOSurface Metal composition tests
@@ -719,6 +724,7 @@ jobs:
           name: render-macos-arm64-${{ github.run_id }}
           path: |
             artifacts/platform-smoke/macos-arm64
+            artifacts/render-capability/macos-cgl.json
             artifacts/storm-native-child-macos
             artifacts/parity-capture/osx-arm64
             artifacts/metal-composition-probe/osx-arm64

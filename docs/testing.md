@@ -549,7 +549,7 @@ those hosts.
 
 ## Render gate capability limits
 
-Two render proofs still need graphics capabilities that a hosted GitHub runner does not have. Both are
+Some render proofs still need graphics capabilities that a hosted GitHub runner does not have. They are
 narrowed rather than deleted: everything the runner can prove still runs and still blocks, the
 unprovable part records a `status: skipped` evidence artifact naming its reason, and the work needed to
 restore full coverage is listed below. Narrowing is deliberately not automatic. Each one is opt-in at
@@ -560,8 +560,32 @@ hard failure, and the narrowing is visible in the workflow rather than buried in
 implementation, so the hosted gate explicitly selects the hash-locked Mesa llvmpipe `opengl32.dll`
 before starting Avalonia/Storm. The soak is mandatory again on hosted Windows.
 
+**`windows-wgl` parity capture.** The hosted WGL job is a WGL/OpenGL proof. Render run 31263500952
+showed that letting that job execute Vulkan self-consistency tests fails with
+`vkCreateInstance failed: ErrorIncompatibleDriver`, because the hosted runner has no system Vulkan ICD.
+The Mesa WGL parity capture therefore scopes the managed test invocation to the two
+`StormSilkParityCaptureDriverTests` driver proofs plus the five non-Vulkan D3D12/Silk proofs, and
+scopes Windows hdSilk backends to D3D12 WARP. The hosted WGL path therefore executes 7 parity tests
+instead of the class-wide 28. It still fails if Mesa WGL, Storm capture, D3D12 hdSilk capture,
+determinism, perturbation detection, scene-count accounting, the explicit Mesa scene-exclusion
+contract, Silk complexity, frame capture, draw-mode divergence, or D3D12 MaterialX self-consistency
+regresses.
+
 **Windows Avalonia Vulkan composition.** Hosted Windows has no GPU driver and therefore no system
 Vulkan ICD. The skip is recorded in `artifacts/render-capability/windows-vulkan.json`.
+
+**macOS CGL Storm parity.** The macOS parity shim asks CGL for an accelerated OpenGL 3.2 core pixel
+format, now including `kCGLPFAAllowOfflineRenderers` so a headless host with an offline renderer can
+still run the proof. If `CGLChoosePixelFormat failed with CGL error 10002` (`kCGLBadPixelFormat`) on a
+hosted arm64 runner, the CGL Storm-to-Metal parity step is skipped and recorded in
+`artifacts/render-capability/macos-cgl.json`. The rest of the macOS job still runs the package gates,
+NativeAOT/shared-stage probes, Metal composition tests, MaterialX Metal self-consistency, viewer
+lifecycle tests, and Storm/Metal no-restart switching loops.
+
+When CGL is available, the macOS CGL parity step executes 5 parity tests: the two Storm-to-Metal
+driver proofs, the two platform-neutral Silk complexity proofs, and the Metal MaterialX
+self-consistency proof. Linux still executes the class-wide 28 parity tests because lavapipe is present
+and those Vulkan self-consistency tests are valid there.
 
 **Linux X11 and Wayland Vulkan import.** The hosted Linux compositor accepts no external Vulkan
 images at all, reporting `supported image handles: (none)`, so the opaque-FD import this proves
@@ -570,9 +594,10 @@ cannot be exercised. The skip is recorded in
 fine and is still used: the limit is the compositor, not the driver.
 
 What still blocks on the hosted runner: the Windows WGL job keeps the NativeAOT shared-stage soak,
-the native probe, the soak identity gate, and the WGL soak; the Windows Vulkan job keeps the viewer
-source-identity and evidence contracts; the Linux job keeps its CTest suite, both X11 and XWayland
-shared-stage soaks, and the Storm child switching gates. Renderer-neutral and hdSilk Vulkan behaviour
+the native probe, the soak identity gate, the WGL soak, and the D3D12-backed WGL parity driver proofs;
+the Windows Vulkan job keeps the viewer source-identity and evidence contracts; the Linux job keeps
+its CTest suite, both X11 and XWayland shared-stage soaks, and the Storm child switching gates; the
+macOS job keeps its Metal and Storm/Metal child proofs. Renderer-neutral and hdSilk Vulkan behaviour
 that does not need composition stays covered by the managed conformance suite in `ci.yml`, which runs
 against the pinned SwiftShader driver.
 

@@ -390,6 +390,16 @@ function Enable-MesaWglParity
         "$($env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES).")
 }
 
+function New-StormParityTreeFilter
+{
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$TestNames
+    )
+
+    return '/*/*/StormSilkParityCaptureDriverTests/(' + ($TestNames -join '|') + ')'
+}
+
 foreach ($layout in @(
     @{ Source = (Join-Path $openUsdRoot 'bin'); Target = $binTarget },
     @{ Source = (Join-Path $openUsdRoot 'lib'); Target = $libTarget },
@@ -446,6 +456,7 @@ $oldLlvmPipeThreads = $env:LP_NUM_THREADS
 $oldMesaShaderCacheDisable = $env:MESA_SHADER_CACHE_DISABLE
 $oldExpectedSceneCount = $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT
 $oldExpectedExcludedScenes = $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES
+$oldWindowsBackends = $env:OPENUSD_PARITY_WINDOWS_BACKENDS
 try
 {
     $env:PATH = $binTarget + [System.IO.Path]::PathSeparator +
@@ -456,6 +467,7 @@ try
         $binTarget + [System.IO.Path]::PathSeparator + $oldDyldLibraryPath
     $env:OPENUSD_PLUGIN_PATH = $pluginPath
     $env:OPENUSD_PARITY_CAPTURE_REQUIRED = '1'
+    $env:OPENUSD_PARITY_WINDOWS_BACKENDS = $null
 
     # Declared once, deliberately, rather than derived from the scene list: an
     # expected count that reads from the same source it is checking would pass
@@ -479,6 +491,9 @@ try
         {
             $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = "$mesaSceneCount"
             $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES = $mesaExcludedList
+            # Render run 31263500952 showed hosted WGL has no system Vulkan ICD:
+            # Mesa WGL parity proves the OpenGL route, not Vulkan device creation.
+            $env:OPENUSD_PARITY_WINDOWS_BACKENDS = 'D3D12'
             Enable-MesaWglParity
         }
         else
@@ -505,6 +520,7 @@ try
             {
                 $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = "$mesaSceneCount"
                 $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES = $mesaExcludedList
+                $env:OPENUSD_PARITY_WINDOWS_BACKENDS = 'D3D12'
                 Write-Warning (
                     'StormGl=Auto could not find a system WGL implementation usable by Storm; ' +
                     "falling back to Mesa llvmpipe. This gates $mesaSceneCount scenes, not " +
@@ -519,40 +535,55 @@ try
     }
 
     $testProject = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
-    if ($Rid -eq 'osx-arm64')
-    {
-        foreach ($driverTest in @(
-            '/*/*/StormSilkParityCaptureDriverTests/CapturesStormAndHdSilkBackendsDeterministically',
-            '/*/*/StormSilkParityCaptureDriverTests/ComparisonDetectsPerturbedCaptures'))
-        {
-            & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
-                -Project $testProject `
-                -Framework net10.0 `
-                -Configuration $Configuration `
-                -MinimumExpectedTests 1 `
-                -TestArguments @(
-                    '--treenode-filter',
-                    $driverTest)
-            if ($LASTEXITCODE -ne 0)
-            {
-                exit $LASTEXITCODE
-            }
-        }
-
-        exit 0
-    }
-    else
+    $windowsWglTestNames = @(
+        'CapturesStormAndHdSilkBackendsDeterministically',
+        'ComparisonDetectsPerturbedCaptures',
+        'SilkComplexityDefaultPreservesExplicitLowPointPage',
+        'SilkComplexityMediumChangesPointPage',
+        'SilkWireframeDrawModeDivergesFromSmoothShadedPixelsOnD3D12',
+        'SilkFrameCaptureReturnsDimensionsAndNonTrivialPixels',
+        'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12')
+    $macosCglTestNames = @(
+        'CapturesStormAndHdSilkBackendsDeterministically',
+        'ComparisonDetectsPerturbedCaptures',
+        'SilkComplexityDefaultPreservesExplicitLowPointPage',
+        'SilkComplexityMediumChangesPointPage',
+        'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnMetal')
+    if ($Rid -eq 'win-x64')
     {
         & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
             -Project $testProject `
             -Framework net10.0 `
             -Configuration $Configuration `
-            -MinimumExpectedTests 2 `
+            -MinimumExpectedTests $windowsWglTestNames.Count `
             -TestArguments @(
                 '--treenode-filter',
-                '/*/*/StormSilkParityCaptureDriverTests/*')
+                (New-StormParityTreeFilter -TestNames $windowsWglTestNames))
         exit $LASTEXITCODE
     }
+
+    if ($Rid -eq 'osx-arm64')
+    {
+        & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
+            -Project $testProject `
+            -Framework net10.0 `
+            -Configuration $Configuration `
+            -MinimumExpectedTests $macosCglTestNames.Count `
+            -TestArguments @(
+                '--treenode-filter',
+                (New-StormParityTreeFilter -TestNames $macosCglTestNames))
+        exit $LASTEXITCODE
+    }
+
+    & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
+        -Project $testProject `
+        -Framework net10.0 `
+        -Configuration $Configuration `
+        -MinimumExpectedTests 28 `
+        -TestArguments @(
+            '--treenode-filter',
+            '/*/*/StormSilkParityCaptureDriverTests/*')
+    exit $LASTEXITCODE
 }
 finally
 {
@@ -571,6 +602,7 @@ finally
     $env:MESA_SHADER_CACHE_DISABLE = $oldMesaShaderCacheDisable
     $env:OPENUSD_PARITY_EXPECTED_SCENE_COUNT = $oldExpectedSceneCount
     $env:OPENUSD_PARITY_EXPECTED_EXCLUDED_SCENES = $oldExpectedExcludedScenes
+    $env:OPENUSD_PARITY_WINDOWS_BACKENDS = $oldWindowsBackends
     if ($removeTestHostOpenGlInFinally)
     {
         Remove-TestHostMesaOpenGl
