@@ -66,6 +66,54 @@ on:
         description: Native artifact workflow run ID to consume instead of URL archives
         required: false
         type: string
+  # Render was release-only until 0.6.0-alpha and hid stale shared-stage soak
+  # ABI constants plus capability regressions until the release gate. Native
+  # changes arrive through the verified archive producer instead of rebuilding
+  # OpenUSD in these four one-hour consumers.
+  workflow_run:
+    workflows: ['native artifact pipeline']
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [ master, main ]
+    paths:
+      - '.github/workflows/render.yml'
+      - 'eng/prepare-workflow-native-input.ps1'
+      - 'eng/prepare-render-native.ps1'
+      - 'eng/native-install-metadata.ps1'
+      - 'eng/test-render-native-archive.ps1'
+      - 'eng/test-linux-native-prerequisites.ps1'
+      - 'eng/test-shared-stage-soak-identity.ps1'
+      - 'eng/test-storm-native-child-linux.sh'
+      - 'eng/test-viewer-source-identity.ps1'
+      - 'eng/test-viewer-evidence-contract.ps1'
+      - 'eng/run-parity-capture.ps1'
+      - 'eng/run-platform-smoke.ps1'
+      - 'eng/run-native-probe.ps1'
+      - 'eng/run-silk-probe.ps1'
+      - 'eng/run-avalonia-vulkan-smoke.ps1'
+      - 'eng/run-avalonia-vulkan-smoke-linux.sh'
+      - 'eng/publish-avalonia-vulkan-smoke.ps1'
+      - 'eng/run-storm-native-child.ps1'
+      - 'eng/run-storm-native-child-linux.sh'
+      - 'eng/run-storm-native-child-macos.ps1'
+      - 'eng/resolve-macos-cgl-capability.ps1'
+      - 'eng/validate-linux-package-evidence.ps1'
+      - 'eng/validate-macos-package-evidence.ps1'
+      - 'eng/cesium.lock.json'
+      - 'eng/fetch-cesium-native.ps1'
+      - 'eng/build-cesium-native.ps1'
+      - 'eng/build-cesium-shim.ps1'
+      - 'eng/shaders/**'
+      - 'src/OpenUsd.Rendering*/**'
+      - 'src/OpenUsd.Viewer/**'
+      - 'src/OpenUsd.Viewer.App/**'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/**'
+      - 'tests/OpenUsd.Viewer.Tests/**'
+      - 'tests/OpenUsd.Package.Tests/**'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'version.json'
 
 permissions:
   contents: read
@@ -78,32 +126,133 @@ concurrency:
 jobs:
   windows-wgl:
     name: Windows WGL
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: windows-latest
     timeout-minutes: 360
     env:
-      NATIVE_PIPELINE_RUN_ID: ${{ inputs['native-pipeline-run-id'] }}
+      DEFER_ON_NATIVE_CACHE_MISS: >-
+        ${{ github.event_name == 'push' &&
+            inputs['native-pipeline-run-id'] == '' &&
+            'true' || 'false' }}
+      NATIVE_PIPELINE_RUN_ID: >-
+        ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id ||
+            inputs['native-pipeline-run-id'] }}
       NATIVE_SOURCE: >-
-        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
-            inputs['native-source'] }}
+        ${{ (github.event_name == 'workflow_run' ||
+            inputs['native-pipeline-run-id']) && 'archive' ||
+            inputs['native-source'] || 'build' }}
       NATIVE_URL: ${{ inputs['windows-native-url'] }}
       NATIVE_SHA256: ${{ inputs['windows-native-sha256'] }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          ref: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 10.0.301
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13'
+      # Restore-only, and keyed character-identically to the cache native.yml saves.
+      # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
+      - id: native-cache
+        if: env.NATIVE_SOURCE == 'build'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            native/install/win-x64
+            native/install/shim/win-x64
+            native/install/vulkan-sdk-1.4.321.0
+            native/build/shim/win-x64
+          key: >-
+            native-win-x64-${{ hashFiles(
+              'eng/openusd.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/check-linux-native-prerequisites.ps1',
+              'eng/native-install-metadata.ps1',
+              'native/CMakeLists.txt',
+              'native/CMakePresets.json',
+              'native/**/CMakeLists.txt',
+              'native/**/*.cmake',
+              'native/**/*.json',
+              'native/**/*.in',
+              'native/**/resources/**',
+              'native/**/*.c',
+              'native/**/*.cc',
+              'native/**/*.cpp',
+              'native/**/*.cxx',
+              'native/**/*.m',
+              'native/**/*.mm',
+              'native/**/*.h',
+              'native/**/*.hh',
+              'native/**/*.hpp',
+              'native/**/*.hxx',
+              'native/**/*.inc',
+              'native/**/*.inl',
+              '!native/build/**',
+              '!native/install/**',
+              '!native/downloads/**',
+              '!native/src/**',
+              '!native/.cache/**'
+            ) }}
+      - name: Report a deferred render smoke when the native tree is not published yet
+        if: >-
+          env.NATIVE_SOURCE == 'build' &&
+          steps.native-cache.outputs.cache-hit != 'true' &&
+          env.DEFER_ON_NATIVE_CACHE_MISS == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/native-input/win-x64 | Out-Null
+          [ordered]@{
+            schemaVersion = 1
+            status = 'deferred'
+            source = 'cache'
+            rid = 'win-x64'
+            reason = 'The verified native install is not published for this cache key yet.'
+          } | ConvertTo-Json -Depth 4 |
+            Set-Content artifacts/native-input/win-x64/source.json
+          Write-Host (
+            '::notice::RENDER_SMOKE_DEFERRED: no verified native install for ' +
+            'win-x64 at this commit. The native artifact pipeline has not ' +
+            'published this native tree yet; a workflow_run render will cover ' +
+            'native changes once the archive exists.')
+      - name: Decide native input readiness
+        id: native-ready
+        shell: pwsh
+        run: |
+          $source = '${{ env.NATIVE_SOURCE }}'
+          $ready = $source -eq 'archive' -or
+            '${{ steps.native-cache.outputs.cache-hit }}' -eq 'true' -or
+            '${{ env.DEFER_ON_NATIVE_CACHE_MISS }}' -ne 'true'
+          "ready=$($ready.ToString().ToLowerInvariant())" |
+            Out-File $env:GITHUB_OUTPUT -Append
+      - name: Record restored native cache input
+        if: env.NATIVE_SOURCE == 'build' && steps.native-cache.outputs.cache-hit == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/native-input/win-x64 | Out-Null
+          [ordered]@{
+            schemaVersion = 1
+            source = 'cache'
+            rid = 'win-x64'
+            openUsdCommit = (Get-Content eng/openusd.lock.json -Raw |
+              ConvertFrom-Json).openUsd.commit
+          } | ConvertTo-Json -Depth 4 |
+            Set-Content artifacts/native-input/win-x64/source.json
       - name: Validate native archive subtree staging
         shell: pwsh
         run: ./eng/test-render-native-archive.ps1
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         if: env.NATIVE_SOURCE == 'build'
       - name: Download verified native pipeline archive
-        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -111,6 +260,9 @@ jobs:
           name: openusd-native-win-x64
           path: artifacts/native-pipeline/win-x64
       - name: Prepare pinned native input
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (env.NATIVE_SOURCE == 'archive' || steps.native-cache.outputs.cache-hit != 'true')
         shell: pwsh
         run: |
           $pipelineRoot = if ($env:NATIVE_PIPELINE_RUN_ID) {
@@ -124,13 +276,24 @@ jobs:
             -ArchiveUri $env:NATIVE_URL `
             -ArchiveSha256 $env:NATIVE_SHA256 `
             -PipelineRoot $pipelineRoot
+      - name: Verify native install metadata
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          $requireVulkanRuntime = $IsWindows -and $env:NATIVE_SOURCE -eq 'build'
+          ./eng/native-install-metadata.ps1 `
+            -Operation Verify `
+            -Rid win-x64 `
+            -RequireVulkanRuntime:$requireVulkanRuntime
       - name: Execute staged NativeAOT shared-stage probes
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           ./eng/test-shared-stage-soak-identity.ps1
           ./eng/run-native-probe.ps1 -Rid win-x64 -SkipNativeAbiProbe
           ./eng/run-silk-probe.ps1 -Rid win-x64 -SharedStageSoak
       - name: Execute mandatory WGL shared-stage soak
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: >
           ./eng/run-platform-smoke.ps1
@@ -138,6 +301,7 @@ jobs:
           -SharedStageSoak
           -SoakSeconds 90
       - name: Execute Windows WGL Storm-to-hdSilk parity capture
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/run-parity-capture.ps1 -Rid win-x64 -Configuration Release -StormGl Mesa
       - name: Upload diagnostics
@@ -155,28 +319,129 @@ jobs:
 
   windows-vulkan-required:
     name: Windows Avalonia Vulkan required
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: windows-latest
     timeout-minutes: 360
     env:
-      NATIVE_PIPELINE_RUN_ID: ${{ inputs['native-pipeline-run-id'] }}
+      DEFER_ON_NATIVE_CACHE_MISS: >-
+        ${{ github.event_name == 'push' &&
+            inputs['native-pipeline-run-id'] == '' &&
+            'true' || 'false' }}
+      NATIVE_PIPELINE_RUN_ID: >-
+        ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id ||
+            inputs['native-pipeline-run-id'] }}
       NATIVE_SOURCE: >-
-        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
-            inputs['native-source'] }}
+        ${{ (github.event_name == 'workflow_run' ||
+            inputs['native-pipeline-run-id']) && 'archive' ||
+            inputs['native-source'] || 'build' }}
       NATIVE_URL: ${{ inputs['windows-native-url'] }}
       NATIVE_SHA256: ${{ inputs['windows-native-sha256'] }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          ref: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 10.0.301
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13'
+      # Restore-only, and keyed character-identically to the cache native.yml saves.
+      # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
+      - id: native-cache
+        if: env.NATIVE_SOURCE == 'build'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            native/install/win-x64
+            native/install/shim/win-x64
+            native/install/vulkan-sdk-1.4.321.0
+            native/build/shim/win-x64
+          key: >-
+            native-win-x64-${{ hashFiles(
+              'eng/openusd.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/check-linux-native-prerequisites.ps1',
+              'eng/native-install-metadata.ps1',
+              'native/CMakeLists.txt',
+              'native/CMakePresets.json',
+              'native/**/CMakeLists.txt',
+              'native/**/*.cmake',
+              'native/**/*.json',
+              'native/**/*.in',
+              'native/**/resources/**',
+              'native/**/*.c',
+              'native/**/*.cc',
+              'native/**/*.cpp',
+              'native/**/*.cxx',
+              'native/**/*.m',
+              'native/**/*.mm',
+              'native/**/*.h',
+              'native/**/*.hh',
+              'native/**/*.hpp',
+              'native/**/*.hxx',
+              'native/**/*.inc',
+              'native/**/*.inl',
+              '!native/build/**',
+              '!native/install/**',
+              '!native/downloads/**',
+              '!native/src/**',
+              '!native/.cache/**'
+            ) }}
+      - name: Report a deferred render smoke when the native tree is not published yet
+        if: >-
+          env.NATIVE_SOURCE == 'build' &&
+          steps.native-cache.outputs.cache-hit != 'true' &&
+          env.DEFER_ON_NATIVE_CACHE_MISS == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/native-input/win-x64 | Out-Null
+          [ordered]@{
+            schemaVersion = 1
+            status = 'deferred'
+            source = 'cache'
+            rid = 'win-x64'
+            reason = 'The verified native install is not published for this cache key yet.'
+          } | ConvertTo-Json -Depth 4 |
+            Set-Content artifacts/native-input/win-x64/source.json
+          Write-Host (
+            '::notice::RENDER_SMOKE_DEFERRED: no verified native install for ' +
+            'win-x64 at this commit. The native artifact pipeline has not ' +
+            'published this native tree yet; a workflow_run render will cover ' +
+            'native changes once the archive exists.')
+      - name: Decide native input readiness
+        id: native-ready
+        shell: pwsh
+        run: |
+          $source = '${{ env.NATIVE_SOURCE }}'
+          $ready = $source -eq 'archive' -or
+            '${{ steps.native-cache.outputs.cache-hit }}' -eq 'true' -or
+            '${{ env.DEFER_ON_NATIVE_CACHE_MISS }}' -ne 'true'
+          "ready=$($ready.ToString().ToLowerInvariant())" |
+            Out-File $env:GITHUB_OUTPUT -Append
+      - name: Record restored native cache input
+        if: env.NATIVE_SOURCE == 'build' && steps.native-cache.outputs.cache-hit == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/native-input/win-x64 | Out-Null
+          [ordered]@{
+            schemaVersion = 1
+            source = 'cache'
+            rid = 'win-x64'
+            openUsdCommit = (Get-Content eng/openusd.lock.json -Raw |
+              ConvertFrom-Json).openUsd.commit
+          } | ConvertTo-Json -Depth 4 |
+            Set-Content artifacts/native-input/win-x64/source.json
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
       - name: Download verified native pipeline archive
-        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -184,6 +449,9 @@ jobs:
           name: openusd-native-win-x64
           path: artifacts/native-pipeline/win-x64
       - name: Prepare pinned native input
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (env.NATIVE_SOURCE == 'archive' || steps.native-cache.outputs.cache-hit != 'true')
         shell: pwsh
         run: |
           $pipelineRoot = if ($env:NATIVE_PIPELINE_RUN_ID) {
@@ -197,7 +465,17 @@ jobs:
             -ArchiveUri $env:NATIVE_URL `
             -ArchiveSha256 $env:NATIVE_SHA256 `
             -PipelineRoot $pipelineRoot
+      - name: Verify native install metadata
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          $requireVulkanRuntime = $IsWindows -and $env:NATIVE_SOURCE -eq 'build'
+          ./eng/native-install-metadata.ps1 `
+            -Operation Verify `
+            -Rid win-x64 `
+            -RequireVulkanRuntime:$requireVulkanRuntime
       - name: Resolve system Vulkan ICD
+        if: steps.native-ready.outputs.ready == 'true'
         id: vulkan-icd
         shell: pwsh
         run: |
@@ -230,7 +508,9 @@ jobs:
           Write-Host "[vulkan-icd] Skipped: $reason"
           "available=false" >> $env:GITHUB_OUTPUT
       - name: Execute required D3D11 destination pixel test
-        if: steps.vulkan-icd.outputs.available == 'true'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.vulkan-icd.outputs.available == 'true')
         shell: pwsh
         env:
           VK_DRIVER_FILES: ${{ steps.vulkan-icd.outputs.path }}
@@ -247,7 +527,9 @@ jobs:
               '--treenode-filter',
               '/*/*/VulkanCompositionPresentationTests/D3D11BridgeImportsPixelsAndReusesKeyedMutex')
       - name: Execute ten required Avalonia hdSilk Vulkan processes
-        if: steps.vulkan-icd.outputs.available == 'true'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.vulkan-icd.outputs.available == 'true')
         shell: pwsh
         run: >
           ./eng/run-avalonia-vulkan-smoke.ps1
@@ -256,7 +538,9 @@ jobs:
           -Repetitions 10
           -TimeoutSeconds 120
       - name: Execute fresh NativeAOT Vulkan probe
-        if: steps.vulkan-icd.outputs.available == 'true'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.vulkan-icd.outputs.available == 'true')
         shell: pwsh
         run: >
           ./eng/run-avalonia-vulkan-smoke.ps1
@@ -265,12 +549,15 @@ jobs:
           -AotProbe
           -TimeoutSeconds 120
       - name: Verify viewer source identity and evidence contract
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           ./eng/test-viewer-source-identity.ps1
           ./eng/test-viewer-evidence-contract.ps1
       - name: Execute ABI v4 switching and retired-kind quarantine evidence
-        if: steps.vulkan-icd.outputs.available == 'true'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.vulkan-icd.outputs.available == 'true')
         shell: pwsh
         env:
           VK_DRIVER_FILES: ${{ steps.vulkan-icd.outputs.path }}
@@ -297,29 +584,132 @@ jobs:
 
   linux-presentation:
     name: Linux X11 and compositor-managed XWayland required gate
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      NATIVE_PIPELINE_RUN_ID: ${{ inputs['native-pipeline-run-id'] }}
+      DEFER_ON_NATIVE_CACHE_MISS: >-
+        ${{ github.event_name == 'push' &&
+            inputs['native-pipeline-run-id'] == '' &&
+            'true' || 'false' }}
+      NATIVE_PIPELINE_RUN_ID: >-
+        ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id ||
+            inputs['native-pipeline-run-id'] }}
       NATIVE_SOURCE: >-
-        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
-            inputs['native-source'] }}
+        ${{ (github.event_name == 'workflow_run' ||
+            inputs['native-pipeline-run-id']) && 'archive' ||
+            inputs['native-source'] || 'build' }}
       NATIVE_URL: ${{ inputs['linux-native-url'] }}
       NATIVE_SHA256: ${{ inputs['linux-native-sha256'] }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          ref: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 10.0.301
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13'
+      # Restore-only, and keyed character-identically to the cache native.yml saves.
+      # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
+      - id: native-cache
+        if: env.NATIVE_SOURCE == 'build'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            native/install/linux-x64
+            native/install/shim/linux-x64
+            native/install/vulkan-sdk-1.4.321.0
+            native/build/shim/linux-x64
+          key: >-
+            native-linux-x64-${{ hashFiles(
+              'eng/openusd.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/check-linux-native-prerequisites.ps1',
+              'eng/native-install-metadata.ps1',
+              'native/CMakeLists.txt',
+              'native/CMakePresets.json',
+              'native/**/CMakeLists.txt',
+              'native/**/*.cmake',
+              'native/**/*.json',
+              'native/**/*.in',
+              'native/**/resources/**',
+              'native/**/*.c',
+              'native/**/*.cc',
+              'native/**/*.cpp',
+              'native/**/*.cxx',
+              'native/**/*.m',
+              'native/**/*.mm',
+              'native/**/*.h',
+              'native/**/*.hh',
+              'native/**/*.hpp',
+              'native/**/*.hxx',
+              'native/**/*.inc',
+              'native/**/*.inl',
+              '!native/build/**',
+              '!native/install/**',
+              '!native/downloads/**',
+              '!native/src/**',
+              '!native/.cache/**'
+            ) }}
+      - name: Report a deferred render smoke when the native tree is not published yet
+        if: >-
+          env.NATIVE_SOURCE == 'build' &&
+          steps.native-cache.outputs.cache-hit != 'true' &&
+          env.DEFER_ON_NATIVE_CACHE_MISS == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/native-input/linux-x64 | Out-Null
+          [ordered]@{
+            schemaVersion = 1
+            status = 'deferred'
+            source = 'cache'
+            rid = 'linux-x64'
+            reason = 'The verified native install is not published for this cache key yet.'
+          } | ConvertTo-Json -Depth 4 |
+            Set-Content artifacts/native-input/linux-x64/source.json
+          Write-Host (
+            '::notice::RENDER_SMOKE_DEFERRED: no verified native install for ' +
+            'linux-x64 at this commit. The native artifact pipeline has not ' +
+            'published this native tree yet; a workflow_run render will cover ' +
+            'native changes once the archive exists.')
+      - name: Decide native input readiness
+        id: native-ready
+        shell: pwsh
+        run: |
+          $source = '${{ env.NATIVE_SOURCE }}'
+          $ready = $source -eq 'archive' -or
+            '${{ steps.native-cache.outputs.cache-hit }}' -eq 'true' -or
+            '${{ env.DEFER_ON_NATIVE_CACHE_MISS }}' -ne 'true'
+          "ready=$($ready.ToString().ToLowerInvariant())" |
+            Out-File $env:GITHUB_OUTPUT -Append
+      - name: Record restored native cache input
+        if: env.NATIVE_SOURCE == 'build' && steps.native-cache.outputs.cache-hit == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/native-input/linux-x64 | Out-Null
+          [ordered]@{
+            schemaVersion = 1
+            source = 'cache'
+            rid = 'linux-x64'
+            openUsdCommit = (Get-Content eng/openusd.lock.json -Raw |
+              ConvertFrom-Json).openUsd.commit
+          } | ConvertTo-Json -Depth 4 |
+            Set-Content artifacts/native-input/linux-x64/source.json
       - name: Validate native archive metadata preservation
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/test-render-native-archive.ps1
       - name: Install Linux presentation and NativeAOT prerequisites
+        if: steps.native-ready.outputs.ready == 'true'
         run: >
           sudo apt-get update &&
           sudo apt-get install -y
@@ -329,21 +719,27 @@ jobs:
           mesa-utils mesa-vulkan-drivers vulkan-tools libvulkan-dev
           weston x11-utils xwayland xvfb zlib1g-dev
       - name: Install Linux native build prerequisites
-        if: env.NATIVE_SOURCE == 'build'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (env.NATIVE_SOURCE == 'build')
         run: >-
           sudo apt-get install -y
           build-essential cmake ninja-build pkg-config libxt-dev
       - name: Validate Linux native prerequisite preflight contract
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/test-linux-native-prerequisites.ps1
       - name: Preflight Linux native build prerequisites
-        if: env.NATIVE_SOURCE == 'build'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (env.NATIVE_SOURCE == 'build')
         shell: pwsh
         run: ./eng/check-linux-native-prerequisites.ps1
       - name: Validate Linux presentation runner policy
+        if: steps.native-ready.outputs.ready == 'true'
         run: bash ./eng/test-storm-native-child-linux.sh
       - name: Download verified native pipeline archive
-        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -351,6 +747,9 @@ jobs:
           name: openusd-native-linux-x64
           path: artifacts/native-pipeline/linux-x64
       - name: Prepare pinned native input
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (env.NATIVE_SOURCE == 'archive' || steps.native-cache.outputs.cache-hit != 'true')
         shell: pwsh
         run: |
           $pipelineRoot = if ($env:NATIVE_PIPELINE_RUN_ID) {
@@ -364,12 +763,23 @@ jobs:
             -ArchiveUri $env:NATIVE_URL `
             -ArchiveSha256 $env:NATIVE_SHA256 `
             -PipelineRoot $pipelineRoot
+      - name: Verify native install metadata
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          ./eng/native-install-metadata.ps1 `
+            -Operation Verify `
+            -Rid linux-x64
       - name: Build Linux package tests for immutable archive
-        if: env.NATIVE_SOURCE == 'archive'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (env.NATIVE_SOURCE == 'archive')
         shell: pwsh
         run: dotnet build tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj -c Release
       - name: Execute archive package validation and Storm child consumer
-        if: env.NATIVE_SOURCE == 'archive'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (env.NATIVE_SOURCE == 'archive')
         shell: pwsh
         env:
           OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
@@ -386,16 +796,21 @@ jobs:
             'OpenUsd.Package.Tests.RuntimePackageTests.1.1.LinuxStormChildPackageExecutesNativeAotWithoutLibraryPath.1.1.0'
           exit $LASTEXITCODE
       - name: Validate archive ABI-4 SONAME topology, evidence, and hashes
-        if: env.NATIVE_SOURCE == 'archive'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (env.NATIVE_SOURCE == 'archive')
         shell: pwsh
         run: ./eng/validate-linux-package-evidence.ps1 -RequireArchiveSource
       - name: Execute staged NativeAOT shared-stage probes
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           ./eng/run-native-probe.ps1 -Rid linux-x64 -SkipNativeAbiProbe
           ./eng/run-silk-probe.ps1 -Rid linux-x64 -SharedStageSoak
       - name: Execute Linux GLX native-child CTest
-        if: env.NATIVE_SOURCE == 'build'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (env.NATIVE_SOURCE == 'build')
         run: |
           export DISPLAY=:94
           Xvfb "$DISPLAY" -screen 0 1280x720x24 -ac -nolisten tcp >artifacts/linux-storm-ctest-xvfb.log 2>&1 &
@@ -407,6 +822,7 @@ jobs:
           done
           ctest --test-dir native/build/shim/linux-x64 --output-on-failure
       - name: Execute Linux GLX Storm-to-hdSilk parity capture
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
@@ -429,6 +845,7 @@ jobs:
             Stop-Process -Id $xvfb.Id -ErrorAction SilentlyContinue
           }
       - name: Execute mandatory isolated X11 shared-stage soak
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: >
           ./eng/run-platform-smoke.ps1
@@ -436,6 +853,7 @@ jobs:
           -SharedStageSoak
           -SoakSeconds 90
       - name: Execute mandatory XWayland shared-stage soak
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: >
           ./eng/run-platform-smoke.ps1
@@ -443,9 +861,11 @@ jobs:
           -SharedStageSoak
           -SoakSeconds 90
       - name: Publish Avalonia Vulkan smoke
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/publish-avalonia-vulkan-smoke.ps1 -Rid linux-x64
       - name: Evaluate Linux Vulkan runtime readiness
+        if: steps.native-ready.outputs.ready == 'true'
         id: linux-vulkan
         shell: pwsh
         run: |
@@ -467,8 +887,10 @@ jobs:
            }
           }
       - name: Resolve the Linux Vulkan loader and lavapipe ICD
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          steps.linux-vulkan.outputs.ready == 'true'
         id: linux-vulkan-runtime
-        if: steps.linux-vulkan.outputs.ready == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -503,7 +925,9 @@ jobs:
           echo "loader=$loader" >> "$GITHUB_OUTPUT"
           echo "icd=$icd" >> "$GITHUB_OUTPUT"
       - name: Execute required X11 Vulkan import smoke
-        if: steps.linux-vulkan.outputs.ready == 'true'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.linux-vulkan.outputs.ready == 'true')
         env:
           OPENUSD_REQUIRE_VULKAN_PRESENTATION: '1'
           OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY: '1'
@@ -514,7 +938,9 @@ jobs:
           '${{ steps.linux-vulkan-runtime.outputs.loader }}'
           '${{ steps.linux-vulkan-runtime.outputs.icd }}'
       - name: Execute required Wayland Vulkan import smoke
-        if: steps.linux-vulkan.outputs.ready == 'true'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.linux-vulkan.outputs.ready == 'true')
         env:
           OPENUSD_REQUIRE_VULKAN_PRESENTATION: '1'
           OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY: '1'
@@ -525,6 +951,7 @@ jobs:
           '${{ steps.linux-vulkan-runtime.outputs.loader }}'
           '${{ steps.linux-vulkan-runtime.outputs.icd }}'
       - name: Execute X11 Storm child switching gate
+        if: steps.native-ready.outputs.ready == 'true'
         env:
           OPENUSD_LINUX_STORM_SWITCH_COUNT: '100'
           OPENUSD_LINUX_STORM_SURVIVAL_SECONDS: '90'
@@ -533,6 +960,7 @@ jobs:
           OPENUSD_ALLOW_UNAVAILABLE_CAPABILITY: '1'
         run: bash ./eng/run-storm-native-child-linux.sh x11
       - name: Execute whole-shell XWayland Storm child switching gate
+        if: steps.native-ready.outputs.ready == 'true'
         env:
           OPENUSD_LINUX_STORM_SWITCH_COUNT: '100'
           OPENUSD_LINUX_STORM_SURVIVAL_SECONDS: '90'
@@ -563,13 +991,23 @@ jobs:
 
   macos-arm64:
     name: macOS arm64 Storm child and Metal
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: macos-15
     timeout-minutes: 360
     env:
-      NATIVE_PIPELINE_RUN_ID: ${{ inputs['native-pipeline-run-id'] }}
+      DEFER_ON_NATIVE_CACHE_MISS: >-
+        ${{ github.event_name == 'push' &&
+            inputs['native-pipeline-run-id'] == '' &&
+            'true' || 'false' }}
+      NATIVE_PIPELINE_RUN_ID: >-
+        ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id ||
+            inputs['native-pipeline-run-id'] }}
       NATIVE_SOURCE: >-
-        ${{ inputs['native-pipeline-run-id'] && 'archive' ||
-            inputs['native-source'] }}
+        ${{ (github.event_name == 'workflow_run' ||
+            inputs['native-pipeline-run-id']) && 'archive' ||
+            inputs['native-source'] || 'build' }}
       NATIVE_URL: ${{ inputs['macos-native-url'] }}
       NATIVE_SHA256: ${{ inputs['macos-native-sha256'] }}
       OpenUsdRequireMetalShaderLibrary: 'true'
@@ -578,22 +1016,117 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          ref: >-
+            ${{ github.event_name == 'workflow_run' &&
+                github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 10.0.301
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13'
+      # Restore-only, and keyed character-identically to the cache native.yml saves.
+      # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
+      - id: native-cache
+        if: env.NATIVE_SOURCE == 'build'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            native/install/osx-arm64
+            native/install/shim/osx-arm64
+            native/install/vulkan-sdk-1.4.321.0
+            native/build/shim/osx-arm64
+          key: >-
+            native-osx-arm64-${{ hashFiles(
+              'eng/openusd.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/check-linux-native-prerequisites.ps1',
+              'eng/native-install-metadata.ps1',
+              'native/CMakeLists.txt',
+              'native/CMakePresets.json',
+              'native/**/CMakeLists.txt',
+              'native/**/*.cmake',
+              'native/**/*.json',
+              'native/**/*.in',
+              'native/**/resources/**',
+              'native/**/*.c',
+              'native/**/*.cc',
+              'native/**/*.cpp',
+              'native/**/*.cxx',
+              'native/**/*.m',
+              'native/**/*.mm',
+              'native/**/*.h',
+              'native/**/*.hh',
+              'native/**/*.hpp',
+              'native/**/*.hxx',
+              'native/**/*.inc',
+              'native/**/*.inl',
+              '!native/build/**',
+              '!native/install/**',
+              '!native/downloads/**',
+              '!native/src/**',
+              '!native/.cache/**'
+            ) }}
+      - name: Report a deferred render smoke when the native tree is not published yet
+        if: >-
+          env.NATIVE_SOURCE == 'build' &&
+          steps.native-cache.outputs.cache-hit != 'true' &&
+          env.DEFER_ON_NATIVE_CACHE_MISS == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/native-input/osx-arm64 | Out-Null
+          [ordered]@{
+            schemaVersion = 1
+            status = 'deferred'
+            source = 'cache'
+            rid = 'osx-arm64'
+            reason = 'The verified native install is not published for this cache key yet.'
+          } | ConvertTo-Json -Depth 4 |
+            Set-Content artifacts/native-input/osx-arm64/source.json
+          Write-Host (
+            '::notice::RENDER_SMOKE_DEFERRED: no verified native install for ' +
+            'osx-arm64 at this commit. The native artifact pipeline has not ' +
+            'published this native tree yet; a workflow_run render will cover ' +
+            'native changes once the archive exists.')
+      - name: Decide native input readiness
+        id: native-ready
+        shell: pwsh
+        run: |
+          $source = '${{ env.NATIVE_SOURCE }}'
+          $ready = $source -eq 'archive' -or
+            '${{ steps.native-cache.outputs.cache-hit }}' -eq 'true' -or
+            '${{ env.DEFER_ON_NATIVE_CACHE_MISS }}' -ne 'true'
+          "ready=$($ready.ToString().ToLowerInvariant())" |
+            Out-File $env:GITHUB_OUTPUT -Append
+      - name: Record restored native cache input
+        if: env.NATIVE_SOURCE == 'build' && steps.native-cache.outputs.cache-hit == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/native-input/osx-arm64 | Out-Null
+          [ordered]@{
+            schemaVersion = 1
+            source = 'cache'
+            rid = 'osx-arm64'
+            openUsdCommit = (Get-Content eng/openusd.lock.json -Raw |
+              ConvertFrom-Json).openUsd.commit
+          } | ConvertTo-Json -Depth 4 |
+            Set-Content artifacts/native-input/osx-arm64/source.json
       - name: Select Xcode 16.4
+        if: steps.native-ready.outputs.ready == 'true'
         run: |
           sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
           xcodebuild -version
       - name: Validate native archive metadata preservation
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/test-render-native-archive.ps1
       - name: Install native build prerequisites
+        if: steps.native-ready.outputs.ready == 'true'
         run: brew install cmake ninja
       - name: Build and validate six-entry Metal library
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           ./eng/shaders/fetch-toolchain.ps1 -Rid osx-arm64
@@ -605,7 +1138,7 @@ jobs:
           ./eng/shaders/prepare-metal-library.ps1 `
             -OutputRoot eng/shaders/out/checked-payload/osx-arm64
       - name: Download verified native pipeline archive
-        if: env.NATIVE_PIPELINE_RUN_ID != ''
+        if: env.NATIVE_PIPELINE_RUN_ID != '' && steps.native-ready.outputs.ready == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -613,6 +1146,9 @@ jobs:
           name: openusd-native-osx-arm64
           path: artifacts/native-pipeline/osx-arm64
       - name: Prepare pinned native input
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (env.NATIVE_SOURCE == 'archive' || steps.native-cache.outputs.cache-hit != 'true')
         shell: pwsh
         run: |
           $pipelineRoot = if ($env:NATIVE_PIPELINE_RUN_ID) {
@@ -626,7 +1162,15 @@ jobs:
             -ArchiveUri $env:NATIVE_URL `
             -ArchiveSha256 $env:NATIVE_SHA256 `
             -PipelineRoot $pipelineRoot
+      - name: Verify native install metadata
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          ./eng/native-install-metadata.ps1 `
+            -Operation Verify `
+            -Rid osx-arm64
       - id: cesium-vcpkg-cache
+        if: steps.native-ready.outputs.ready == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -642,12 +1186,15 @@ jobs:
       # Release run 31251906449 failed because the full package gates required
       # libopenusd_cesium.dylib from the package-only archive path.
       - name: Build Cesium native install
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/build-cesium-native.ps1 -Rid osx-arm64 -SkipSmokeProbe
       - name: Build Cesium shim
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/build-cesium-shim.ps1 -Rid osx-arm64
       - name: Execute immutable macOS package-only gates
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           dotnet build tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj -c Release
@@ -663,20 +1210,25 @@ jobs:
           ./eng/validate-macos-package-evidence.ps1 `
             -RequireArchiveSource:($env:NATIVE_SOURCE -eq 'archive')
       - name: Execute staged NativeAOT shared-stage probes
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           ./eng/run-native-probe.ps1 -Rid osx-arm64 -SkipNativeAbiProbe
           ./eng/run-silk-probe.ps1 -Rid osx-arm64
           ./eng/run-silk-probe.ps1 -Rid osx-arm64 -MetalComposition
       - name: Resolve macOS CGL parity capability
+        if: steps.native-ready.outputs.ready == 'true'
         id: macos-cgl
         shell: pwsh
         run: ./eng/resolve-macos-cgl-capability.ps1
       - name: Execute macOS CGL Storm-to-Metal parity capture
-        if: steps.macos-cgl.outputs.available == 'true'
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.macos-cgl.outputs.available == 'true')
         shell: pwsh
         run: ./eng/run-parity-capture.ps1 -Rid osx-arm64 -Configuration Release
       - name: Execute actual IOSurface Metal composition tests
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           $conformanceProject = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
@@ -711,6 +1263,7 @@ jobs:
               '--treenode-filter',
               '/*/*/MetalCompositionViewportLifecycleTests/*')
       - name: Execute native probe and Storm/Metal no-restart switching loops
+        if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: >
           ./eng/run-storm-native-child-macos.ps1

@@ -370,6 +370,184 @@ public sealed class WorkflowStructureContractTests
         }
     }
 
+
+    [Test]
+    public async Task RenderWorkflowRunsOutsideAReleaseOnEveryHostedLeg()
+    {
+        string root = FindRepositoryRoot();
+        string render = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "render.yml"));
+        string native = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "native.yml"));
+
+        string triggers = ReadTriggerBlock(render);
+        await Assert.That(triggers).IsNotEmpty();
+        await Assert.That(triggers)
+            .Contains("workflow_run:", StringComparison.Ordinal)
+            .Because("native changes must run render after the verified native archive exists");
+        await Assert.That(triggers)
+            .Contains("push:", StringComparison.Ordinal)
+            .Because(
+                "render.yml was release-only until 0.6.0-alpha, which hid stale soak ABI " +
+                "constants and capability defects until the release gate");
+
+        foreach (string branch in new[] { "master", "main" })
+        {
+            await Assert.That(triggers)
+                .Contains(branch, StringComparison.Ordinal)
+                .Because($"the push trigger must cover '{branch}' or it silently never fires");
+        }
+
+        foreach (string path in new[]
+        {
+            "'.github/workflows/render.yml'",
+            "'eng/run-parity-capture.ps1'",
+            "'eng/run-platform-smoke.ps1'",
+            "'eng/run-native-probe.ps1'",
+            "'eng/run-silk-probe.ps1'",
+            "'eng/resolve-macos-cgl-capability.ps1'",
+            "'tests/OpenUsd.Rendering.ConformanceTests/**'",
+            "'src/OpenUsd.Rendering*/**'",
+            "'eng/shaders/**'",
+        })
+        {
+            await Assert.That(triggers)
+                .Contains(path, StringComparison.Ordinal)
+                .Because($"{path} is consumed directly by at least one render leg");
+        }
+
+        Match named = Regex.Match(
+            triggers,
+            @"workflows:\s*\[\s*'(?<title>[^']+)'\s*\]",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(5));
+        Match upstream = Regex.Match(
+            native,
+            @"^name:\s*(?<title>.+?)\s*$",
+            RegexOptions.Multiline | RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(5));
+        await Assert.That(named.Success).IsTrue();
+        await Assert.That(upstream.Success).IsTrue();
+        await Assert.That(named.Groups["title"].Value)
+            .IsEqualTo(upstream.Groups["title"].Value)
+            .Because("render.yml triggers on the native pipeline by title, so it must match");
+
+        foreach (string job in new[]
+        {
+            "windows-wgl",
+            "windows-vulkan-required",
+            "linux-presentation",
+            "macos-arm64",
+        })
+        {
+            await Assert.That(ReadJob(render, job))
+                .IsNotEmpty()
+                .Because($"the render push gate must keep the hosted {job} leg wired");
+        }
+    }
+
+    [Test]
+    public async Task RenderWorkflowReusesNativeArchivesAndNeverRebuildsOnPush()
+    {
+        string root = FindRepositoryRoot();
+        string render = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "render.yml"));
+        string native = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "native.yml"));
+
+        const string nativePrefix = "native-${{ matrix.rid }}-";
+        IReadOnlyList<string> saved = HashFileInputs(native, nativePrefix);
+        await Assert.That(saved.Count)
+            .IsGreaterThan(20)
+            .Because("native.yml must still key its install cache on hashFiles");
+
+        foreach ((string jobName, string rid) in new[]
+        {
+            ("windows-wgl", "win-x64"),
+            ("windows-vulkan-required", "win-x64"),
+            ("linux-presentation", "linux-x64"),
+            ("macos-arm64", "osx-arm64"),
+        })
+        {
+            string job = ReadJob(render, jobName);
+            await Assert.That(job)
+                .Contains("actions/cache/restore@", StringComparison.Ordinal)
+                .Because($"{jobName} must restore native.yml's cache rather than saving its own");
+
+            IReadOnlyList<string> restored = HashFileInputs(job, $"native-{rid}-");
+            await Assert.That(restored.Count)
+                .IsGreaterThan(20)
+                .Because($"{jobName} must restore the full native install cache");
+            await Assert.That(restored)
+                .IsEquivalentTo(saved)
+                .Because($"{jobName} must use the exact native.yml cache inputs");
+
+            await Assert.That(job)
+                .Contains("DEFER_ON_NATIVE_CACHE_MISS:", StringComparison.Ordinal)
+                .Because($"{jobName} needs an explicit push-cache-miss deferral switch");
+            await Assert.That(job)
+                .Contains("github.event_name == 'push'", StringComparison.Ordinal)
+                .Because("only self-firing push runs may defer instead of building OpenUSD");
+            await Assert.That(job)
+                .Contains("inputs['native-source'] || 'build'", StringComparison.Ordinal)
+                .Because("self-firing push runs have no workflow input defaults but still need cache restore");
+            await Assert.That(job)
+                .Contains("RENDER_SMOKE_DEFERRED", StringComparison.Ordinal)
+                .Because("a deferred render smoke must leave a searchable notice");
+
+            string readyStep = ReadStep(job, "Decide native input readiness");
+            await Assert.That(readyStep)
+                .Contains("$source -eq 'archive'", StringComparison.Ordinal)
+                .Because("tag releases pass a native pipeline run id and must be ready in archive mode");
+            await Assert.That(readyStep)
+                .Contains("steps.native-cache.outputs.cache-hit", StringComparison.Ordinal)
+                .Because("push runs may proceed only when the verified native cache is present");
+            await Assert.That(readyStep)
+                .Contains("DEFER_ON_NATIVE_CACHE_MISS", StringComparison.Ordinal)
+                .Because("manual and release runs must not silently skip render gates");
+
+            string prepareStep = ReadStep(job, "Prepare pinned native input");
+            await Assert.That(prepareStep)
+                .Contains("steps.native-ready.outputs.ready == 'true'", StringComparison.Ordinal)
+                .Because($"{jobName} must skip native input staging when the push run deferred");
+            await Assert.That(prepareStep)
+                .Contains("steps.native-cache.outputs.cache-hit != 'true'", StringComparison.Ordinal)
+                .Because($"{jobName} must not call the source-build helper after a cache hit");
+        }
+    }
+
+    [Test]
+    public async Task RenderWorkflowTagReleaseArchiveModeCannotDeferGates()
+    {
+        string root = FindRepositoryRoot();
+        string render = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "render.yml"));
+
+        foreach (string jobName in new[]
+        {
+            "windows-wgl",
+            "windows-vulkan-required",
+            "linux-presentation",
+            "macos-arm64",
+        })
+        {
+            string job = ReadJob(render, jobName);
+            await Assert.That(job)
+                .Contains(
+                    "github.event_name == 'workflow_run' && github.event.workflow_run.id",
+                    StringComparison.Ordinal)
+                .Because($"{jobName} must consume the native pipeline archive after native.yml completes");
+            await Assert.That(job)
+                .Contains("inputs['native-pipeline-run-id']) && 'archive'", StringComparison.Ordinal)
+                .Because(
+                    "release.yml invokes render.yml from a tag push; the called workflow still sees " +
+                    "event_name == 'push', so readiness must come from the supplied archive input");
+            await Assert.That(job)
+                .Contains("github.event_name != 'workflow_run' ||", StringComparison.Ordinal)
+                .Because("workflow_run should not look for an archive after a failed native pipeline");
+        }
+    }
+
     [Test]
     public async Task RenderWorkflowBuildsCesiumShimOnlyForFullPackageGates()
     {

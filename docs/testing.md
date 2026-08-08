@@ -34,9 +34,11 @@ flowchart TD
 The dependency arrows show reusable release-workflow ordering and native artifact flow.
 `package.yml` also runs outside release: after successful `native artifact pipeline` runs on `main`,
 and on pushes or pull requests that touch packaging paths, package tests, runtime package projects,
-Cesium inputs, or native hdSilk/package-validation inputs. Every workflow result also feeds the
-aggregate job, which records one release decision without duplicating each workflow's detailed
-evidence contract.
+Cesium inputs, or native hdSilk/package-validation inputs. `render.yml` also runs after the
+native pipeline publishes verified RID archives on `main`, and on pushes that touch render scripts,
+rendering/viewer/package tests consumed by render legs, rendering/viewer sources, or shader payloads.
+Every workflow result also feeds the aggregate job, which records one release decision without
+duplicating each workflow's detailed evidence contract.
 
 Managed tests use TUnit on Microsoft.Testing.Platform. The current pre-alpha baseline includes
 managed data, interop, package, rendering, and viewer suites; native ABI and OpenUSD compatibility
@@ -508,7 +510,8 @@ notification coalescing, Storm pre/post-loss frames and faults, hdSilk pages/ups
 baseline/peak/final native and managed resource counters. Forced-GC checkpoints every 500 operations
 after warmup record retained bytes and working set; later-window least-squares slopes must remain below
 the deterministic ceilings. `render.yml` runs the NativeAOT soak plus Windows WGL and Linux X11/XWayland
-soaks as blocking steps. `eng/shared-stage-soak-identity.ps1` causes each runner to reject stale source,
+soaks as blocking steps on releases, after native archive publication on `main`, and on path-filtered
+render pushes. `eng/shared-stage-soak-identity.ps1` causes each runner to reject stale source,
 executable hash, or executable timestamp evidence. The source identity covers all production `src`
 projects (including every Silk backend), native shim sources/CMake/resources, tests/probes/assets,
 root build/version/package inputs, rendering workflow, and engineering scripts while excluding generated

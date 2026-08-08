@@ -126,7 +126,7 @@ Assert-DoesNotContain `
 # must keep blocking on every host.
 Assert-OccurrenceCount `
     $renderWorkflow `
-    "if: steps.vulkan-icd.outputs.available == 'true'" `
+    "steps.vulkan-icd.outputs.available == 'true'" `
     4 `
     'Render workflow'
 Assert-Contains `
@@ -216,7 +216,7 @@ Assert-Contains $testingDoc 'artifacts/render-capability/macos-cgl.json' 'Testin
 # The macOS CGL parity proof is required when an accelerated offline-capable
 # pixel format exists, but hosted headless arm64 runners may have no such format.
 Assert-Contains $renderWorkflow '- name: Resolve macOS CGL parity capability' 'Render workflow'
-Assert-Contains $renderWorkflow "if: steps.macos-cgl.outputs.available == 'true'" 'Render workflow'
+Assert-Contains $renderWorkflow "steps.macos-cgl.outputs.available == 'true'" 'Render workflow'
 Assert-Contains $renderWorkflow 'artifacts/render-capability/macos-cgl.json' 'Render workflow'
 $macosCglScript = Join-Path $repoRoot 'eng/resolve-macos-cgl-capability.ps1'
 if (-not (Test-Path -LiteralPath $macosCglScript -PathType Leaf))
