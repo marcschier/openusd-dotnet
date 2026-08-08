@@ -13,6 +13,10 @@
     <PackageTags>openusd;usd;native;runtime;windows;linux;macos;x64;arm64</PackageTags>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <IncludeSymbols>false</IncludeSymbols>
+    <!--
+      Package validation compares managed lib/ref assemblies. This package suppresses build output and
+      ships only RID package dependencies, so the opt-out is intentional.
+    -->
     <EnablePackageValidation>false</EnablePackageValidation>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>

@@ -47,6 +47,12 @@ For an intentional public addition, removal, or signature change:
 The baseline prevents accidental surface drift. It is not a substitute for behavioral compatibility
 tests or clear ownership documentation.
 
+Runtime packages are deliberately outside the managed API baseline and .NET package-validation
+contract. The RID-agnostic packages contain only dependencies on RID-specific runtime packages, and
+the RID-specific packages set `IncludeBuildOutput=false` so they ship native `runtimes/<rid>` assets
+and `buildTransitive` targets instead of managed `lib` or `ref` assemblies. Their compatibility is
+covered by package layout, native ABI, native-loader, and package-only execution gates.
+
 Package versions are derived by the repository versioning configuration. Upstream OpenUSD has a
 separate locked version in `eng/openusd.lock.json`; the current lock is OpenUSD 26.05 at a specific
 commit and archive hash.

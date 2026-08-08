@@ -13,6 +13,10 @@
     <RuntimePackageRid>osx-arm64</RuntimePackageRid>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <IncludeSymbols>false</IncludeSymbols>
+    <!--
+      Package validation compares managed lib/ref assemblies. This package suppresses build output and
+      ships only native assets and buildTransitive targets, so the opt-out is intentional.
+    -->
     <EnablePackageValidation>false</EnablePackageValidation>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>
