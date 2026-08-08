@@ -1,7 +1,7 @@
 # Support matrix
 
 This matrix describes the implementation and declared repository gates for the public
-`0.5.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
+`0.6.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
 workflow is currently green.
 
 ## Status terms
@@ -24,7 +24,7 @@ branch.
 
 | Item | Current state |
 | --- | --- |
-| Version | `0.5.0-alpha` |
+| Version | `0.6.0-alpha` |
 | Repository visibility | Public |
 | API compatibility | Pre-1.0; public APIs may change |
 | Package identity stability | Pre-1.0; IDs may change |
@@ -42,8 +42,8 @@ centralized in [Versioning and compatibility](versioning-compatibility.md).
 ## Packages
 
 All package projects below are packable from source. Availability here means repository production,
-not public-feed publication. The 17 non-Cesium IDs are published to NuGet.org at `0.5.0-alpha`;
-the five Cesium IDs are next-alpha packages that have not yet been published.
+not public-feed publication. All 22 IDs are published to NuGet.org at `0.6.0-alpha`; the five
+Cesium IDs ship for the first time in this release, having been withheld at `0.5.0-alpha`.
 
 | Package | Framework project | Native requirement |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ the five Cesium IDs are next-alpha packages that have not yet been published.
 | `OpenUsd` | 8/9/10 | Core runtime |
 | `OpenUsd.Rendering` | 8/9/10 | None for neutral contracts |
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Imaging runtime |
-| `OpenUsd.Cesium` | 8/9/10 | Cesium runtime; next alpha, not on NuGet.org at `0.5.0-alpha` |
+| `OpenUsd.Cesium` | 8/9/10 | Cesium runtime |
 | `OpenUsd.Rendering.Silk` | 8/9/10 | Imaging runtime for scene pages |
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Imaging runtime; Windows execution |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Imaging runtime; Windows/Linux execution |

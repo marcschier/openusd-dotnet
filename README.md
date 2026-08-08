@@ -13,14 +13,14 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Current distribution:** public source repository and 17 published `0.5.0-alpha` packages,
-> with pre-1.0 APIs. The next alpha pack set adds the five Cesium package IDs enumerated below;
-> those Cesium packages are buildable from this tree but are not present on NuGet.org at `0.5.0-alpha`.
+> **Current distribution:** public source repository and 22 published `0.6.0-alpha` packages,
+> with pre-1.0 APIs. This set adds the five Cesium package IDs enumerated below, which were
+> buildable from the tree but withheld from NuGet.org at `0.5.0-alpha`.
 > Package identities and public APIs may still change before 1.0.
 
 ```shell
-dotnet add package OpenUsd --version 0.5.0-alpha
-dotnet add package OpenUsd.Runtime.Core --version 0.5.0-alpha
+dotnet add package OpenUsd --version 0.6.0-alpha
+dotnet add package OpenUsd.Runtime.Core --version 0.6.0-alpha
 ```
 
 `OpenUsd.Runtime.Core` is the RID-agnostic metapackage for `win-x64`, `linux-x64`, and
@@ -115,9 +115,9 @@ See [Architecture](docs/architecture.md) and [Rendering](docs/rendering.md).
 
 ## 📦 Package matrix
 
-All package IDs below are buildable from this repository for the next alpha release. The 17
-non-Cesium IDs are published to NuGet.org at `0.5.0-alpha`; the five Cesium IDs are enabled in
-`eng/pack-packages.ps1` for the next alpha but have not yet been published.
+All 22 package IDs below are buildable from this repository and published to NuGet.org at
+`0.6.0-alpha`. The five Cesium IDs were withheld at `0.5.0-alpha` and ship for the first time
+in this release.
 
 | Package | TFM | Purpose |
 | --- | --- | --- |
@@ -125,7 +125,7 @@ non-Cesium IDs are published to NuGet.org at `0.5.0-alpha`; the five Cesium IDs 
 | `OpenUsd` | 8/9/10 | Managed stage, layer, prim, value, and schema API |
 | `OpenUsd.Rendering` | 8/9/10 | Renderer-neutral state, capabilities, picking, and failover |
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Hydra/Storm adapter |
-| `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer; next alpha, not on NuGet.org at `0.5.0-alpha` |
+| `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer |
 | `OpenUsd.Rendering.Silk` | 8/9/10 | Hydra-fed managed renderer and backend-neutral RHI |
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Direct3D 12 backend |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Vulkan backend |
@@ -392,7 +392,7 @@ tests and documentation. See [Contributing](CONTRIBUTING.md).
 
 ## Status
 
-OpenUsd is a substantial public `0.5.0-alpha` baseline with 17 packages published to NuGet.org,
+OpenUsd is a substantial public `0.6.0-alpha` baseline with 22 packages published to NuGet.org,
 but it is not a stable release. Data, rendering, Viewer, package, NativeAOT, shader, parity, and
 performance gates exist, and this README states what they do and do not prove. Public API and package
 identities may change before 1.0. Workflow badges above are the authoritative status for the default branch.
@@ -400,6 +400,11 @@ identities may change before 1.0. Workflow badges above are the authoritative st
 Before 1.0 the remaining work is code signing and notarization credentials for signed Viewer
 distributions, GPU-equipped self-hosted runners for the two Vulkan composition gates, and closing
 the measured divergences recorded in [Testing](docs/testing.md).
+
+The standalone Viewer bundle smoke currently passes on `win-x64` only. On `linux-x64` the bundled
+Viewer hangs during render-backend initialization under Xvfb and never renders a frame, and the
+`osx-arm64` result is not yet established. The published packages are unaffected — they are gated
+separately — but the Linux and macOS standalone Viewer bundles should be treated as unproven.
 
 [ci]: https://github.com/marcschier/openusd-dotnet/actions/workflows/ci.yml
 [ci-badge]: https://github.com/marcschier/openusd-dotnet/actions/workflows/ci.yml/badge.svg?branch=main

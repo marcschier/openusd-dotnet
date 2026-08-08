@@ -151,7 +151,7 @@ Dependencies are limited to system libraries and safe `@rpath` or
 the package under `build/`.
 
 Each Imaging package has an exact dependency on its matching Core version, for example
-`[0.5.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
+`[0.6.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
 resource staging arrive when a consumer references only Imaging.
 
 ## Pack
@@ -226,12 +226,13 @@ generated local feed. After a Release build, run them with:
 
 ## Publish
 
-Seventeen packages are published at `0.5.0-alpha`: the eight non-Cesium managed libraries
+Twenty-two packages are published at `0.6.0-alpha`: the eight non-Cesium managed libraries
 (`OpenUsd`, `OpenUsd.Interop`, `OpenUsd.Rendering`, `OpenUsd.Rendering.Silk`, the three hdSilk
 backends, and `OpenUsd.Rendering.Storm`), the embeddable `OpenUsd.Viewer` shell, the two runtime
-metapackages, and the six per-RID Core/Imaging runtime packages. `eng/pack-packages.ps1` is the
-single source of truth for the next alpha pack set, which adds `OpenUsd.Cesium`,
-`OpenUsd.Runtime.Cesium`, and the three per-RID Cesium runtime packages. The script enumerates
+metapackages, the six per-RID Core/Imaging runtime packages, and the five Cesium IDs
+(`OpenUsd.Cesium`, `OpenUsd.Runtime.Cesium`, and the three per-RID Cesium runtime packages) that
+were withheld at `0.5.0-alpha`. `eng/pack-packages.ps1` is the single source of truth for the
+published set. The script enumerates
 the packages explicitly rather than packing the solution. It asserts afterwards that the produced set
 matches exactly, so adding a project cannot silently ship it. Missing native input fails the run
 instead of publishing a partial release.
