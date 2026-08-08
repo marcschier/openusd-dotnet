@@ -849,7 +849,10 @@ public sealed class WorkflowStructureContractTests
             .Contains("Get-Command gdb -ErrorAction SilentlyContinue", StringComparison.Ordinal)
             .Because("the smoke script must tolerate local and hosted runs where gdb is absent");
         await Assert.That(smoke)
-            .Contains("'thread apply all bt full'", StringComparison.Ordinal)
+            .Contains("'-ex=info threads'", StringComparison.Ordinal)
+            .Because("gdb must list thread owners before printing full backtraces");
+        await Assert.That(smoke)
+            .Contains("'-ex=thread apply all bt full'", StringComparison.Ordinal)
             .Because("gdb must capture native frames and locals to identify the blocking X/GLX call");
         await Assert.That(smoke)
             .Contains("gdb was not available on PATH.", StringComparison.Ordinal)

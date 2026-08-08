@@ -22,6 +22,7 @@
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -231,6 +232,7 @@ std::atomic<XDispatcherInitialization> g_x_dispatcher_initialization{
 std::atomic<XErrorHandler> g_previous_x_error_handler{nullptr};
 std::atomic_uint64_t g_x_errors_forwarded_while_active{0};
 std::mutex g_x_error_gate;
+std::atomic<uint32_t> g_x_error_gate_owner_thread{0};
 
 struct XErrorState
 {
@@ -467,6 +469,101 @@ bool HasCapturedXError(const XErrorState& state) noexcept
     return state.captured.load(std::memory_order_acquire) == 2;
 }
 
+bool CurrentThreadOwnsXErrorGate() noexcept
+{
+    return g_x_error_gate_owner_thread.load(std::memory_order_acquire) ==
+        CurrentThreadId();
+}
+
+void AbortIfXErrorTrapReenteredByCurrentThread()
+{
+    if (!CurrentThreadOwnsXErrorGate())
+    {
+        return;
+    }
+    std::fputs(
+        "OpenUSD Storm child reentered the Linux X11 error trap.\n",
+        stderr);
+    std::abort();
+}
+
+extern "C" int32_t openusd_storm_child_test_xerror_trap_reentry_is_detected()
+{
+    {
+        std::unique_lock first(g_x_error_gate);
+        g_x_error_gate_owner_thread.store(
+            CurrentThreadId(),
+            std::memory_order_release);
+        const bool same_thread_reentry_detected = CurrentThreadOwnsXErrorGate();
+        g_x_error_gate_owner_thread.store(0, std::memory_order_release);
+        if (!same_thread_reentry_detected)
+        {
+            return 0;
+        }
+    }
+
+    std::atomic_bool holder_ready{false};
+    std::atomic_bool contender_started{false};
+    std::atomic_bool release_holder{false};
+    std::atomic_bool contender_acquired{false};
+    std::atomic_bool contender_saw_cleared_owner{false};
+    std::thread holder([&]()
+    {
+        std::unique_lock held(g_x_error_gate);
+        g_x_error_gate_owner_thread.store(
+            CurrentThreadId(),
+            std::memory_order_release);
+        holder_ready.store(true, std::memory_order_release);
+        while (!contender_started.load(std::memory_order_acquire))
+        {
+            std::this_thread::yield();
+        }
+        while (!release_holder.load(std::memory_order_acquire))
+        {
+            std::this_thread::yield();
+        }
+        g_x_error_gate_owner_thread.store(0, std::memory_order_release);
+    });
+
+    while (!holder_ready.load(std::memory_order_acquire))
+    {
+        std::this_thread::yield();
+    }
+    if (CurrentThreadOwnsXErrorGate())
+    {
+        release_holder.store(true, std::memory_order_release);
+        holder.join();
+        return 0;
+    }
+
+    std::thread contender([&]()
+    {
+        contender_started.store(true, std::memory_order_release);
+        std::unique_lock waited(g_x_error_gate);
+        contender_saw_cleared_owner.store(
+            g_x_error_gate_owner_thread.load(std::memory_order_acquire) == 0,
+            std::memory_order_release);
+        contender_acquired.store(true, std::memory_order_release);
+    });
+    while (!contender_started.load(std::memory_order_acquire))
+    {
+        std::this_thread::yield();
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (contender_acquired.load(std::memory_order_acquire))
+    {
+        release_holder.store(true, std::memory_order_release);
+        holder.join();
+        contender.join();
+        return 0;
+    }
+    release_holder.store(true, std::memory_order_release);
+    holder.join();
+    contender.join();
+    return contender_acquired.load(std::memory_order_acquire) &&
+        contender_saw_cleared_owner.load(std::memory_order_acquire) ? 1 : 0;
+}
+
 class ScopedXErrorTrap
 {
 public:
@@ -474,11 +571,16 @@ public:
         Display* display,
         ExpectedXError expected)
         : _display(display),
-          _lock(g_x_error_gate),
+          _lock(g_x_error_gate, std::defer_lock),
           _forwarded_before(
               g_x_errors_forwarded_while_active.load(
                   std::memory_order_relaxed))
     {
+        AbortIfXErrorTrapReenteredByCurrentThread();
+        _lock.lock();
+        g_x_error_gate_owner_thread.store(
+            CurrentThreadId(),
+            std::memory_order_release);
         // The dispatcher is process-lifetime. Only the checked request window
         // is serialized; the handler itself never takes this mutex.
         XSync(_display, False);
@@ -516,6 +618,10 @@ public:
     ~ScopedXErrorTrap()
     {
         Finish();
+        if (_lock.owns_lock())
+        {
+            g_x_error_gate_owner_thread.store(0, std::memory_order_release);
+        }
     }
 
     void Finish()
@@ -2309,29 +2415,31 @@ extern "C" openusd_status openusd_storm_child_create(
                 &detectable_auto_repeat) != False &&
             detectable_auto_repeat != False;
         XWindowAttributes parent_attributes{};
-        ScopedXErrorTrap parent_trap(
-            result->display,
-            ParentValidationError(parent));
-        const int parent_result = XGetWindowAttributes(
-            result->display,
-            parent,
-            &parent_attributes);
-        parent_trap.Finish();
-        if (parent_trap.HasUnexpectedError())
         {
-            XCloseDisplay(result->display);
-            openusd_stage_release(stage);
-            WriteError(
-                error,
-                parent_trap.Describe("XGetWindowAttributes"));
-            return OPENUSD_STATUS_NATIVE_ERROR;
-        }
-        if (parent_trap.HasExpectedError() || parent_result == 0)
-        {
-            XCloseDisplay(result->display);
-            openusd_stage_release(stage);
-            WriteError(error, "The parent XID is not valid on the active DISPLAY.");
-            return OPENUSD_STATUS_INVALID_ARGUMENT;
+            ScopedXErrorTrap parent_trap(
+                result->display,
+                ParentValidationError(parent));
+            const int parent_result = XGetWindowAttributes(
+                result->display,
+                parent,
+                &parent_attributes);
+            parent_trap.Finish();
+            if (parent_trap.HasUnexpectedError())
+            {
+                XCloseDisplay(result->display);
+                openusd_stage_release(stage);
+                WriteError(
+                    error,
+                    parent_trap.Describe("XGetWindowAttributes"));
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            if (parent_trap.HasExpectedError() || parent_result == 0)
+            {
+                XCloseDisplay(result->display);
+                openusd_stage_release(stage);
+                WriteError(error, "The parent XID is not valid on the active DISPLAY.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
         }
         result->stage = stage;
         result->parent = parent;
@@ -2382,38 +2490,41 @@ extern "C" openusd_status openusd_storm_child_create(
             IsFailpoint("xcreate-window-xerror");
         const Window request_parent =
             inject_window_error ? None : parent;
-        ScopedXErrorTrap window_trap(
-            result->display,
-            WindowRequestError(X_CreateWindow, request_parent));
-        const Window created = XCreateWindow(
-            result->display,
-            request_parent,
-            0,
-            0,
-            static_cast<unsigned int>(width),
-            static_cast<unsigned int>(height),
-            0,
-            result->visual->depth,
-            InputOutput,
-            result->visual->visual,
-            CWColormap | CWBackPixel | CWBorderPixel | CWEventMask,
-            &attributes);
-        if (created != None && !inject_window_error)
+        Window created = None;
         {
-            XStoreName(result->display, created, "OpenUSD Storm GLX child");
-            XMapWindow(result->display, created);
-        }
-        window_trap.Finish();
-        if (window_trap.HasExpectedError() ||
-            window_trap.HasUnexpectedError() ||
-            created == None)
-        {
-            XFreeColormap(result->display, result->colormap);
-            XFree(result->visual);
-            XCloseDisplay(result->display);
-            openusd_stage_release(stage);
-            WriteError(error, window_trap.Describe("XCreateWindow/XMapWindow"));
-            return OPENUSD_STATUS_NATIVE_ERROR;
+            ScopedXErrorTrap window_trap(
+                result->display,
+                WindowRequestError(X_CreateWindow, request_parent));
+            created = XCreateWindow(
+                result->display,
+                request_parent,
+                0,
+                0,
+                static_cast<unsigned int>(width),
+                static_cast<unsigned int>(height),
+                0,
+                result->visual->depth,
+                InputOutput,
+                result->visual->visual,
+                CWColormap | CWBackPixel | CWBorderPixel | CWEventMask,
+                &attributes);
+            if (created != None && !inject_window_error)
+            {
+                XStoreName(result->display, created, "OpenUSD Storm GLX child");
+                XMapWindow(result->display, created);
+            }
+            window_trap.Finish();
+            if (window_trap.HasExpectedError() ||
+                window_trap.HasUnexpectedError() ||
+                created == None)
+            {
+                XFreeColormap(result->display, result->colormap);
+                XFree(result->visual);
+                XCloseDisplay(result->display);
+                openusd_stage_release(stage);
+                WriteError(error, window_trap.Describe("XCreateWindow/XMapWindow"));
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
         }
         result->window.store(created, std::memory_order_relaxed);
 

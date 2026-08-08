@@ -435,6 +435,8 @@ bool ValidateStormChildRuntimeTopology(const char* runtime_path)
 }
 }
 
+extern "C" int32_t openusd_storm_child_test_xerror_trap_reentry_is_detected();
+
 int main(int argc, char** argv)
 {
     if (argc != 4)
@@ -448,6 +450,13 @@ int main(int argc, char** argv)
     {
         std::cerr << "XInitThreads failed.\n";
         return 3;
+    }
+    ReportStage("X11 error trap reentry contract");
+    if (!Require(
+            openusd_storm_child_test_xerror_trap_reentry_is_detected() == 1,
+            "X11 error trap reentry was not detected without blocking."))
+    {
+        return 4;
     }
     // Checked before the dispatcher starts and before any child is created, so
     // the forked probe inherits as little state as possible and an unusable

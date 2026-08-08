@@ -580,6 +580,57 @@ public sealed class StormNativeChildHostTests
     }
 
     [Test]
+    public async Task LinuxX11ErrorTrapReentryFailsFastAndCreateScopesEveryTrap()
+    {
+        string root = FindRepositoryRoot();
+        string linuxSource = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "native",
+            "openusd_storm_child",
+            "src",
+            "openusd_storm_child_linux.cpp"));
+        string createBody = linuxSource[linuxSource.IndexOf(
+            "extern \"C\" openusd_status openusd_storm_child_create",
+            StringComparison.Ordinal)..linuxSource.IndexOf(
+            "extern \"C\" openusd_status openusd_storm_child_destroy",
+            StringComparison.Ordinal)];
+
+        await Assert.That(linuxSource).DoesNotContain("_lock(g_x_error_gate, std::try_to_lock)");
+        await Assert.That(linuxSource).Contains("g_x_error_gate_owner_thread");
+        await Assert.That(linuxSource).Contains("AbortIfXErrorTrapReenteredByCurrentThread();");
+        await Assert.That(linuxSource).Contains("_lock.lock();");
+        await Assert.That(linuxSource)
+            .Contains("openusd_storm_child_test_xerror_trap_reentry_is_detected");
+        await Assert.That(linuxSource)
+            .Contains("contender_saw_cleared_owner");
+        await Assert.That(linuxSource)
+            .Contains("OpenUSD Storm child reentered the Linux X11 error trap.");
+        string probeSource = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "native",
+            "openusd_storm_child",
+            "tests",
+            "storm_child_probe_linux.cpp"));
+        await Assert.That(probeSource)
+            .Contains("X11 error trap reentry contract");
+        await Assert.That(probeSource)
+            .Contains("openusd_storm_child_test_xerror_trap_reentry_is_detected() == 1");
+        await Assert.That(createBody).Contains("ScopedXErrorTrap parent_trap");
+        await Assert.That(createBody).Contains("ScopedXErrorTrap colormap_trap");
+        await Assert.That(createBody).Contains("ScopedXErrorTrap window_trap");
+        await Assert.That(createBody.IndexOf(
+            "}\n        result->stage = stage;",
+            StringComparison.Ordinal)).IsGreaterThan(createBody.IndexOf(
+            "parent_trap.Finish();",
+            StringComparison.Ordinal));
+        await Assert.That(createBody.IndexOf(
+            "}\n        result->window.store(created",
+            StringComparison.Ordinal)).IsGreaterThan(createBody.IndexOf(
+            "window_trap.Finish();",
+            StringComparison.Ordinal));
+    }
+
+    [Test]
     public async Task NativeNavigationAbiIsPointerFreeAndImplementedOnEveryPlatform()
     {
         string root = FindRepositoryRoot();
