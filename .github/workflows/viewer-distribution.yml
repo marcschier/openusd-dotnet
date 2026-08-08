@@ -36,10 +36,6 @@ permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: viewer-distribution-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   pack-viewer-inputs:
     name: pack Viewer inputs ${{ matrix.rid }}
@@ -50,6 +46,9 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
+    concurrency:
+      group: viewer-distribution-pack-${{ github.ref }}-${{ matrix.rid }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -343,6 +342,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libfontconfig1 libgl1 libglx0 libopengl0 libgl1-mesa-dri libx11-6 xvfb
+      - name: Install Linux hang diagnostic tools
+        if: matrix.rid == 'linux-x64'
+        shell: bash
+        run: |
+          dotnet tool update --global dotnet-stack
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+          # Run 31251898756 reached the timeout path but createdump could not
+          # open /proc/<pid>/mem under Ubuntu's default ptrace_scope=1.
+          sudo sysctl -w kernel.yama.ptrace_scope=0
       - name: Download packed Viewer inputs
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

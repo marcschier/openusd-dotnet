@@ -505,6 +505,41 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task ViewerDistributionDoesNotCancelSmokeEvidenceAcrossMainPushes()
+    {
+        string root = FindRepositoryRoot();
+        string viewer = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "viewer-distribution.yml"));
+
+        string workflowHeader = viewer[..viewer.IndexOf("jobs:", StringComparison.Ordinal)];
+        await Assert.That(workflowHeader)
+            .DoesNotContain("cancel-in-progress: true", StringComparison.Ordinal)
+            .Because(
+                "runs 31251898756, 31249941766, 31248387006, 31245824359, " +
+                "31215759239, and 31210681699 showed workflow-level cancellation " +
+                "systematically kills the slow osx-arm64 smoke before it reports evidence");
+
+        string packJob = ReadJob(viewer, "pack-viewer-inputs");
+        await Assert.That(packJob)
+            .Contains("concurrency:", StringComparison.Ordinal)
+            .Because("only the cheap pack job should be superseded by newer pushes");
+        await Assert.That(packJob)
+            .Contains("viewer-distribution-pack-${{ github.ref }}-${{ matrix.rid }}", StringComparison.Ordinal)
+            .Because("pack cancellation should be per RID and should not share a group with smoke jobs");
+        await Assert.That(packJob)
+            .Contains("cancel-in-progress: true", StringComparison.Ordinal)
+            .Because("the cheap pack work may still be cancelled when a newer commit supersedes it");
+
+        string viewerSmokeJob = ReadJob(viewer, "viewer-distribution");
+        await Assert.That(viewerSmokeJob)
+            .DoesNotContain("cancel-in-progress: true", StringComparison.Ordinal)
+            .Because("a started smoke job is the evidence producer and must survive later pushes");
+        await Assert.That(viewerSmokeJob)
+            .DoesNotContain("viewer-distribution-${{ github.ref }}", StringComparison.Ordinal)
+            .Because("a ref-wide smoke concurrency group lets every main push kill the pending macOS leg");
+    }
+
+    [Test]
     public async Task ViewerBundleSmokeCapturesNativeCrashDiagnostics()
     {
         string root = FindRepositoryRoot();
@@ -549,6 +584,41 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(smoke)
             .Contains("viewer hang stack", StringComparison.Ordinal)
             .Because("the timeout diagnostics must appear in the CI log, not only in artifacts");
+    }
+
+    [Test]
+    public async Task ViewerBundleSmokeInstallsAndEnablesLinuxManagedHangStackCapture()
+    {
+        string root = FindRepositoryRoot();
+        string viewer = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "viewer-distribution.yml"));
+        string smoke = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "test-viewer-bundle-smoke.ps1"));
+
+        string viewerSmokeJob = ReadJob(viewer, "viewer-distribution");
+        string diagnosticStep = ReadStep(viewerSmokeJob, "Install Linux hang diagnostic tools");
+        await Assert.That(diagnosticStep)
+            .Contains("if: matrix.rid == 'linux-x64'", StringComparison.Ordinal)
+            .Because("the Linux hang is the reproducible no-crash failure that needs stack evidence");
+        await Assert.That(diagnosticStep)
+            .Contains("dotnet tool update --global dotnet-stack", StringComparison.Ordinal)
+            .Because("run 31251898756 had no dotnet-stack on PATH, so no managed stack was captured");
+        await Assert.That(diagnosticStep)
+            .Contains("echo \"$HOME/.dotnet/tools\" >> \"$GITHUB_PATH\"", StringComparison.Ordinal)
+            .Because("global .NET tools are invisible to later GitHub Actions steps until this path is exported");
+        await Assert.That(diagnosticStep)
+            .Contains("sudo sysctl -w kernel.yama.ptrace_scope=0", StringComparison.Ordinal)
+            .Because("createdump was denied by Ubuntu ptrace_scope=1 while opening /proc/<pid>/mem");
+
+        await Assert.That(smoke)
+            .Contains("Get-Command dotnet-stack -ErrorAction SilentlyContinue", StringComparison.Ordinal)
+            .Because("the smoke script must tolerate local runs where the diagnostic tool is absent");
+        await Assert.That(smoke)
+            .Contains("'report', '-p', [string]$ViewerProcess.Id", StringComparison.Ordinal)
+            .Because("dotnet-stack report prints the managed stack directly in the timeout log");
+        await Assert.That(smoke)
+            .Contains("dotnet-stack was not available on PATH.", StringComparison.Ordinal)
+            .Because("absence of the optional diagnostic tool should be reported rather than throwing");
     }
 
     /// <summary>
