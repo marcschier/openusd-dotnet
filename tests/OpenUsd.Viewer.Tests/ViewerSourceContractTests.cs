@@ -67,6 +67,37 @@ public sealed class ViewerSourceContractTests
     }
 
     [Test]
+    public async Task MacOSViewerBundleCompositionSkipIsExplicitAndDocumented()
+    {
+        string root = FindRepositoryRoot();
+        string smokeRunner = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "eng",
+            "test-viewer-bundle-smoke.ps1"));
+        string compositionSession = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "CompositionViewportSession.cs"));
+        string testing = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "docs",
+            "testing.md"));
+
+        await Assert.That(compositionSession).Contains(
+            "submitted to Avalonia compositor");
+        await Assert.That(smokeRunner).Contains("viewer-composition-capability.json");
+        await Assert.That(smokeRunner).Contains("status = 'skipped'");
+        await Assert.That(smokeRunner).Contains("macos-avalonia-metal-composition");
+        await Assert.That(smokeRunner).Contains("submitted to Avalonia compositor$'");
+        await Assert.That(smokeRunner).Contains("VIEWER_BUNDLE_SMOKE_SKIPPED");
+        await Assert.That(smokeRunner).Contains("Get-Command lldb");
+        await Assert.That(testing).Contains(
+            "artifacts/viewer-distribution-smoke/osx-arm64/viewer-composition-capability.json");
+        await Assert.That(testing).Contains("headless Avalonia compositor");
+    }
+
+    [Test]
     public async Task ViewerSourceKeepsDetachedTraversalAndSerializedDocumentLifecycle()
     {
         string root = FindRepositoryRoot();

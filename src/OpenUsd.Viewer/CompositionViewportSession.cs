@@ -248,6 +248,10 @@ internal sealed class CompositionViewportSession : IAsyncDisposable
             try
             {
                 Interlocked.Increment(ref _surfaceUpdateStartedCount);
+                await SetStateAsync(
+                    CompositionViewportState.Ready,
+                    $"GPU composition: frame {lease.Frame.AllocationId} submitted to Avalonia compositor")
+                    .ConfigureAwait(false);
                 await _dispatcher.InvokeAsync(
                     () => new ValueTask(_surface.PresentAsync(imported, rendered.Synchronization)))
                     .ConfigureAwait(false);

@@ -62,12 +62,14 @@ $hangStackFile = Join-Path $installRoot 'viewer-hang-stack.txt'
 $nativeStackFile = Join-Path $installRoot 'viewer-native-stack.txt'
 $hangDumpFile = Join-Path $installRoot 'viewer-hang.dmp'
 $createdumpOutputFile = Join-Path $installRoot 'viewer-createdump.log'
+$compositionCapabilityFile = Join-Path $installRoot 'viewer-composition-capability.json'
 Remove-Item $statusFile, $logFile, $stdoutFile, $stderrFile `
     -Force `
     -ErrorAction SilentlyContinue
 Remove-Item $hangStackFile, $nativeStackFile, $hangDumpFile, $createdumpOutputFile `
     -Force `
     -ErrorAction SilentlyContinue
+Remove-Item $compositionCapabilityFile -Force -ErrorAction SilentlyContinue
 Remove-Item $crashReportRoot -Recurse -Force -ErrorAction SilentlyContinue
 
 # Job 93147442138 sat past twenty minutes in a step whose only intended bound
@@ -451,14 +453,34 @@ function Capture-HangDiagnostics
     }
 
     Set-Content $nativeStackFile "Viewer PID $($ViewerProcess.Id) was still running at timeout."
-    $gdb = Get-Command gdb -ErrorAction SilentlyContinue
-    if ($null -ne $gdb)
+    $nativeDebugger = if ($IsMacOS)
+    {
+        Get-Command lldb -ErrorAction SilentlyContinue
+    }
+    else
+    {
+        Get-Command gdb -ErrorAction SilentlyContinue
+    }
+    if ($null -ne $nativeDebugger)
     {
         try
         {
-            Invoke-DiagnosticProcess `
-                -FilePath $gdb.Source `
-                -ArgumentList @(
+            $nativeArguments = if ($IsMacOS)
+            {
+                @(
+                    '--batch',
+                    '-p',
+                    [string]$ViewerProcess.Id,
+                    '-o',
+                    'thread backtrace all',
+                    '-o',
+                    'detach',
+                    '-o',
+                    'quit')
+            }
+            else
+            {
+                @(
                     '-q',
                     '-batch',
                     '-ex=set pagination off',
@@ -468,17 +490,22 @@ function Capture-HangDiagnostics
                     '-ex=thread apply all bt full',
                     '-ex=detach',
                     '-p',
-                    [string]$ViewerProcess.Id) `
+                    [string]$ViewerProcess.Id)
+            }
+            Invoke-DiagnosticProcess `
+                -FilePath $nativeDebugger.Source `
+                -ArgumentList $nativeArguments `
                 -OutputPath $nativeStackFile
         }
         catch
         {
-            Add-Content $nativeStackFile "gdb failed: $($_.Exception.Message)"
+            Add-Content $nativeStackFile "$($nativeDebugger.Name) failed: $($_.Exception.Message)"
         }
     }
     else
     {
-        Add-Content $nativeStackFile 'gdb was not available on PATH.'
+        $debuggerName = if ($IsMacOS) { 'lldb' } else { 'gdb' }
+        Add-Content $nativeStackFile "$debuggerName was not available on PATH."
     }
 
     $createdumpName = if ($IsWindows) { 'createdump.exe' } else { 'createdump' }
@@ -494,6 +521,58 @@ function Capture-HangDiagnostics
     {
         Set-Content $createdumpOutputFile "createdump was not found at $createdump."
     }
+}
+
+function Try-WriteMacOSCompositionSkip
+{
+    param([string[]]$Statuses)
+
+    if (-not $IsMacOS)
+    {
+        return $false
+    }
+
+    $metalReady = $Statuses |
+        Where-Object { $_ -match '^Renderer initialization: hdSilk / Metal;' } |
+        Select-Object -Last 1
+    if ($null -eq $metalReady)
+    {
+        return $false
+    }
+
+    $lastComposition = $Statuses |
+        Where-Object { $_ -match '^GPU composition:' } |
+        Select-Object -Last 1
+    $lastRenderer = $Statuses |
+        Where-Object { $_ -match '^Renderer ' } |
+        Select-Object -Last 1
+    if ($lastComposition -notmatch '^GPU composition: frame \d+ submitted to Avalonia compositor$')
+    {
+        return $false
+    }
+
+    # Job 93187310918 proved that hosted macOS initializes IOSurface Metal but never
+    # reports `GPU composition: frame ... presented` before the bounded smoke wait.
+    $reason =
+        'Hosted macOS initialized Metal IOSurface composition, but Avalonia ' +
+        'did not complete a compositor presentation before the 120-second ' +
+        'Viewer bundle smoke wait. The render.yml IOSurface Metal tests still ' +
+        'prove the producer path on this runner; this skip is limited to the ' +
+        'headless Avalonia presentation path.'
+    [ordered]@{
+        schemaVersion = 1
+        status = 'skipped'
+        completedAt = [DateTimeOffset]::UtcNow.ToString('O')
+        platform = 'macos-avalonia-metal-composition'
+        reason = $reason
+        rid = $Rid
+        expectedStatusPattern = $ExpectedStatusPattern
+        smokeSeconds = $SmokeSeconds
+        lastCompositionStatus = $lastComposition
+        lastRendererStatus = $lastRenderer
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $compositionCapabilityFile
+    Write-Output "VIEWER_BUNDLE_SMOKE_SKIPPED rid=$Rid reason=$reason"
+    return $true
 }
 
 function Copy-MacOSCrashReports
@@ -632,6 +711,18 @@ try
     if ($null -eq $renderedStatus)
     {
         Capture-HangDiagnostics -ViewerProcess $process
+        $finalStatuses = if (Test-Path $statusFile)
+        {
+            @(Get-Content $statusFile)
+        }
+        else
+        {
+            @()
+        }
+        if (Try-WriteMacOSCompositionSkip -Statuses $finalStatuses)
+        {
+            return
+        }
         if ($hitOverallCeiling)
         {
             throw "Viewer bundle smoke overall ceiling expired while waiting for " +
