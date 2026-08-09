@@ -538,6 +538,7 @@ try
     $windowsWglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'CuratedSceneParityClaimsAreStructured',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
         'SilkWireframeDrawModeDivergesFromSmoothShadedPixelsOnD3D12',
@@ -546,6 +547,7 @@ try
     $macosCglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'CuratedSceneParityClaimsAreStructured',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnMetal')
