@@ -182,6 +182,9 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(nuget)
             .Contains("release_run_id:", StringComparison.Ordinal)
             .Because("manual promotion needs an override when the tag run cannot be inferred");
+        await Assert.That(nuget)
+            .Contains("dry_run:", StringComparison.Ordinal)
+            .Because("new promotion plumbing needs a way to exercise downloads and symbol staging safely");
         await Assert.That(promote)
             .Contains("release.yml/runs", StringComparison.Ordinal)
             .Because("symbols are stored on the tag release run, not in the GitHub feed");
@@ -205,8 +208,19 @@ public sealed class WorkflowStructureContractTests
             .Contains("dotnet nuget push \"artifacts/*.nupkg\"", StringComparison.Ordinal)
             .Because("the nupkg bytes still come from the GitHub Packages feed");
         await Assert.That(push)
+            .Contains("github.event.inputs.dry_run != 'true'", StringComparison.Ordinal)
+            .Because("dry-run promotion must validate package and symbol staging without publishing");
+        await Assert.That(push)
             .DoesNotContain("--no-symbols", StringComparison.Ordinal)
             .Because("dotnet nuget push uploads an adjacent snupkg unless this option disables it");
+
+        string dryRun = ReadStep(promote, "Dry-run result");
+        await Assert.That(dryRun)
+            .Contains("github.event.inputs.dry_run == 'true'", StringComparison.Ordinal)
+            .Because("dry-run promotion must stop after validating staging");
+        await Assert.That(dryRun)
+            .Contains("Skipping NuGet/login and dotnet nuget push", StringComparison.Ordinal)
+            .Because("the dry-run log must make clear that no one-way publish happened");
 
         string uploadPublished = ReadStep(ReadJob(release, "publish"), "Upload the published packages");
         await Assert.That(uploadPublished)
@@ -215,6 +229,67 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(uploadPublished)
             .DoesNotContain("*.nupkg", StringComparison.Ordinal)
             .Because("the release artifact must not filter out the adjacent snupkg files");
+    }
+
+    [Test]
+    public async Task NuGetPromotionRequiresTheCompleteGitHubFeedPackageSet()
+    {
+        string root = FindRepositoryRoot();
+        string nuget = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "nuget.yml"));
+
+        string promote = ReadJob(nuget, "promote");
+        string completeSet = ReadStep(promote, "Require complete GitHub-feed package set");
+        await Assert.That(completeSet)
+            .Contains("-ListPublished", StringComparison.Ordinal)
+            .Because(
+                "nuget.org promotion must compare downloaded packages with the release published set, " +
+                "not just push whatever subset happened to exist on the GitHub feed");
+        await Assert.That(completeSet)
+            .Contains("StringComparer]::OrdinalIgnoreCase", StringComparison.Ordinal)
+            .Because("GitHub flat-container downloads are lowercase, but project package ids are not");
+        await Assert.That(completeSet)
+            .Contains("Missing: $($missing -join ', ')", StringComparison.Ordinal)
+            .Because("a partial GitHub-feed publish must fail before obtaining a nuget.org token");
+        await Assert.That(completeSet)
+            .Contains("Unexpected: $($unexpected -join ', ')", StringComparison.Ordinal)
+            .Because("promotion must not silently publish bytes outside the declared package set");
+    }
+
+    [Test]
+    public async Task SymbolPublishedListMatchesProjectIncludeSymbols()
+    {
+        string root = FindRepositoryRoot();
+        string[] published = await RunPowerShellLinesAsync(
+            root,
+            "./eng/pack-packages.ps1",
+            "-ListPublished");
+        string[] symbolPublished = await RunPowerShellLinesAsync(
+            root,
+            "./eng/pack-packages.ps1",
+            "-ListSymbolPublished");
+
+        HashSet<string> actual = new(symbolPublished, StringComparer.Ordinal);
+        List<string> expected = [];
+        foreach (string id in published)
+        {
+            string projectPath = Path.Combine(root, "src", id, $"{id}.csproj");
+            string project = await File.ReadAllTextAsync(projectPath);
+            if (!Regex.IsMatch(
+                project,
+                @"<IncludeSymbols>\s*false\s*</IncludeSymbols>",
+                RegexOptions.CultureInvariant))
+            {
+                expected.Add(id);
+            }
+        }
+
+        await Assert.That(symbolPublished.Length)
+            .IsEqualTo(10)
+            .Because("the current 22-package release set has ten managed packages that emit snupkg files");
+        await Assert.That(actual)
+            .IsEquivalentTo(expected)
+            .Because("-ListSymbolPublished must be derived from each project's IncludeSymbols setting");
     }
 
     [Test]
@@ -231,6 +306,16 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(ci)
             .Contains("./eng/check-sbom.ps1", StringComparison.Ordinal)
             .Because("the checked SBOM must fail CI when pinned dependency inputs change");
+        string ciTriggers = ReadTriggerBlock(ci);
+        await Assert.That(ciTriggers)
+            .Contains("push:", StringComparison.Ordinal)
+            .Because("SBOM drift from a version bump must fail on the bump push, not first in release.yml");
+        await Assert.That(ciTriggers)
+            .Contains("pull_request:", StringComparison.Ordinal)
+            .Because("SBOM drift from a version bump must fail before merge when the bump is reviewed");
+        await Assert.That(ciTriggers)
+            .DoesNotContain("paths:", StringComparison.Ordinal)
+            .Because("version.json changes must not be path-filtered away from the SBOM drift check");
 
         foreach (string pinnedInput in new[]
         {
@@ -276,6 +361,126 @@ public sealed class WorkflowStructureContractTests
             .Contains("openusd-release.cdx.json", StringComparison.Ordinal)
             .Because("supply-chain scanners need the standardized CycloneDX JSON asset");
     }
+
+    [Test]
+    public async Task ReleaseSbomUploadEnsuresGitHubReleaseExists()
+    {
+        string root = FindRepositoryRoot();
+        string release = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "release.yml"));
+        string publish = ReadJob(release, "publish");
+
+        string ensureRelease = ReadStep(publish, "Ensure GitHub release exists for SBOM");
+        string uploadRelease = ReadStep(publish, "Upload the SBOM to the GitHub release");
+        await Assert.That(ensureRelease)
+            .Contains("gh release view \"$tag\"", StringComparison.Ordinal)
+            .Because("tag releases must tolerate a manually created draft or published release");
+        await Assert.That(ensureRelease)
+            .Contains("gh release create \"$tag\"", StringComparison.Ordinal)
+            .Because("gh release upload cannot create a missing release");
+        await Assert.That(ensureRelease)
+            .Contains("--draft", StringComparison.Ordinal)
+            .Because("the workflow should attach artifacts without publishing hand-curated notes");
+        await Assert.That(ensureRelease)
+            .DoesNotContain("--generate-notes", StringComparison.Ordinal)
+            .Because("release notes are curated manually after the workflow attaches artifacts");
+        await Assert.That(ensureRelease)
+            .Contains("Release notes are curated manually", StringComparison.Ordinal)
+            .Because("an automatically created draft must say why its notes are placeholders");
+        await Assert.That(uploadRelease)
+            .Contains("--clobber", StringComparison.Ordinal)
+            .Because("rerunning the same tag must replace the SBOM asset instead of failing");
+
+        int ensureIndex = publish.IndexOf(
+            "Ensure GitHub release exists for SBOM",
+            StringComparison.Ordinal);
+        int uploadIndex = publish.IndexOf(
+            "Upload the SBOM to the GitHub release",
+            StringComparison.Ordinal);
+        int pushIndex = publish.IndexOf(
+            "Push to the GitHub Packages NuGet feed",
+            StringComparison.Ordinal);
+        await Assert.That(ensureIndex)
+            .IsGreaterThanOrEqualTo(0)
+            .Because("the publish job must contain the release-existence guard");
+        await Assert.That(uploadIndex)
+            .IsGreaterThan(ensureIndex)
+            .Because("the release must be created or observed before uploading the SBOM asset");
+        await Assert.That(uploadIndex)
+            .IsLessThan(pushIndex)
+            .Because("SBOM attachment failures should happen before the irreversible package push");
+    }
+
+    [Test]
+    public async Task CheckedReleaseSbomVersionMatchesVersionJson()
+    {
+        string root = FindRepositoryRoot();
+        string expectedVersion = JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.Combine(root, "version.json")))
+            .RootElement
+            .GetProperty("version")
+            .GetString()!;
+        using JsonDocument sbom = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "sbom", "openusd-release.cdx.json")));
+
+        JsonElement metadataComponent = sbom.RootElement
+            .GetProperty("metadata")
+            .GetProperty("component");
+        await Assert.That(metadataComponent.GetProperty("version").GetString())
+            .IsEqualTo(expectedVersion)
+            .Because("the root release SBOM component is version-coupled to version.json");
+        await Assert.That(metadataComponent.GetProperty("purl").GetString())
+            .IsEqualTo($"pkg:nuget/OpenUsd@{expectedVersion}")
+            .Because("the root release SBOM purl is version-coupled to version.json");
+
+        int releasePackageComponents = 0;
+        foreach (JsonElement component in sbom.RootElement.GetProperty("components").EnumerateArray())
+        {
+            if (!HasProperty(component, "openusd:release-artifact", "nupkg"))
+            {
+                continue;
+            }
+
+            releasePackageComponents++;
+            string name = component.GetProperty("name").GetString()!;
+            await Assert.That(component.GetProperty("version").GetString())
+                .IsEqualTo(expectedVersion)
+                .Because($"{name} is a published package component in the release SBOM");
+            await Assert.That(component.GetProperty("purl").GetString())
+                .IsEqualTo($"pkg:nuget/{name}@{expectedVersion}")
+                .Because($"{name} purl must track version.json");
+        }
+
+        await Assert.That(releasePackageComponents)
+            .IsEqualTo(22)
+            .Because("every published package component must be checked for version drift");
+    }
+
+    [Test]
+    public async Task ReleaseSbomCheckIsHermeticAndNormalizesLineEndings()
+    {
+        string root = FindRepositoryRoot();
+        string generator = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "generate-sbom.py"));
+        string check = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "check-sbom.ps1"));
+
+        await Assert.That(generator)
+            .Contains("content.replace(b\"\\r\\n\", b\"\\n\")", StringComparison.Ordinal)
+            .Because(
+                "SBOM input hashes must be LF-normalised so a CRLF checkout does not make the " +
+                "checked SBOM appear stale on Linux");
+        await Assert.That(generator)
+            .Contains("load_vcpkg_components(vcpkg_components, cesium)", StringComparison.Ordinal)
+            .Because("normal SBOM generation must consume committed vcpkg component data");
+        await Assert.That(generator)
+            .Contains("if args.refresh_vcpkg:", StringComparison.Ordinal)
+            .Because("network refresh of vcpkg metadata must be an explicit update mode");
+        await Assert.That(check)
+            .DoesNotContain("--refresh-vcpkg", StringComparison.Ordinal)
+            .Because("the CI drift check must be hermetic and must not fetch vcpkg manifests live");
+    }
+
 
     [Test]
     public async Task ReleaseSbomGenerationIsByteStableAndPortable()
@@ -1277,6 +1482,36 @@ public sealed class WorkflowStructureContractTests
         }
     }
 
+    private static async Task<string[]> RunPowerShellLinesAsync(string workingDirectory, params string[] arguments)
+    {
+        ProcessStartInfo startInfo = new("pwsh")
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+        };
+        foreach (string argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using Process process = Process.Start(startInfo) ??
+            throw new InvalidOperationException("Could not start pwsh.");
+        string output = await process.StandardOutput.ReadToEndAsync();
+        string error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"pwsh {string.Join(" ", arguments)} failed with exit code {process.ExitCode}.\n" +
+                output + error);
+        }
+
+        return output.Split(
+            ['\r', '\n'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
     private static IEnumerable<(string Location, string Value)> EnumerateSbomPortableValues(JsonElement root)
     {
         foreach (JsonElement component in root.GetProperty("components").EnumerateArray())
@@ -1307,6 +1542,25 @@ public sealed class WorkflowStructureContractTests
                     property.GetProperty("value").GetString()!);
             }
         }
+    }
+
+    private static bool HasProperty(JsonElement component, string name, string value)
+    {
+        if (!component.TryGetProperty("properties", out JsonElement properties))
+        {
+            return false;
+        }
+
+        foreach (JsonElement property in properties.EnumerateArray())
+        {
+            if (property.GetProperty("name").GetString() == name &&
+                property.GetProperty("value").GetString() == value)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string FindRepositoryRoot()

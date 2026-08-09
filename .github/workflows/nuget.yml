@@ -41,6 +41,13 @@ on:
           to use the latest completed v<version> release run.
         required: false
         type: string
+      dry_run:
+        description: >-
+          Download and validate packages and symbols, but do not mint a nuget.org token
+          or push to nuget.org.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write   # required: OIDC token for NuGet trusted publishing to nuget.org
@@ -190,6 +197,45 @@ jobs:
             echo "release-run-id=${release_run_id}"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Require complete GitHub-feed package set
+        shell: pwsh
+        run: |
+          $expected = @(& ./eng/pack-packages.ps1 -ListPublished)
+          if ($LASTEXITCODE -ne 0 -or $expected.Count -eq 0)
+          {
+            throw 'eng/pack-packages.ps1 -ListPublished produced no package ids.'
+          }
+
+          $packages = @(Get-ChildItem artifacts -Filter '*.nupkg')
+          $actual = @($packages | ForEach-Object {
+            $_.Name -replace '\.\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?\.nupkg$', ''
+          })
+
+          $actualSet = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+          foreach ($id in $actual)
+          {
+            [void]$actualSet.Add($id)
+          }
+
+          $expectedSet = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+          foreach ($id in $expected)
+          {
+            [void]$expectedSet.Add($id)
+          }
+
+          $missing = @($expected | Where-Object { -not $actualSet.Contains($_) })
+          $unexpected = @($actual | Where-Object { -not $expectedSet.Contains($_) })
+          if ($missing.Count -gt 0 -or $unexpected.Count -gt 0)
+          {
+            throw (
+              "The GitHub feed package set for ${{ steps.resolve.outputs.version }} is incomplete. " +
+              "Missing: $($missing -join ', '). Unexpected: $($unexpected -join ', ').")
+          }
+
+          Write-Host "Verified all $($expected.Count) GitHub-feed package(s)."
+
       - name: Download release symbol packages
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -256,17 +302,25 @@ jobs:
 
       # NuGet login happens right before the push so the short-lived token is fresh.
       - name: NuGet login (OIDC trusted publishing)
+        if: ${{ github.event.inputs.dry_run != 'true' }}
         id: login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: ${{ secrets.NUGET_USER }}
 
       - name: Push to nuget.org
+        if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
           dotnet nuget push "artifacts/*.nupkg" \
             --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
+
+      - name: Dry-run result
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          echo "Validated GitHub-feed nupkg downloads and release-artifact snupkg staging."
+          echo "Skipping NuGet/login and dotnet nuget push because dry_run=true."
 
       - name: Summary
         if: always()
@@ -278,4 +332,5 @@ jobs:
             echo "- Packages promoted: \`${{ steps.resolve.outputs.count }}\`"
             echo "- Release artifact run: `${{ steps.resolve.outputs.release-run-id }}`"
             echo "- Source: GitHub Packages nupkg bytes plus release-artifact snupkg symbols"
+            echo "- Dry run: \`${{ github.event.inputs.dry_run }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
