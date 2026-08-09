@@ -9,6 +9,37 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class VulkanDeviceTests
 {
     [Test]
+    public async Task DescriptorIndexedTextureTableProbeRecordsSetupFailure()
+    {
+        var failure = new InvalidOperationException("injected descriptor pool failure");
+
+        VulkanDescriptorIndexedTextureTables? tables =
+            VulkanDescriptorIndexedTextureTables.TryCreate(
+                null!,
+                default,
+                _ => throw failure,
+                out string? diagnostic);
+
+        await Assert.That(tables).IsNull();
+        await Assert.That(diagnostic).IsNotNull();
+        await Assert.That(diagnostic!).Contains("Vulkan descriptor-indexed texture tables unavailable");
+        await Assert.That(diagnostic!).Contains(nameof(InvalidOperationException));
+        await Assert.That(diagnostic!).Contains("injected descriptor pool failure");
+
+        var capabilities = new SilkGraphicsCapabilities(
+            "Injected Vulkan",
+            "1.3",
+            SupportsCompute: true,
+            IsSoftware: true)
+        {
+            SupportsDescriptorIndexedTextureTables = tables is not null,
+            DescriptorIndexedTextureTablesDiagnostic = diagnostic
+        };
+        await Assert.That(capabilities.SupportsDescriptorIndexedTextureTables).IsFalse();
+        await Assert.That(capabilities.ToString()).Contains("injected descriptor pool failure");
+    }
+
+    [Test]
     public async Task CreatesQueueAndBufferWhenVulkanIsAvailable()
     {
         if (!OperatingSystem.IsWindows())

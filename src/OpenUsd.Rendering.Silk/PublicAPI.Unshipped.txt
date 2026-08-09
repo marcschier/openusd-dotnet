@@ -436,6 +436,8 @@ OpenUsd.Rendering.Silk.SilkGraphicsCapabilities
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.ApiVersion.get -> string!
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.ApiVersion.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.Deconstruct(out string! DeviceName, out string! ApiVersion, out bool SupportsCompute, out bool IsSoftware) -> void
+OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.DescriptorIndexedTextureTablesDiagnostic.get -> string?
+OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.DescriptorIndexedTextureTablesDiagnostic.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.DeviceName.get -> string!
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.DeviceName.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.Equals(OpenUsd.Rendering.Silk.SilkGraphicsCapabilities other) -> bool

@@ -39,7 +39,12 @@ public sealed partial class MetalSilkGraphicsDevice
             IsSoftware: false)
         {
             SupportsDescriptorIndexedTextureTables =
-                _materialDescriptorTables is not null
+                _materialDescriptorTables is not null,
+            DescriptorIndexedTextureTablesDiagnostic =
+                _materialDescriptorTables is null
+                    ? "Metal descriptor-indexed texture tables unavailable: " +
+                        $"ArgumentBuffersSupport is {_argumentBuffersSupport}; requires Tier2."
+                    : null
         };
     }
 

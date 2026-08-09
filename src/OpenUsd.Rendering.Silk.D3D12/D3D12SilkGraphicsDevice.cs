@@ -55,10 +55,15 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         _device = device;
         _queue = queue;
         _fence = fence;
-        if (SupportsD3D12DescriptorIndexedTextureTables(device))
+        string? descriptorIndexedTextureTablesDiagnostic = null;
+        if (SupportsD3D12DescriptorIndexedTextureTables(
+            device,
+            out descriptorIndexedTextureTablesDiagnostic))
         {
             _materialDescriptorTables =
-                D3D12DescriptorIndexedTextureTables.TryCreate(device);
+                D3D12DescriptorIndexedTextureTables.TryCreate(
+                    device,
+                    out descriptorIndexedTextureTablesDiagnostic);
         }
         Capabilities = new SilkGraphicsCapabilities(
             software ? "D3D12 WARP" : "D3D12 Adapter",
@@ -67,7 +72,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             IsSoftware: software)
         {
             SupportsDescriptorIndexedTextureTables =
-                _materialDescriptorTables is not null
+                _materialDescriptorTables is not null,
+            DescriptorIndexedTextureTablesDiagnostic =
+                _materialDescriptorTables is null
+                    ? descriptorIndexedTextureTablesDiagnostic
+                    : null
         };
     }
 
@@ -554,8 +563,10 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         Interlocked.Exchange(ref _materialDescriptorTables, null)?.Dispose();
 
     private static bool SupportsD3D12DescriptorIndexedTextureTables(
-        ID3D12Device* device)
+        ID3D12Device* device,
+        out string? diagnostic)
     {
+        diagnostic = null;
         var options = new FeatureDataD3D12Options();
         int result = device->CheckFeatureSupport(
             global::Silk.NET.Direct3D12.Feature.D3D12Options,
@@ -563,10 +574,20 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             (uint)sizeof(FeatureDataD3D12Options));
         if (result < 0)
         {
+            diagnostic =
+                "D3D12 descriptor-indexed texture tables unavailable: " +
+                $"CheckFeatureSupport(D3D12Options) failed with HRESULT 0x{result:X8}.";
             return false;
         }
-        return options.ResourceBindingTier is
+        bool supported = options.ResourceBindingTier is
             ResourceBindingTier.Tier2 or ResourceBindingTier.Tier3;
+        if (!supported)
+        {
+            diagnostic =
+                "D3D12 descriptor-indexed texture tables unavailable: ResourceBindingTier is " +
+                $"{options.ResourceBindingTier}; requires Tier2 or Tier3.";
+        }
+        return supported;
     }
 
     private void ReleaseQueue()

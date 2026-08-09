@@ -4,6 +4,9 @@ using global::Silk.NET.Vulkan;
 
 namespace OpenUsd.Rendering.Silk.Vulkan;
 
+internal unsafe delegate DescriptorPool VulkanDescriptorPoolFactory(
+    DescriptorPoolCreateInfo poolInfo);
+
 internal sealed unsafe class VulkanDescriptorIndexedTextureTables : IDisposable
 {
     private const uint MaxDescriptorSets = 4096;
@@ -26,8 +29,31 @@ internal sealed unsafe class VulkanDescriptorIndexedTextureTables : IDisposable
         _pool = pool;
     }
 
-    internal static VulkanDescriptorIndexedTextureTables? TryCreate(Vk api, Device device)
+    internal static VulkanDescriptorIndexedTextureTables? TryCreate(
+        Vk api,
+        Device device,
+        out string? diagnostic) =>
+        TryCreate(
+            api,
+            device,
+            poolInfo =>
+            {
+                DescriptorPool pool = default;
+                VulkanSilkGraphicsDevice.ThrowIfFailed(
+                    api.CreateDescriptorPool(device, &poolInfo, null, &pool),
+                    "vkCreateDescriptorPool(descriptor indexed materials)");
+                return pool;
+            },
+            out diagnostic);
+
+    internal static VulkanDescriptorIndexedTextureTables? TryCreate(
+        Vk api,
+        Device device,
+        VulkanDescriptorPoolFactory createPool,
+        out string? diagnostic)
     {
+        ArgumentNullException.ThrowIfNull(createPool);
+        diagnostic = null;
         DescriptorPool pool = default;
         try
         {
@@ -49,17 +75,18 @@ internal sealed unsafe class VulkanDescriptorIndexedTextureTables : IDisposable
                 PoolSizeCount = 3,
                 PPoolSizes = poolSizes
             };
-            VulkanSilkGraphicsDevice.ThrowIfFailed(
-                api.CreateDescriptorPool(device, &poolInfo, null, &pool),
-                "vkCreateDescriptorPool(descriptor indexed materials)");
+            pool = createPool(poolInfo);
             return new VulkanDescriptorIndexedTextureTables(api, device, pool);
         }
-        catch
+        catch (Exception exception)
         {
             if (pool.Handle != 0)
             {
                 api.DestroyDescriptorPool(device, pool, null);
             }
+            diagnostic = SilkCapabilityDiagnostics.DescriptorIndexedTextureTablesSetupFailed(
+                "Vulkan",
+                exception);
             return null;
         }
     }
@@ -139,4 +166,35 @@ internal readonly record struct VulkanDescriptorIndexingFeatures(
         DescriptorBindingPartiallyBound &&
         ShaderSampledImageArrayNonUniformIndexing &&
         DescriptorBindingVariableDescriptorCount;
+
+    internal string DescribeDescriptorIndexedTextureTablesUnavailable(
+        bool descriptorIndexingExtension,
+        bool descriptorIndexingIsCore)
+    {
+        if (!descriptorIndexingExtension && !descriptorIndexingIsCore)
+        {
+            return "Vulkan descriptor-indexed texture tables unavailable: neither Vulkan 1.2 " +
+                "nor VK_EXT_descriptor_indexing is available.";
+        }
+
+        List<string> missing = [];
+        if (!RuntimeDescriptorArray)
+        {
+            missing.Add(nameof(RuntimeDescriptorArray));
+        }
+        if (!DescriptorBindingPartiallyBound)
+        {
+            missing.Add(nameof(DescriptorBindingPartiallyBound));
+        }
+        if (!ShaderSampledImageArrayNonUniformIndexing)
+        {
+            missing.Add(nameof(ShaderSampledImageArrayNonUniformIndexing));
+        }
+        if (!DescriptorBindingVariableDescriptorCount)
+        {
+            missing.Add(nameof(DescriptorBindingVariableDescriptorCount));
+        }
+        return "Vulkan descriptor-indexed texture tables unavailable: missing descriptor " +
+            $"indexing features {string.Join(", ", missing)}.";
+    }
 }

@@ -638,6 +638,11 @@ public readonly record struct SilkGraphicsCapabilities(
     /// Gets whether material textures can be bound through a descriptor-indexed table.
     /// </summary>
     public bool SupportsDescriptorIndexedTextureTables { get; init; }
+
+    /// <summary>
+    /// Gets why descriptor-indexed material texture tables were unavailable, when they declined.
+    /// </summary>
+    public string? DescriptorIndexedTextureTablesDiagnostic { get; init; }
 }
 
 /// <summary>

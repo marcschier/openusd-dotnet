@@ -118,6 +118,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     : default;
             bool enableDescriptorIndexing =
                 descriptorIndexingFeatures.SupportsDescriptorIndexedTextureTables;
+            string? descriptorIndexedTextureTablesDiagnostic = enableDescriptorIndexing
+                ? null
+                : descriptorIndexingFeatures.DescribeDescriptorIndexedTextureTablesUnavailable(
+                    descriptorIndexingExtension,
+                    descriptorIndexingIsCore);
             float queuePriority = 1;
             var queueInfo = new DeviceQueueCreateInfo
             {
@@ -172,7 +177,10 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             uint patch = properties.ApiVersion & 0xfff;
             VulkanDescriptorIndexedTextureTables? materialDescriptorTables =
                 enableDescriptorIndexing
-                    ? VulkanDescriptorIndexedTextureTables.TryCreate(api, device)
+                    ? VulkanDescriptorIndexedTextureTables.TryCreate(
+                        api,
+                        device,
+                        out descriptorIndexedTextureTablesDiagnostic)
                     : null;
             var capabilities = new SilkGraphicsCapabilities(
                 deviceName,
@@ -181,7 +189,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 IsSoftware: properties.DeviceType == PhysicalDeviceType.Cpu)
             {
                 SupportsDescriptorIndexedTextureTables =
-                    materialDescriptorTables is not null
+                    materialDescriptorTables is not null,
+                DescriptorIndexedTextureTablesDiagnostic =
+                    materialDescriptorTables is null
+                        ? descriptorIndexedTextureTablesDiagnostic
+                        : null
             };
             return new VulkanSilkGraphicsDevice(
                 api,

@@ -5,6 +5,11 @@ using Silk.NET.Direct3D12;
 
 namespace OpenUsd.Rendering.Silk.D3D12;
 
+internal unsafe delegate ID3D12DescriptorHeap* D3D12DescriptorHeapFactory(
+    ID3D12Device* device,
+    DescriptorHeapType type,
+    uint capacity);
+
 [SupportedOSPlatform("windows")]
 internal sealed unsafe class D3D12DescriptorIndexedTextureTables : IDisposable
 {
@@ -35,17 +40,26 @@ internal sealed unsafe class D3D12DescriptorIndexedTextureTables : IDisposable
     }
 
     internal static D3D12DescriptorIndexedTextureTables? TryCreate(
-        ID3D12Device* device)
+        ID3D12Device* device,
+        out string? diagnostic) =>
+        TryCreate(device, CreateHeap, out diagnostic);
+
+    internal static D3D12DescriptorIndexedTextureTables? TryCreate(
+        ID3D12Device* device,
+        D3D12DescriptorHeapFactory createHeap,
+        out string? diagnostic)
     {
+        ArgumentNullException.ThrowIfNull(createHeap);
+        diagnostic = null;
         ID3D12DescriptorHeap* resourceHeap = null;
         ID3D12DescriptorHeap* samplerHeap = null;
         try
         {
-            resourceHeap = CreateHeap(
+            resourceHeap = createHeap(
                 device,
                 DescriptorHeapType.CbvSrvUav,
                 ResourceDescriptorCapacity);
-            samplerHeap = CreateHeap(
+            samplerHeap = createHeap(
                 device,
                 DescriptorHeapType.Sampler,
                 SamplerDescriptorCapacity);
@@ -54,10 +68,13 @@ internal sealed unsafe class D3D12DescriptorIndexedTextureTables : IDisposable
                 resourceHeap,
                 samplerHeap);
         }
-        catch
+        catch (Exception exception)
         {
             D3D12SilkGraphicsDevice.Release(ref samplerHeap);
             D3D12SilkGraphicsDevice.Release(ref resourceHeap);
+            diagnostic = SilkCapabilityDiagnostics.DescriptorIndexedTextureTablesSetupFailed(
+                "D3D12",
+                exception);
             return null;
         }
     }

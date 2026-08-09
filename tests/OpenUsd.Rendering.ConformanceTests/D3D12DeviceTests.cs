@@ -10,6 +10,30 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class D3D12DeviceTests
 {
     [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task DescriptorIndexedTextureTableProbeRecordsSetupFailure()
+    {
+        var failure = new InvalidOperationException("injected descriptor heap failure");
+        D3D12DescriptorIndexedTextureTables? tables;
+        string? diagnostic;
+
+        unsafe
+        {
+            tables =
+                D3D12DescriptorIndexedTextureTables.TryCreate(
+                    null,
+                    (_, _, _) => throw failure,
+                    out diagnostic);
+        }
+
+        await Assert.That(tables).IsNull();
+        await Assert.That(diagnostic).IsNotNull();
+        await Assert.That(diagnostic!).Contains("D3D12 descriptor-indexed texture tables unavailable");
+        await Assert.That(diagnostic!).Contains(nameof(InvalidOperationException));
+        await Assert.That(diagnostic!).Contains("injected descriptor heap failure");
+    }
+
+    [Test]
     public async Task CompositionProbeRequiresNtHandleAndMatchingAdapter()
     {
         if (!OperatingSystem.IsWindows())
