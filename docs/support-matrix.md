@@ -1,7 +1,7 @@
 # Support matrix
 
 This matrix describes the implementation and declared repository gates for the public
-`0.6.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
+`0.7.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
 workflow is currently green.
 
 ## Status terms
@@ -24,7 +24,7 @@ branch.
 
 | Item | Current state |
 | --- | --- |
-| Version | `0.6.0-alpha` |
+| Version | `0.7.0-alpha` |
 | Repository visibility | Public |
 | API compatibility | Pre-1.0; public APIs may change |
 | Package identity stability | Pre-1.0; IDs may change |
@@ -42,7 +42,7 @@ centralized in [Versioning and compatibility](versioning-compatibility.md).
 ## Packages
 
 All package projects below are packable from source. Availability here means repository production,
-not public-feed publication. All 22 IDs are published to NuGet.org at `0.6.0-alpha`; the five
+not public-feed publication. All 22 IDs are published to NuGet.org at `0.7.0-alpha`; the five
 Cesium IDs ship for the first time in this release, having been withheld at `0.5.0-alpha`.
 
 | Package | Framework project | Native requirement |
@@ -65,10 +65,10 @@ Cesium IDs ship for the first time in this release, having been withheld at `0.5
 | `OpenUsd.Runtime.Imaging.win-x64` | `net8.0` carrier | Matching Windows Core package |
 | `OpenUsd.Runtime.Imaging.linux-x64` | `net8.0` carrier | Matching Linux Core package |
 | `OpenUsd.Runtime.Imaging.osx-arm64` | `net8.0` carrier | Matching macOS Core package |
-| `OpenUsd.Runtime.Cesium` | `net8.0` carrier | Cesium metapackage; next alpha |
-| `OpenUsd.Runtime.Cesium.win-x64` | `net8.0` carrier | Windows Cesium shim; next alpha |
-| `OpenUsd.Runtime.Cesium.linux-x64` | `net8.0` carrier | Linux Cesium shim; next alpha |
-| `OpenUsd.Runtime.Cesium.osx-arm64` | `net8.0` carrier | macOS Cesium shim; next alpha |
+| `OpenUsd.Runtime.Cesium` | `net8.0` carrier | Cesium metapackage for all supported RIDs |
+| `OpenUsd.Runtime.Cesium.win-x64` | `net8.0` carrier | Windows Cesium shim |
+| `OpenUsd.Runtime.Cesium.linux-x64` | `net8.0` carrier | Linux Cesium shim |
+| `OpenUsd.Runtime.Cesium.osx-arm64` | `net8.0` carrier | macOS Cesium shim |
 
 The runtime projects use `net8.0` to carry RID assets and transitive build targets. The managed
 libraries they support target all three production frameworks. `OpenUsd.LiveAuthoring` is intentionally
