@@ -62,9 +62,8 @@ packages for each supported RID:
   Consumers opt in by referencing `OpenUsd.Cesium`, which depends on the RID-agnostic
   `OpenUsd.Runtime.Cesium` metapackage.
 
-The next alpha package set requires project-owned data ABI version 15 and native
-capabilities `0x3FFFF`. Package-only execution prints and verifies both values
-before exercising stage operations.
+The package set requires project-owned data ABI version 15 and native capabilities `0x3FFFF`.
+Package-only execution prints and verifies both values before exercising stage operations.
 
 The first package matrix covers `win-x64`, `linux-x64`, and `osx-arm64`. Package projects consume
 immutable native installs from:
@@ -152,7 +151,7 @@ Dependencies are limited to system libraries and safe `@rpath` or
 the package under `build/`.
 
 Each Imaging package has an exact dependency on its matching Core version, for example
-`[0.6.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
+`[0.7.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
 resource staging arrive when a consumer references only Imaging.
 
 ## Pack
@@ -268,7 +267,7 @@ generated local feed. After a Release build, run them with:
 
 ## Publish
 
-Twenty-two packages are published at `0.6.0-alpha`: the eight non-Cesium managed libraries
+Twenty-two packages are published at `0.7.0-alpha`: the eight non-Cesium managed libraries
 (`OpenUsd`, `OpenUsd.Interop`, `OpenUsd.Rendering`, `OpenUsd.Rendering.Silk`, the three hdSilk
 backends, and `OpenUsd.Rendering.Storm`), the embeddable `OpenUsd.Viewer` shell, the two runtime
 metapackages, the six per-RID Core/Imaging runtime packages, and the five Cesium IDs
@@ -358,8 +357,8 @@ A pushed symbol package is served from NuGet's symbol CDN at:
 https://globalcdn.nuget.org/symbol-packages/<lowercase-id>.<lowercase-version>.snupkg
 ```
 
-For example, the managed package `OpenUsd 0.6.0-alpha` should appear as
-`https://globalcdn.nuget.org/symbol-packages/openusd.0.6.0-alpha.snupkg` after a successful
+For example, the managed package `OpenUsd 0.7.0-alpha` should appear as
+`https://globalcdn.nuget.org/symbol-packages/openusd.0.7.0-alpha.snupkg` after a successful
 nuget.org promotion. The corrected promotion path is wired in the tree, but it has not yet been
 proven by a real tagged release promotion end to end.
 

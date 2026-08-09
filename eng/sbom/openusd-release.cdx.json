@@ -15,10 +15,10 @@
     },
     "component": {
       "type": "application",
-      "bom-ref": "pkg:nuget/OpenUsd@0.6.0-alpha",
+      "bom-ref": "pkg:nuget/OpenUsd@0.7.0-alpha",
       "name": "OpenUsd release artifacts",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd@0.6.0-alpha"
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd@0.7.0-alpha"
     },
     "properties": [
       {
@@ -59,7 +59,7 @@
       },
       {
         "name": "openusd:input:version.json:sha256",
-        "value": "a3b94cbc6007b2df1602893d33cd6ca98c63e86c213de07bc0d2fd1b650ee05f"
+        "value": "5daad2e6329497df6128df7d1394db492c394567e03bdb1866b5f07bc1f3426e"
       },
       {
         "name": "openusd:scope",
@@ -1174,8 +1174,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd",
       "name": "OpenUsd",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1187,8 +1187,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Cesium",
       "name": "OpenUsd.Cesium",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Cesium@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Cesium@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1200,8 +1200,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Interop",
       "name": "OpenUsd.Interop",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Interop@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Interop@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1213,8 +1213,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering",
       "name": "OpenUsd.Rendering",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1226,8 +1226,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Silk",
       "name": "OpenUsd.Rendering.Silk",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Silk@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1239,8 +1239,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Silk.D3D12",
       "name": "OpenUsd.Rendering.Silk.D3D12",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.D3D12@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.D3D12@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1252,8 +1252,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Silk.Metal",
       "name": "OpenUsd.Rendering.Silk.Metal",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.Metal@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.Metal@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1265,8 +1265,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Silk.Vulkan",
       "name": "OpenUsd.Rendering.Silk.Vulkan",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.Vulkan@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.Vulkan@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1278,8 +1278,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Storm",
       "name": "OpenUsd.Rendering.Storm",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Storm@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Storm@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1291,8 +1291,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Cesium",
       "name": "OpenUsd.Runtime.Cesium",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1304,8 +1304,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Cesium.linux-x64",
       "name": "OpenUsd.Runtime.Cesium.linux-x64",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.linux-x64@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.linux-x64@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1317,8 +1317,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Cesium.osx-arm64",
       "name": "OpenUsd.Runtime.Cesium.osx-arm64",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.osx-arm64@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.osx-arm64@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1330,8 +1330,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Cesium.win-x64",
       "name": "OpenUsd.Runtime.Cesium.win-x64",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.win-x64@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.win-x64@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1343,8 +1343,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Core",
       "name": "OpenUsd.Runtime.Core",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Core@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1356,8 +1356,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Core.linux-x64",
       "name": "OpenUsd.Runtime.Core.linux-x64",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Core.linux-x64@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core.linux-x64@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1369,8 +1369,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Core.osx-arm64",
       "name": "OpenUsd.Runtime.Core.osx-arm64",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Core.osx-arm64@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core.osx-arm64@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1382,8 +1382,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Core.win-x64",
       "name": "OpenUsd.Runtime.Core.win-x64",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Core.win-x64@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core.win-x64@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1395,8 +1395,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Imaging",
       "name": "OpenUsd.Runtime.Imaging",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1408,8 +1408,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Imaging.linux-x64",
       "name": "OpenUsd.Runtime.Imaging.linux-x64",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.linux-x64@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.linux-x64@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1421,8 +1421,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Imaging.osx-arm64",
       "name": "OpenUsd.Runtime.Imaging.osx-arm64",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.osx-arm64@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.osx-arm64@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1434,8 +1434,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Imaging.win-x64",
       "name": "OpenUsd.Runtime.Imaging.win-x64",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.win-x64@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.win-x64@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1447,8 +1447,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Viewer",
       "name": "OpenUsd.Viewer",
-      "version": "0.6.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Viewer@0.6.0-alpha",
+      "version": "0.7.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Viewer@0.7.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2356,7 +2356,7 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:nuget/OpenUsd@0.6.0-alpha",
+      "ref": "pkg:nuget/OpenUsd@0.7.0-alpha",
       "dependsOn": [
         "nuget:OpenUsd",
         "nuget:OpenUsd.Interop",
