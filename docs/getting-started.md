@@ -118,6 +118,15 @@ The following names are the current public API:
 
 ```csharp
 using OpenUsd;
+using OpenUsd.Interop;
+
+// Register the packaged plugin tree before touching any stage API. The runtime
+// packages deploy it next to the application, so this is a one-line startup step.
+string pluginPath = Path.Combine(AppContext.BaseDirectory, "usd");
+if (File.Exists(Path.Combine(pluginPath, "plugInfo.json")))
+{
+    _ = OpenUsdNativeRuntime.RegisterPlugins(pluginPath);
+}
 
 using UsdStage stage = UsdStage.Create("scene.usda");
 stage.DefinePrim("/World", "Xform");
@@ -129,6 +138,13 @@ stage.Save();
 ```
 
 This code requires a matching native runtime and data plugin tree at execution time.
+
+> **Register the plugins first.** `UsdStage.Create` needs the OpenUSD plugin tree. If it has not been
+> registered, the process **terminates inside native code with no managed exception and no output** —
+> on Windows the exit code is `0x80000003`. The build succeeds, so the failure only appears at run
+> time and looks like nothing happened at all. Adding a `PackageReference` to `OpenUsd.Runtime.Core`
+> deploys the tree to `usd/` beside the application; the snippet above then registers it.
+
 [`OpenUsd.HelloStage`](../samples/OpenUsd.HelloStage/README.md) is the smallest runnable round trip.
 The broader `eng/run-native-probe.ps1` proof handles staging and exercises create, open, save, reload,
 values, composition, schemas, scheduling, and NativeAOT.
