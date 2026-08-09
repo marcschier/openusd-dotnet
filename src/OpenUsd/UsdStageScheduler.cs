@@ -352,6 +352,7 @@ public sealed class UsdStageScheduler : IAsyncDisposable
 
     private void Run()
     {
+        Exception? failure = null;
         try
         {
             using (UsdStage owningStage = _stageFactory())
@@ -384,21 +385,28 @@ public sealed class UsdStageScheduler : IAsyncDisposable
                 }
             }
             _changes.Complete();
-            _completion.TrySetResult();
         }
         catch (Exception exception)
         {
+            failure = exception;
             _queue.Writer.TryComplete(exception);
             while (_queue.Reader.TryRead(out IStageWorkItem? item))
             {
                 item.Fail(exception);
             }
             _changes.Complete(exception);
-            _completion.TrySetException(exception);
         }
         finally
         {
             SharedStageManagedDiagnostics.SchedulerDestroyed();
+            if (failure is null)
+            {
+                _completion.TrySetResult();
+            }
+            else
+            {
+                _completion.TrySetException(failure);
+            }
         }
     }
 
