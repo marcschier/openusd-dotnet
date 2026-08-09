@@ -139,6 +139,7 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
                 .ConfigureAwait(false);
             ViewerStartupOptions.WriteStatus("Renderer coordinator: backend initialization completed");
             coordinator.PublishResult("Renderer initialization", initialization);
+            ViewerStartupOptions.WriteStatus("Renderer coordinator: initialized backend returning");
             return coordinator;
         }
         catch

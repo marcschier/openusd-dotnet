@@ -46,8 +46,22 @@ public sealed class ViewerSourceContractTests
             "Viewer stage open: validation root layer query starting",
             "Viewer stage open: validation root layer query completed",
             "Viewer stage open: render coordinator starting",
+            "Viewer stage open: render coordinator acquired",
             "Viewer stage open: document snapshot starting",
-            "Viewer stage open: document snapshot completed"
+            "Viewer stage open: document snapshot completed",
+            "Viewer stage open: UI binding completed",
+            "Viewer stage open: timeline initialization starting",
+            "Viewer stage open: timeline initialization completed",
+            "Viewer stage open: validation refresh starting",
+            "Viewer stage open: validation refresh completed",
+            "Viewer stage open: viewport state update starting",
+            "Viewer stage open: viewport state update completed",
+            "Viewer stage open: render loop starting",
+            "Viewer stage open: render loop task created",
+            "Renderer render loop: started",
+            "Renderer render loop: first tick",
+            "Renderer render loop: first render request starting",
+            "Renderer render loop: first render request completed"
         })
         {
             await Assert.That(window).Contains(status);
@@ -59,7 +73,8 @@ public sealed class ViewerSourceContractTests
             "Renderer coordinator: render source acquiring",
             "Renderer coordinator: render source acquired",
             "Renderer coordinator: root layer query starting",
-            "Renderer coordinator: backend initialization starting"
+            "Renderer coordinator: backend initialization starting",
+            "Renderer coordinator: initialized backend returning"
         })
         {
             await Assert.That(coordinator).Contains(status);
@@ -94,7 +109,7 @@ public sealed class ViewerSourceContractTests
         await Assert.That(smokeRunner).Contains("Get-Command lldb");
         await Assert.That(testing).Contains(
             "artifacts/viewer-distribution-smoke/osx-arm64/viewer-composition-capability.json");
-        await Assert.That(testing).Contains("headless Avalonia compositor");
+        await Assert.That(testing).Contains("submitted a frame to the Avalonia compositor");
     }
 
     [Test]

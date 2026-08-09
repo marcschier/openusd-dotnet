@@ -2161,17 +2161,42 @@ public sealed partial class MainWindow : Window, IDisposable
         ViewerRenderCoordinator coordinator,
         CancellationToken cancellationToken)
     {
+        ViewerStartupOptions.WriteStatus("Renderer render loop: started");
         try
         {
             using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(16));
+            int iteration = 0;
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
+                iteration++;
+                if (iteration == 1)
+                {
+                    ViewerStartupOptions.WriteStatus("Renderer render loop: first tick");
+                }
                 if (Volatile.Read(ref _diagnosticOwnsRendering) != 0)
                 {
+                    if (iteration == 1)
+                    {
+                        ViewerStartupOptions.WriteStatus(
+                            "Renderer render loop: first tick skipped for diagnostics");
+                    }
                     continue;
+                }
+                if (iteration == 1)
+                {
+                    ViewerStartupOptions.WriteStatus(
+                        "Renderer render loop: first render request starting");
                 }
                 ManagedRenderFrameResult result =
                     await coordinator.RenderAsync(cancellationToken);
+                if (iteration == 1)
+                {
+                    string frameStatus = result.Frame?.Status.ToString() ?? "none";
+                    ViewerStartupOptions.WriteStatus(
+                        "Renderer render loop: first render request completed; " +
+                        $"success={result.IsSuccess}; frame={frameStatus}; " +
+                        $"backend={result.ActiveBackend?.Name ?? "unavailable"}");
+                }
                 CaptureDiagnostics(
                     coordinator,
                     result,
@@ -3227,6 +3252,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     },
                     GetSelectedBackend(),
                     documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: render coordinator acquired");
                 ViewerStartupOptions.WriteStatus("Viewer stage open: document snapshot starting");
                 ViewerDocumentSnapshot document = await coordinator.Scheduler.InvokeAsync(
                     ViewerStageSnapshotBuilder.BuildDocument,
@@ -3264,12 +3290,19 @@ public sealed partial class MainWindow : Window, IDisposable
                     _coordinator,
                     frameResult: null,
                     force: true);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: UI binding completed");
+                ViewerStartupOptions.WriteStatus("Viewer stage open: timeline initialization starting");
                 await InitializeTimelineAsync(
                     _coordinator,
                     _timing,
                     _documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: timeline initialization completed");
+                ViewerStartupOptions.WriteStatus("Viewer stage open: validation refresh starting");
                 await RefreshValidationAsync(_coordinator, _documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: validation refresh completed");
+                ViewerStartupOptions.WriteStatus("Viewer stage open: viewport state update starting");
                 await UpdateViewportStateAsync(_coordinator, _documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: viewport state update completed");
                 if (ViewerStartupOptions.IsCleanupRetryEvidenceScenario ||
                     ViewerStartupOptions.IsRetiredKindQuarantineEvidenceScenario ||
                     ViewerStartupOptions.IsStageCameraEvidenceScenario ||
@@ -3277,7 +3310,9 @@ public sealed partial class MainWindow : Window, IDisposable
                 {
                     Volatile.Write(ref _diagnosticOwnsRendering, 1);
                 }
+                ViewerStartupOptions.WriteStatus("Viewer stage open: render loop starting");
                 _renderLoop = RunRenderLoopAsync(_coordinator, _documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: render loop task created");
                 if (IsAutomatedViewerRun())
                 {
                     _diagnosticSequence = RunObservedDiagnosticSequenceAsync(

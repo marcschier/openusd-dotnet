@@ -616,9 +616,9 @@ lifecycle tests, and Storm/Metal no-restart switching loops.
 
 **macOS Viewer bundle composition.** Hosted macOS can initialize the Viewer bundle's Metal
 IOSurface path and the render gate's IOSurface Metal tests prove the producer path on the same
-runner, but the headless Avalonia compositor might never complete a presentation. When the bundle
-smoke reaches `hdSilk / Metal` initialization and still does not report a frame before the bounded
-120-second wait, the skip is recorded in
+runner. A Viewer bundle skip is allowed only after the status trace proves that the render loop
+submitted a frame to the Avalonia compositor and that no `frame rendered` status arrived before the
+bounded 120-second wait. In that case, the skip is recorded in
 `artifacts/viewer-distribution-smoke/osx-arm64/viewer-composition-capability.json`. The package
 launch, native asset checks, crash/hang diagnostics, and the render gate's Metal IOSurface proofs
 still run and still fail on regression.
