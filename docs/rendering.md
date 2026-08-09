@@ -945,9 +945,10 @@ executable identity no longer matches the current build.
 
 The current alpha parity claim is limited to the curated Storm/hdSilk scene matrix documented in
 [Support matrix](support-matrix.md#hdsilk-storm-parity-sign-off): D3D12 WARP and Vulkan SwiftShader gate the
-accepted scenes at `1.000000` adjusted IoU. The macOS render job now runs the same parity-driver
-capture against Metal, but that path is pending hosted proof until a workflow run records the CGL
-Storm context and Metal capture artifacts.
+accepted scenes with a structured required adjusted IoU of `1.000000`, separate from the lower
+perturbation-discrimination floor. The macOS render job now runs the same parity-driver capture
+against Metal, but that path is pending hosted proof until a workflow run records the CGL Storm
+context and Metal capture artifacts.
 Subdivision, shadows, arbitrary MaterialX graphs, volumes beyond the Vulkan single-density OpenVDB
 gate, path tracing, proprietary shaders, and third-party Hydra render plugins are out of scope.
 

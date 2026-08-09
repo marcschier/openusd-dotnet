@@ -27,6 +27,7 @@ public sealed class StormSilkParityCaptureDriverTests
     private const string D3D12WarpBackendName = "D3D12 WARP";
     private const string VulkanSwiftShaderBackendName = "Vulkan SwiftShader";
     private const string MetalBackendName = "Metal";
+    private const double ExactCuratedParityAdjustedIou = 1.0;
 
     private const string GeneratedMaterialXSelfConsistencyStage = """
 #usda 1.0
@@ -145,6 +146,29 @@ def Xform "World"
 
     private const double MaximumShadedMeanChannelDelta = 8;
     private static readonly JsonSerializerOptions EvidenceJsonOptions = new() { WriteIndented = true };
+
+    [Test]
+    public async Task CuratedSceneParityClaimsAreStructured()
+    {
+        ParityScene[] scenes = CreateAllScenes();
+        ParityScene[] gatedScenes = scenes.Where(static scene => scene.GateEnabled).ToArray();
+        ParityScene[] ungatedScenes = scenes.Where(static scene => !scene.GateEnabled).ToArray();
+
+        await Assert.That(scenes.Length).IsEqualTo(25);
+        await Assert.That(gatedScenes.Length).IsEqualTo(22);
+        await Assert.That(ungatedScenes.Length).IsEqualTo(3);
+        foreach (ParityScene scene in gatedScenes)
+        {
+            await Assert.That(scene.RequiredAdjustedIou).IsEqualTo(ExactCuratedParityAdjustedIou)
+                .Because($"{scene.Name} is a documented exact-parity gate.");
+        }
+
+        foreach (ParityScene scene in ungatedScenes)
+        {
+            await Assert.That(scene.RequiredAdjustedIou).IsNull()
+                .Because($"{scene.Name} is measured but deliberately not an exact-parity gate.");
+        }
+    }
 
     [Test]
     public async Task CapturesStormAndHdSilkBackendsDeterministically()
@@ -278,6 +302,7 @@ def Xform "World"
                 evidence.Add(metrics);
                 Console.WriteLine(metrics);
                 if (!result.Passed ||
+                    !MeetsRequiredAdjustedIou(scene, result) ||
                     result.ReferenceCoveragePixels == 0 ||
                     result.CandidateCoveragePixels == 0)
                 {
@@ -294,6 +319,8 @@ def Xform "World"
                         .IsTrue()
                         .Because(
                             $"{scene.Name} {firstSilk.BackendName} must meet its measured adjusted-IoU floor.");
+                    await AssertRequiredAdjustedIou(scene, firstSilk.BackendName, result)
+                        .ConfigureAwait(false);
                 }
 
                 backendEvidence.Add(new
@@ -326,6 +353,7 @@ def Xform "World"
                 scene.GateEnabled,
                 scene.GateReason,
                 scene.RecommendedMinimumAdjustedIou,
+                scene.RequiredAdjustedIou,
                 stormFirstHash = Hash(first.Storm),
                 stormSecondHash = Hash(second.Storm),
                 stormOpenGl = first.OpenGlEvidence,
@@ -531,6 +559,7 @@ def Xform "World"
                 recommendation = new
                 {
                     scene.RecommendedMinimumAdjustedIou,
+                    scene.RequiredAdjustedIou,
                     scene.GateEnabled,
                     scene.GateReason,
                 },
@@ -860,6 +889,7 @@ def Xform "World"
             new SelfConsistencyCase("texture-wrap-mirror", SilkTextureWrap.Mirror),
             new SelfConsistencyCase("texture-wrap-use-metadata", SilkTextureWrap.Black),
         };
+
         var evidence = new List<string>();
         foreach (SelfConsistencyCase testCase in cases)
         {
@@ -3009,6 +3039,29 @@ def Xform "World"
                 scene.ColorComparisonReady ? MaximumShadedMeanChannelDelta : byte.MaxValue,
         };
 
+    private static bool MeetsRequiredAdjustedIou(
+        ParityScene scene,
+        ParityComparisonResult result) =>
+        scene.RequiredAdjustedIou is not { } required ||
+        result.AdjustedCoverageIntersectionOverUnion >= required;
+
+    private static async Task AssertRequiredAdjustedIou(
+        ParityScene scene,
+        string backendName,
+        ParityComparisonResult result)
+    {
+        if (scene.RequiredAdjustedIou is not { } required)
+        {
+            return;
+        }
+
+        await Assert.That(result.AdjustedCoverageIntersectionOverUnion)
+            .IsGreaterThanOrEqualTo(required)
+            .Because(
+                $"{scene.Name} {backendName} must not regress below the documented " +
+                $"{required:F6} adjusted-IoU parity claim.");
+    }
+
     private static ParityScene[] CreateScenes()
     {
         ParityScene[] scenes = CreateAllScenes();
@@ -3038,7 +3091,8 @@ def Xform "World"
                     "against a 0.592750 worst perturbation. 0.92 keeps 0.08 for " +
                     "rasterization differences on other backends while staying 0.33 " +
                     "clear of the nearest perturbation.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_028, 1_028, 0)),
@@ -3054,7 +3108,8 @@ def Xform "World"
                     "a 0.324558 margin. The plane (1,0,0,0.12) confirms Storm's " +
                     "dot(plane.xyz, Peye) + plane.w < 0 discard convention while " +
                     "removing an asymmetric lobe and leaving the anchor geometry.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 ClipPlanes = [new Vector4(1, 0, 0, 0.12f)],
                 PerformanceBudgets = CurrentBackendBudgets(
@@ -3071,7 +3126,8 @@ def Xform "World"
                     "a 0.184333 margin. It was rejected at 0.074416 only because the " +
                     "projection mismatch depressed the correct score; with exact agreement " +
                     "it clears the required margin.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(3, 3, 3, 3, 3, 3, 1_236, 1_236, 0)),
@@ -3088,7 +3144,8 @@ def Xform "World"
                     "vertically symmetric and still scored 0.865109 mirrored, a 0.134891 " +
                     "margin below the required 0.18; the pennant shape concentrates mass " +
                     "in the upper right so a flip now costs 0.689940.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_012, 932, 0)),
@@ -3103,7 +3160,8 @@ def Xform "World"
                     "Texture-backed material coverage and colour now gate: 1.000000 " +
                     "correct adjusted IoU against a 0.781397 worst perturbation " +
                     "(0.218603 margin), with colour deltas max 13 / mean 4.476.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_028, 948, 262_144)),
@@ -3119,7 +3177,8 @@ def Xform "World"
                     "pennant but travels through Hydra's varying primvar descriptor before hdSilk " +
                     "emits the vertex attribute. It gates at 1.000000 adjusted IoU, " +
                     "0.218603 perturbation margin, and colour deltas max 4 / mean 1.717.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_156, 1_076, 262_144)),
@@ -3135,7 +3194,8 @@ def Xform "World"
                     "texture coordinate per emitted face vertex after HdMeshUtil triangulation. " +
                     "It gates at 1.000000 adjusted IoU, 0.218603 perturbation margin, and " +
                     "colour deltas max 4 / mean 1.717.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_284, 1_204, 262_144)),
@@ -3151,7 +3211,8 @@ def Xform "World"
                     "hdSilk expands that value across each emitted triangle before shading. It " +
                     "gates at 1.000000 adjusted IoU, 0.218603 perturbation margin, and colour " +
                     "deltas max 4 / mean 1.347.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_284, 1_204, 262_144)),
@@ -3167,7 +3228,8 @@ def Xform "World"
                     "Storm's PreviewSurface path applies the light's pi-scaled diffuse irradiance to " +
                     "Lambert but not to direct specular. The all-pi path measured max 25 / mean 14.112; " +
                     "removing only the specular pi reduces the metallic residual to max 8 / mean 4.558.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
@@ -3184,7 +3246,8 @@ def Xform "World"
                     "the MaterialX standard_surface subset, so this records the honest divergence: " +
                     "0.071085 adjusted IoU, colour max 3 / mean 2.813. It stays ungated until " +
                     "Storm MaterialX shading is available in the measured harness.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: null)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_468, 1_308, 0)),
@@ -3200,7 +3263,8 @@ def Xform "World"
                     "at 1.000000 adjusted IoU, 0.442112 perturbation margin, and colour deltas max 10 / " +
                     "mean 4.424. This verifies the projection arithmetic while the authored MaterialX " +
                     "scene remains an ungated Storm capability gap.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_012, 932, 0)),
@@ -3215,7 +3279,8 @@ def Xform "World"
                     "Matte off-centre hook gates direct distant light at 1.000000 adjusted IoU, " +
                     "0.609274 perturbation margin, and colour deltas max 4 / mean 1.095. " +
                     "The previous concentrated max 42 residual was the authored specular lobe.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 UseSceneLights = true,
                 SceneLightSensitivityStagePath =
@@ -3233,7 +3298,8 @@ def Xform "World"
                     "Glossy direct specular under a UsdLuxDistantLight gates at 1.000000 adjusted IoU, " +
                     "0.609274 perturbation margin, and colour deltas max 10 / mean 6.027. This covers " +
                     "the specular lobe that the matte direct-light transport scenes intentionally exclude.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
@@ -3249,7 +3315,8 @@ def Xform "World"
                     "Matte off-centre boomerang gates point attenuation at 1.000000 adjusted IoU, " +
                     "0.542752 perturbation margin, and colour deltas max 13 / mean 0.782. " +
                     "The previous concentrated max 36 residual was the authored specular lobe.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
@@ -3265,7 +3332,8 @@ def Xform "World"
                     "Untextured dome ambient fill gates against Storm's measured fallback: " +
                     "1.000000 adjusted IoU, 0.462455 perturbation margin, and colour " +
                     "deltas max 11 / mean 3.619.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_012, 932, 0)),
@@ -3283,7 +3351,8 @@ def Xform "World"
                     "byte-identical (disabledAdjustedIoU 1.000000). Storm's measured " +
                     "offscreen harness therefore does not render this authored shadow, " +
                     "so the scene records the exclusion and stays ungated.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: null)
             {
                 UseSceneLights = true,
                 ShadowDisabledStagePath =
@@ -3303,7 +3372,8 @@ def Xform "World"
                     "triangles make a transform error move coverage rather than merely " +
                     "resize it, so a wrong instance transform collapses the score instead " +
                     "of nudging it.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 4, 1, 1, 1, 4, 1_076, 1_076, 0)),
@@ -3320,7 +3390,8 @@ def Xform "World"
                     "width 0.01 because Storm's default point width is world-space " +
                     "and intentionally covers most of the frame; at this measured " +
                     "width both Storm and hdSilk rasterize one pixel per point.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 3_832, 3_832, 0)),
@@ -3338,7 +3409,8 @@ def Xform "World"
                     "The extent is off-centre and strongly non-square on purpose: a card is " +
                     "an axis-aligned rectangle, and a centred near-square one measured a " +
                     "0.012661 margin because mirroring barely changed it.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_472, 1_472, 0)),
@@ -3360,7 +3432,8 @@ def Xform "World"
                     "adds the pennant's coverage and collapses the score, drawing nothing " +
                     "at all fails the positive-coverage requirement, and the perturbations " +
                     "move real coverage.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_036, 1_036, 0)),
@@ -3375,7 +3448,8 @@ def Xform "World"
                     "1.000000 correct adjusted IoU against a 0.243309 worst perturbation, " +
                     "a 0.756691 margin. hdSilk emits the draw-mode basisCurves as line " +
                     "topology, matching Storm's 251 one-pixel line coverage exactly.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_424, 1_424, 0)),
@@ -3390,7 +3464,8 @@ def Xform "World"
                     "1.000000 correct adjusted IoU against a 0.229167 worst perturbation, " +
                     "a 0.770833 margin. hdSilk emits the draw-mode basisCurves as line " +
                     "topology, matching Storm's 116 one-pixel origin-axis pixels exactly.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 920, 920, 0)),
@@ -3406,7 +3481,8 @@ def Xform "World"
                     "worst geometric perturbation, a 0.598376 margin. The wrong-time " +
                     "probe compares Storm timeCode 2 with hdSilk timeCode 1 and scores " +
                     "0.045334, so a missed time sample is red rather than silently equivalent.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 TimeCode = 2,
                 PerformanceBudgets = CurrentBackendBudgets(
@@ -3425,7 +3501,8 @@ def Xform "World"
                     "0-2 diagonal; forcing the opposite 1-3 split worsened the " +
                     "score to 0.872473, so Storm's coarse all-quad handling is not " +
                     "the same triangle topology. It remains ungated.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: null)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 1_288, 1_288, 0)),
@@ -3441,7 +3518,8 @@ def Xform "World"
                     "worst geometric perturbation, a 0.274348 margin. The wrong-time " +
                     "probe scores 0.534601, so the scene proves Storm actually samples " +
                     "a deformed UsdSkel pose rather than the rest pose.",
-                RecommendedMinimumAdjustedIou: 0.92)
+                RecommendedMinimumAdjustedIou: 0.92,
+                RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 TimeCode = 2,
                 PerformanceBudgets = CurrentBackendBudgets(
@@ -3889,7 +3967,8 @@ def Xform "World"
         bool ColorComparisonReady,
         bool GateEnabled,
         string GateReason,
-        double RecommendedMinimumAdjustedIou)
+        double RecommendedMinimumAdjustedIou,
+        double? RequiredAdjustedIou)
     {
         public IReadOnlyList<Vector4> ClipPlanes { get; init; } = [];
 

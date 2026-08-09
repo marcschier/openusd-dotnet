@@ -49,10 +49,10 @@ and render gates that run before releases. The details and caveats live in
 - **A managed Hydra renderer** over D3D12, Vulkan, and Metal covering materials, textures, `UsdLux`
   lighting, point instancing, curves, points, draw modes, clip planes, `UsdSkel` skinning, and
   time-varying values.
-- **Measured parity with Storm** on 22 hard-gated curated scenes at exactly `1.000000` adjusted IoU
-  for D3D12 WARP and Vulkan SwiftShader; the render workflow also attempts the same curated capture
-  on macOS CGL/Metal and records an explicit capability skip when hosted CGL cannot create the
-  required pixel format.
+- **Measured parity with Storm** on 22 hard-gated curated scenes whose structured gate requires
+  `1.000000` adjusted IoU for D3D12 WARP and Vulkan SwiftShader; the render workflow also attempts
+  the same curated capture on macOS CGL/Metal and records an explicit capability skip when hosted
+  CGL cannot create the required pixel format.
 - **Cross-platform packaging gates** for `win-x64`, `linux-x64`, and `osx-arm64`.
 - **NativeAOT and trimming analyzers** across production libraries targeting .NET 8, 9, and 10.
 
@@ -268,9 +268,10 @@ Storm is the reference renderer. A parity harness renders the same USD stage thr
 through hdSilk and compares coverage and colour, and the claim this project makes is deliberately
 narrow:
 
-- **25 curated scenes are registered; 22 are hard gates** at exactly `1.000000` adjusted IoU against
-  **D3D12 WARP and Vulkan SwiftShader**. A gate is only accepted with a perturbation
-  margin of at least `0.18`, so a scene that would score well by symmetry alone cannot qualify.
+- **25 curated scenes are registered; 22 are hard gates** with a structured required adjusted IoU of
+  exactly `1.000000` against **D3D12 WARP and Vulkan SwiftShader**. A gate is only accepted with a
+  perturbation margin of at least `0.18`, so a scene that would score well by symmetry alone cannot
+  qualify.
 - **Metal is wired into the curated set but hosted Storm/Metal parity is not yet observed.** The
   macOS render job runs the same capture only when CGL is available; hosted arm64 currently records a
   CGL capability skip instead of counting that path as passing.
