@@ -30,6 +30,12 @@ builds and publishes copy the current host's assets only on `win-x64`, `linux-x6
 `osx-arm64`; cross-publishing, CI matrix jobs, and unsupported hosts should set
 `RuntimeIdentifier` explicitly. See [Packaging](docs/packaging.md).
 
+Release evidence now includes a checked CycloneDX SBOM, nuget.org symbol-package promotion wiring,
+and render gates that run before releases. The details and caveats live in
+[Packaging](docs/packaging.md#release-sbom),
+[Packaging symbols](docs/packaging.md#symbol-packages-for-nugetorg), and
+[Testing](docs/testing.md#continuous-render-gates).
+
 ## ✨ Highlights
 
 - **Idiomatic data API** for stage and layer lifecycle, prims, attributes, relationships, variants,

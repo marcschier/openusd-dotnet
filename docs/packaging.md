@@ -4,7 +4,8 @@ Use this guide to identify the managed and RID-specific packages a consumer need
 Core and Imaging assets reach publish output, and find the package-only resolution gates.
 
 **On this page:** [Package resolution](#package-resolution) ·
-[Package layout](#package-layout) · [Pack](#pack) · [Publish](#publish) ·
+[Package layout](#package-layout) · [Pack](#pack) · [Release SBOM](#release-sbom) ·
+[Publish](#publish) · [Symbols](#symbol-packages-for-nugetorg) ·
 [Core execution](#package-only-execution-gate) ·
 [Imaging execution](#package-only-imaging-execution-gate) ·
 [Required mode](#required-execution-mode) · [Related documentation](#related-documentation)
@@ -211,6 +212,36 @@ Canonical evidence is generated with the build it describes:
 - The Linux and macOS Imaging nupkgs embed their platform validation manifest
   under `build/` as `OpenUsd.Runtime.Imaging.<rid>.native-validation.json`.
 
+## Release SBOM
+
+The checked release SBOM is `eng/sbom/openusd-release.cdx.json`. It is CycloneDX 1.6 and currently
+contains 112 components. `eng/generate-sbom.py` builds it from repository pins rather than from a
+restored machine state: `eng/openusd.install.lock.json`, `eng/cesium.lock.json`,
+`eng/physx.lock.json`, `eng/shaders/toolchain.lock.json`, `Directory.Packages.props`,
+`global.json`, the published package list, and the Viewer publish script
+are hashed into the metadata. Cesium's transitive vcpkg component resolution is committed in
+`eng/sbom/cesium-vcpkg-components.lock.json`, so the normal check path does not fetch port manifests
+from the network. Refreshing that committed vcpkg data is an explicit operation:
+
+```powershell
+python eng/generate-sbom.py --refresh-vcpkg
+```
+
+`eng/check-sbom.ps1` regenerates to a temporary comparison, reports stale output when the pinned
+inputs move, then validates the checked file. CI runs it on Linux. Release packing also regenerates
+and validates the SBOM after the tag stamps the package version, uploads it as the
+`openusd-release-sbom` workflow artifact, and attaches `openusd-release.cdx.json` to the GitHub
+release for tag builds.
+
+The SBOM does not replace `THIRD-PARTY-NOTICES.md` in the runtime packages. Notices are attribution
+files carried with the packages; the SBOM lists components, versions, hashes, sources, and dependency
+relationships for release audit tooling. Both are expected.
+
+One entry is intentionally unresolved: `Microsoft.NETCore.App` has no `version` field. Its
+`openusd:unresolved` property says the exact runtime-pack patch is selected by the pinned .NET SDK at
+restore time and is not recorded in the repository. That is more accurate than inventing a patch
+version that the checked inputs do not prove.
+
 The expanded native profile adds Ptex, OpenVDB, Alembic, Draco, and Blosc. On the local `win-x64`
 build, the Core package grew from 27.50 MiB to 33.45 MiB compressed and from 78.67 MiB to
 110.87 MiB uncompressed; the Imaging package grew from 0.17 MiB to 0.35 MiB compressed and from
@@ -269,7 +300,8 @@ Both jobs depend on `ci`, `shaders`, `native` and `packages`, which together bui
 execute the exact packages that get pushed, with `packages` running the package-only consumer gates
 on all three platforms. They deliberately do not depend on `render`, which covers viewer and
 windowing behaviour that no published package relies on. The release aggregate still requires
-`render` separately, so render regressions block release without being treated as package proof.
+`render` separately, so a render regression turns a release run red rather than being silently
+dropped or treated as package proof.
 
 Packages flow through two feeds/artifact stores:
 
@@ -293,6 +325,43 @@ release run and stages each `.snupkg` beside its `.nupkg`. The nuget.org push in
 
 Both pushes use `--skip-duplicate`, so re-running a partially failed publish is safe. A version
 pushed to nuget.org can be unlisted but never withdrawn or replaced.
+
+## Symbol packages for nuget.org
+
+SourceLink is enabled through `Microsoft.SourceLink.GitHub`, `PublishRepositoryUrl`, and
+`EmbedUntrackedSources` in `Directory.Build.props`. Production library packs inherit
+`IncludeSymbols=true`, `SymbolPackageFormat=snupkg`, and portable PDBs, so managed library packages
+produce `.snupkg` files beside their `.nupkg` files. Runtime asset packages deliberately set
+`IncludeSymbols=false`, and the embeddable Viewer does not inherit the production-library symbol
+properties because it is classified as an application project.
+
+The release workflow still pushes GitHub Packages with `--no-symbols`. That is intentional: NuGet's
+client uploads adjacent `.snupkg` files automatically, and the GitHub Packages feed rejects symbol
+packages. The tagged release artifact `openusd-published-nupkgs` keeps the packed `.nupkg` and
+`.snupkg` files together so nuget.org promotion has a symbol source that the GitHub feed cannot
+provide. For the source-bearing managed packages that produce symbols, consumers can step from a
+NuGet package into the OpenUsd repository sources under a debugger.
+
+`.github/workflows/nuget.yml` now resolves the completed `release.yml` run for the exact tag, or uses
+the manual `release_run_id` input, and fails with a hard error if it cannot find that run. It
+downloads the released `.nupkg` files from GitHub Packages, downloads `openusd-published-nupkgs` from
+the release run, copies each matching `.snupkg` beside its `.nupkg`, and then runs
+`dotnet nuget push` without `--no-symbols` so nuget.org receives the symbols implicitly. The workflow
+throws if the release artifact contains no `.snupkg` files or if any downloaded package lacks its
+matching symbol package; because the current runtime and Viewer projects do not produce symbols, that
+check is the mechanism that will expose an incomplete release artifact rather than silently publishing
+another 404.
+
+A pushed symbol package is served from NuGet's symbol CDN at:
+
+```text
+https://globalcdn.nuget.org/symbol-packages/<lowercase-id>.<lowercase-version>.snupkg
+```
+
+For example, the managed package `OpenUsd 0.6.0-alpha` should appear as
+`https://globalcdn.nuget.org/symbol-packages/openusd.0.6.0-alpha.snupkg` after a successful
+nuget.org promotion. The corrected promotion path is wired in the tree, but it has not yet been
+proven by a real tagged release promotion end to end.
 
 ## Package-only execution gate
 

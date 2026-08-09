@@ -5,7 +5,8 @@ workflows combine managed, native, shader, package, render, and performance evid
 
 **On this page:** [Workflow graph](#workflow-and-evidence-graph) ·
 [Managed runner](#managed-test-runner) · [Performance](#performance-safety-gates) ·
-[Fuzzing](#native-stagelayer-fuzzing) · [Windows Storm](#windows-native-storm-child) ·
+[Fuzzing](#native-stagelayer-fuzzing) · [Continuous render](#continuous-render-gates) ·
+[Windows Storm](#windows-native-storm-child) ·
 [Linux Storm](#linux-native-storm-child) ·
 [macOS and Metal](#macos-native-storm-child-and-metal-shell) ·
 [Shared-stage soak](#shared-stage-soak) · [Related documentation](#related-documentation)
@@ -47,6 +48,32 @@ conformance gates.
 
 Interactive render paths may not use CPU readback. Headless image tests compare against pinned
 Storm references with perceptual tolerances rather than exact cross-driver pixels.
+
+## Continuous render gates
+
+`render.yml` is no longer release-only. It runs when the `native artifact pipeline` completes on
+`main` and on path-filtered pushes that touch render workflow scripts, native-input preparation,
+shader payloads, rendering/viewer sources, or the package and render tests that its legs execute. A
+release still calls the same reusable workflow, but every repository workflow now has a path to run
+outside a release.
+
+The workflow consumes verified native archives when a native pipeline run id is available instead of
+rebuilding OpenUSD in each render leg. On path-filtered pushes without a published native tree, each
+leg records a `RENDER_SMOKE_DEFERRED` notice and waits for the workflow-run trigger from the native
+producer to cover that native input. That keeps render changes visible before release without making
+four one-hour consumers rebuild the same native payload.
+
+The four current render legs are blocking when their native input is ready:
+
+- `Windows WGL`
+- `Windows Avalonia Vulkan required`
+- `Linux X11 and compositor-managed XWayland required gate`
+- `macOS arm64 Storm child and Metal`
+
+The most recent `main` workflow-run render checked in this documentation pass was run `31290108017`
+for commit `4df16ccb1da5907704ea7118bafd1d58a57f5502`; all four jobs completed with `success`. That
+is important structurally as well as tactically: render defects are now discovered by push or native
+archive publication, not for the first time inside a tag release.
 
 ## Managed test runner
 

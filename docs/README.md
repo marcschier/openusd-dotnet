@@ -66,11 +66,11 @@ deeper design or evidence documents only as needed.
 | [Rendering](rendering.md) | Neutral contracts, Storm, hdSilk, picking, selection, and composition |
 | [Viewer](viewer.md) | Desktop inspection, editing, cameras, settings, and diagnostics |
 | [Native build](native-build.md) | Locked OpenUSD source, toolchains, builds, archives, and probes |
-| [Packaging](packaging.md) | Runtime package layout, validation, and package-only execution |
+| [Packaging](packaging.md) | Runtime package layout, SBOM, symbols, and package-only execution |
 | [Versioning](versioning-compatibility.md) | Managed, ABI, package, runtime, and plugin compatibility |
 | [Shader pipeline](shader-pipeline.md) | Reproducible shader inputs, outputs, validation, and Metal staging |
 | [Performance](performance.md) | Native-call shape, allocations, retained resources, and benchmarks |
-| [Testing](testing.md) | Managed, native, package, performance, render, and soak gates |
+| [Testing](testing.md) | Managed, native, package, performance, continuous render, and soak gates |
 | [Troubleshooting](troubleshooting.md) | Native loading, plugins, platform shells, AOT, and evidence triage |
 
 ## Repository examples
