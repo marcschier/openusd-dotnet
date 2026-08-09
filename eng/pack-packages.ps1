@@ -36,11 +36,24 @@ param(
     [switch]$ListPublished,
 
     # Emits the subset of the published set that produces a .snupkg, one id per
-    # line, and exits. Derived from IncludeSymbols in each project rather than a
-    # second hand-maintained list: the twelve runtime packaging projects set
-    # IncludeSymbols=false because they ship native payloads and dependencies
-    # rather than assemblies, and nuget.yml would otherwise demand a symbol
-    # package for every id and fail every promotion.
+    # line, and exits. This mirrors the MSBuild condition that actually governs
+    # symbol production rather than a second hand-maintained list.
+    #
+    # Two things suppress a .snupkg, and both must be honoured here:
+    #
+    #   * The twelve runtime packaging projects set IncludeSymbols=false because
+    #     they ship native payloads and dependencies rather than assemblies.
+    #   * Application projects never get IncludeSymbols at all. Directory.Build.props
+    #     sets IncludeSymbols and SymbolPackageFormat inside a PropertyGroup guarded
+    #     by _IsProductionLibrary, and IsApplicationProject excludes a project from
+    #     that. OpenUsd.Viewer is packable but is classified as an application so the
+    #     strict AOT/trim and public-API gates do not apply to its Avalonia UI code,
+    #     so it packs a .nupkg and no .snupkg.
+    #
+    # Testing only for an explicit IncludeSymbols=false misses the second case: the
+    # property is absent rather than false. That mistake failed the 0.7.0-alpha
+    # promotion with "Missing symbol package(s): openusd.viewer.0.7.0-alpha.snupkg"
+    # after the packages had already been pushed to the GitHub feed.
     [switch]$ListSymbolPublished
 )
 
@@ -98,7 +111,11 @@ if ($ListSymbolPublished)
             throw "The published package '$id' has no project at '$projectPath'."
         }
         $project = Get-Content $projectPath -Raw
-        if ($project -notmatch '<IncludeSymbols>\s*false\s*</IncludeSymbols>')
+        $suppressesSymbols =
+            $project -match '<IncludeSymbols>\s*false\s*</IncludeSymbols>' -or
+            $project -match '<IsApplicationProject>\s*true\s*</IsApplicationProject>' -or
+            $id -match '\.(Viewer|Viewer\.App|NativeProbe|SilkProbe)$'
+        if (-not $suppressesSymbols)
         {
             $id
         }

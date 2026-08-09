@@ -275,21 +275,46 @@ public sealed class WorkflowStructureContractTests
         {
             string projectPath = Path.Combine(root, "src", id, $"{id}.csproj");
             string project = await File.ReadAllTextAsync(projectPath);
-            if (!Regex.IsMatch(
-                project,
-                @"<IncludeSymbols>\s*false\s*</IncludeSymbols>",
-                RegexOptions.CultureInvariant))
+            bool suppressesSymbols = Regex.IsMatch(
+                    project,
+                    @"<IncludeSymbols>\s*false\s*</IncludeSymbols>",
+                    RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(
+                    project,
+                    @"<IsApplicationProject>\s*true\s*</IsApplicationProject>",
+                    RegexOptions.CultureInvariant);
+            if (!suppressesSymbols)
             {
                 expected.Add(id);
             }
         }
 
         await Assert.That(symbolPublished.Length)
-            .IsEqualTo(10)
-            .Because("the current 22-package release set has ten managed packages that emit snupkg files");
+            .IsEqualTo(9)
+            .Because("the current 22-package release set has nine managed packages that emit snupkg files");
         await Assert.That(actual)
             .IsEquivalentTo(expected)
-            .Because("-ListSymbolPublished must be derived from each project's IncludeSymbols setting");
+            .Because("-ListSymbolPublished must match the MSBuild conditions that govern snupkg production");
+
+        // Ground truth, not a restatement of the script. Directory.Build.props sets
+        // IncludeSymbols and SymbolPackageFormat inside a PropertyGroup guarded by
+        // _IsProductionLibrary, which IsApplicationProject excludes a project from. So an
+        // application project has IncludeSymbols *absent* rather than false, and packs no
+        // snupkg. Asserting only "not explicitly false" is what let the 0.7.0-alpha
+        // promotion demand openusd.viewer.0.7.0-alpha.snupkg and fail after the packages
+        // had already been pushed to the GitHub feed.
+        await Assert.That(actual).DoesNotContain("OpenUsd.Viewer");
+        foreach (string id in symbolPublished)
+        {
+            string project = await File.ReadAllTextAsync(
+                Path.Combine(root, "src", id, $"{id}.csproj"));
+            await Assert.That(Regex.IsMatch(
+                    project,
+                    @"<IsApplicationProject>\s*true\s*</IsApplicationProject>",
+                    RegexOptions.CultureInvariant))
+                .IsFalse()
+                .Because($"{id} is expected to emit a snupkg, so it must be a production library");
+        }
     }
 
     [Test]
