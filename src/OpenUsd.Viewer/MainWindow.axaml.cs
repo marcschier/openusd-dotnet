@@ -3191,45 +3191,6 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    private static Task InvokeStageOpenUiContinuationAsync(
-        Func<Task> continuation,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(continuation);
-        if (Dispatcher.UIThread.CheckAccess())
-        {
-            return continuation();
-        }
-
-        var completion = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        Dispatcher.UIThread.Post(
-            async () =>
-            {
-                try
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    await continuation();
-                    completion.TrySetResult();
-                }
-                catch (OperationCanceledException exception) when (
-                    cancellationToken.IsCancellationRequested)
-                {
-                    completion.TrySetCanceled(cancellationToken);
-                    ViewerStartupOptions.WriteStatus(
-                        $"Viewer stage open: UI continuation canceled: {exception.Message}");
-                }
-                catch (Exception exception)
-                {
-                    completion.TrySetException(exception);
-                    ViewerStartupOptions.WriteStatus(
-                        $"Viewer stage open: UI continuation failed: {exception.Message}");
-                }
-            },
-            DispatcherPriority.Send);
-        return completion.Task.WaitAsync(cancellationToken);
-    }
-
     private async Task OpenStageCoreAsync(
         string stagePath,
         bool addToRecent,
@@ -3290,91 +3251,79 @@ public sealed partial class MainWindow : Window, IDisposable
                         return backendHost;
                     },
                     GetSelectedBackend(),
-                    documentLifetime.Token).ConfigureAwait(false);
+                    documentLifetime.Token);
                 ViewerStartupOptions.WriteStatus("Viewer stage open: render coordinator acquired");
                 ViewerStartupOptions.WriteStatus("Viewer stage open: document snapshot starting");
                 ViewerDocumentSnapshot document = await coordinator.Scheduler.InvokeAsync(
                     ViewerStageSnapshotBuilder.BuildDocument,
-                    documentLifetime.Token).ConfigureAwait(false);
+                    documentLifetime.Token);
                 ViewerStartupOptions.WriteStatus("Viewer stage open: document snapshot completed");
 
-                await InvokeStageOpenUiContinuationAsync(
-                    async () =>
-                    {
-                        _documentLifetime = documentLifetime;
-                        _coordinator = coordinator;
-                        _backendHost = backendHost;
-                        _hierarchy = document.Hierarchy;
-                        _timing = document.Timing;
-                        _layers = document.Layers;
-                        _statistics = document.Statistics;
-                        _currentInspector = document.SelectedPrim;
-                        _stageCameras = document.StageCameras ?? [];
-                        _primaryCameraPath = document.PrimaryCameraPath;
-                        _rootLayerEditsExplicitlyEnabled = false;
-                        _stagePath = normalizedPath;
-                        coordinator.StatusChanged += OnRendererStatusChanged;
-                        coordinator.StateChanged += OnRenderStateChanged;
-                        InitializeCameraUpdates(coordinator, documentLifetime.Token);
-                        coordinator = null;
-                        documentLifetime = null!;
+                _documentLifetime = documentLifetime;
+                _coordinator = coordinator;
+                _backendHost = backendHost;
+                _hierarchy = document.Hierarchy;
+                _timing = document.Timing;
+                _layers = document.Layers;
+                _statistics = document.Statistics;
+                _currentInspector = document.SelectedPrim;
+                _stageCameras = document.StageCameras ?? [];
+                _primaryCameraPath = document.PrimaryCameraPath;
+                _rootLayerEditsExplicitlyEnabled = false;
+                _stagePath = normalizedPath;
+                coordinator.StatusChanged += OnRendererStatusChanged;
+                coordinator.StateChanged += OnRenderStateChanged;
+                InitializeCameraUpdates(coordinator, documentLifetime.Token);
+                coordinator = null;
+                documentLifetime = null!;
 
-                        StageStatus.Text = Path.GetFileName(normalizedPath);
-                        ShowStageSummary();
-                        ReloadStageButton.IsEnabled = true;
-                        ReloadStageMenuItem.IsEnabled = true;
-                        RenderHierarchy();
-                        RenderStageCameraMenu();
-                        RenderLayers();
-                        RenderValidation();
-                        SetActiveBackendStatus();
-                        CaptureDiagnostics(
-                            _coordinator,
-                            frameResult: null,
-                            force: true);
-                        ViewerStartupOptions.WriteStatus("Viewer stage open: UI binding completed");
-                        ViewerStartupOptions.WriteStatus(
-                            "Viewer stage open: timeline initialization starting");
-                        await InitializeTimelineAsync(
-                            _coordinator,
-                            _timing,
-                            _documentLifetime.Token);
-                        ViewerStartupOptions.WriteStatus(
-                            "Viewer stage open: timeline initialization completed");
-                        ViewerStartupOptions.WriteStatus(
-                            "Viewer stage open: validation refresh starting");
-                        await RefreshValidationAsync(_coordinator, _documentLifetime.Token);
-                        ViewerStartupOptions.WriteStatus(
-                            "Viewer stage open: validation refresh completed");
-                        ViewerStartupOptions.WriteStatus(
-                            "Viewer stage open: viewport state update starting");
-                        await UpdateViewportStateAsync(_coordinator, _documentLifetime.Token);
-                        ViewerStartupOptions.WriteStatus(
-                            "Viewer stage open: viewport state update completed");
-                        if (ViewerStartupOptions.IsCleanupRetryEvidenceScenario ||
-                            ViewerStartupOptions.IsRetiredKindQuarantineEvidenceScenario ||
-                            ViewerStartupOptions.IsStageCameraEvidenceScenario ||
-                            ViewerStartupOptions.PickSmokeEnabled)
-                        {
-                            Volatile.Write(ref _diagnosticOwnsRendering, 1);
-                        }
-                        ViewerStartupOptions.WriteStatus("Viewer stage open: render loop starting");
-                        _renderLoop = RunRenderLoopAsync(_coordinator, _documentLifetime.Token);
-                        ViewerStartupOptions.WriteStatus(
-                            "Viewer stage open: render loop task created");
-                        if (IsAutomatedViewerRun())
-                        {
-                            _diagnosticSequence = RunObservedDiagnosticSequenceAsync(
-                                _coordinator,
-                                _documentLifetime.Token);
-                        }
-                        SetReady($"Opened {normalizedPath}");
-                        await ApplyStartupCameraAndNotifyStageReadyAsync(
-                            _coordinator,
-                            normalizedPath,
-                            _documentLifetime.Token);
-                    },
-                    cancellationToken).ConfigureAwait(false);
+                StageStatus.Text = Path.GetFileName(normalizedPath);
+                ShowStageSummary();
+                ReloadStageButton.IsEnabled = true;
+                ReloadStageMenuItem.IsEnabled = true;
+                RenderHierarchy();
+                RenderStageCameraMenu();
+                RenderLayers();
+                RenderValidation();
+                SetActiveBackendStatus();
+                CaptureDiagnostics(
+                    _coordinator,
+                    frameResult: null,
+                    force: true);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: UI binding completed");
+                ViewerStartupOptions.WriteStatus("Viewer stage open: timeline initialization starting");
+                await InitializeTimelineAsync(
+                    _coordinator,
+                    _timing,
+                    _documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: timeline initialization completed");
+                ViewerStartupOptions.WriteStatus("Viewer stage open: validation refresh starting");
+                await RefreshValidationAsync(_coordinator, _documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: validation refresh completed");
+                ViewerStartupOptions.WriteStatus("Viewer stage open: viewport state update starting");
+                await UpdateViewportStateAsync(_coordinator, _documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: viewport state update completed");
+                if (ViewerStartupOptions.IsCleanupRetryEvidenceScenario ||
+                    ViewerStartupOptions.IsRetiredKindQuarantineEvidenceScenario ||
+                    ViewerStartupOptions.IsStageCameraEvidenceScenario ||
+                    ViewerStartupOptions.PickSmokeEnabled)
+                {
+                    Volatile.Write(ref _diagnosticOwnsRendering, 1);
+                }
+                ViewerStartupOptions.WriteStatus("Viewer stage open: render loop starting");
+                _renderLoop = RunRenderLoopAsync(_coordinator, _documentLifetime.Token);
+                ViewerStartupOptions.WriteStatus("Viewer stage open: render loop task created");
+                if (IsAutomatedViewerRun())
+                {
+                    _diagnosticSequence = RunObservedDiagnosticSequenceAsync(
+                        _coordinator,
+                        _documentLifetime.Token);
+                }
+                SetReady($"Opened {normalizedPath}");
+                await ApplyStartupCameraAndNotifyStageReadyAsync(
+                    _coordinator,
+                    normalizedPath,
+                    _documentLifetime.Token);
             }
             finally
             {
