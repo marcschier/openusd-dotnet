@@ -305,10 +305,12 @@ deterministic on any host. A companion case renders the same scene with one mesh
 requires the comparison to fail, so the gate cannot pass vacuously. This is what catches a
 backend-only regression such as an index format or vertex layout that only one RHI got right.
 
-The 22-scene Storm/hdSilk parity claim rests on the D3D12 WARP and Vulkan SwiftShader captures run by
-`eng/run-parity-capture.ps1`. Metal does not run that curated set today. The hosted macOS evidence is a
-native/Metal pipeline probe for one offscreen stage, so Metal can be described as pipeline-validated
-rather than scene-matrix parity-gated.
+The 22-scene Storm/hdSilk parity claim rests on the D3D12 WARP and Vulkan SwiftShader captures run
+by `eng/run-parity-capture.ps1`. The macOS render job wires the same curated capture to CGL/Metal
+only when `resolve-macos-cgl-capability.ps1` proves that hosted CGL can create the required pixel
+format; otherwise it records `artifacts/render-capability/macos-cgl.json` and does not count
+Storm/Metal parity as observed. The hosted macOS evidence outside that conditional path is Metal
+pipeline/composition, MaterialX self-consistency, lifecycle, and Storm/Metal switching.
 
 ## Windows native Storm child
 

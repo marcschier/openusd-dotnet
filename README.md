@@ -45,7 +45,8 @@ builds and publishes copy the current host's assets only on `win-x64`, `linux-x6
   time-varying values.
 - **Measured parity with Storm** on 22 hard-gated curated scenes at exactly `1.000000` adjusted IoU
   for D3D12 WARP and Vulkan SwiftShader; the render workflow also attempts the same curated capture
-  on macOS CGL/Metal, but that path remains pending hosted proof until a run records it.
+  on macOS CGL/Metal and records an explicit capability skip when hosted CGL cannot create the
+  required pixel format.
 - **Cross-platform packaging gates** for `win-x64`, `linux-x64`, and `osx-arm64`.
 - **NativeAOT and trimming analyzers** across production libraries targeting .NET 8, 9, and 10.
 
@@ -264,8 +265,9 @@ narrow:
 - **25 curated scenes are registered; 22 are hard gates** at exactly `1.000000` adjusted IoU against
   **D3D12 WARP and Vulkan SwiftShader**. A gate is only accepted with a perturbation
   margin of at least `0.18`, so a scene that would score well by symmetry alone cannot qualify.
-- **Metal is wired into the curated set but is not yet observed.** The macOS render job now runs the
-  same 25-scene capture and perturbation companion, but hosted proof is pending until an artifact records it.
+- **Metal is wired into the curated set but hosted Storm/Metal parity is not yet observed.** The
+  macOS render job runs the same capture only when CGL is available; hosted arm64 currently records a
+  CGL capability skip instead of counting that path as passing.
 - **Three scenes are measured and deliberately left ungated**, because Storm in the offscreen
   harness renders the subdivision control cage, renders MaterialX black, and does not cast shadows
   at all. Those are recorded limits, not hidden failures.
@@ -279,11 +281,12 @@ workflow, *not* by ordinary CI, so a green `ci` badge does not mean parity ran. 
 | --- | --- | --- |
 | Windows with a conformant GPU driver | D3D12 WARP, Vulkan SwiftShader | All 22 gates pass |
 | Hosted Linux (`render`) | Vulkan SwiftShader | Runs and passes |
-| Hosted Windows (`render`, Mesa Storm) | — | Currently fails at `vkCreateInstance: ErrorIncompatibleDriver` |
+| Hosted Windows (`render`, Mesa Storm) | D3D12 WARP | 7 WGL tests; Vulkan composition skip |
+| Hosted macOS (`render`) | Metal; CGL when available | Metal tests; CGL parity skip on hosted arm64 |
 
-Hosted Windows has no usable Vulkan ICD, which is the `render-unblock-vulkan` limitation described
-in [Testing](docs/testing.md) and needs a GPU-equipped self-hosted runner. Until then the full
-Windows matrix is reproduced on a developer machine, and hosted Linux is the automated gate.
+Hosted Windows still has no usable Vulkan ICD, which is the `render-unblock-vulkan` limitation
+described in [Testing](docs/testing.md) and needs a GPU-equipped self-hosted runner for Vulkan
+composition. Hosted WGL and hosted Linux are automated render gates.
 
 [Support matrix](docs/support-matrix.md) carries the full feature-to-scene table naming every
 uncovered feature, and [Testing](docs/testing.md) records every rejected hypothesis and measured
@@ -401,10 +404,13 @@ Before 1.0 the remaining work is code signing and notarization credentials for s
 distributions, GPU-equipped self-hosted runners for the two Vulkan composition gates, and closing
 the measured divergences recorded in [Testing](docs/testing.md).
 
-The standalone Viewer bundle smoke currently passes on `win-x64` only. On `linux-x64` the bundled
-Viewer hangs during render-backend initialization under Xvfb and never renders a frame, and the
-`osx-arm64` result is not yet established. The published packages are unaffected — they are gated
-separately — but the Linux and macOS standalone Viewer bundles should be treated as unproven.
+The standalone Viewer bundle smoke is now proven on `win-x64` and `linux-x64`. Run 31290108012
+records `viewer distribution linux-x64` as successful and reports a rendered Storm/OpenGL frame under
+Xvfb after the Linux X11 error-trap self-deadlock was fixed in 278b1f6. The `osx-arm64` result is
+also established, but still red: the same run reaches `GPU composition: ready (808 × 513)`, falls
+back from Storm to Metal after the headless CGL pixel-format limit, initializes hdSilk/Metal, and
+then never reports `frame rendered` within 120 seconds. The published packages are unaffected — they
+are gated separately — but the macOS standalone Viewer bundle remains a known failing smoke.
 
 [ci]: https://github.com/marcschier/openusd-dotnet/actions/workflows/ci.yml
 [ci-badge]: https://github.com/marcschier/openusd-dotnet/actions/workflows/ci.yml/badge.svg?branch=main

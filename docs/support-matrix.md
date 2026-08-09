@@ -98,15 +98,16 @@ Repository development uses SDK `10.0.301`, even when compiling `net8.0` and `ne
 | `linux-x64` | Implemented | Implemented | Implemented | Workflow-gated | Workflow-gated, partly narrowed |
 | `osx-arm64` | Implemented | Implemented | Implemented | Workflow-gated | Workflow-gated, partly narrowed |
 
-The narrowed render proofs are the Windows WGL soak, the Windows Avalonia Vulkan composition gate,
-the Linux X11 and Wayland Vulkan import smokes, and the macOS Storm child probe. Each needs a
-graphics capability a hosted runner does not provide, each records a `status: skipped` evidence
-artifact instead of a silent pass, and each has a documented route back to full coverage in
-[Testing](testing.md#render-gate-capability-limits). The two Vulkan composition limits are hardware
-limits, not implementation gaps: hosted Windows has no system Vulkan ICD and SwiftShader implements
-neither `VK_KHR_external_memory_win32` nor `VK_KHR_external_semaphore_win32`, so it cannot export a
-Vulkan image to a D3D11 shared handle; hosted Linux reaches lavapipe, but the X11/Wayland compositor
-reports `supported image handles: (none)`, so no external Vulkan image can be imported.
+The narrowed render proofs are the Windows Avalonia Vulkan composition gate, the Linux X11 and
+Wayland Vulkan import smokes, and macOS CGL Storm-to-Metal parity when hosted CGL cannot create the
+required pixel format. Each needs a graphics capability a hosted runner does not provide, each
+records a `status: skipped` evidence artifact instead of a silent pass, and each has a documented
+route back to full coverage in [Testing](testing.md#render-gate-capability-limits). The two Vulkan
+composition limits are hardware limits, not implementation gaps: hosted Windows has no system Vulkan
+ICD and SwiftShader implements neither `VK_KHR_external_memory_win32` nor
+`VK_KHR_external_semaphore_win32`, so it cannot export a Vulkan image to a D3D11 shared handle;
+hosted Linux reaches lavapipe, but the X11/Wayland compositor reports
+`supported image handles: (none)`, so no external Vulkan image can be imported.
 
 No runtime package is currently defined for Windows arm64, Linux arm64, macOS x64, or mobile/browser
 RIDs.
@@ -235,13 +236,15 @@ Hosted Mesa/llvmpipe Storm runs only 21 registered scenes, excluding `single-sid
 differs from conformant-driver Storm.
 
 The render workflow now wires the curated capture into the `macos-15` arm64 job with a CGL Storm
-context and the Metal hdSilk backend. It runs only the two parity-driver tests on macOS:
-deterministic Storm/Metal capture and the perturbation companion that must go red when the Metal
-image is flipped, mirrored, transposed, shifted, or sampled at the wrong time. It asserts all
-25 registered scenes with no macOS exclusions unless the script is changed to name one; a missing
-CGL context, missing Metal device, scene-count mismatch, or missing input is a hard failure in this
-required capture path. Those two tests are the curated scene matrix plus its cross-backend
-divergence companion, not two individual scenes.
+context and the Metal hdSilk backend, but only after `resolve-macos-cgl-capability.ps1` proves that
+the host can create the required accelerated offline-capable CGL pixel format. When that preflight
+fails on hosted arm64 with `kCGLBadPixelFormat`, the job records
+`artifacts/render-capability/macos-cgl.json` and continues. When CGL is available, the macOS path
+runs deterministic Storm/Metal capture, the perturbation companion that must go red when the Metal
+image is flipped, mirrored, transposed, shifted, or sampled at the wrong time, both platform-neutral
+Silk complexity proofs, and Metal MaterialX self-consistency. The capture asserts all 25 registered
+scenes with no macOS exclusions unless the script is changed to name one. A missing Metal device,
+scene-count mismatch, or missing input is still a hard failure when the capture runs.
 
 The other `StormSilkParityCaptureDriverTests` entries are targeted backend/detail gates rather than
 additional curated scenes: D3D12 frame capture, hdSilk complexity page selection, Vulkan synthetic
@@ -252,15 +255,17 @@ curated scene capture remains limited to the native pipeline probe, the ten-entr
 contract, IOSurface composition, selection/picking/compute conformance, and the generated
 MaterialX-vs-PreviewSurface Metal self-consistency gate.
 
-This path is **pending hosted proof** until a workflow run records that hosted macOS can create the
-required CGL OpenGL context and Metal device and shows which scenes gate; it must not be counted as
-observed Storm/Metal parity yet.
+This path must not be counted as observed hosted Storm/Metal parity until a workflow run records CGL
+availability and the capture artifacts. The current hosted macOS evidence is an explicit CGL
+capability skip plus the separate Metal composition, MaterialX self-consistency, lifecycle, and
+Storm/Metal switching proofs.
 
 The harness is driven by the `render` workflow, **not** by ordinary CI, so a green `ci` badge does
 not mean parity ran. The full 22-gate matrix passes on Windows with a conformant GPU driver. Hosted
-Linux runs and passes it against Vulkan SwiftShader. Hosted Windows currently fails at
-`vkCreateInstance: ErrorIncompatibleDriver` because the runner has no usable Vulkan ICD; that is the
-`render-unblock-vulkan` limitation and needs a GPU-equipped self-hosted runner.
+Linux runs and passes it against Vulkan SwiftShader. Hosted Windows WGL now runs the seven
+non-Vulkan WGL tests with Mesa llvmpipe and D3D12 WARP; Vulkan composition still records a
+capability skip because the runner has no usable Vulkan ICD. That is the `render-unblock-vulkan`
+limitation and needs a GPU-equipped self-hosted runner.
 
 ### Feature-to-scene matrix
 
@@ -543,8 +548,8 @@ here.
 - The Viewer is an inspector and focused editor, not a `usdview` clone or full DCC.
 - Only `win-x64`, `linux-x64`, and `osx-arm64` runtime packages exist today.
 - The curated Storm/hdSilk parity matrix is observed on D3D12 WARP and Vulkan SwiftShader. Metal is
-  wired into the macOS render job for the same 25-scene capture, but that hosted result is pending
-  and must not be reported as passing until the workflow artifact exists.
+  wired into the macOS render job for the same 25-scene capture, but hosted arm64 currently records a
+  CGL capability skip; it must not be reported as passing until a workflow run captures it.
 - Volume rendering outside Vulkan single-density OpenVDB assets, path tracing, proprietary shaders,
   arbitrary MaterialX graphs, and third-party Hydra render delegates are excluded from the next-alpha support claim.
 

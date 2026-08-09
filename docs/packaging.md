@@ -268,9 +268,8 @@ Linux. A `publish` job then downloads every packed set, requires every package f
 Both jobs depend on `ci`, `shaders`, `native` and `packages`, which together build, verify and
 execute the exact packages that get pushed, with `packages` running the package-only consumer gates
 on all three platforms. They deliberately do not depend on `render`, which covers viewer and
-windowing behaviour that no published package relies on and is currently a known-failing gate; the
-release aggregate still requires `render`, so a release run stays red until that is fixed rather
-than the failure being dropped.
+windowing behaviour that no published package relies on. The release aggregate still requires
+`render` separately, so render regressions block release without being treated as package proof.
 
 Packages flow through two feeds/artifact stores:
 
