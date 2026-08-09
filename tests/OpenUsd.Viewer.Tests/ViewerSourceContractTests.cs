@@ -74,6 +74,10 @@ public sealed class ViewerSourceContractTests
             "Renderer coordinator: render source acquired",
             "Renderer coordinator: root layer query starting",
             "Renderer coordinator: backend initialization starting",
+            "Renderer coordinator: initialization result publish starting",
+            "Renderer coordinator: initialization diagnostics published",
+            "Renderer coordinator: initialization summary publishing",
+            "Renderer coordinator: initialization summary published",
             "Renderer coordinator: initialized backend returning"
         })
         {

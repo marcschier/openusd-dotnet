@@ -398,6 +398,13 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
 
     private void PublishResult(string operation, RenderBackendManagerResult result)
     {
+        bool reportInitializationBoundary =
+            string.Equals(operation, "Renderer initialization", StringComparison.Ordinal);
+        if (reportInitializationBoundary)
+        {
+            ViewerStartupOptions.WriteStatus(
+                "Renderer coordinator: initialization result publish starting");
+        }
         Volatile.Write(ref _latestDiagnostics, result.Diagnostics);
         Volatile.Write(ref _latestRecoveryReason, GetRecoveryReason(result.Diagnostics));
         string backend = result.ActiveBackend?.Name ?? "unavailable";
@@ -408,9 +415,23 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
                 $"{operation} diagnostic: {diagnostic.Backend?.ToString() ?? "none"}; " +
                 $"{diagnostic.Code}; {diagnostic.Message}");
         }
+        if (reportInitializationBoundary)
+        {
+            int subscribers = StatusChanged?.GetInvocationList().Length ?? 0;
+            ViewerStartupOptions.WriteStatus(
+                "Renderer coordinator: initialization diagnostics published; " +
+                $"subscribers={subscribers}");
+            ViewerStartupOptions.WriteStatus(
+                "Renderer coordinator: initialization summary publishing");
+        }
         Publish(
             $"{operation}: {backend}; {fallback}; " +
             $"retiredCleanup={_manager.RetiredCleanupCount}");
+        if (reportInitializationBoundary)
+        {
+            ViewerStartupOptions.WriteStatus(
+                "Renderer coordinator: initialization summary published");
+        }
     }
 
     private void PublishFrame(ManagedRenderFrameResult result)
