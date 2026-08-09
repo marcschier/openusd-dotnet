@@ -25,6 +25,79 @@ public sealed class ViewerSourceContractTests
     }
 
     [Test]
+    public async Task MacOSStormProbeRejectsMissingCglBeforeCreatingNativeChild()
+    {
+        string root = FindRepositoryRoot();
+        string host = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "AvaloniaViewerRenderBackendHost.cs"));
+
+        await Assert.That(host).Contains("TryGetMacOSStormCglUnavailable");
+        await Assert.That(host).Contains("VIEWER_STORM_MACOS_CGL_UNAVAILABLE");
+        await Assert.That(host).Contains("VIEWER_STORM_MACOS_CGL_AVAILABLE");
+        await Assert.That(host).Contains("catch (DllNotFoundException exception)");
+        await Assert.That(host).Contains("catch (EntryPointNotFoundException exception)");
+        await Assert.That(host).DoesNotContain("CglPfaAllowOfflineRenderers");
+        await Assert.That(host).Contains("CglOglPVersion41Core");
+        await Assert.That(host).Contains("CGLChoosePixelFormat");
+        await Assert.That(host.IndexOf(
+            "TryGetMacOSStormCglUnavailable",
+            StringComparison.Ordinal)).IsLessThan(host.IndexOf(
+                "private async ValueTask<IViewerRenderBackendSession> AttachNativeStormAsync",
+                StringComparison.Ordinal));
+    }
+
+    [Test]
+    public async Task MacOSStormCglPreflightMirrorsNativePixelFormat()
+    {
+        string root = FindRepositoryRoot();
+        string host = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "AvaloniaViewerRenderBackendHost.cs"));
+        string native = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "native",
+            "openusd_storm_child",
+            "src",
+            "openusd_storm_child_macos.mm"));
+
+        string nativeAttributes = ExtractNativeStormPixelFormatAttributes(native);
+        await Assert.That(nativeAttributes).Contains("NSOpenGLPFAOpenGLProfile");
+        await Assert.That(nativeAttributes).Contains("NSOpenGLProfileVersion4_1Core");
+        await Assert.That(nativeAttributes).Contains("NSOpenGLPFAColorSize, 24");
+        await Assert.That(nativeAttributes).Contains("NSOpenGLPFAAlphaSize, 8");
+        await Assert.That(nativeAttributes).Contains("NSOpenGLPFADepthSize, 24");
+        await Assert.That(nativeAttributes).Contains("NSOpenGLPFAStencilSize, 8");
+        await Assert.That(nativeAttributes).Contains("NSOpenGLPFADoubleBuffer");
+        await Assert.That(nativeAttributes).Contains("NSOpenGLPFAAccelerated");
+        await Assert.That(nativeAttributes).Contains("NSOpenGLPFANoRecovery");
+        await Assert.That(nativeAttributes).DoesNotContain("NSOpenGLPFAAllowOfflineRenderers");
+
+        string managedAttributes = ExtractManagedStormCglAttributes(host);
+        await Assert.That(managedAttributes).DoesNotContain("CglPfaAllowOfflineRenderers");
+        AssertContainsInOrder(
+            managedAttributes,
+            "CglPfaOpenGlProfile",
+            "CglOglPVersion41Core",
+            "CglPfaColorSize",
+            "24",
+            "CglPfaAlphaSize",
+            "8",
+            "CglPfaDepthSize",
+            "24",
+            "CglPfaStencilSize",
+            "8",
+            "CglPfaDoubleBuffer",
+            "CglPfaAccelerated",
+            "CglPfaNoRecovery",
+            "0");
+    }
+
+    [Test]
     public async Task AutomatedStageOpenReportsEachBlockingBoundary()
     {
         string root = FindRepositoryRoot();
@@ -684,6 +757,57 @@ public sealed class ViewerSourceContractTests
             offset += value.Length;
         }
         return count;
+    }
+
+    private static void AssertContainsInOrder(string source, params string[] values)
+    {
+        int offset = 0;
+        foreach (string value in values)
+        {
+            int index = source.IndexOf(value, offset, StringComparison.Ordinal);
+            if (index < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Expected to find '{value}' after offset {offset}.");
+            }
+            offset = index + value.Length;
+        }
+    }
+
+    private static string ExtractNativeStormPixelFormatAttributes(string nativeSource)
+    {
+        const string startMarker = "const NSOpenGLPixelFormatAttribute attributes[]";
+        int start = nativeSource.IndexOf(startMarker, StringComparison.Ordinal);
+        if (start < 0)
+        {
+            throw new InvalidOperationException("Could not find native Storm pixel format attributes.");
+        }
+
+        int end = nativeSource.IndexOf("NSOpenGLPixelFormat* format", start, StringComparison.Ordinal);
+        if (end < 0)
+        {
+            throw new InvalidOperationException("Could not find end of native Storm pixel format attributes.");
+        }
+
+        return nativeSource[start..end];
+    }
+
+    private static string ExtractManagedStormCglAttributes(string viewerHostSource)
+    {
+        const string startMarker = "int error = CGLChoosePixelFormat(";
+        int start = viewerHostSource.IndexOf(startMarker, StringComparison.Ordinal);
+        if (start < 0)
+        {
+            throw new InvalidOperationException("Could not find managed Storm CGL pixel format probe.");
+        }
+
+        int end = viewerHostSource.IndexOf("out count);", start, StringComparison.Ordinal);
+        if (end < 0)
+        {
+            throw new InvalidOperationException("Could not find end of managed Storm CGL pixel format probe.");
+        }
+
+        return viewerHostSource[start..end];
     }
 
     private static string FindRepositoryRoot()

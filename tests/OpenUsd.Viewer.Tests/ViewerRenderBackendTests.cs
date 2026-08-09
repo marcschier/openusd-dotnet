@@ -7,6 +7,24 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerRenderBackendTests
 {
     [Test]
+    public async Task MacOSStormCglPreflightReportsInteropFailuresAsUnavailable()
+    {
+        bool missingFramework = AvaloniaViewerRenderBackendHost.TryGetMacOSStormCglUnavailable(
+            static () => throw new DllNotFoundException("OpenGL.framework missing"),
+            out string? missingFrameworkReason);
+        bool missingEntry = AvaloniaViewerRenderBackendHost.TryGetMacOSStormCglUnavailable(
+            static () => throw new EntryPointNotFoundException("CGLChoosePixelFormat missing"),
+            out string? missingEntryReason);
+
+        await Assert.That(missingFramework).IsTrue();
+        await Assert.That(missingFrameworkReason)
+            .Contains("OpenGL.framework could not be loaded");
+        await Assert.That(missingEntry).IsTrue();
+        await Assert.That(missingEntryReason)
+            .Contains("does not expose CGLChoosePixelFormat");
+    }
+
+    [Test]
     public async Task HostedBackendAttachesDuringInitializationAndForwardsExactState()
     {
         var host = new FakeHost();

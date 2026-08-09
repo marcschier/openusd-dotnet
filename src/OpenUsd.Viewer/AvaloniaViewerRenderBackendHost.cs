@@ -1,6 +1,8 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Avalonia.Controls;
 using Avalonia.Threading;
@@ -25,6 +27,20 @@ internal sealed class AvaloniaViewerRenderBackendHost(
     private readonly ViewerBackendRuntimeIdentity?[] _runtimeIdentities =
         new ViewerBackendRuntimeIdentity[
             Enum.GetValues<RenderBackendKind>().Max(kind => (int)kind) + 1];
+
+    private const string OpenGlFramework =
+        "/System/Library/Frameworks/OpenGL.framework/OpenGL";
+    private const int CglSuccess = 0;
+    private const int CglBadPixelFormat = 10002;
+    private const int CglPfaColorSize = 8;
+    private const int CglPfaAlphaSize = 11;
+    private const int CglPfaDepthSize = 12;
+    private const int CglPfaStencilSize = 13;
+    private const int CglPfaDoubleBuffer = 5;
+    private const int CglPfaNoRecovery = 72;
+    private const int CglPfaAccelerated = 73;
+    private const int CglPfaOpenGlProfile = 99;
+    private const int CglOglPVersion41Core = 0x4100;
 
     internal int GetAttachCount(RenderBackendKind kind) =>
         Volatile.Read(ref _attachCounts[(int)kind]);
@@ -104,6 +120,25 @@ internal sealed class AvaloniaViewerRenderBackendHost(
             }
             return ValueTask.FromResult(RenderBackendProbeResult.Available());
         }
+        if (kind == RenderBackendKind.Storm &&
+            OperatingSystem.IsMacOS() &&
+            TryGetMacOSStormCglUnavailable(out string? cglReason))
+        {
+            ViewerStartupOptions.WriteStatus(
+                "Renderer probe diagnostic: Storm; " +
+                $"VIEWER_STORM_MACOS_CGL_UNAVAILABLE; {cglReason}");
+            return ValueTask.FromResult(Unavailable(
+                kind,
+                RenderBackendProbeFailureKind.RuntimeUnavailable,
+                "VIEWER_STORM_MACOS_CGL_UNAVAILABLE",
+                cglReason));
+        }
+        if (kind == RenderBackendKind.Storm && OperatingSystem.IsMacOS())
+        {
+            ViewerStartupOptions.WriteStatus(
+                "Renderer probe diagnostic: Storm; VIEWER_STORM_MACOS_CGL_AVAILABLE; " +
+                "macOS CGL OpenGL 4.1 core pixel format is available.");
+        }
         if (!IsSupportedPlatform(kind))
         {
             return ValueTask.FromResult(Unavailable(
@@ -122,6 +157,92 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         }
         return ValueTask.FromResult(RenderBackendProbeResult.Available());
     }
+
+    [SupportedOSPlatform("macos")]
+    private static bool TryGetMacOSStormCglUnavailable(
+        [NotNullWhen(true)] out string? reason) =>
+        TryGetMacOSStormCglUnavailable(ProbeMacOSStormCgl, out reason);
+
+    internal static bool TryGetMacOSStormCglUnavailable(
+        Func<MacOSStormCglProbeResult> probe,
+        [NotNullWhen(true)] out string? reason)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+        MacOSStormCglProbeResult result;
+        try
+        {
+            result = probe();
+        }
+        catch (DllNotFoundException exception)
+        {
+            reason =
+                "macOS OpenGL.framework could not be loaded for Storm CGL preflight: " +
+                exception.Message;
+            return true;
+        }
+        catch (EntryPointNotFoundException exception)
+        {
+            reason =
+                "macOS OpenGL.framework does not expose CGLChoosePixelFormat for " +
+                "Storm CGL preflight: " + exception.Message;
+            return true;
+        }
+
+        if (result.Error == CglSuccess &&
+            result.PixelFormat != 0 &&
+            result.PixelFormatCount > 0)
+        {
+            reason = null;
+            return false;
+        }
+
+        reason = result.Error == CglBadPixelFormat || result.PixelFormatCount <= 0
+            ? "macOS could not create the OpenGL 4.1 core pixel format."
+            : $"macOS CGLChoosePixelFormat failed with CGL error {result.Error}.";
+        return true;
+    }
+
+    [SupportedOSPlatform("macos")]
+    private static MacOSStormCglProbeResult ProbeMacOSStormCgl()
+    {
+        nint pixelFormat = 0;
+        int count = 0;
+        int error = CGLChoosePixelFormat(
+            [
+                CglPfaOpenGlProfile,
+                CglOglPVersion41Core,
+                CglPfaColorSize,
+                24,
+                CglPfaAlphaSize,
+                8,
+                CglPfaDepthSize,
+                24,
+                CglPfaStencilSize,
+                8,
+                CglPfaDoubleBuffer,
+                CglPfaAccelerated,
+                CglPfaNoRecovery,
+                0
+            ],
+            ref pixelFormat,
+            out count);
+        try
+        {
+            return new MacOSStormCglProbeResult(error, pixelFormat, count);
+        }
+        finally
+        {
+            if (pixelFormat != 0)
+            {
+                _ = CGLDestroyPixelFormat(pixelFormat);
+            }
+        }
+    }
+
+    internal readonly record struct MacOSStormCglProbeResult(
+        int Error,
+        nint PixelFormat,
+        int PixelFormatCount);
 
     public async ValueTask<IViewerRenderBackendSession> AttachAsync(
         RenderBackendKind kind,
@@ -651,6 +772,15 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         $"{message} capabilities: compute={capabilities.SupportsCompute}; " +
         $"descriptorIndexedTextures={capabilities.SupportsDescriptorIndexedTextureTables}; " +
         $"software={capabilities.IsSoftware}; api={capabilities.ApiVersion}.";
+
+    [DllImport(OpenGlFramework, EntryPoint = "CGLChoosePixelFormat")]
+    private static extern int CGLChoosePixelFormat(
+        int[] attributes,
+        ref nint pixelFormat,
+        out int pixelFormatCount);
+
+    [DllImport(OpenGlFramework, EntryPoint = "CGLDestroyPixelFormat")]
+    private static extern int CGLDestroyPixelFormat(nint pixelFormat);
 }
 
 internal sealed class StormHostedBackendSession(
