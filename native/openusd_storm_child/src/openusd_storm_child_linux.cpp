@@ -2565,9 +2565,11 @@ extern "C" openusd_status openusd_storm_child_destroy(
         {
             bool initialization_failed = false;
             {
-                std::lock_guard lock(state->gate);
+                std::unique_lock lock(state->gate);
+                state->initialized.wait(
+                    lock,
+                    [&state] { return state->initialization_complete; });
                 initialization_failed =
-                    state->initialization_complete &&
                     state->initialization_status != OPENUSD_STATUS_OK;
             }
             if (!initialization_failed)
