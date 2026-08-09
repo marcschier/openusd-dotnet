@@ -415,3 +415,43 @@ jobs:
           path: artifacts/viewer-distribution-smoke
           if-no-files-found: warn
           retention-days: 14
+
+  viewer-distribution-smoke-passed:
+    name: viewer distribution smoke passed
+    needs: [ pack-viewer-inputs, viewer-distribution ]
+    if: >-
+      always() &&
+      needs.pack-viewer-inputs.outputs.ready == 'true' &&
+      needs.viewer-distribution.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report smoke success
+        run: |
+          {
+            echo '## Viewer distribution smoke passed'
+            echo
+            echo 'All Viewer distribution smoke matrix legs ran and passed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  viewer-distribution-smoke-deferred:
+    name: viewer distribution smoke deferred (native artifacts unavailable)
+    needs: pack-viewer-inputs
+    if: >-
+      always() &&
+      needs.pack-viewer-inputs.outputs.ready != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report deferred smoke
+        run: |
+          echo "::warning title=Viewer distribution smoke deferred::The Viewer bundle smoke did not run; \
+          verified native artifacts were unavailable for this commit."
+          {
+            echo '## Viewer distribution smoke deferred'
+            echo
+            echo 'The Viewer bundle smoke did not run because verified native artifacts'
+            echo 'were not available for this commit yet.'
+            echo
+            echo 'This is an expected deferral, not smoke evidence. The workflow_run'
+            echo 'trigger will run the smoke after the native artifact pipeline publishes'
+            echo 'the matching native archives.'
+          } >> "$GITHUB_STEP_SUMMARY"

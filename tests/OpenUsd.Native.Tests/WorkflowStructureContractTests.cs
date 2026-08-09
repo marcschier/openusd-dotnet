@@ -753,6 +753,40 @@ public sealed class WorkflowStructureContractTests
         }
     }
 
+    [Test]
+    public async Task ViewerDistributionSmokeOutcomeIsReportedExplicitly()
+    {
+        string root = FindRepositoryRoot();
+        string viewerDistribution = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "viewer-distribution.yml"));
+
+        string smoke = ReadJob(viewerDistribution, "viewer-distribution");
+        await Assert.That(smoke)
+            .Contains("if: needs.pack-viewer-inputs.outputs.ready == 'true'", StringComparison.Ordinal)
+            .Because(
+                "missing native artifacts should still defer the expensive smoke instead of " +
+                "turning routine native-pipeline lag into a red workflow");
+
+        string passed = ReadJob(viewerDistribution, "viewer-distribution-smoke-passed");
+        await Assert.That(passed)
+            .Contains("viewer distribution smoke passed", StringComparison.Ordinal)
+            .Because("a checks-list reader needs a positive check when the smoke actually ran");
+        await Assert.That(passed)
+            .Contains("needs.viewer-distribution.result == 'success'", StringComparison.Ordinal)
+            .Because("the pass report must be evidence from the smoke job, not only native readiness");
+
+        string deferred = ReadJob(viewerDistribution, "viewer-distribution-smoke-deferred");
+        await Assert.That(deferred)
+            .Contains("viewer distribution smoke deferred (native artifacts unavailable)", StringComparison.Ordinal)
+            .Because("a checks-list reader must not have to infer a deferred smoke from an absent matrix job");
+        await Assert.That(deferred)
+            .Contains("needs.pack-viewer-inputs.outputs.ready != 'true'", StringComparison.Ordinal)
+            .Because("the deferred report must be tied to the same readiness output that gates the smoke");
+        await Assert.That(deferred)
+            .Contains("This is an expected deferral, not smoke evidence", StringComparison.Ordinal)
+            .Because("the run summary must say that the green workflow is not proof of a passed smoke");
+    }
+
 
     [Test]
     public async Task RenderWorkflowRunsOutsideAReleaseOnEveryHostedLeg()
