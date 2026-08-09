@@ -33,7 +33,15 @@ param(
     # gate uses this instead of restating a package count, because a restated
     # count drifts the moment the set changes and only fails at the very last
     # step of a multi-hour release run.
-    [switch]$ListPublished
+    [switch]$ListPublished,
+
+    # Emits the subset of the published set that produces a .snupkg, one id per
+    # line, and exits. Derived from IncludeSymbols in each project rather than a
+    # second hand-maintained list: the twelve runtime packaging projects set
+    # IncludeSymbols=false because they ship native payloads and dependencies
+    # rather than assemblies, and nuget.yml would otherwise demand a symbol
+    # package for every id and fail every promotion.
+    [switch]$ListSymbolPublished
 )
 
 $ErrorActionPreference = 'Stop'
@@ -77,6 +85,24 @@ $allPublished = $published
 if ($ListPublished)
 {
     ($published | Where-Object { $deferred -notcontains $_ }) | ForEach-Object { $_ }
+    exit 0
+}
+
+if ($ListSymbolPublished)
+{
+    foreach ($id in ($published | Where-Object { $deferred -notcontains $_ }))
+    {
+        $projectPath = Join-Path $Root "src/$id/$id.csproj"
+        if (-not (Test-Path $projectPath))
+        {
+            throw "The published package '$id' has no project at '$projectPath'."
+        }
+        $project = Get-Content $projectPath -Raw
+        if ($project -notmatch '<IncludeSymbols>\s*false\s*</IncludeSymbols>')
+        {
+            $id
+        }
+    }
     exit 0
 }
 

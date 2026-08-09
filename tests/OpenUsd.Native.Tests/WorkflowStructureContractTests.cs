@@ -145,6 +145,28 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task NuGetPromotionExpectsSymbolsOnlyWherePackingProducesThem()
+    {
+        string root = FindRepositoryRoot();
+        string nuget = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "nuget.yml"));
+
+        await Assert.That(nuget)
+            .Contains("-ListSymbolPublished", StringComparison.Ordinal)
+            .Because(
+                "twelve runtime packaging projects set IncludeSymbols=false, so demanding a " +
+                "snupkg for every published id would throw on every promotion");
+
+        string pack = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "pack-packages.ps1"));
+        await Assert.That(pack)
+            .Contains("<IncludeSymbols>", StringComparison.Ordinal)
+            .Because(
+                "the symbol set must be derived from each project rather than restated, " +
+                "or it drifts the moment a project changes");
+    }
+
+    [Test]
     public async Task NuGetPromotionStagesSymbolsFromReleaseArtifacts()
     {
         string root = FindRepositoryRoot();
@@ -1101,8 +1123,10 @@ public sealed class WorkflowStructureContractTests
             .Contains("'-ex=thread apply all bt full'", StringComparison.Ordinal)
             .Because("gdb must capture native frames and locals to identify the blocking X/GLX call");
         await Assert.That(smoke)
-            .Contains("gdb was not available on PATH.", StringComparison.Ordinal)
-            .Because("absence of the optional native diagnostic tool should be reported rather than throwing");
+            .Contains("$debuggerName was not available on PATH.", StringComparison.Ordinal)
+            .Because(
+                "absence of the optional native debugger should be reported rather than " +
+                "throwing, and the name is now gdb on Linux or lldb on macOS");
     }
 
     /// <summary>

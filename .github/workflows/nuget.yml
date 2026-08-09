@@ -201,6 +201,15 @@ jobs:
       - name: Stage symbol packages for nuget.org
         shell: pwsh
         run: |
+          # Only the managed libraries produce symbols. The twelve runtime packaging
+          # projects set IncludeSymbols=false because they ship native payloads and
+          # dependencies rather than assemblies, so demanding a .snupkg for every
+          # .nupkg would fail every promotion.
+          $expected = @(& ./eng/pack-packages.ps1 -ListSymbolPublished)
+          if ($LASTEXITCODE -ne 0 -or $expected.Count -eq 0)
+          {
+            throw 'eng/pack-packages.ps1 -ListSymbolPublished produced no package ids.'
+          }
           $packages = @(Get-ChildItem artifacts -Filter '*.nupkg')
           $symbols = @(Get-ChildItem release-artifacts/nupkg -Filter '*.snupkg')
           if ($symbols.Count -eq 0)
@@ -220,6 +229,12 @@ jobs:
           $missing = @()
           foreach ($package in $packages)
           {
+            $packageId = [IO.Path]::GetFileNameWithoutExtension($package.Name) -replace
+              '\.\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$', ''
+            if ($expected -notcontains $packageId)
+            {
+              continue
+            }
             $symbolName = [IO.Path]::GetFileNameWithoutExtension($package.Name) + '.snupkg'
             $key = $symbolName.ToLowerInvariant()
             if (-not $byName.ContainsKey($key))
