@@ -35,7 +35,7 @@
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
-        "value": "2e7726208eb7d7d5880a990b006ef4a3a65f15f6e32dc96c7864a85117b2a675"
+        "value": "e99573105491bb6e9aa3a5a170740533e8bbeb96aa50ff4a5ec3eb29337c489c"
       },
       {
         "name": "openusd:input:eng/physx.lock.json:sha256",
