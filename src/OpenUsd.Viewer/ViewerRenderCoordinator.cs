@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Runtime.CompilerServices;
+using Avalonia.Threading;
 using OpenUsd.Rendering;
 using OpenUsd.Rendering.Silk;
 
@@ -140,6 +141,9 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
             ViewerStartupOptions.WriteStatus("Renderer coordinator: backend initialization completed");
             coordinator.PublishResult("Renderer initialization", initialization);
             ViewerStartupOptions.WriteStatus("Renderer coordinator: initialized backend returning");
+            Dispatcher.UIThread.Post(static () =>
+                ViewerStartupOptions.WriteStatus(
+                    "Renderer coordinator: dispatcher return probe processed"));
             return coordinator;
         }
         catch

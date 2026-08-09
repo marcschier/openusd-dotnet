@@ -118,6 +118,8 @@ public sealed class ViewerSourceContractTests
             "Viewer stage open: validation scheduler starting",
             "Viewer stage open: validation root layer query starting",
             "Viewer stage open: validation root layer query completed",
+            "Viewer stage open: dispatcher timer armed",
+            "Viewer stage open: dispatcher timer tick",
             "Viewer stage open: render coordinator starting",
             "Viewer stage open: render coordinator acquired",
             "Viewer stage open: document snapshot starting",
@@ -151,7 +153,8 @@ public sealed class ViewerSourceContractTests
             "Renderer coordinator: initialization diagnostics published",
             "Renderer coordinator: initialization summary publishing",
             "Renderer coordinator: initialization summary published",
-            "Renderer coordinator: initialized backend returning"
+            "Renderer coordinator: initialized backend returning",
+            "Renderer coordinator: dispatcher return probe processed"
         })
         {
             await Assert.That(coordinator).Contains(status);

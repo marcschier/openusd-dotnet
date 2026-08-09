@@ -3235,8 +3235,10 @@ public sealed partial class MainWindow : Window, IDisposable
                 CancellationTokenSource.CreateLinkedTokenSource(_viewerLifetime.Token);
             ViewerRenderCoordinator? coordinator = null;
             AvaloniaViewerRenderBackendHost? backendHost = null;
+            DispatcherTimer? dispatcherProbe = null;
             try
             {
+                dispatcherProbe = StartStageOpenDispatcherProbe();
                 ViewerStartupOptions.WriteStatus("Viewer stage open: render coordinator starting");
                 coordinator = await ViewerRenderCoordinator.OpenAsync(
                     normalizedPath,
@@ -3327,6 +3329,7 @@ public sealed partial class MainWindow : Window, IDisposable
             }
             finally
             {
+                dispatcherProbe?.Stop();
                 if (coordinator is not null)
                 {
                     await coordinator.DisposeAsync();
@@ -3357,6 +3360,33 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             _documentGate.Release();
         }
+    }
+
+    private static DispatcherTimer? StartStageOpenDispatcherProbe()
+    {
+        if (!IsAutomatedViewerRun())
+        {
+            return null;
+        }
+
+        var timer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        int tick = 0;
+        timer.Tick += (_, _) =>
+        {
+            int current = ++tick;
+            ViewerStartupOptions.WriteStatus(
+                $"Viewer stage open: dispatcher timer tick {current}");
+            if (current >= 16)
+            {
+                timer.Stop();
+            }
+        };
+        ViewerStartupOptions.WriteStatus("Viewer stage open: dispatcher timer armed");
+        timer.Start();
+        return timer;
     }
 
     /// <summary>
