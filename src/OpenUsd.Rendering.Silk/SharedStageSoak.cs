@@ -996,7 +996,7 @@ internal static class SharedStageSoak
                     contextLossSimulated = true;
                 }
 
-                if (index >= 2_499 && (index + 1) % 500 == 0)
+                if (index >= 2_499 && (index + 1) % 250 == 0)
                 {
                     MemorySnapshot memory = CaptureMemory();
                     warmMemory = warmMemory == default ? memory : warmMemory;
@@ -1733,24 +1733,36 @@ internal static class SharedStageSoak
                 nameof(checkpoints));
         }
 
-        double sumX = 0;
-        double sumY = 0;
-        for (int index = start; index < checkpoints.Count; index++)
+        int slopeCount = (count * (count - 1)) / 2;
+        var slopes = new List<double>(slopeCount);
+        for (int left = start; left < checkpoints.Count - 1; left++)
         {
-            sumX += checkpoints[index].MutatingOperation;
-            sumY += selector(checkpoints[index]);
+            SharedStageMemoryCheckpoint leftCheckpoint = checkpoints[left];
+            double leftX = leftCheckpoint.MutatingOperation;
+            double leftY = selector(leftCheckpoint);
+            for (int right = left + 1; right < checkpoints.Count; right++)
+            {
+                SharedStageMemoryCheckpoint rightCheckpoint = checkpoints[right];
+                double deltaX = rightCheckpoint.MutatingOperation - leftX;
+                if (deltaX == 0)
+                {
+                    continue;
+                }
+
+                slopes.Add(((selector(rightCheckpoint) - leftY) / deltaX) * 1000);
+            }
         }
-        double meanX = sumX / count;
-        double meanY = sumY / count;
-        double numerator = 0;
-        double denominator = 0;
-        for (int index = start; index < checkpoints.Count; index++)
+
+        if (slopes.Count == 0)
         {
-            double x = checkpoints[index].MutatingOperation - meanX;
-            numerator += x * (selector(checkpoints[index]) - meanY);
-            denominator += x * x;
+            return 0;
         }
-        return denominator == 0 ? 0 : (numerator / denominator) * 1000;
+
+        slopes.Sort();
+        int middle = slopes.Count / 2;
+        return (slopes.Count & 1) == 0
+            ? (slopes[middle - 1] + slopes[middle]) / 2
+            : slopes[middle];
     }
 
     internal static bool IsTargetedUpsert(

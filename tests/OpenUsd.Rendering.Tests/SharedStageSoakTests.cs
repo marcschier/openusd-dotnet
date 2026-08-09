@@ -149,6 +149,55 @@ public sealed class SharedStageSoakTests
     }
 
     [Test]
+    public async Task LaterWindowSlopeIgnoresSingleWorkingSetEndpointSpike()
+    {
+        SharedStageMemoryCheckpoint[] checkpoints = Enumerable.Range(1, 12)
+            .Select(index => new SharedStageMemoryCheckpoint(
+                index * 500,
+                index * 400,
+                0,
+                index == 12 ? 32L * 1024 * 1024 : 64L * 1024 * 1024,
+                0,
+                0,
+                2,
+                default))
+            .ToArray();
+
+        double slope = SharedStageSoak.CalculateSlope(
+            checkpoints,
+            checkpoint => checkpoint.WorkingSetBytes);
+
+        await Assert.That(slope).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task LaterWindowSlopeStillDetectsSustainedWorkingSetLeak()
+    {
+        const double leakBytesPerThousandEdits = 5 * 1024 * 1024;
+        SharedStageMemoryCheckpoint[] checkpoints = Enumerable.Range(1, 12)
+            .Select(index =>
+            {
+                int mutations = index * 400;
+                return new SharedStageMemoryCheckpoint(
+                    index * 500,
+                    mutations,
+                    0,
+                    (long)(mutations * leakBytesPerThousandEdits / 1000),
+                    0,
+                    0,
+                    2,
+                    default);
+            })
+            .ToArray();
+
+        double slope = SharedStageSoak.CalculateSlope(
+            checkpoints,
+            checkpoint => checkpoint.WorkingSetBytes);
+
+        await Assert.That(slope).IsGreaterThan(4 * 1024 * 1024);
+    }
+
+    [Test]
     public async Task ReleasedResourcesRequirePostLossFrameAndNoFault()
     {
         SharedStageSoakResult missingFrame = new()
