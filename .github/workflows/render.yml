@@ -316,6 +316,13 @@ jobs:
             artifacts/native-input/win-x64/source.json
             tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults
           if-no-files-found: warn
+      - name: Upload adjusted IoU evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-adjusted-iou-win-x64-${{ github.run_id }}
+          path: tests/**/parity-capture-adjusted-iou.tsv
+          if-no-files-found: warn
 
   windows-vulkan-required:
     name: Windows Avalonia Vulkan required
@@ -785,15 +792,21 @@ jobs:
           OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
         run: |
           $testApp = 'tests/OpenUsd.Package.Tests/bin/Release/net10.0/OpenUsd.Package.Tests'
+          $elfRunpathFilter =
+            'OpenUsd.Package.Tests.RuntimePackageTests.1.1.' +
+            'LinuxElfRunpathParserRejectsUnsafeDynamicSections.1.1.0'
           & $testApp `
             --filter-uid `
-            'OpenUsd.Package.Tests.RuntimePackageTests.1.1.LinuxElfRunpathParserRejectsUnsafeDynamicSections.1.1.0'
+            $elfRunpathFilter
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
+          $stormChildFilter =
+            'OpenUsd.Package.Tests.RuntimePackageTests.1.1.' +
+            'LinuxStormChildPackageExecutesNativeAotWithoutLibraryPath.1.1.0'
           & $testApp `
             --filter-uid `
-            'OpenUsd.Package.Tests.RuntimePackageTests.1.1.LinuxStormChildPackageExecutesNativeAotWithoutLibraryPath.1.1.0'
+            $stormChildFilter
           exit $LASTEXITCODE
       - name: Validate archive ABI-4 SONAME topology, evidence, and hashes
         if: >-
@@ -988,6 +1001,13 @@ jobs:
             tests/OpenUsd.Package.Tests/bin/Release/net10.0/TestResults
             tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults
           if-no-files-found: error
+      - name: Upload adjusted IoU evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-adjusted-iou-linux-x64-${{ github.run_id }}
+          path: tests/**/parity-capture-adjusted-iou.tsv
+          if-no-files-found: warn
 
   macos-arm64:
     name: macOS arm64 Storm child and Metal
@@ -1288,3 +1308,10 @@ jobs:
             native/build/shim/osx-arm64/Testing
             TestResults
           if-no-files-found: error
+      - name: Upload adjusted IoU evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-adjusted-iou-osx-arm64-${{ github.run_id }}
+          path: tests/**/parity-capture-adjusted-iou.tsv
+          if-no-files-found: warn

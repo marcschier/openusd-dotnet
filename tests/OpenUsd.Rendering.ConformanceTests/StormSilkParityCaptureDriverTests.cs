@@ -204,6 +204,10 @@ def Xform "World"
 
         SilkParityBackend[] backends = CreateBackends();
         var evidence = new List<string>();
+        var adjustedIouEvidence = new List<string>
+        {
+            "scene\tbackend\tachievedAdjustedIoU\trequiredAdjustedIoU",
+        };
         var jsonEvidence = new List<object>();
         foreach (ParityScene scene in scenes)
         {
@@ -315,6 +319,7 @@ def Xform "World"
                     CreateTolerance(scene));
                 string metrics = FormatMetrics(scene, input, first.Storm, firstSilk, result);
                 evidence.Add(metrics);
+                adjustedIouEvidence.Add(FormatAdjustedIouEvidence(scene, firstSilk, result));
                 Console.WriteLine(metrics);
                 if (!result.Passed ||
                     !MeetsRequiredAdjustedIou(scene, result) ||
@@ -382,6 +387,7 @@ def Xform "World"
         }
 
         WriteEvidence("parity-capture-metrics.txt", evidence);
+        WriteEvidence("parity-capture-adjusted-iou.tsv", adjustedIouEvidence);
         WriteJsonEvidence("parity-capture-evidence.json", new
         {
             schemaVersion = 1,
@@ -4146,6 +4152,20 @@ def Xform "World"
             result.MeanChannelDifference,
             result.Passed) +
         result.Diagnostics;
+
+    private static string FormatAdjustedIouEvidence(
+        ParityScene scene,
+        SilkParityCapture silk,
+        ParityComparisonResult result) =>
+        string.Format(
+            CultureInfo.InvariantCulture,
+            "{0}\t{1}\t{2:F6}\t{3}",
+            scene.Name,
+            silk.BackendName,
+            result.AdjustedCoverageIntersectionOverUnion,
+            scene.RequiredAdjustedIou is { } required
+                ? required.ToString("F6", CultureInfo.InvariantCulture)
+                : "n/a");
 
     private static string Hash(ParityImage image) =>
         Convert.ToHexString(SHA256.HashData(image.Rgba.Span));

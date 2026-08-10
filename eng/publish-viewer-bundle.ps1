@@ -179,6 +179,7 @@ internal static class Program
 "@ | Set-Content $generatedProject
 
 $sourceLines = @()
+$packageSourceMapping = ''
 if (-not [string]::IsNullOrWhiteSpace($PackageSource))
 {
     $packageSourcePath = if ([IO.Path]::IsPathRooted($PackageSource))
@@ -190,6 +191,16 @@ if (-not [string]::IsNullOrWhiteSpace($PackageSource))
         Join-Path $repoRoot $PackageSource
     }
     $sourceLines += "    <add key=`"openusd-local`" value=`"$packageSourcePath`" />"
+    $packageSourceMapping = @"
+  <packageSourceMapping>
+    <packageSource key="openusd-local">
+      <package pattern="OpenUsd.*" />
+    </packageSource>
+    <packageSource key="nuget.org">
+      <package pattern="*" />
+    </packageSource>
+  </packageSourceMapping>
+"@
 }
 $sourceLines += '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />'
 @"
@@ -199,6 +210,7 @@ $sourceLines += '    <add key="nuget.org" value="https://api.nuget.org/v3/index.
     <clear />
 $($sourceLines -join "`n")
   </packageSources>
+$packageSourceMapping
 </configuration>
 "@ | Set-Content $nugetConfig
 

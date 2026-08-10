@@ -1248,6 +1248,46 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task ViewerDistributionPushSmokeConsumesLocalPackagesBeforeNuGetOrg()
+    {
+        string root = FindRepositoryRoot();
+        string viewer = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "viewer-distribution.yml"));
+        string publisher = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "publish-viewer-bundle.ps1"));
+
+        string triggers = ReadTriggerBlock(viewer);
+        await Assert.That(triggers)
+            .Contains("'version.json'", StringComparison.Ordinal)
+            .Because("a version bump must start a package-only smoke before that version is on nuget.org");
+
+        string packJob = ReadJob(viewer, "pack-viewer-inputs");
+        await Assert.That(packJob)
+            .Contains("Pack the runtime packages for this RID", StringComparison.Ordinal)
+            .Because("push smoke must produce the current RID packages locally");
+        await Assert.That(packJob)
+            .Contains("Pack the platform-neutral packages", StringComparison.Ordinal)
+            .Because("push smoke must produce OpenUsd.Viewer and managed dependencies locally");
+        await Assert.That(packJob)
+            .Contains("Upload packed Viewer inputs", StringComparison.Ordinal)
+            .Because("the smoke job must consume nupkg artifacts rather than project references");
+
+        string smokeJob = ReadJob(viewer, "viewer-distribution");
+        await Assert.That(smokeJob)
+            .Contains("Download packed Viewer inputs", StringComparison.Ordinal)
+            .Because("the push-triggered smoke must not require the current version to exist on nuget.org");
+        await Assert.That(smokeJob)
+            .Contains("-PackageSource artifacts/nupkg", StringComparison.Ordinal)
+            .Because("the generated consumer app must restore OpenUsd packages from the packed local feed");
+        await Assert.That(publisher)
+            .Contains("<package pattern=\"OpenUsd.*\" />", StringComparison.Ordinal)
+            .Because("OpenUsd packages must be source-mapped to the local nupkg feed when one is supplied");
+        await Assert.That(publisher)
+            .DoesNotContain("<ProjectReference", StringComparison.Ordinal)
+            .Because("the Viewer distribution smoke must stay package-only, not become a source build");
+    }
+
+    [Test]
     public async Task ViewerBundleSmokeCapturesNativeCrashDiagnostics()
     {
         string root = FindRepositoryRoot();
