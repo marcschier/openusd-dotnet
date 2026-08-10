@@ -174,7 +174,12 @@ public sealed class ViewerSourceContractTests
             "Renderer coordinator: initialized backend returning",
             "Renderer coordinator: dispatcher return probe armed",
             "Renderer coordinator: dispatcher return probe posted",
-            "Renderer coordinator: dispatcher return probe processed"
+            "Renderer coordinator: dispatcher return probe processed",
+            "Renderer coordinator: dispatcher return priority probe armed",
+            "Renderer coordinator: dispatcher return priority probe posted",
+            "Renderer coordinator: dispatcher return priority probe processed",
+            "DispatcherPriority.Send",
+            "DispatcherPriority.Background"
         })
         {
             await Assert.That(coordinator).Contains(status);

@@ -155,6 +155,12 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
                     "Renderer coordinator: dispatcher return probe processed"));
             ViewerStartupOptions.WriteStatus(
                 "Renderer coordinator: dispatcher return probe posted");
+            PostDispatcherReturnPriorityProbe(
+                "Send",
+                DispatcherPriority.Send);
+            PostDispatcherReturnPriorityProbe(
+                "Background",
+                DispatcherPriority.Background);
             return coordinator;
         }
         catch
@@ -179,6 +185,28 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
     private static string FormatThreadStatus() =>
         $"thread={Environment.CurrentManagedThreadId} " +
         $"dispatcher-access={Dispatcher.UIThread.CheckAccess()}";
+
+    private static void PostDispatcherReturnPriorityProbe(
+        string name,
+        DispatcherPriority priority)
+    {
+        ViewerStartupOptions.WriteStatus(
+            "Renderer coordinator: dispatcher return priority probe armed " +
+            $"priority={name} {FormatThreadStatus()}");
+        Dispatcher.UIThread.Post(
+            static state =>
+            {
+                string priorityName = (string)state!;
+                ViewerStartupOptions.WriteStatus(
+                    "Renderer coordinator: dispatcher return priority probe processed " +
+                    $"priority={priorityName} {FormatThreadStatus()}");
+            },
+            name,
+            priority);
+        ViewerStartupOptions.WriteStatus(
+            "Renderer coordinator: dispatcher return priority probe posted " +
+            $"priority={name} {FormatThreadStatus()}");
+    }
 
     internal async ValueTask<RenderBackendManagerResult> SwitchAsync(
         RenderBackendKind? requestedBackend,
