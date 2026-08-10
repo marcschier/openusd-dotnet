@@ -57,3 +57,6 @@ BenchmarkDotNet.Artifacts/
 ## OS
 .DS_Store
 Thumbs.db
+
+# Agent worktrees (fleet execution); never part of the build.
+.wt/
