@@ -14,7 +14,8 @@ public sealed class VulkanPickingTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -71,7 +72,8 @@ public sealed class VulkanPickingTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -126,7 +128,8 @@ public sealed class VulkanPickingTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 32;
@@ -180,7 +183,8 @@ public sealed class VulkanPickingTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint width = 16;
@@ -228,7 +232,8 @@ public sealed class VulkanPickingTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 24;
@@ -281,7 +286,8 @@ public sealed class VulkanPickingTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 24;
@@ -346,7 +352,8 @@ public sealed class VulkanPickingTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -404,7 +411,8 @@ public sealed class VulkanPickingTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 24;
@@ -460,7 +468,8 @@ public sealed class VulkanPickingTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 16;
@@ -561,7 +570,8 @@ public sealed class VulkanPickingTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 24;

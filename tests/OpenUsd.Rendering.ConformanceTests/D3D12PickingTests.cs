@@ -18,7 +18,8 @@ public sealed class D3D12PickingTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -94,7 +95,8 @@ public sealed class D3D12PickingTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 32;
@@ -160,7 +162,8 @@ public sealed class D3D12PickingTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint width = 16;
@@ -209,7 +212,8 @@ public sealed class D3D12PickingTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -294,7 +298,8 @@ public sealed class D3D12PickingTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 24;
@@ -372,7 +377,8 @@ public sealed class D3D12PickingTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 24;
@@ -458,7 +464,8 @@ public sealed class D3D12PickingTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 16;

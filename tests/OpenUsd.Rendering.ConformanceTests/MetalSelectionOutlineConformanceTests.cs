@@ -16,7 +16,8 @@ public sealed class MetalSelectionOutlineConformanceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
 
@@ -54,7 +55,8 @@ public sealed class MetalSelectionOutlineConformanceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
 
@@ -102,7 +104,8 @@ public sealed class MetalSelectionOutlineConformanceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
 
@@ -146,7 +149,8 @@ public sealed class MetalSelectionOutlineConformanceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
 

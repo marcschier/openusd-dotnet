@@ -15,7 +15,8 @@ public sealed class D3D12SelectionOutlineTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         foreach ((uint width, uint height) in new[] { (32u, 24u), (64u, 48u) })
@@ -83,7 +84,8 @@ public sealed class D3D12SelectionOutlineTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint width = 48;
@@ -117,7 +119,8 @@ public sealed class D3D12SelectionOutlineTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         var device = D3D12SilkGraphicsDevice.Create(useWarp: true);

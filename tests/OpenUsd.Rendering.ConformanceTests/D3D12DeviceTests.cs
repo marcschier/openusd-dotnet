@@ -38,7 +38,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -70,7 +71,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -122,7 +124,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -153,7 +156,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -201,7 +205,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -239,7 +244,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -262,7 +268,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -290,7 +297,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -318,7 +326,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         var device = D3D12SilkGraphicsDevice.Create(useWarp: true);
@@ -351,7 +360,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -397,7 +407,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         var device = D3D12SilkGraphicsDevice.Create(useWarp: true);
@@ -425,7 +436,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         var device = D3D12SilkGraphicsDevice.Create(useWarp: true);
@@ -461,7 +473,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
@@ -482,7 +495,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -496,7 +510,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -510,7 +525,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -524,7 +540,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -538,7 +555,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -552,7 +570,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice textureDevice =
@@ -570,7 +589,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -584,7 +604,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice textureDevice =
@@ -602,7 +623,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -616,7 +638,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -632,7 +655,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -648,7 +672,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -664,7 +689,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -685,7 +711,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -701,7 +728,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -714,7 +742,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice rendererDevice =
@@ -731,7 +760,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -747,7 +777,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice resourceDevice =
@@ -766,7 +797,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using D3D12SilkGraphicsDevice device =
@@ -782,7 +814,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using D3D12SilkGraphicsDevice device =
             D3D12SilkGraphicsDevice.Create(useWarp: true);
@@ -796,7 +829,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using D3D12SilkGraphicsDevice device =
             D3D12SilkGraphicsDevice.Create(useWarp: true);
@@ -810,7 +844,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using D3D12SilkGraphicsDevice resourceDevice =
             D3D12SilkGraphicsDevice.Create(useWarp: true);
@@ -827,7 +862,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using D3D12SilkGraphicsDevice device =
             D3D12SilkGraphicsDevice.Create(useWarp: true);
@@ -841,7 +877,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using D3D12SilkGraphicsDevice device =
             D3D12SilkGraphicsDevice.Create(useWarp: true);
@@ -858,7 +895,8 @@ public sealed class D3D12DeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using D3D12SilkGraphicsDevice device =
             D3D12SilkGraphicsDevice.Create(useWarp: true);

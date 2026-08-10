@@ -290,7 +290,8 @@ public sealed class VulkanCompositionPresentationTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         int callbacks = 0;
@@ -318,7 +319,8 @@ public sealed class VulkanCompositionPresentationTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         int callbacks = 0;

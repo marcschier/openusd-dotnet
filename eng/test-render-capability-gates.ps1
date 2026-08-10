@@ -153,6 +153,7 @@ Assert-Contains $stormParityTests 'OPENUSD_PARITY_WINDOWS_BACKENDS' 'Storm parit
 Assert-Contains $stormParityTests 'CreateD3D12WarpBackend()' 'Storm parity tests'
 $windowsWglTests = Get-SingleQuotedArray $parityCapture 'windowsWglTestNames'
 $macosCglTests = Get-SingleQuotedArray $parityCapture 'macosCglTestNames'
+$linuxGlxTests = Get-SingleQuotedArray $parityCapture 'linuxGlxTestNames'
 $stormParityTestNames = @([regex]::Matches(
         $stormParityTests,
         '(?s)\[Test\].*?public async Task (?<name>[A-Za-z0-9_]+)\(') |
@@ -163,13 +164,20 @@ $expectedMacosCglTests = @($stormParityTestNames |
     Where-Object {
         $_ -notlike '*OnVulkan' -and
         $_ -notlike '*OnD3D12' -and
-        $_ -notmatch 'D3D12|SilkFrameCapture'
+        $_ -notmatch 'D3D12|SilkFrameCapture|DisplayColorReachesPixels'
+    })
+$expectedLinuxGlxTests = @($stormParityTestNames |
+    Where-Object {
+        $_ -notlike '*OnMetal' -and
+        $_ -notlike '*OnD3D12' -and
+        $_ -notmatch 'D3D12|SilkFrameCapture|DisplayColorReachesPixels'
     })
 Assert-SetEqual $windowsWglTests $expectedWindowsWglTests 'Windows WGL parity test list'
 Assert-SetEqual $macosCglTests $expectedMacosCglTests 'macOS CGL parity test list'
+Assert-SetEqual $linuxGlxTests $expectedLinuxGlxTests 'Linux GLX parity test list'
 Assert-Contains $parityCapture '-MinimumExpectedTests $windowsWglTestNames.Count' 'Parity capture runner'
 Assert-Contains $parityCapture '-MinimumExpectedTests $macosCglTestNames.Count' 'Parity capture runner'
-Assert-Contains $parityCapture '-MinimumExpectedTests 28' 'Parity capture runner'
+Assert-Contains $parityCapture '-MinimumExpectedTests $linuxGlxTestNames.Count' 'Parity capture runner'
 Assert-Contains $platformSmoke 'prepare-mesa-wgl-test-runtime.ps1' 'Platform smoke runner'
 Assert-Contains $platformSmoke '-Preflight' 'Platform smoke runner'
 Assert-Contains $mesaWglLock 'mesa-llvmpipe-x64-26.1.5.7z' 'Mesa WGL runtime lock'

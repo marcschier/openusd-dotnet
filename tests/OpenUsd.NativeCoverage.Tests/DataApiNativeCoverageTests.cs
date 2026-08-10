@@ -54,7 +54,8 @@ public sealed class DataApiNativeCoverageTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         try

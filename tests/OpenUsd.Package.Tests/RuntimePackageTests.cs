@@ -1088,9 +1088,8 @@ public sealed class RuntimePackageTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            Console.WriteLine(
-                "Cross-RID package consumer compilation is covered by the Windows package job.");
-            return;
+            Skip.Test("Cross-RID package consumer compilation is covered by the Windows package job.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         string repositoryRoot = FindRepositoryRoot();
@@ -1202,8 +1201,8 @@ public sealed class RuntimePackageTests
         if (!OperatingSystem.IsLinux() ||
             RuntimeInformation.OSArchitecture != Architecture.X64)
         {
-            Console.WriteLine("Linux x64 package-only Storm child execution runs in Linux CI.");
-            return;
+            Skip.Test("Linux x64 package-only Storm child execution runs in Linux CI.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         if (!TryGetExecutionInputs(
             repositoryRoot,
@@ -1339,8 +1338,8 @@ public sealed class RuntimePackageTests
         if (!OperatingSystem.IsMacOS() ||
             RuntimeInformation.OSArchitecture != Architecture.Arm64)
         {
-            Console.WriteLine("macOS Arm64 package-only Storm child execution runs in macOS CI.");
-            return;
+            Skip.Test("macOS Arm64 package-only Storm child execution runs in macOS CI.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         string repositoryRoot = FindRepositoryRoot();
@@ -1532,7 +1531,8 @@ public sealed class RuntimePackageTests
     {
         if (OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is not applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         string repositoryRoot = FindRepositoryRoot();
         string projectPath = Path.Combine(
@@ -2927,8 +2927,8 @@ public sealed class RuntimePackageTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            Console.WriteLine("Windows package material rendering is covered by the win-x64 package job.");
-            return;
+            Skip.Test("Windows package material rendering is covered by the win-x64 package job.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         string repositoryRoot = FindRepositoryRoot();

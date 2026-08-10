@@ -24,7 +24,8 @@ public sealed class SilkCrossBackendParityTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         ParityImage direct3D = RenderScene(D3D12SilkGraphicsDevice.Create(useWarp: true));
@@ -48,7 +49,8 @@ public sealed class SilkCrossBackendParityTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         ParityImage baseline = RenderScene(
@@ -80,7 +82,8 @@ public sealed class SilkCrossBackendParityTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         ParityImage baseline = RenderScene(
@@ -121,7 +124,8 @@ public sealed class SilkCrossBackendParityTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         (float[] points, uint[] indices) = CreateGrid(258);
@@ -158,7 +162,8 @@ public sealed class SilkCrossBackendParityTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         (ParityImage direct3D, int direct3DDraws) = RenderInstances(

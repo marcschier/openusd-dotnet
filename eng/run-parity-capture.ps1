@@ -553,10 +553,35 @@ try
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
         'CuratedSceneParityClaimsAreStructured',
-        'DisplayColorReachesPixelsForImplicitSurfacesAndMeshes',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnMetal')
+    $linuxGlxTestNames = @(
+        'CapturesStormAndHdSilkBackendsDeterministically',
+        'ComparisonDetectsPerturbedCaptures',
+        'CuratedSceneParityClaimsAreStructured',
+        'SilkComplexityDefaultPreservesExplicitLowPointPage',
+        'SilkComplexityMediumChangesPointPage',
+        'MaterialXStandardSurfaceMatchesPreviewSelfConsistencyOnVulkan',
+        'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnVulkan',
+        'TextureWrapModesMatchRepeatWithinUnitUvRangeOnVulkan',
+        'TextureWrapModesDivergeOutsideUnitUvRangeOnVulkan',
+        'TextureAutoColorSpaceMatchesSrgbOnDiffuseTextureOnVulkan',
+        'TextureRawColorSpaceDivergesFromSrgbOnDiffuseTextureOnVulkan',
+        'TextureScaleBiasFallbackMatchesEquivalentConstantOnVulkan',
+        'TextureScaleBiasFallbackDivergesWhenBiasIsRemovedOnVulkan',
+        'NonDiffuseTextureSlotsMatchNeutralInputsOnVulkan',
+        'NonDiffuseTextureSlotsDivergeFromNeutralInputsOnVulkan',
+        'RemainingPreviewSurfaceConstantInputsMatchEquivalentMaterialsOnVulkan',
+        'RemainingPreviewSurfaceConstantInputsDivergeFromEquivalentMaterialsOnVulkan',
+        'CullStyleBackMatchesBackUnlessDoubleSidedForSingleSidedMeshOnVulkan',
+        'CullStyleBackDivergesFromBackUnlessDoubleSidedForDoubleSidedBackFacesOnVulkan',
+        'RectLightZeroAreaMatchesSphereLightOnVulkan',
+        'RectLightFullAreaDivergesFromSphereLightOnVulkan',
+        'DiskLightEdgeOnMatchesUnlitSceneOnVulkan',
+        'DiskLightFaceOnDivergesFromEdgeOnLightOnVulkan',
+        'CylinderLightZeroLengthMatchesSphereLightOnVulkan',
+        'CylinderLightFullLengthDivergesFromSphereLightOnVulkan')
     if ($Rid -eq 'win-x64')
     {
         & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
@@ -587,10 +612,10 @@ try
         -Project $testProject `
         -Framework net10.0 `
         -Configuration $Configuration `
-        -MinimumExpectedTests 28 `
+        -MinimumExpectedTests $linuxGlxTestNames.Count `
         -TestArguments @(
             '--treenode-filter',
-            '/*/*/StormSilkParityCaptureDriverTests/*')
+            (New-StormParityTreeFilter -TestNames $linuxGlxTestNames))
     exit $LASTEXITCODE
 }
 finally

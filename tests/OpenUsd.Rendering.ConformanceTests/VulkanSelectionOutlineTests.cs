@@ -15,7 +15,8 @@ public sealed class VulkanSelectionOutlineTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 32;
@@ -93,7 +94,8 @@ public sealed class VulkanSelectionOutlineTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 64;
@@ -133,7 +135,8 @@ public sealed class VulkanSelectionOutlineTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const uint size = 80;
@@ -183,7 +186,8 @@ public sealed class VulkanSelectionOutlineTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = CreateSwiftShader();
@@ -254,7 +258,8 @@ public sealed class VulkanSelectionOutlineTests
     {
         if (!IsSupportedPlatform())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         VulkanSilkGraphicsDevice device = CreateSwiftShader();

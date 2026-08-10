@@ -16,7 +16,8 @@ public sealed class MetalCompositionViewportLifecycleTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         var presenter = new MetalCompositionViewportPresenter(required: true);
@@ -59,7 +60,8 @@ public sealed class MetalCompositionViewportLifecycleTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         var presenter = new MetalCompositionViewportPresenter(required: true);

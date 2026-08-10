@@ -20,7 +20,8 @@ public sealed class MetalCompositionViewportPresenterTests
     {
         if (OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is not applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         await using var presenter = new MetalCompositionViewportPresenter();
@@ -36,7 +37,8 @@ public sealed class MetalCompositionViewportPresenterTests
     {
         if (OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is not applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         await using var presenter = new MetalCompositionViewportPresenter(required: true);

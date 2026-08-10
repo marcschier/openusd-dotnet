@@ -44,7 +44,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -78,7 +79,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -91,7 +93,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -104,7 +107,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -117,7 +121,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -130,7 +135,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -143,7 +149,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice textureDevice = VulkanSilkGraphicsDevice.Create();
@@ -159,7 +166,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -172,7 +180,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice textureDevice = VulkanSilkGraphicsDevice.Create();
@@ -188,7 +197,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -201,7 +211,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -216,7 +227,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -231,7 +243,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -246,7 +259,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -261,7 +275,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -273,7 +288,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice rendererDevice = VulkanSilkGraphicsDevice.Create();
@@ -288,7 +304,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -303,7 +320,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice resourceDevice =
@@ -322,7 +340,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
@@ -337,7 +356,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
         await OffscreenRhiConformance.DispatchesCheckedComputeKernels(
@@ -350,7 +370,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
         await OffscreenRhiConformance.ComputeSubmissionLeasesResources(
@@ -363,7 +384,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using VulkanSilkGraphicsDevice resourceDevice =
             VulkanSilkGraphicsDevice.Create();
@@ -380,7 +402,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
         await OffscreenRhiConformance.InterleavesGraphicsAndComputeCommands(
@@ -393,7 +416,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
         await OffscreenRhiConformance.ComputeOutputFeedsVertexBuffer(
@@ -409,7 +433,8 @@ public sealed class VulkanDeviceTests
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
         await OffscreenRhiConformance.DispatchBoundariesAndOverflow(

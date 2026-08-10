@@ -18,7 +18,8 @@ public sealed partial class MetalCompositionPresentationTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         byte[] deviceLuid;
@@ -158,7 +159,8 @@ public sealed partial class MetalCompositionPresentationTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         await using var presenter =
@@ -184,7 +186,8 @@ public sealed partial class MetalCompositionPresentationTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         ulong revision = 1;

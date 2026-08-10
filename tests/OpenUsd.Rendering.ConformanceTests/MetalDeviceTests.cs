@@ -16,7 +16,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -41,7 +42,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -55,7 +57,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -69,7 +72,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -83,7 +87,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -97,7 +102,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -111,7 +117,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice textureDevice = MetalSilkGraphicsDevice.Create();
@@ -128,7 +135,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -142,7 +150,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice textureDevice = MetalSilkGraphicsDevice.Create();
@@ -159,7 +168,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -173,7 +183,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -189,7 +200,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -205,7 +217,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -221,7 +234,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -242,7 +256,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -258,7 +273,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
 
@@ -272,7 +288,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
 
@@ -289,7 +306,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -305,7 +323,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         using MetalSilkGraphicsDevice resourceDevice =
@@ -325,7 +344,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         if (!SilkCheckedShaderAssets.HasPinnedMetalLibrary)
         {
@@ -347,7 +367,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -362,7 +383,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -377,7 +399,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
         using MetalSilkGraphicsDevice resourceDevice =
@@ -396,7 +419,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -411,7 +435,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
@@ -429,7 +454,8 @@ public sealed class MetalDeviceTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         RequirePinnedMetalLibrary();
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();

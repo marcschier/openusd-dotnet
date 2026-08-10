@@ -667,7 +667,8 @@ def Xform "World"
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         ParityImage smooth;
@@ -705,7 +706,8 @@ def Xform "World"
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         SilkFrameCaptureResult capture;
@@ -755,7 +757,8 @@ def Xform "World"
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         SilkFrameCaptureResult first;
@@ -816,7 +819,8 @@ def Xform "World"
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         try
@@ -849,7 +853,8 @@ def Xform "World"
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         const ulong retainedPageRevision = 7;
@@ -927,7 +932,8 @@ def Xform "World"
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         SilkFrameCaptureResult capture;
@@ -973,7 +979,8 @@ def Xform "World"
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         SilkFrameCaptureResult capture;
@@ -1117,7 +1124,8 @@ def Xform "World"
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return;
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         ParityImage image;
@@ -1148,7 +1156,8 @@ def Xform "World"
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
         ParityImage image;
