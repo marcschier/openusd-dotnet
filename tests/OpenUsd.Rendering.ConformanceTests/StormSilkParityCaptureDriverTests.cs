@@ -180,7 +180,7 @@ def Xform "World"
         if (!StormGlContextFactory.IsCurrentPlatformSupported)
         {
             SkipOrFail("platform OpenGL parity capture", "Storm GL contexts are not supported on this platform.");
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.");
         }
         if (!CanCreatePlatformGlContext())
         {
@@ -395,7 +395,7 @@ def Xform "World"
         if (!StormGlContextFactory.IsCurrentPlatformSupported)
         {
             SkipOrFail("platform OpenGL parity capture", "Storm GL contexts are not supported on this platform.");
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.");
         }
         if (!CanCreatePlatformGlContext())
         {
@@ -607,7 +607,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("hdSilk complexity default page", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         await Assert.That(defaultStats.PointListPointCount).IsGreaterThan(0);
@@ -632,7 +632,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("hdSilk complexity medium page", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         await Assert.That(lowStats.PointListPointCount).IsGreaterThan(0);
@@ -659,7 +659,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("hdSilk draw-mode D3D12 divergence", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         int differentBytes = CountDifferentBytes(smooth.Rgba.Span, wireframe.Rgba.Span);
@@ -716,7 +716,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("hdSilk frame capture", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         await Assert.That(capture.Width).IsEqualTo(64);
@@ -740,7 +740,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("MaterialX Vulkan self-consistency", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -771,7 +771,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("MaterialX generated Vulkan self-consistency", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -820,7 +820,7 @@ def Xform "World"
             DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
         {
             SkipOrFail("MaterialX generated Metal self-consistency", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -852,7 +852,7 @@ def Xform "World"
             DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
         {
             SkipOrFail("MaterialX generated D3D12 self-consistency", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -901,7 +901,7 @@ def Xform "World"
             catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
             {
                 SkipOrFail(testCase.Name + " Vulkan self-consistency", exception.ToString());
-                return;
+                throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
             }
 
             (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -937,7 +937,7 @@ def Xform "World"
             catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
             {
                 SkipOrFail(testCase.Name + " Vulkan divergence", exception.ToString());
-                return;
+                throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
             }
 
             (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -964,7 +964,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("texture-colorspace-auto Vulkan self-consistency", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -989,7 +989,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("texture-colorspace-raw Vulkan divergence", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -1013,7 +1013,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("texture-scale-bias-fallback Vulkan self-consistency", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -1038,7 +1038,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("texture-scale-bias-fallback Vulkan divergence", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -1065,7 +1065,7 @@ def Xform "World"
             catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
             {
                 SkipOrFail(testCase.Name + " Vulkan self-consistency", exception.ToString());
-                return;
+                throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
             }
 
             (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -1093,7 +1093,7 @@ def Xform "World"
             catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
             {
                 SkipOrFail(testCase.Name + " Vulkan divergence", exception.ToString());
-                return;
+                throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
             }
 
             (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -1123,7 +1123,7 @@ def Xform "World"
             catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
             {
                 SkipOrFail(testCase.Name + " Vulkan self-consistency", exception.ToString());
-                return;
+                throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
             }
 
             (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -1151,7 +1151,7 @@ def Xform "World"
             catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
             {
                 SkipOrFail(testCase.Name + " Vulkan divergence", exception.ToString());
-                return;
+                throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
             }
 
             (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -1178,7 +1178,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("cull-style-back Vulkan self-consistency", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -1203,7 +1203,7 @@ def Xform "World"
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             SkipOrFail("cull-style-back Vulkan divergence", exception.ToString());
-            return;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
@@ -1518,7 +1518,7 @@ def Xform "World"
                 SkipOrFail(
                     "platform OpenGL parity capture",
                     "OPENUSD_PARITY_FORCE_CONTEXT_UNAVAILABLE forced context creation to fail.");
-                return false;
+                throw new InvalidOperationException("SkipOrFail returned unexpectedly.");
             }
 
             using IStormGlContext context = StormGlContextFactory.CreateForCurrentPlatform()
@@ -1531,7 +1531,7 @@ def Xform "World"
             or PlatformNotSupportedException)
         {
             SkipOrFail("platform OpenGL parity capture", exception.ToString());
-            return false;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
     }
 
@@ -1555,6 +1555,8 @@ def Xform "World"
                 $"{reason} and OPENUSD_PARITY_CAPTURE_REQUIRED demands a real capture. {detail}");
         }
         Console.WriteLine($"Skipping {reason}: {detail}");
+        Skip.Test($"Skipping {reason}: {detail}");
+        throw new InvalidOperationException("Skip.Test returned unexpectedly.");
     }
 
     private static bool TryCreateInput(ParityScene scene, out ParityCaptureInput input)
@@ -1569,8 +1571,7 @@ def Xform "World"
                 or OpenUsdStormException)
         {
             SkipOrFail("Storm-to-hdSilk parity capture", exception.ToString());
-            input = null!;
-            return false;
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
         }
     }
     private static ParityCaptureInput CreateInput(ParityScene scene)
