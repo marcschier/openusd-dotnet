@@ -83,17 +83,38 @@ public static class SilkFrameCapture
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
 
-        if (session.HasSynchronized)
+        // A repeat capture is not automatically wrong. Sync reports what changed since the
+        // previous synchronization, so a second capture whose stage genuinely changed -- a new
+        // time code on a time-sampled attribute, for example -- receives a real page and renders
+        // correctly through a fresh renderer. Rejecting every already-synchronized session broke
+        // exactly that case.
+        //
+        // The failure being guarded is narrower: a repeat capture that produced nothing, against
+        // a renderer with no retained scene to fall back on. That is the silent blank frame. A
+        // first capture of a stage with no renderable geometry is legitimately blank and must
+        // still succeed, which is why the session state is read before the sync.
+        bool wasSynchronized = session.HasSynchronized;
+        using var renderer = new SilkMeshRenderer(device);
+        SilkFrameCaptureResult result = CaptureCore(
+            session,
+            device,
+            renderer,
+            width,
+            height,
+            renderSettings,
+            timeCode,
+            camera);
+        if (wasSynchronized && result.RenderResult.DrawCount == 0 && renderer.Scene.Meshes.Count == 0)
         {
             throw new InvalidOperationException(
-                "The hdSilk session has already been synchronized. Sync reports only what changed " +
-                "since the previous synchronization, so the one-shot capture helper would receive " +
-                "an empty page and capture a blank frame. Use SilkFrameCapturer to capture more " +
-                "than once from the same session, or create a session per capture.");
+                "The hdSilk session was already synchronized and reported no geometry, so this " +
+                "capture would return a blank frame. Sync reports only what changed since the " +
+                "previous synchronization, and the one-shot helper builds a renderer per call " +
+                "with no retained scene. Use SilkFrameCapturer to capture more than once from " +
+                "the same session, or create a session per capture.");
         }
 
-        using var renderer = new SilkMeshRenderer(device);
-        return CaptureCore(session, device, renderer, width, height, renderSettings, timeCode, camera);
+        return result;
     }
 
     internal static SilkFrameCaptureResult CaptureCore(

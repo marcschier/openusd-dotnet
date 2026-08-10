@@ -831,8 +831,9 @@ def Xform "World"
                 session, device, 64, 48, TimeCode, CameraState.Default);
             await Assert.That(first.RenderResult.DrawCount).IsGreaterThan(0);
 
-            // The one-shot helper builds a renderer per call, so it must reject a session that
-            // has already synced before it consumes the empty delta page.
+            // Recapturing at the same time code yields an empty delta page, and the one-shot
+            // helper builds a renderer per call with no retained scene, so this would be a
+            // silently blank frame. A repeat capture whose stage actually changed still works.
             await Assert.That(() => SilkFrameCapture.Capture(
                 session, device, 64, 48, TimeCode, CameraState.Default))
                 .Throws<InvalidOperationException>();
