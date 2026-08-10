@@ -194,12 +194,22 @@ internal static class ViewerStageCameraDiscovery
                 return trimmed[(equals + 1)..].Trim();
             }
         }
-        catch (IOException)
+        catch (IOException exception)
         {
+            // "Could not read the layer" and "the layer authors no primary camera" are both
+            // reported as absence to the caller, so a user who configured primaryCameraPrim on a
+            // layer we cannot open sees the viewer silently ignore it. Recording the reason keeps
+            // the graceful fallback while making the difference diagnosable.
+            ViewerStartupOptions.WriteStatus(
+                "Viewer stage camera: primary camera metadata unreadable: " +
+                $"{nameof(IOException)}: {exception.Message}");
             return null;
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException exception)
         {
+            ViewerStartupOptions.WriteStatus(
+                "Viewer stage camera: primary camera metadata unreadable: " +
+                $"{nameof(UnauthorizedAccessException)}: {exception.Message}");
             return null;
         }
         return null;
