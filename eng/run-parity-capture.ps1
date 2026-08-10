@@ -543,6 +543,10 @@ try
         'SilkComplexityMediumChangesPointPage',
         'SilkWireframeDrawModeDivergesFromSmoothShadedPixelsOnD3D12',
         'SilkFrameCaptureReturnsDimensionsAndNonTrivialPixels',
+        'SilkFrameCaptureRendersEveryFrameFromTheSameSession',
+        'SilkFrameCaptureRefusesToCaptureABlankFrameFromASynchronizedSession',
+        'SilkFrameCaptureRetainedRendersTheSceneALiveRendererSynchronized',
+        'DisplayColorReachesPixelsForImplicitSurfacesAndMeshesOnD3D12',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12')
     $macosCglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',

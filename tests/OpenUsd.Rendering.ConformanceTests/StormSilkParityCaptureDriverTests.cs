@@ -902,7 +902,7 @@ def Xform "World"
     }
 
     [Test]
-    public async Task DisplayColorReachesPixelsForImplicitSurfacesAndMeshes()
+    public async Task DisplayColorReachesPixelsForImplicitSurfacesAndMeshesOnD3D12()
     {
         if (!OperatingSystem.IsWindows())
         {
