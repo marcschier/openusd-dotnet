@@ -845,6 +845,84 @@ def Xform "World"
     }
 
     [Test]
+    public async Task SilkFrameCaptureRetainedRendersTheSceneALiveRendererSynchronized()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        const ulong retainedPageRevision = 7;
+        SilkMeshRenderResult presented;
+        SilkFrameCaptureResult capture;
+        var settings = new RenderSettings(
+            1,
+            enableLighting: true,
+            enableShadows: true,
+            new Vector4(0.07f, 0.11f, 0.17f, 1),
+            backfaceCulling: true,
+            useSceneMaterials: true,
+            RenderComplexity.Low);
+        var options = new SilkMeshRenderOptions(
+            new SilkColor(
+                settings.ClearColor.X,
+                settings.ClearColor.Y,
+                settings.ClearColor.Z,
+                settings.ClearColor.W),
+            1,
+            settings.BackfaceCulling,
+            settings.UseSceneMaterials);
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
+            string pluginPath = ResolvePluginPath();
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            using var renderer = new SilkMeshRenderer(device);
+            using ISilkGraphicsTexture color = device.CreateTexture2D(
+                new SilkTextureDescriptor(
+                    64,
+                    48,
+                    SilkTextureFormat.Rgba8Unorm,
+                    SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+            using ISilkGraphicsTexture depth = device.CreateTexture2D(
+                SilkTextureDescriptor.DepthTarget(64, 48));
+
+            // Stand in for the viewer's render loop, which synchronizes the session and renders
+            // through the renderer it keeps alive for the lifetime of the backend session.
+            presented = renderer.SyncAndRender(session, color, depth, TimeCode, options);
+
+            capture = SilkFrameCapture.CaptureRetained(
+                renderer,
+                device,
+                64,
+                48,
+                settings,
+                retainedPageRevision);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk retained frame capture", exception.ToString());
+            return;
+        }
+
+        await Assert.That(presented.DrawCount).IsGreaterThan(0);
+
+        // Capturing the same session again would be refused, because Sync has nothing left to
+        // report. That is the viewer's Capture Frame command: it captured through the session
+        // its presentation renderer had already synchronized.
+        await Assert.That(capture.RenderResult.DrawCount).IsEqualTo(presented.DrawCount);
+        await Assert.That(ContainsPixelDifferentFromClear(capture.Rgba.Span, settings.ClearColor))
+            .IsTrue();
+
+        // A retained capture applies no page, so it reports the revision it was told about and
+        // consumes no hdSilk commands.
+        await Assert.That(capture.PageRevision).IsEqualTo(retainedPageRevision);
+        await Assert.That(capture.CommandCount).IsEqualTo(0u);
+    }
+
+    [Test]
     public async Task SilkFrameCaptureReturnsBlankFrameForEmptyUnsynchronizedSession()
     {
         if (!OperatingSystem.IsWindows())

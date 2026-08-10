@@ -547,6 +547,7 @@ try
         'SilkFrameCaptureRendersEveryFrameFromTheSameSession',
         'SilkFrameCaptureRefusesToCaptureABlankFrameFromASynchronizedSession',
         'SilkFrameCaptureReturnsBlankFrameForEmptyUnsynchronizedSession',
+        'SilkFrameCaptureRetainedRendersTheSceneALiveRendererSynchronized',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12')
     $macosCglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',

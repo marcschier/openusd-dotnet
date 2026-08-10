@@ -117,6 +117,57 @@ public static class SilkFrameCapture
         return result;
     }
 
+    /// <summary>
+    /// Renders and captures one RGBA8 frame from what a renderer already retains, without
+    /// synchronizing hdSilk.
+    /// </summary>
+    /// <remarks>
+    /// A live renderer - a viewer's presentation renderer, say - synchronizes its session on
+    /// every presented frame, and <see cref="OpenUsdSilkSession.Sync"/> reports only what changed
+    /// since the previous synchronization. Capturing such a session through
+    /// <see cref="Capture(OpenUsdSilkSession, ISilkGraphicsDevice, int, int, double, CameraState)"/>
+    /// or <see cref="SilkFrameCapturer"/> would synchronize a session with nothing left to report,
+    /// so a capture taken alongside a running render loop has to reuse that renderer's retained
+    /// scene instead. The frame is rendered from the camera, time code, and complexity of the
+    /// most recent synchronization.
+    /// </remarks>
+    /// <param name="renderer">The renderer whose retained scene is rendered.</param>
+    /// <param name="device">The graphics device that renders and reads back the frame.</param>
+    /// <param name="width">The capture width in pixels.</param>
+    /// <param name="height">The capture height in pixels.</param>
+    /// <param name="renderSettings">The render settings applied to the capture.</param>
+    /// <param name="pageRevision">
+    /// The hdSilk page revision the renderer last retained, reported as
+    /// <see cref="SilkFrameCaptureResult.PageRevision"/>. A retained capture consumes no hdSilk
+    /// commands, so <see cref="SilkFrameCaptureResult.CommandCount"/> is always zero.
+    /// </param>
+    /// <returns>The captured frame.</returns>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="renderer"/> or <paramref name="device"/> is <c>null</c>.
+    /// </exception>
+    public static SilkFrameCaptureResult CaptureRetained(
+        ISilkRenderTargetRenderer renderer,
+        ISilkGraphicsDevice device,
+        int width,
+        int height,
+        RenderSettings renderSettings,
+        ulong pageRevision = 0)
+    {
+        ArgumentNullException.ThrowIfNull(renderer);
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+
+        using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(checked((uint)width), checked((uint)height)));
+        SilkMeshRenderResult result = renderer.Render(
+            color,
+            depth,
+            CreateRenderOptions(renderSettings));
+        return ReadbackFrame(color, width, height, result, pageRevision, commandCount: 0);
+    }
+
     internal static SilkFrameCaptureResult CaptureCore(
         OpenUsdSilkSession session,
         ISilkGraphicsDevice device,
@@ -127,12 +178,7 @@ public static class SilkFrameCapture
         double timeCode,
         CameraState camera)
     {
-        using ISilkGraphicsTexture color = device.CreateTexture2D(
-            new SilkTextureDescriptor(
-                checked((uint)width),
-                checked((uint)height),
-                SilkTextureFormat.Rgba8Unorm,
-                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.DepthTarget(checked((uint)width), checked((uint)height)));
         using OpenUsdSilkPage page = session.Sync(
@@ -141,7 +187,28 @@ public static class SilkFrameCapture
             timeCode,
             camera,
             renderSettings.Complexity);
-        var options = new SilkMeshRenderOptions(
+        SilkMeshRenderResult result = renderer.ApplyAndRender(
+            page,
+            color,
+            depth,
+            CreateRenderOptions(renderSettings));
+
+        return ReadbackFrame(color, width, height, result, page.Revision, page.CommandCount);
+    }
+
+    private static ISilkGraphicsTexture CreateColorTarget(
+        ISilkGraphicsDevice device,
+        int width,
+        int height) =>
+        device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                checked((uint)width),
+                checked((uint)height),
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+
+    private static SilkMeshRenderOptions CreateRenderOptions(RenderSettings renderSettings) =>
+        new(
             new SilkColor(
                 renderSettings.ClearColor.X,
                 renderSettings.ClearColor.Y,
@@ -150,8 +217,15 @@ public static class SilkFrameCapture
             1,
             renderSettings.BackfaceCulling,
             renderSettings.UseSceneMaterials);
-        SilkMeshRenderResult result = renderer.ApplyAndRender(page, color, depth, options);
 
+    private static SilkFrameCaptureResult ReadbackFrame(
+        ISilkGraphicsTexture color,
+        int width,
+        int height,
+        SilkMeshRenderResult result,
+        ulong pageRevision,
+        uint commandCount)
+    {
         byte[] rgba = new byte[checked(width * height * 4)];
         color.ReadbackForTesting(rgba);
         return new SilkFrameCaptureResult(
@@ -159,7 +233,7 @@ public static class SilkFrameCapture
             height,
             rgba,
             result,
-            page.Revision,
-            page.CommandCount);
+            pageRevision,
+            commandCount);
     }
 }
