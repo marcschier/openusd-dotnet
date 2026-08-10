@@ -111,6 +111,11 @@ public sealed class ViewerSourceContractTests
             "src",
             "OpenUsd.Viewer",
             "ViewerRenderCoordinator.cs"));
+        string startupOptions = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "ViewerStartupOptions.cs"));
 
         foreach (string status in new[]
         {
@@ -119,6 +124,9 @@ public sealed class ViewerSourceContractTests
             "Viewer stage open: validation root layer query starting",
             "Viewer stage open: validation root layer query completed",
             "Viewer stage open: dispatcher timer armed",
+            "Viewer stage open: dispatcher timer not armed",
+            "ShouldRunStageOpenDispatcherProbe",
+            "--stage-open-dispatcher-probe",
             "Viewer stage open: dispatcher timer tick",
             "Viewer stage open: render coordinator starting",
             "Viewer stage open: render coordinator acquired",
@@ -154,11 +162,18 @@ public sealed class ViewerSourceContractTests
             "Renderer coordinator: initialization summary publishing",
             "Renderer coordinator: initialization summary published",
             "Renderer coordinator: initialized backend returning",
+            "Renderer coordinator: dispatcher return probe armed",
+            "Renderer coordinator: dispatcher return probe posted",
             "Renderer coordinator: dispatcher return probe processed"
         })
         {
             await Assert.That(coordinator).Contains(status);
         }
+
+        await Assert.That(startupOptions).Contains("StageOpenDispatcherProbe");
+        await Assert.That(startupOptions).Contains(
+            "OPENUSD_VIEWER_STAGE_OPEN_DISPATCHER_PROBE");
+        await Assert.That(startupOptions).Contains("--stage-open-dispatcher-probe");
     }
 
     [Test]
@@ -182,6 +197,7 @@ public sealed class ViewerSourceContractTests
         await Assert.That(compositionSession).Contains(
             "submitted to Avalonia compositor");
         await Assert.That(smokeRunner).Contains("viewer-composition-capability.json");
+        await Assert.That(smokeRunner).Contains("--stage-open-dispatcher-probe");
         await Assert.That(smokeRunner).Contains("status = 'skipped'");
         await Assert.That(smokeRunner).Contains("macos-avalonia-metal-composition");
         await Assert.That(smokeRunner).Contains("submitted to Avalonia compositor$'");

@@ -141,9 +141,13 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
             ViewerStartupOptions.WriteStatus("Renderer coordinator: backend initialization completed");
             coordinator.PublishResult("Renderer initialization", initialization);
             ViewerStartupOptions.WriteStatus("Renderer coordinator: initialized backend returning");
+            ViewerStartupOptions.WriteStatus(
+                "Renderer coordinator: dispatcher return probe armed");
             Dispatcher.UIThread.Post(static () =>
                 ViewerStartupOptions.WriteStatus(
                     "Renderer coordinator: dispatcher return probe processed"));
+            ViewerStartupOptions.WriteStatus(
+                "Renderer coordinator: dispatcher return probe posted");
             return coordinator;
         }
         catch

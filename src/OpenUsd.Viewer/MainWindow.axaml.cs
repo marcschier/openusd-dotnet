@@ -3364,8 +3364,11 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private static DispatcherTimer? StartStageOpenDispatcherProbe()
     {
-        if (!IsAutomatedViewerRun())
+        if (!ShouldRunStageOpenDispatcherProbe(out string reason))
         {
+            ViewerStartupOptions.WriteStatus(
+                "Viewer stage open: dispatcher timer not armed: " +
+                reason);
             return null;
         }
 
@@ -3373,20 +3376,39 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             Interval = TimeSpan.FromMilliseconds(250)
         };
+        var stopwatch = Stopwatch.StartNew();
         int tick = 0;
         timer.Tick += (_, _) =>
         {
             int current = ++tick;
             ViewerStartupOptions.WriteStatus(
-                $"Viewer stage open: dispatcher timer tick {current}");
-            if (current >= 16)
-            {
-                timer.Stop();
-            }
+                "Viewer stage open: dispatcher timer tick " +
+                $"{current} elapsed-ms={stopwatch.ElapsedMilliseconds} " +
+                $"thread={Environment.CurrentManagedThreadId}");
         };
-        ViewerStartupOptions.WriteStatus("Viewer stage open: dispatcher timer armed");
+        ViewerStartupOptions.WriteStatus(
+            "Viewer stage open: dispatcher timer armed: " +
+            reason);
         timer.Start();
         return timer;
+    }
+
+    private static bool ShouldRunStageOpenDispatcherProbe(out string reason)
+    {
+        if (ViewerStartupOptions.StageOpenDispatcherProbe)
+        {
+            reason = "--stage-open-dispatcher-probe supplied";
+            return true;
+        }
+        if (IsAutomatedViewerRun())
+        {
+            reason = "automated viewer run";
+            return true;
+        }
+
+        reason =
+            "--stage-open-dispatcher-probe not supplied and viewer run is not automated";
+        return false;
     }
 
     /// <summary>

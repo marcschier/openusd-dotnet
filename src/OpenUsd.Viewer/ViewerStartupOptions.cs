@@ -27,6 +27,8 @@ internal static class ViewerStartupOptions
 
     internal static bool LiveEditSmoke { get; private set; }
 
+    internal static bool StageOpenDispatcherProbe { get; private set; }
+
     internal static int SwitchSoakCount { get; private set; }
 
     internal static int SwitchSoakSeconds { get; private set; } = 90;
@@ -184,6 +186,8 @@ internal static class ViewerStartupOptions
         Renderer = NormalizeRenderer(Environment.GetEnvironmentVariable("OPENUSD_RENDERER"));
         LiveEditSmoke = IsEnabled(
             Environment.GetEnvironmentVariable("OPENUSD_VIEWER_LIVE_EDIT"));
+        StageOpenDispatcherProbe = IsEnabled(
+            Environment.GetEnvironmentVariable("OPENUSD_VIEWER_STAGE_OPEN_DISPATCHER_PROBE"));
         SwitchSoakCount = ParseSwitchCount(
             Environment.GetEnvironmentVariable("OPENUSD_VIEWER_SWITCH_SOAK"));
         SwitchSoakSeconds = ParseSwitchSeconds(
@@ -257,6 +261,10 @@ internal static class ViewerStartupOptions
             else if (args[i] == "--shared-stage-soak")
             {
                 SharedStageSoak = true;
+            }
+            else if (args[i] == "--stage-open-dispatcher-probe")
+            {
+                StageOpenDispatcherProbe = true;
             }
             else if (args[i] == "--renderer-switch-soak" && i + 1 < args.Length)
             {

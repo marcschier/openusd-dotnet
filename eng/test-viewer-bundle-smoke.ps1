@@ -657,7 +657,14 @@ try
     $env:OPENUSD_STATUS_FILE = $statusFile
     $env:OPENUSD_LOG_FILE = $logFile
 
-    $arguments = if ($IsWindows) { @('--windows-rendering=angle') } else { @() }
+    $arguments = if ($IsWindows)
+    {
+        @('--stage-open-dispatcher-probe', '--windows-rendering=angle')
+    }
+    else
+    {
+        @('--stage-open-dispatcher-probe')
+    }
     $processStartUtc = [DateTime]::UtcNow
     $process = Start-Process $executable -PassThru `
         -ArgumentList $arguments `
