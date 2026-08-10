@@ -1184,6 +1184,14 @@ def Xform "World"
                 " meanChannelDelta=" + meanChannelDelta.ToString("F3", CultureInfo.InvariantCulture),
                 pairDescription,
             ]);
+        if (maxChannelDelta > MaximumShadedChannelDelta ||
+            meanChannelDelta > MaximumShadedMeanChannelDelta)
+        {
+            WriteSelfConsistencyMismatchEvidence(
+                "materialx-generated-d3d12-self-consistency",
+                image,
+                pairDescription);
+        }
 
         await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
         await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
@@ -1707,6 +1715,28 @@ def Xform "World"
         WriteBitmap(path, image.Width, image.Height, image.Rgba.Span);
     }
 
+    private static void WriteSelfConsistencyMismatchEvidence(
+        string name,
+        ParityImage image,
+        string pairDescription)
+    {
+        TranslatedHalfDelta delta = CompareTranslatedHalvesDetailed(image);
+        ParityImage left = ExtractTranslatedHalf(image, left: true);
+        ParityImage right = ExtractTranslatedHalf(image, left: false);
+        WriteCapture(name, "mismatch", image);
+        WriteCapture(name, "generated-left", left);
+        WriteCapture(name, "preview-right", right);
+        WriteEvidence(
+            name + "-mismatch.txt",
+            [
+                FormatTranslatedHalfDelta(name, delta),
+                "wholeSha256=" + Hash(image),
+                "generatedLeftSha256=" + Hash(left),
+                "previewRightSha256=" + Hash(right),
+                pairDescription,
+            ]);
+    }
+
     private static void WriteDiff(string sceneName, string name, ParityComparisonResult result)
     {
         string fileName = $"{SanitizeFileName(sceneName)}-{SanitizeFileName(name)}-diff.bmp";
@@ -1926,6 +1956,21 @@ def Xform "World"
         int PointListPointCount,
         int PointListIndexCount,
         int LineListPrimitiveCount);
+
+    private readonly record struct TranslatedHalfDelta(
+        byte MaxChannelDelta,
+        double MeanChannelDelta,
+        int MaxX,
+        int MaxY,
+        int MaxChannel,
+        int MaxLeftChannelValue,
+        int MaxRightChannelValue,
+        double LeftMeanRed,
+        double LeftMeanGreen,
+        double LeftMeanBlue,
+        double RightMeanRed,
+        double RightMeanGreen,
+        double RightMeanBlue);
 
     private enum AreaLightGate
     {
@@ -3135,6 +3180,122 @@ def Xform "World"
         }
 
         return ((byte)max, count == 0 ? 0 : (double)sum / count);
+    }
+
+    private static TranslatedHalfDelta CompareTranslatedHalvesDetailed(ParityImage image)
+    {
+        int halfWidth = image.Width / 2;
+        int max = 0;
+        int maxX = 0;
+        int maxY = 0;
+        int maxChannel = 0;
+        int maxLeft = 0;
+        int maxRight = 0;
+        long sum = 0;
+        long count = 0;
+        long leftRed = 0;
+        long leftGreen = 0;
+        long leftBlue = 0;
+        long rightRed = 0;
+        long rightGreen = 0;
+        long rightBlue = 0;
+        ReadOnlySpan<byte> pixels = image.Rgba.Span;
+        for (int y = 0; y < image.Height; y++)
+        {
+            for (int x = 0; x < halfWidth; x++)
+            {
+                int left = ((y * image.Width) + x) * ParityImage.BytesPerPixel;
+                int right = ((y * image.Width) + x + halfWidth) * ParityImage.BytesPerPixel;
+                leftRed += pixels[left];
+                leftGreen += pixels[left + 1];
+                leftBlue += pixels[left + 2];
+                rightRed += pixels[right];
+                rightGreen += pixels[right + 1];
+                rightBlue += pixels[right + 2];
+                for (int channel = 0; channel < 3; channel++)
+                {
+                    int delta = Math.Abs(pixels[left + channel] - pixels[right + channel]);
+                    if (delta > max)
+                    {
+                        max = delta;
+                        maxX = x;
+                        maxY = y;
+                        maxChannel = channel;
+                        maxLeft = pixels[left + channel];
+                        maxRight = pixels[right + channel];
+                    }
+                    sum += delta;
+                    count++;
+                }
+            }
+        }
+
+        double pixelsPerHalf = Math.Max(1, halfWidth * image.Height);
+        return new TranslatedHalfDelta(
+            (byte)max,
+            count == 0 ? 0 : (double)sum / count,
+            maxX,
+            maxY,
+            maxChannel,
+            maxLeft,
+            maxRight,
+            leftRed / pixelsPerHalf,
+            leftGreen / pixelsPerHalf,
+            leftBlue / pixelsPerHalf,
+            rightRed / pixelsPerHalf,
+            rightGreen / pixelsPerHalf,
+            rightBlue / pixelsPerHalf);
+    }
+
+    private static string FormatTranslatedHalfDelta(
+        string name,
+        TranslatedHalfDelta delta) =>
+        string.Format(
+            CultureInfo.InvariantCulture,
+            "{0} maxChannelDelta={1} meanChannelDelta={2:F3} " +
+            "maxAt=({3},{4}) channel={5} generated={6} preview={7} " +
+            "generatedMeanRgb=({8:F3},{9:F3},{10:F3}) previewMeanRgb=({11:F3},{12:F3},{13:F3})",
+            name,
+            delta.MaxChannelDelta,
+            delta.MeanChannelDelta,
+            delta.MaxX,
+            delta.MaxY,
+            ChannelName(delta.MaxChannel),
+            delta.MaxLeftChannelValue,
+            delta.MaxRightChannelValue,
+            delta.LeftMeanRed,
+            delta.LeftMeanGreen,
+            delta.LeftMeanBlue,
+            delta.RightMeanRed,
+            delta.RightMeanGreen,
+            delta.RightMeanBlue);
+
+    private static string ChannelName(int channel) =>
+        channel switch
+        {
+            0 => "R",
+            1 => "G",
+            2 => "B",
+            _ => channel.ToString(CultureInfo.InvariantCulture),
+        };
+
+    private static ParityImage ExtractTranslatedHalf(ParityImage image, bool left)
+    {
+        int halfWidth = image.Width / 2;
+        int sourceX = left ? 0 : halfWidth;
+        byte[] extracted = new byte[halfWidth * image.Height * ParityImage.BytesPerPixel];
+        ReadOnlySpan<byte> source = image.Rgba.Span;
+        int targetStride = halfWidth * ParityImage.BytesPerPixel;
+        int sourceStride = image.Width * ParityImage.BytesPerPixel;
+        for (int y = 0; y < image.Height; y++)
+        {
+            source.Slice(
+                    (y * sourceStride) + (sourceX * ParityImage.BytesPerPixel),
+                    targetStride)
+                .CopyTo(extracted.AsSpan(y * targetStride, targetStride));
+        }
+
+        return new ParityImage(halfWidth, image.Height, extracted);
     }
 
     private static string ResolvePluginPath()
