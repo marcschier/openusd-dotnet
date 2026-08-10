@@ -467,6 +467,9 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         SilkCompositionResources? resources = null;
         CompositionViewportControl? createdControl = null;
         bool keepActive = false;
+        ViewerStartupOptions.WriteStatus(
+            $"{kind} composition attach: UI control attach invoke starting " +
+            FormatThreadStatus());
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -484,23 +487,39 @@ internal sealed class AvaloniaViewerRenderBackendHost(
             keepActive = AttachForSurfaceCreation(control);
             createdControl = control;
         });
+        ViewerStartupOptions.WriteStatus(
+            $"{kind} composition attach: UI control attach invoke completed " +
+            FormatThreadStatus());
         CompositionViewportControl control = createdControl ??
             throw new InvalidOperationException("The composition viewport could not be created.");
         try
         {
+            ViewerStartupOptions.WriteStatus(
+                $"{kind} composition attach: initialization wait starting " +
+                FormatThreadStatus());
             bool initialized = await control
                 .WaitForInitializationAsync(cancellationToken)
                 .ConfigureAwait(false);
+            ViewerStartupOptions.WriteStatus(
+                $"{kind} composition attach: initialization wait completed " +
+                $"initialized={initialized} resources={resources is not null} " +
+                FormatThreadStatus());
             if (!initialized || resources is null)
             {
                 throw new InvalidOperationException(
                     $"{kind} is incompatible with the active Avalonia compositor.");
             }
+            ViewerStartupOptions.WriteStatus(
+                $"{kind} composition attach: hide initialized candidate starting " +
+                FormatThreadStatus());
             await HideInitializedCandidateUnlessFirstAsync(
                 viewportHost,
                 control,
                 keepActive,
                 cancellationToken).ConfigureAwait(false);
+            ViewerStartupOptions.WriteStatus(
+                $"{kind} composition attach: hide initialized candidate completed " +
+                FormatThreadStatus());
             string diagnosticCode = kind == RenderBackendKind.Metal
                 ? "VIEWER_METAL_HDSILK_READY"
                 : "VIEWER_SILK_READY";
@@ -517,7 +536,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                     _ => kind.ToString()
                 },
                 resources.Capabilities);
-            return new CompositionHostedBackendSession(
+            var session = new CompositionHostedBackendSession(
                 viewportHost,
                 control,
                 resources,
@@ -527,6 +546,10 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                     diagnosticCode,
                     diagnosticMessage,
                     capabilities: resources.Capabilities));
+            ViewerStartupOptions.WriteStatus(
+                $"{kind} composition attach: backend session returning " +
+                FormatThreadStatus());
+            return session;
         }
         catch (OperationCanceledException)
         {
@@ -665,6 +688,10 @@ internal sealed class AvaloniaViewerRenderBackendHost(
     }
 
     private void OnControlStatusChanged(object? sender, string status) => reportStatus(status);
+
+    private static string FormatThreadStatus() =>
+        $"thread={Environment.CurrentManagedThreadId} " +
+        $"dispatcher-access={Dispatcher.UIThread.CheckAccess()}";
 
     private void SetRuntimeIdentity(
         RenderBackendKind kind,

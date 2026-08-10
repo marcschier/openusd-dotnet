@@ -116,6 +116,11 @@ public sealed class ViewerSourceContractTests
             "src",
             "OpenUsd.Viewer",
             "ViewerStartupOptions.cs"));
+        string host = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "AvaloniaViewerRenderBackendHost.cs"));
 
         foreach (string status in new[]
         {
@@ -128,6 +133,11 @@ public sealed class ViewerSourceContractTests
             "ShouldRunStageOpenDispatcherProbe",
             "--stage-open-dispatcher-probe",
             "Viewer stage open: dispatcher timer tick",
+            "Viewer stage open: dispatcher post probe armed",
+            "Viewer stage open: dispatcher post probe not armed",
+            "Viewer stage open: dispatcher post probe processed",
+            "Viewer stage open: render coordinator task created",
+            "Viewer stage open: render coordinator task completed",
             "Viewer stage open: render coordinator starting",
             "Viewer stage open: render coordinator acquired",
             "Viewer stage open: document snapshot starting",
@@ -168,6 +178,20 @@ public sealed class ViewerSourceContractTests
         })
         {
             await Assert.That(coordinator).Contains(status);
+        }
+
+        foreach (string status in new[]
+        {
+            "composition attach: UI control attach invoke starting",
+            "composition attach: UI control attach invoke completed",
+            "composition attach: initialization wait starting",
+            "composition attach: initialization wait completed",
+            "composition attach: hide initialized candidate starting",
+            "composition attach: hide initialized candidate completed",
+            "composition attach: backend session returning"
+        })
+        {
+            await Assert.That(host).Contains(status);
         }
 
         await Assert.That(startupOptions).Contains("StageOpenDispatcherProbe");

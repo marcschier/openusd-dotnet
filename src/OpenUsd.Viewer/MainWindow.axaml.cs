@@ -294,6 +294,7 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             ViewerStartupOptions.WriteStatus("Viewer startup: opening stage");
+            PostStageOpenDispatcherProbe("viewer opened handler before stage open await");
             await OpenStageCoreAsync(
                 ViewerStartupOptions.StagePath,
                 addToRecent: !IsAutomatedViewerRun(),
@@ -3240,7 +3241,9 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 dispatcherProbe = StartStageOpenDispatcherProbe();
                 ViewerStartupOptions.WriteStatus("Viewer stage open: render coordinator starting");
-                coordinator = await ViewerRenderCoordinator.OpenAsync(
+                PostStageOpenDispatcherProbe("before render coordinator await");
+                Task<ViewerRenderCoordinator> coordinatorTask =
+                    ViewerRenderCoordinator.OpenAsync(
                     normalizedPath,
                     (scheduler, source) =>
                     {
@@ -3253,8 +3256,30 @@ public sealed partial class MainWindow : Window, IDisposable
                         return backendHost;
                     },
                     GetSelectedBackend(),
-                    documentLifetime.Token);
+                    documentLifetime.Token).AsTask();
+                ViewerStartupOptions.WriteStatus(
+                    "Viewer stage open: render coordinator task created " +
+                    $"completed={coordinatorTask.IsCompleted} " +
+                    FormatStageOpenThreadStatus());
+                _ = coordinatorTask.ContinueWith(
+                    static task =>
+                    {
+                        string status = task.IsCanceled
+                            ? "Canceled"
+                            : task.IsFaulted
+                                ? "Faulted"
+                                : "RanToCompletion";
+                        ViewerStartupOptions.WriteStatus(
+                            "Viewer stage open: render coordinator task completed " +
+                            $"status={status} " +
+                            FormatStageOpenThreadStatus());
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.None,
+                    TaskScheduler.Default);
+                coordinator = await coordinatorTask;
                 ViewerStartupOptions.WriteStatus("Viewer stage open: render coordinator acquired");
+                PostStageOpenDispatcherProbe("after render coordinator await");
                 ViewerStartupOptions.WriteStatus("Viewer stage open: document snapshot starting");
                 ViewerDocumentSnapshot document = await coordinator.Scheduler.InvokeAsync(
                     ViewerStageSnapshotBuilder.BuildDocument,
@@ -3368,7 +3393,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             ViewerStartupOptions.WriteStatus(
                 "Viewer stage open: dispatcher timer not armed: " +
-                reason);
+                $"{reason} {FormatStageOpenThreadStatus()}");
             return null;
         }
 
@@ -3388,10 +3413,33 @@ public sealed partial class MainWindow : Window, IDisposable
         };
         ViewerStartupOptions.WriteStatus(
             "Viewer stage open: dispatcher timer armed: " +
-            reason);
+            $"{reason} {FormatStageOpenThreadStatus()}");
         timer.Start();
         return timer;
     }
+
+    private static void PostStageOpenDispatcherProbe(string label)
+    {
+        if (!ShouldRunStageOpenDispatcherProbe(out string reason))
+        {
+            ViewerStartupOptions.WriteStatus(
+                "Viewer stage open: dispatcher post probe not armed: " +
+                $"{label}: {reason}");
+            return;
+        }
+
+        ViewerStartupOptions.WriteStatus(
+            "Viewer stage open: dispatcher post probe armed: " +
+            $"{label}: {reason} {FormatStageOpenThreadStatus()}");
+        Dispatcher.UIThread.Post(
+            () => ViewerStartupOptions.WriteStatus(
+                "Viewer stage open: dispatcher post probe processed: " +
+                $"{label} {FormatStageOpenThreadStatus()}"));
+    }
+
+    private static string FormatStageOpenThreadStatus() =>
+        $"thread={Environment.CurrentManagedThreadId} " +
+        $"dispatcher-access={Dispatcher.UIThread.CheckAccess()}";
 
     private static bool ShouldRunStageOpenDispatcherProbe(out string reason)
     {

@@ -95,6 +95,9 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(stagePath);
         ArgumentNullException.ThrowIfNull(hostFactory);
 
+        ViewerStartupOptions.WriteStatus(
+            "Renderer coordinator: open entered " +
+            FormatThreadStatus());
         ViewerStartupOptions.WriteStatus("Renderer coordinator: stage scheduler starting");
         UsdStageScheduler scheduler = UsdStageScheduler.Open(
             stagePath,
@@ -138,9 +141,13 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
             RenderBackendManagerResult initialization = await coordinator._manager
                 .InitializeAsync(state, requestedBackend, cancellationToken)
                 .ConfigureAwait(false);
-            ViewerStartupOptions.WriteStatus("Renderer coordinator: backend initialization completed");
+            ViewerStartupOptions.WriteStatus(
+                "Renderer coordinator: backend initialization completed " +
+                FormatThreadStatus());
             coordinator.PublishResult("Renderer initialization", initialization);
-            ViewerStartupOptions.WriteStatus("Renderer coordinator: initialized backend returning");
+            ViewerStartupOptions.WriteStatus(
+                "Renderer coordinator: initialized backend returning " +
+                FormatThreadStatus());
             ViewerStartupOptions.WriteStatus(
                 "Renderer coordinator: dispatcher return probe armed");
             Dispatcher.UIThread.Post(static () =>
@@ -168,6 +175,10 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
             throw;
         }
     }
+
+    private static string FormatThreadStatus() =>
+        $"thread={Environment.CurrentManagedThreadId} " +
+        $"dispatcher-access={Dispatcher.UIThread.CheckAccess()}";
 
     internal async ValueTask<RenderBackendManagerResult> SwitchAsync(
         RenderBackendKind? requestedBackend,
