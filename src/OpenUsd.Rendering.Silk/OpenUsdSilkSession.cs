@@ -11,6 +11,7 @@ public sealed class OpenUsdSilkSession : IDisposable
 {
     private readonly object _gate = new();
     private readonly SilkSessionSafeHandle _handle;
+    private bool _hasSynchronized;
 
     internal OpenUsdSilkSession(
         nint handle,
@@ -18,6 +19,17 @@ public sealed class OpenUsdSilkSession : IDisposable
     {
         _handle = new SilkSessionSafeHandle(handle, stageLease);
         SilkManagedDiagnostics.SessionCreated();
+    }
+
+    internal bool HasSynchronized
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _hasSynchronized;
+            }
+        }
     }
 
     /// <summary>
@@ -34,7 +46,7 @@ public sealed class OpenUsdSilkSession : IDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_handle.IsClosed || _handle.IsInvalid, this);
-            return OpenUsdSilkRuntime.Sync(
+            OpenUsdSilkPage page = OpenUsdSilkRuntime.Sync(
                 _handle.DangerousGetHandle(),
                 width,
                 height,
@@ -42,6 +54,8 @@ public sealed class OpenUsdSilkSession : IDisposable
                 camera,
                 complexity,
                 drawMode);
+            _hasSynchronized = true;
+            return page;
         }
     }
 

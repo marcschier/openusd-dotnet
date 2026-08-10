@@ -83,6 +83,15 @@ public static class SilkFrameCapture
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
 
+        if (session.HasSynchronized)
+        {
+            throw new InvalidOperationException(
+                "The hdSilk session has already been synchronized. Sync reports only what changed " +
+                "since the previous synchronization, so the one-shot capture helper would receive " +
+                "an empty page and capture a blank frame. Use SilkFrameCapturer to capture more " +
+                "than once from the same session, or create a session per capture.");
+        }
+
         using var renderer = new SilkMeshRenderer(device);
         return CaptureCore(session, device, renderer, width, height, renderSettings, timeCode, camera);
     }
@@ -121,14 +130,6 @@ public static class SilkFrameCapture
             renderSettings.BackfaceCulling,
             renderSettings.UseSceneMaterials);
         SilkMeshRenderResult result = renderer.ApplyAndRender(page, color, depth, options);
-        if (result.DrawCount == 0 && renderer.Scene.Meshes.Count == 0)
-        {
-            throw new InvalidOperationException(
-                "The hdSilk session produced no geometry to render. Sync reports only what changed " +
-                "since the previous synchronization, so a session that has already been synchronized " +
-                "yields an empty page and would capture a blank frame. Use SilkFrameCapturer to " +
-                "capture more than once from the same session, or create a session per capture.");
-        }
 
         byte[] rgba = new byte[checked(width * height * 4)];
         color.ReadbackForTesting(rgba);

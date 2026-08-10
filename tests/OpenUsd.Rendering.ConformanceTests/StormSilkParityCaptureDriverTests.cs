@@ -28,6 +28,21 @@ public sealed class StormSilkParityCaptureDriverTests
     private const string VulkanSwiftShaderBackendName = "Vulkan SwiftShader";
     private const string MetalBackendName = "Metal";
     private const double ExactCuratedParityAdjustedIou = 1.0;
+    private const string EmptyStage = """
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 1
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+}
+""";
 
     private const string GeneratedMaterialXSelfConsistencyStage = """
 #usda 1.0
@@ -810,9 +825,8 @@ def Xform "World"
                 session, device, 64, 48, TimeCode, CameraState.Default);
             await Assert.That(first.RenderResult.DrawCount).IsGreaterThan(0);
 
-            // The one-shot helper builds a renderer per call, so a second call sees a page with
-            // no geometry. Returning the resulting blank frame would be indistinguishable from a
-            // legitimately empty view, so it has to fail instead.
+            // The one-shot helper builds a renderer per call, so it must reject a session that
+            // has already synced before it consumes the empty delta page.
             await Assert.That(() => SilkFrameCapture.Capture(
                 session, device, 64, 48, TimeCode, CameraState.Default))
                 .Throws<InvalidOperationException>();
@@ -821,6 +835,52 @@ def Xform "World"
         {
             SkipOrFail("hdSilk one-shot capture guard", exception.ToString());
         }
+    }
+
+    [Test]
+    public async Task SilkFrameCaptureReturnsBlankFrameForEmptyUnsynchronizedSession()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        SilkFrameCaptureResult capture;
+        var settings = new RenderSettings(
+            1,
+            enableLighting: true,
+            enableShadows: false,
+            new Vector4(0.19f, 0.23f, 0.29f, 1),
+            backfaceCulling: true,
+            useSceneMaterials: true,
+            RenderComplexity.Low);
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = WriteEmptyStage();
+            string pluginPath = ResolvePluginPath();
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+
+            capture = SilkFrameCapture.Capture(
+                session,
+                device,
+                32,
+                24,
+                settings,
+                TimeCode,
+                CameraState.Default);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk empty-stage one-shot capture", exception.ToString());
+            return;
+        }
+
+        await Assert.That(capture.Width).IsEqualTo(32);
+        await Assert.That(capture.Height).IsEqualTo(24);
+        await Assert.That(capture.RenderResult.DrawCount).IsEqualTo(0);
+        await Assert.That(ContainsPixelDifferentFromClear(capture.Rgba.Span, settings.ClearColor)).IsFalse();
     }
 
     [Test]
@@ -2413,6 +2473,15 @@ def Xform "World"
         Directory.CreateDirectory(directory);
         string path = Path.Combine(directory, "materialx-generated-self-consistency.usda");
         File.WriteAllText(path, GeneratedMaterialXSelfConsistencyStage, new UTF8Encoding(false));
+        return path;
+    }
+
+    private static string WriteEmptyStage()
+    {
+        string directory = Path.Combine(AppContext.BaseDirectory, "TestResults", "empty-stage");
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "empty-stage.usda");
+        File.WriteAllText(path, EmptyStage, new UTF8Encoding(false));
         return path;
     }
 
