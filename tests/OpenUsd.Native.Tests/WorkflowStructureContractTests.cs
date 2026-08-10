@@ -257,7 +257,7 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
-    public async Task NuGetPromotionRequiresSuccessfulReleaseAggregateBeforeTrustedPublishing()
+    public async Task PublishAndNuGetPromotionRequireSuccessfulReleaseAggregate()
     {
         string root = FindRepositoryRoot();
         string release = await File.ReadAllTextAsync(
@@ -280,11 +280,11 @@ public sealed class WorkflowStructureContractTests
 
         string publish = ReadJob(release, "publish");
         await Assert.That(publish)
-            .Contains("needs: pack", StringComparison.Ordinal)
-            .Because("release.yml publishes to the retryable GitHub Packages staging feed");
+            .Contains("needs: [ pack, aggregate ]", StringComparison.Ordinal)
+            .Because("package publication must wait for both packed bytes and aggregate release evidence");
         await Assert.That(publish)
-            .DoesNotContain("needs: aggregate", StringComparison.Ordinal)
-            .Because("nuget.org promotion, not GitHub Packages staging, consumes the full gate evidence");
+            .DoesNotContain("viewer-distribution", StringComparison.Ordinal)
+            .Because("the known-failing macOS Viewer bundle leg must not block package publication");
 
         string promote = ReadJob(nuget, "promote");
         string downloadEvidence = ReadStep(promote, "Download release gate evidence");
