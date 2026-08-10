@@ -43,7 +43,7 @@
       },
       {
         "name": "openusd:input:eng/publish-viewer-bundle.ps1:sha256",
-        "value": "6f51b71b3fb936ab89c160f37005c642c25fbf1aa3b728a4984c0b9f5f4fe798"
+        "value": "7432fdbedb57a344cc5dd56464580137d0abadaec932d220d7e7a9554bfcfd91"
       },
       {
         "name": "openusd:input:eng/sbom/cesium-vcpkg-components.lock.json:sha256",

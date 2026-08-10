@@ -1282,6 +1282,15 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(publisher)
             .Contains("<package pattern=\"OpenUsd.*\" />", StringComparison.Ordinal)
             .Because("OpenUsd packages must be source-mapped to the local nupkg feed when one is supplied");
+
+        // The root package id has no dot, so the "OpenUsd.*" glob does not match it. Mapping only
+        // that pattern sent OpenUsd itself to nuget.org, which failed the 0.8.0-alpha release with
+        // "NU1102 ... Versions from openusd-local were not considered" — and only during a release,
+        // because between a bump and its publication is the one window where nuget.org cannot serve
+        // the version.
+        await Assert.That(publisher)
+            .Contains("<package pattern=\"OpenUsd\" />", StringComparison.Ordinal)
+            .Because("the root OpenUsd package id is not matched by the OpenUsd.* glob");
         await Assert.That(publisher)
             .DoesNotContain("<ProjectReference", StringComparison.Ordinal)
             .Because("the Viewer distribution smoke must stay package-only, not become a source build");

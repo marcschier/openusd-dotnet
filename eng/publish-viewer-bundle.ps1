@@ -194,6 +194,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackageSource))
     $packageSourceMapping = @"
   <packageSourceMapping>
     <packageSource key="openusd-local">
+      <package pattern="OpenUsd" />
       <package pattern="OpenUsd.*" />
     </packageSource>
     <packageSource key="nuget.org">
