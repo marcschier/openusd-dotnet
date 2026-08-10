@@ -59,6 +59,16 @@ public static class SilkFrameCapture
         Capture(session, device, width, height, RenderSettings.Default, timeCode, camera);
 
     /// <summary>Synchronizes, renders, and captures one RGBA8 frame.</summary>
+    /// <remarks>
+    /// This is a one-shot helper: it builds a renderer per call, while
+    /// <see cref="OpenUsdSilkSession.Sync"/> reports only what changed since the previous
+    /// synchronization. A session that has already been synchronized therefore yields a page
+    /// with no geometry, which would render an empty frame. Use <see cref="SilkFrameCapturer"/>
+    /// to capture repeatedly from one session.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The session has already been synchronized, so no geometry remains to render.
+    /// </exception>
     public static SilkFrameCaptureResult Capture(
         OpenUsdSilkSession session,
         ISilkGraphicsDevice device,
@@ -73,6 +83,20 @@ public static class SilkFrameCapture
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
 
+        using var renderer = new SilkMeshRenderer(device);
+        return CaptureCore(session, device, renderer, width, height, renderSettings, timeCode, camera);
+    }
+
+    internal static SilkFrameCaptureResult CaptureCore(
+        OpenUsdSilkSession session,
+        ISilkGraphicsDevice device,
+        SilkMeshRenderer renderer,
+        int width,
+        int height,
+        RenderSettings renderSettings,
+        double timeCode,
+        CameraState camera)
+    {
         using ISilkGraphicsTexture color = device.CreateTexture2D(
             new SilkTextureDescriptor(
                 checked((uint)width),
@@ -87,7 +111,6 @@ public static class SilkFrameCapture
             timeCode,
             camera,
             renderSettings.Complexity);
-        using var renderer = new SilkMeshRenderer(device);
         var options = new SilkMeshRenderOptions(
             new SilkColor(
                 renderSettings.ClearColor.X,
@@ -98,6 +121,15 @@ public static class SilkFrameCapture
             renderSettings.BackfaceCulling,
             renderSettings.UseSceneMaterials);
         SilkMeshRenderResult result = renderer.ApplyAndRender(page, color, depth, options);
+        if (result.DrawCount == 0 && renderer.Scene.Meshes.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "The hdSilk session produced no geometry to render. Sync reports only what changed " +
+                "since the previous synchronization, so a session that has already been synchronized " +
+                "yields an empty page and would capture a blank frame. Use SilkFrameCapturer to " +
+                "capture more than once from the same session, or create a session per capture.");
+        }
+
         byte[] rgba = new byte[checked(width * height * 4)];
         color.ReadbackForTesting(rgba);
         return new SilkFrameCaptureResult(
