@@ -1290,14 +1290,28 @@ internal sealed class CompositionHostedBackendSession(
             throw new NotSupportedException(
                 "Frame capture is available only for hdSilk backends with a managed graphics device.");
         }
-        SilkFrameCaptureResult capture = SilkFrameCapture.Capture(
-            resources.Session,
-            device,
-            width,
-            height,
-            CurrentState.RenderSettings,
-            CurrentState.Time.TimeCode,
-            CurrentState.Camera);
+
+        // The presentation renderer synchronizes this session on every presented frame, and Sync
+        // reports only what changed since the previous synchronization. Capturing through the
+        // session would therefore render a page with no geometry, so capture what the renderer
+        // already retains. Only a session that has never presented a frame is synchronized here.
+        SilkFrameCaptureResult capture =
+            resources.Renderer is { RetainedRenderer: { } retained, LastSceneRevision: not 0 }
+                ? SilkFrameCapture.CaptureRetained(
+                    retained,
+                    device,
+                    width,
+                    height,
+                    CurrentState.RenderSettings,
+                    resources.Renderer.LastSceneRevision)
+                : SilkFrameCapture.Capture(
+                    resources.Session,
+                    device,
+                    width,
+                    height,
+                    CurrentState.RenderSettings,
+                    CurrentState.Time.TimeCode,
+                    CurrentState.Camera);
         return ValueTask.FromResult(capture);
     }
 
@@ -1345,6 +1359,13 @@ internal interface ISilkStagePresentationRenderer :
     SilkSelectionOutlineDiagnostics SelectionOutlineDiagnostics { get; }
 
     ViewerHydraSceneSnapshot? HydraSceneSnapshot { get; }
+
+    /// <summary>
+    /// Gets the renderer holding the retained scene, when the backend keeps one alive between
+    /// presented frames. Capturing a frame has to render this rather than synchronize the
+    /// session, which reports only what changed since the previous presented frame.
+    /// </summary>
+    ISilkRenderTargetRenderer? RetainedRenderer => null;
 
     void UpdateState(StageRenderState state);
 }
@@ -1432,6 +1453,8 @@ internal sealed class D3D12StagePresentationRenderer(
 
     public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
         Volatile.Read(ref _hydraSceneSnapshot);
+
+    public ISilkRenderTargetRenderer? RetainedRenderer => renderer;
 
     public ViewerRenderedPickState? LastRenderedPickState =>
         Volatile.Read(ref _lastRenderedPickState);
@@ -1524,6 +1547,8 @@ internal sealed class VulkanStagePresentationRenderer(
     public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
         Volatile.Read(ref _hydraSceneSnapshot);
 
+    public ISilkRenderTargetRenderer? RetainedRenderer => Volatile.Read(ref _currentRenderer);
+
     public ViewerRenderedPickState? LastRenderedPickState =>
         Volatile.Read(ref _lastRenderedPickState);
 
@@ -1612,6 +1637,8 @@ internal sealed class MetalStagePresentationRenderer(
 
     public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
         Volatile.Read(ref _hydraSceneSnapshot);
+
+    public ISilkRenderTargetRenderer? RetainedRenderer => Volatile.Read(ref _currentRenderer);
 
     public ViewerRenderedPickState? LastRenderedPickState =>
         Volatile.Read(ref _lastRenderedPickState);
