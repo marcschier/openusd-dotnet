@@ -1,6 +1,6 @@
 # OpenUsd documentation
 
-OpenUsd is a public `0.7.0-alpha` project with 22 packages published to NuGet.org, including the
+OpenUsd is a public `0.8.0-alpha` project with 22 packages published to NuGet.org, including the
 five Cesium package IDs that were buildable from this tree but withheld at `0.5.0-alpha`. Start
 with the route that matches what you are trying to do, then follow the
 deeper design or evidence documents only as needed.

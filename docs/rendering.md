@@ -44,9 +44,9 @@ these references:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="OpenUsd" Version="0.7.0-alpha" />
-  <PackageReference Include="OpenUsd.Rendering.Silk.Vulkan" Version="0.7.0-alpha" />
-  <PackageReference Include="OpenUsd.Runtime.Imaging" Version="0.7.0-alpha" />
+  <PackageReference Include="OpenUsd" Version="0.8.0-alpha" />
+  <PackageReference Include="OpenUsd.Rendering.Silk.Vulkan" Version="0.8.0-alpha" />
+  <PackageReference Include="OpenUsd.Runtime.Imaging" Version="0.8.0-alpha" />
 </ItemGroup>
 ```
 
@@ -130,6 +130,21 @@ operation lease, and backend disposal dispatches session destruction and control
 overloads without viewport dimensions preserve the authored aperture aspect; pass `ViewportDimensions` or width/height
 for offscreen captures so the same shared aperture-conformance and projection path used by the Viewer is applied to the
 target output aspect. Numeric-time overloads sample both the camera optics and composed world transform at that time.
+
+`SilkFrameCapturer` captures **repeatedly** from one hdSilk session. `OpenUsdSilkSession.Sync` reports only what
+changed since the previous synchronization, so the first page carries the whole scene and later pages carry deltas.
+A capturer therefore has to keep its renderer — and with it the retained scene — alive across captures:
+
+```csharp
+using var capturer = new SilkFrameCapturer(device);
+SilkFrameCaptureResult first = capturer.Capture(session, 640, 360, camera: a);
+SilkFrameCaptureResult second = capturer.Capture(session, 640, 360, camera: b);
+```
+
+The one-shot `SilkFrameCapture.Capture` helper builds a renderer per call and so can only serve a session that has
+never been synchronized. It now throws `InvalidOperationException` naming `SilkFrameCapturer` when handed an
+already-synchronized session, rather than silently returning a cleared frame with `DrawCount = 0`. A session that has
+never been synchronized still returns a blank frame for a stage with no renderable geometry, which is not an error.
 
 Viewer frame adapters capture one immutable `StageRenderState` request and forward its exact revision,
 time, and camera. Storm synchronous/asynchronous requests and the D3D12, Vulkan, and Metal hdSilk
