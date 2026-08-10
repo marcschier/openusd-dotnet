@@ -539,15 +539,20 @@ try
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
         'CuratedSceneParityClaimsAreStructured',
+        'DisplayColorReachesPixelsForImplicitSurfacesAndMeshes',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
         'SilkWireframeDrawModeDivergesFromSmoothShadedPixelsOnD3D12',
         'SilkFrameCaptureReturnsDimensionsAndNonTrivialPixels',
+        'SilkFrameCaptureRendersEveryFrameFromTheSameSession',
+        'SilkFrameCaptureRefusesToCaptureABlankFrameFromASynchronizedSession',
+        'SilkFrameCaptureReturnsBlankFrameForEmptyUnsynchronizedSession',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12')
     $macosCglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
         'CuratedSceneParityClaimsAreStructured',
+        'DisplayColorReachesPixelsForImplicitSurfacesAndMeshes',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnMetal')
