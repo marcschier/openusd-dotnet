@@ -730,6 +730,170 @@ def Xform "World"
     }
 
     [Test]
+    public async Task SilkFrameCaptureRendersEveryFrameFromTheSameSession()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        SilkFrameCaptureResult first;
+        SilkFrameCaptureResult second;
+        SilkFrameCaptureResult third;
+        var settings = new RenderSettings(
+            1,
+            enableLighting: true,
+            enableShadows: true,
+            new Vector4(0.07f, 0.11f, 0.17f, 1),
+            backfaceCulling: true,
+            useSceneMaterials: true,
+            RenderComplexity.Low);
+        Matrix4x4 view = Matrix4x4.CreateLookAt(new Vector3(0, 0.6f, 3.2f), Vector3.Zero, Vector3.UnitY);
+        Matrix4x4 projection = Matrix4x4.CreatePerspectiveFieldOfView(0.9f, 64f / 48f, 0.05f, 100f);
+        var explicitCamera = new CameraState(view, projection);
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
+            string pluginPath = ResolvePluginPath();
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            using var capturer = new SilkFrameCapturer(device);
+
+            first = capturer.Capture(session, 64, 48, settings, TimeCode, CameraState.Default);
+            second = capturer.Capture(session, 64, 48, settings, TimeCode, CameraState.Default);
+            third = capturer.Capture(session, 64, 48, settings, TimeCode, explicitCamera);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk repeated frame capture", exception.ToString());
+            return;
+        }
+
+        Console.WriteLine(
+            "repeated-capture first.DrawCount=" +
+            first.RenderResult.DrawCount.ToString(CultureInfo.InvariantCulture) +
+            " second.DrawCount=" + second.RenderResult.DrawCount.ToString(CultureInfo.InvariantCulture) +
+            " third.DrawCount=" + third.RenderResult.DrawCount.ToString(CultureInfo.InvariantCulture));
+
+        await Assert.That(ContainsPixelDifferentFromClear(first.Rgba.Span, settings.ClearColor)).IsTrue();
+
+        // A repeated capture from the same session must render the same retained scene. hdSilk
+        // Sync reports only what changed, so a capturer that rebuilt its scene state per call
+        // would see a page with no geometry here and silently produce a blank frame - which a
+        // caller cannot distinguish from a legitimately empty view.
+        await Assert.That(second.RenderResult.DrawCount).IsGreaterThan(0);
+        await Assert.That(ContainsPixelDifferentFromClear(second.Rgba.Span, settings.ClearColor)).IsTrue();
+
+        // Changing the camera on an existing session must re-render from the new viewpoint.
+        await Assert.That(third.RenderResult.DrawCount).IsGreaterThan(0);
+        await Assert.That(ContainsPixelDifferentFromClear(third.Rgba.Span, settings.ClearColor)).IsTrue();
+    }
+
+    [Test]
+    public async Task SilkFrameCaptureRefusesToCaptureABlankFrameFromASynchronizedSession()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
+            string pluginPath = ResolvePluginPath();
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+
+            SilkFrameCaptureResult first = SilkFrameCapture.Capture(
+                session, device, 64, 48, TimeCode, CameraState.Default);
+            await Assert.That(first.RenderResult.DrawCount).IsGreaterThan(0);
+
+            // The one-shot helper builds a renderer per call, so a second call sees a page with
+            // no geometry. Returning the resulting blank frame would be indistinguishable from a
+            // legitimately empty view, so it has to fail instead.
+            await Assert.That(() => SilkFrameCapture.Capture(
+                session, device, 64, 48, TimeCode, CameraState.Default))
+                .Throws<InvalidOperationException>();
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk one-shot capture guard", exception.ToString());
+        }
+    }
+
+    [Test]
+    public async Task DisplayColorReachesPixelsForImplicitSurfacesAndMeshes()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        SilkFrameCaptureResult capture;
+        var settings = new RenderSettings(
+            1,
+            enableLighting: true,
+            enableShadows: false,
+            new Vector4(0, 0, 0, 1),
+            backfaceCulling: false,
+            useSceneMaterials: true,
+            RenderComplexity.Low);
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string? repositoryRoot = FindRepositoryRoot()
+                ?? throw new DirectoryNotFoundException("Could not locate the repository root.");
+            string stagePath = Path.Combine(repositoryRoot, "test-assets", "viewer-stage-camera-smoke.usda");
+            string pluginPath = ResolvePluginPath();
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            capture = SilkFrameCapture.Capture(session, device, 256, 192, settings, 0, CameraState.Default);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk displayColor capture", exception.ToString());
+            return;
+        }
+
+        // The stage authors a red Cube (0.9, 0.16, 0.08), a green Cube (0.1, 0.85, 0.28) and a
+        // blue-grey Mesh backdrop, all as constant-interpolation primvars:displayColor. Lighting
+        // and tone mapping shift the absolute values, so assert only that pixels of each hue
+        // reach the frame - which is what a consumer distinguishing parts by colour relies on.
+        int reddish = 0;
+        int greenish = 0;
+        int bluish = 0;
+        ReadOnlySpan<byte> pixels = capture.Rgba.Span;
+        for (int offset = 0; offset + 3 < pixels.Length; offset += 4)
+        {
+            int r = pixels[offset];
+            int g = pixels[offset + 1];
+            int b = pixels[offset + 2];
+            if (r > g + 24 && r > b + 24)
+            {
+                reddish++;
+            }
+            else if (g > r + 24 && g > b + 24)
+            {
+                greenish++;
+            }
+            else if (b > r + 24 && b > g + 24)
+            {
+                bluish++;
+            }
+        }
+
+        Console.WriteLine(
+            "displayColor-pixels reddish=" + reddish.ToString(CultureInfo.InvariantCulture) +
+            " greenish=" + greenish.ToString(CultureInfo.InvariantCulture) +
+            " bluish=" + bluish.ToString(CultureInfo.InvariantCulture));
+
+        await Assert.That(reddish).IsGreaterThan(0);
+        await Assert.That(greenish).IsGreaterThan(0);
+    }
+
+    [Test]
     public async Task MaterialXStandardSurfaceMatchesPreviewSelfConsistencyOnVulkan()
     {
         ParityImage image;

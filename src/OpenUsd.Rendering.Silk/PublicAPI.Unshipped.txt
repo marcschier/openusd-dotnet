@@ -413,6 +413,11 @@ OpenUsd.Rendering.Silk.SilkFrameCaptureResult.PageRevision.get -> ulong
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.RenderResult.get -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Rgba.get -> System.ReadOnlyMemory<byte>
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Width.get -> int
+OpenUsd.Rendering.Silk.SilkFrameCapturer
+OpenUsd.Rendering.Silk.SilkFrameCapturer.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+OpenUsd.Rendering.Silk.SilkFrameCapturer.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+OpenUsd.Rendering.Silk.SilkFrameCapturer.Dispose() -> void
+OpenUsd.Rendering.Silk.SilkFrameCapturer.SilkFrameCapturer(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
 OpenUsd.Rendering.Silk.SilkFrameState
 OpenUsd.Rendering.Silk.SilkFrameState.Height.get -> int
 OpenUsd.Rendering.Silk.SilkFrameState.Projection.get -> System.ReadOnlyMemory<double>
