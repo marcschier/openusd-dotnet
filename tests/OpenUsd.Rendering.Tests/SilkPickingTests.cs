@@ -84,20 +84,29 @@ public sealed class SilkPickingTests
             3,
             device.PickDeviceGeneration,
             new ViewportDimensions(1, 1));
-        // Warmed with the full loop rather than a single call. Measuring blocks
-        // of 100 shows the first block allocating and every later one allocating
-        // exactly zero -- 592 bytes with tiered compilation, still 24 with it
-        // disabled -- so the transient is both longer than one iteration and
-        // partly one-off initialisation rather than purely JIT. Its length
-        // depends on how quickly the host promotes tier-0 code, which is why
-        // this passed everywhere for months and then failed only on hosted
-        // Linux net10.0 with 7,720 bytes. Warming with the same loop moves the
-        // transient outside the measurement instead of loosening the assertion,
-        // which stays at exactly zero across a thousand steady-state
+        // Warmed until the steady state is observed rather than for a fixed count.
+        // The transient is partly JIT tiering, so its length depends on how quickly
+        // the host promotes tier-0 code. A fixed 1,000-iteration warm-up was enough
+        // on hosted Linux net10.0 but not on net9.0, where this still measured a
+        // non-zero total. Waiting for two consecutive zero-allocation blocks moves
+        // the transient outside the measurement on any host, without loosening the
+        // assertion: it stays at exactly zero across a thousand steady-state
         // iterations, so a genuine per-iteration allocation still fails it.
-        for (int warmup = 0; warmup < 1000; warmup++)
+        const int warmupBlock = 200;
+        const int maximumWarmupBlocks = 50;
+        int consecutiveQuietBlocks = 0;
+        for (int block = 0; block < maximumWarmupBlocks && consecutiveQuietBlocks < 2; block++)
         {
-            ExerciseReadbackRing(ring, context);
+            long blockBefore = GC.GetAllocatedBytesForCurrentThread();
+            for (int warmup = 0; warmup < warmupBlock; warmup++)
+            {
+                ExerciseReadbackRing(ring, context);
+            }
+
+            consecutiveQuietBlocks =
+                GC.GetAllocatedBytesForCurrentThread() - blockBefore == 0
+                    ? consecutiveQuietBlocks + 1
+                    : 0;
         }
 
         long before = GC.GetAllocatedBytesForCurrentThread();

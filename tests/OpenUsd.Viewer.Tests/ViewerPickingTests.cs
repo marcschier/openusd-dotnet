@@ -140,27 +140,41 @@ public sealed class ViewerPickingTests
         var bounds = new ViewerLogicalContentBounds(0, 0, 100, 80);
         var viewport = new ViewportDimensions(150, 120);
 
-        // Warmed with the full loop for the same reason as
-        // SilkPickingTests.WarmReadbackRingOperationsDoNotAllocate: a single
-        // call does not reach steady state, the startup transient lasts an
-        // environment-dependent number of iterations, and the assertion is
-        // exactly zero. That test failed only on hosted Linux net10.0 after
-        // passing everywhere for months; this one has the identical shape and
-        // is fixed before it does the same.
+        // Warmed until the steady state is observed, for the same reason as
+        // SilkPickingTests.WarmReadbackRingOperationsDoNotAllocate: the startup
+        // transient lasts an environment-dependent number of iterations because
+        // it is partly JIT tiering, and the assertion is exactly zero. A fixed
+        // count is therefore a bet on host speed — that test passed for months,
+        // then failed on hosted Linux net10.0, then again on net9.0 after the
+        // count was raised. Waiting for two consecutive zero-allocation blocks
+        // moves the transient outside the measurement on any host instead of
+        // loosening the assertion.
         int checksum = 0;
-        for (int warmup = 0; warmup < 1000; warmup++)
+        const int warmupBlock = 200;
+        const int maximumWarmupBlocks = 50;
+        int consecutiveQuietBlocks = 0;
+        for (int block = 0; block < maximumWarmupBlocks && consecutiveQuietBlocks < 2; block++)
         {
-            if (ViewerPickPixelMapper.TryMap(
-                    warmup % 99,
-                    warmup % 79,
-                    bounds,
-                    1.5,
-                    viewport,
-                    out ViewerPhysicalPixel warmupPixel))
+            long blockBefore = GC.GetAllocatedBytesForCurrentThread();
+            for (int warmup = 0; warmup < warmupBlock; warmup++)
             {
-                checksum += warmupPixel.X + warmupPixel.Y;
+                if (ViewerPickPixelMapper.TryMap(
+                        warmup % 99,
+                        warmup % 79,
+                        bounds,
+                        1.5,
+                        viewport,
+                        out ViewerPhysicalPixel warmupPixel))
+                {
+                    checksum += warmupPixel.X + warmupPixel.Y;
+                }
+                checksum += ViewerPickGestureClassifier.IsDrag(1, 1, 1.5) ? 1 : 0;
             }
-            checksum += ViewerPickGestureClassifier.IsDrag(1, 1, 1.5) ? 1 : 0;
+
+            consecutiveQuietBlocks =
+                GC.GetAllocatedBytesForCurrentThread() - blockBefore == 0
+                    ? consecutiveQuietBlocks + 1
+                    : 0;
         }
 
         // Reset so the closing assertion still proves the measured loop did the
