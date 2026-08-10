@@ -257,6 +257,61 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task NuGetPromotionRequiresSuccessfulReleaseAggregateBeforeTrustedPublishing()
+    {
+        string root = FindRepositoryRoot();
+        string release = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "release.yml"));
+        string nuget = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "nuget.yml"));
+
+        string aggregate = ReadJob(release, "aggregate");
+        await Assert.That(aggregate)
+            .Contains(
+                "needs: [ ci, shaders, native, performance, packages, render ]",
+                StringComparison.Ordinal)
+            .Because("the release evidence must include every quality gate that can fail the release");
+        await Assert.That(aggregate)
+            .Contains("name: release-gate-${{ github.run_id }}", StringComparison.Ordinal)
+            .Because("nuget.yml downloads this artifact before irreversible promotion");
+        await Assert.That(aggregate)
+            .Contains("Require every release gate", StringComparison.Ordinal)
+            .Because("the aggregate must still fail the release run when any gate is red");
+
+        string publish = ReadJob(release, "publish");
+        await Assert.That(publish)
+            .Contains("needs: pack", StringComparison.Ordinal)
+            .Because("release.yml publishes to the retryable GitHub Packages staging feed");
+        await Assert.That(publish)
+            .DoesNotContain("needs: aggregate", StringComparison.Ordinal)
+            .Because("nuget.org promotion, not GitHub Packages staging, consumes the full gate evidence");
+
+        string promote = ReadJob(nuget, "promote");
+        string downloadEvidence = ReadStep(promote, "Download release gate evidence");
+        await Assert.That(downloadEvidence)
+            .Contains("name: release-gate-${{ steps.resolve.outputs.release-run-id }}", StringComparison.Ordinal)
+            .Because("promotion must inspect the aggregate evidence for the selected release run");
+
+        string requireEvidence = ReadStep(promote, "Require successful release gate evidence");
+        await Assert.That(requireEvidence)
+            .Contains(
+                "nuget.org promotion requires a fully successful release gate",
+                StringComparison.Ordinal)
+            .Because("a red render or performance gate must stop before NuGet/login mints a token");
+        await Assert.That(requireEvidence)
+            .Contains("refs/tags/v${{ steps.resolve.outputs.version }}", StringComparison.Ordinal)
+            .Because("an override release_run_id must match the version being promoted");
+
+        int evidenceIndex = promote.IndexOf(
+            "      - name: Require successful release gate evidence",
+            StringComparison.Ordinal);
+        int loginIndex = promote.IndexOf("      - name: NuGet login", StringComparison.Ordinal);
+        await Assert.That(evidenceIndex).IsGreaterThanOrEqualTo(0);
+        await Assert.That(loginIndex).IsGreaterThan(evidenceIndex)
+            .Because("the irreversible promotion path must be blocked before trusted publishing starts");
+    }
+
+    [Test]
     public async Task SymbolPublishedListMatchesProjectIncludeSymbols()
     {
         string root = FindRepositoryRoot();

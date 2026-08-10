@@ -44,6 +44,10 @@ jobs:
     with:
       native-pipeline-run-id: ${{ github.run_id }}
 
+  # This roll-up is intentionally consumed by nuget.yml rather than by the
+  # GitHub Packages publishing job below. GitHub Packages is the retryable
+  # staging feed; nuget.org is the irreversible promotion step, and that
+  # workflow downloads this evidence before minting a trusted-publishing token.
   aggregate:
     name: aggregate release evidence
     if: always()
