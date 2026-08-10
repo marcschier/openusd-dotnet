@@ -10,7 +10,8 @@ namespace OpenUsd.Rendering.Silk;
 /// <see cref="OpenUsdSilkSession.Sync"/> reports only what changed since the previous
 /// synchronization, so the first page carries the whole scene and later pages carry deltas.
 /// A capturer therefore has to keep its renderer - and with it the retained scene - alive
-/// across captures. <see cref="SilkFrameCapture.Capture(OpenUsdSilkSession, ISilkGraphicsDevice, int, int, double, CameraState)"/>
+/// across captures.
+/// <see cref="SilkFrameCapture.Capture(OpenUsdSilkSession, ISilkGraphicsDevice, int, int, double, CameraState)"/>
 /// builds a renderer per call and so can only serve a session that has never been
 /// synchronized; use this type for a render loop, a camera sweep, or anything else that
 /// captures more than once.
@@ -74,7 +75,15 @@ public sealed class SilkFrameCapturer : IDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return SilkFrameCapture.CaptureCore(session, _device, _renderer, width, height, renderSettings, timeCode, camera);
+            return SilkFrameCapture.CaptureCore(
+                session,
+                _device,
+                _renderer,
+                width,
+                height,
+                renderSettings,
+                timeCode,
+                camera);
         }
     }
 
