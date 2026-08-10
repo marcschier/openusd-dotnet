@@ -535,6 +535,12 @@ override OpenUsd.Rendering.StageRenderState.ToString() -> string!
 override OpenUsd.Rendering.StageTime.GetHashCode() -> int
 override OpenUsd.Rendering.ViewportDimensions.GetHashCode() -> int
 static OpenUsd.Rendering.CameraState.Default.get -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath) -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, double timeCode) -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, double timeCode, int width, int height) -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, double timeCode, OpenUsd.Rendering.ViewportDimensions viewport) -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, int width, int height) -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, OpenUsd.Rendering.ViewportDimensions viewport) -> OpenUsd.Rendering.CameraState
 static OpenUsd.Rendering.CameraState.operator !=(OpenUsd.Rendering.CameraState left, OpenUsd.Rendering.CameraState right) -> bool
 static OpenUsd.Rendering.CameraState.operator ==(OpenUsd.Rendering.CameraState left, OpenUsd.Rendering.CameraState right) -> bool
 static OpenUsd.Rendering.CompositionExternalImage.operator !=(OpenUsd.Rendering.CompositionExternalImage left, OpenUsd.Rendering.CompositionExternalImage right) -> bool

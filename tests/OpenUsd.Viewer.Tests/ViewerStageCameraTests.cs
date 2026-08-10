@@ -100,12 +100,12 @@ public sealed class ViewerStageCameraTests
         var viewport = new ViewportDimensions(2000, 1000);
 
         Matrix4x4 perspectiveMatrix =
-            ViewerStageCameraProjectionMath.CreateProjectionMatrix(
-                perspective,
+            StageCameraProjectionMath.CreateProjectionMatrix(
+                perspective.Optics,
                 viewport);
         Matrix4x4 orthographicMatrix =
-            ViewerStageCameraProjectionMath.CreateProjectionMatrix(
-                orthographic,
+            StageCameraProjectionMath.CreateProjectionMatrix(
+                orthographic.Optics,
                 viewport);
 
         double depthRange = 999.9d;
@@ -152,12 +152,12 @@ public sealed class ViewerStageCameraTests
         var viewport = new ViewportDimensions(2000, 1000);
 
         Matrix4x4 perspectiveMatrix =
-            ViewerStageCameraProjectionMath.CreateProjectionMatrix(
-                perspective,
+            StageCameraProjectionMath.CreateProjectionMatrix(
+                perspective.Optics,
                 viewport);
         Matrix4x4 orthographicMatrix =
-            ViewerStageCameraProjectionMath.CreateProjectionMatrix(
-                orthographic,
+            StageCameraProjectionMath.CreateProjectionMatrix(
+                orthographic.Optics,
                 viewport);
         Matrix4x4 expectedPerspective = new(
             4f, 0f, 0f, 0f,
@@ -185,22 +185,22 @@ public sealed class ViewerStageCameraTests
     [Test]
     public async Task WindowFitWidensOrExpandsWithoutCroppingAndPreservesCenter()
     {
-        ViewerStageCameraApertureWindow authored =
-            ViewerStageCameraProjectionMath.ConformWindow(
+        StageCameraApertureWindow authored =
+            StageCameraProjectionMath.ConformWindow(
                 -10d,
                 14d,
                 -10d,
                 8d,
                 new ViewportDimensions(800, 600));
-        ViewerStageCameraApertureWindow wider =
-            ViewerStageCameraProjectionMath.ConformWindow(
+        StageCameraApertureWindow wider =
+            StageCameraProjectionMath.ConformWindow(
                 -10d,
                 14d,
                 -10d,
                 8d,
                 new ViewportDimensions(1920, 1080));
-        ViewerStageCameraApertureWindow narrower =
-            ViewerStageCameraProjectionMath.ConformWindow(
+        StageCameraApertureWindow narrower =
+            StageCameraProjectionMath.ConformWindow(
                 -10d,
                 14d,
                 -10d,
@@ -270,8 +270,8 @@ public sealed class ViewerStageCameraTests
             far: 100d);
 
         Matrix4x4 projection =
-            ViewerStageCameraProjectionMath.CreateProjectionMatrix(
-                snapshot,
+            StageCameraProjectionMath.CreateProjectionMatrix(
+                snapshot.Optics,
                 new ViewportDimensions(800, 600));
 
         await Assert.That(snapshot.Optics.ClippingNear).IsEqualTo(near);
@@ -291,12 +291,12 @@ public sealed class ViewerStageCameraTests
         var viewport = new ViewportDimensions(800, 600);
 
         Matrix4x4 zeroProjection =
-            ViewerStageCameraProjectionMath.CreateProjectionMatrix(
-                zeroFocal,
+            StageCameraProjectionMath.CreateProjectionMatrix(
+                zeroFocal.Optics,
                 viewport);
         Matrix4x4 positiveProjection =
-            ViewerStageCameraProjectionMath.CreateProjectionMatrix(
-                positiveFocal,
+            StageCameraProjectionMath.CreateProjectionMatrix(
+                positiveFocal.Optics,
                 viewport);
 
         await Assert.That(zeroFocal.Optics.FocalLength).IsEqualTo(0d);
@@ -323,8 +323,8 @@ public sealed class ViewerStageCameraTests
             near: near,
             far: far);
         Matrix4x4 projection =
-            ViewerStageCameraProjectionMath.CreateProjectionMatrix(
-                snapshot,
+            StageCameraProjectionMath.CreateProjectionMatrix(
+                snapshot.Optics,
                 new ViewportDimensions(800, 600));
 
         double nearNdc = MapViewZToNdc(projection, -near);
@@ -349,8 +349,9 @@ public sealed class ViewerStageCameraTests
             hugeView,
             CreateOptics(UsdGeomCameraProjection.Perspective));
 
-        await Assert.That(() => ViewerStageCameraProjectionMath.CreateCameraState(
-            snapshot,
+        await Assert.That(() => StageCameraProjectionMath.CreateCameraState(
+            snapshot.WorldToView,
+            snapshot.Optics,
             new ViewportDimensions(800, 600)))
             .Throws<InvalidOperationException>();
     }
@@ -441,9 +442,11 @@ public sealed class ViewerStageCameraTests
         StageRenderState expected =
             StageRenderState.Create(new StageIdentity("stage.usda"));
         StageRenderState staleState = expected.AdvanceRevision();
+        ViewerStageCameraSnapshot snapshot = CreateSnapshot(UsdGeomCameraProjection.Perspective);
         CameraState camera =
-            ViewerStageCameraProjectionMath.CreateCameraState(
-                CreateSnapshot(UsdGeomCameraProjection.Perspective),
+            StageCameraProjectionMath.CreateCameraState(
+                snapshot.WorldToView,
+                snapshot.Optics,
                 new ViewportDimensions(800, 600));
         await Assert.That(() => ViewerStageCameraSmokeContract.ApplyCamera(
             staleState,
@@ -510,6 +513,83 @@ public sealed class ViewerStageCameraTests
         await Assert.That(asset).Contains("def Mesh \"Backdrop\"");
         await Assert.That(asset).Contains("def Cube \"Cube\"");
         await Assert.That(asset).Contains("def Cube \"Marker\"");
+    }
+
+    [Test]
+    public async Task FromStageCameraMatchesViewerMatricesAtSampledTime()
+    {
+        const string primPath = "/World/CameraRig/Offset/ShotCamera";
+        const double timeCode = ViewerStageCameraSmokeContract.SampledTimeCode;
+        var viewport = new ViewportDimensions(1280, 720);
+        using UsdStage stage = OpenStageOrSkip("viewer-stage-camera-smoke.usda");
+        UsdGeomCamera camera = UsdGeomCamera.Wrap(stage.GetPrim(primPath));
+        ViewerStageCameraSnapshot snapshot = ViewerStageCameraSnapshotFactory.Create(
+            primPath,
+            timeCode,
+            camera.Xformable.GetWorldTransform(timeCode),
+            camera.GetState(timeCode));
+        var mode = new ViewerStageCameraModeState(viewport);
+        ViewerStageCameraActivation activation = mode.CaptureActivation(primPath, timeCode);
+
+        CameraState apiCamera = CameraState.FromStageCamera(
+            stage,
+            primPath,
+            timeCode,
+            viewport);
+        bool activated = mode.TryActivate(activation, snapshot, out CameraState viewerCamera);
+        CameraState defaultTimeCamera = CameraState.FromStageCamera(
+            stage,
+            primPath,
+            ViewerStageCameraSmokeContract.InitialTimeCode,
+            viewport);
+
+        await Assert.That(activated).IsTrue();
+        await Assert.That(apiCamera).IsEqualTo(viewerCamera);
+        await Assert.That(apiCamera.View).IsNotEqualTo(defaultTimeCamera.View);
+        await Assert.That(apiCamera.Projection).IsNotEqualTo(defaultTimeCamera.Projection);
+    }
+
+    [Test]
+    public async Task FromStageCameraRejectsMissingAndNonCameraPrims()
+    {
+        using UsdStage stage = OpenStageOrSkip("viewer-stage-camera-smoke.usda");
+        var viewport = new ViewportDimensions(800, 600);
+
+        await Assert.That(() => CameraState.FromStageCamera(
+            stage,
+            "/World/Missing",
+            ViewerStageCameraSmokeContract.SampledTimeCode,
+            viewport)).Throws<ArgumentException>();
+        await Assert.That(() => CameraState.FromStageCamera(
+            stage,
+            "/World/Cube",
+            ViewerStageCameraSmokeContract.SampledTimeCode,
+            viewport)).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task FromStageCameraCreatesOrthographicCamera()
+    {
+        const string primPath = "/World/Camera";
+        var viewport = new ViewportDimensions(1600, 900);
+        using UsdStage stage = OpenStageOrSkip("native-usdgeom.usda");
+        UsdGeomCamera camera = UsdGeomCamera.Wrap(stage.GetPrim(primPath));
+        UsdMatrix4d localToWorld = camera.Xformable.GetWorldTransform();
+        if (!localToWorld.TryInvert(out UsdMatrix4d worldToView))
+        {
+            throw new InvalidOperationException("The orthographic test camera is not invertible.");
+        }
+
+        CameraState apiCamera = CameraState.FromStageCamera(stage, primPath, viewport);
+        CameraState sharedMathCamera = StageCameraProjectionMath.CreateCameraState(
+            worldToView,
+            camera.GetState(),
+            viewport);
+
+        await Assert.That(apiCamera.Mode).IsEqualTo(CameraMode.Matrices);
+        await Assert.That(apiCamera).IsEqualTo(sharedMathCamera);
+        await Assert.That(apiCamera.Projection.M34).IsEqualTo(0f);
+        await Assert.That(apiCamera.Projection.M44).IsEqualTo(1f);
     }
 
     [Test]
@@ -809,7 +889,7 @@ public sealed class ViewerStageCameraTests
         await Assert.That(models).DoesNotContain("camera.HorizontalAperture");
         await Assert.That(models).DoesNotContain("camera.VerticalAperture");
         await Assert.That(models).Contains("localToWorld.TryInvert(");
-        await Assert.That(models).Contains("ViewerStageCameraProjectionMath");
+        await Assert.That(models).Contains("StageCameraProjectionMath");
         await Assert.That(models).Contains("ViewerStageCameraDiscovery");
         await Assert.That(models).Contains("stage.Traverse()");
         await Assert.That(documentModels).Contains(
@@ -834,8 +914,8 @@ public sealed class ViewerStageCameraTests
     private static void ConvertProjection(
         ViewerStageCameraSnapshot snapshot,
         ViewportDimensions viewport) =>
-        _projectionSink = ViewerStageCameraProjectionMath.CreateProjectionMatrix(
-            snapshot,
+        _projectionSink = StageCameraProjectionMath.CreateProjectionMatrix(
+            snapshot.Optics,
             viewport);
 
     private static void Activate(
@@ -849,6 +929,19 @@ public sealed class ViewerStageCameraTests
         if (!adapter.TryActivateStageCamera(activation, snapshot, out _))
         {
             throw new InvalidOperationException("The test camera could not be activated.");
+        }
+    }
+
+    private static UsdStage OpenStageOrSkip(string fileName)
+    {
+        try
+        {
+            return UsdStage.Open(Path.Combine(FindRepositoryRoot(), "test-assets", fileName));
+        }
+        catch (DllNotFoundException exception)
+        {
+            Skip.Test($"openusd_dotnet native runtime is unavailable: {exception.Message}");
+            throw;
         }
     }
 

@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using OpenUsd.Geom;
 
 namespace OpenUsd.Rendering;
 
@@ -115,6 +116,76 @@ public readonly record struct CameraState
     /// <summary>Gets the automatic camera used for initial state.</summary>
     public static CameraState Default => default;
 
+    /// <summary>Creates a matrix camera from a stage camera prim at default time.</summary>
+    /// <param name="stage">The stage containing the camera prim.</param>
+    /// <param name="primPath">The absolute path to a UsdGeomCamera prim.</param>
+    /// <returns>The renderer-neutral matrix camera.</returns>
+    public static CameraState FromStageCamera(UsdStage stage, string primPath) =>
+        FromStageCameraCore(stage, primPath, timeCode: null, ViewportDimensions.Empty);
+
+    /// <summary>Creates a matrix camera from a stage camera prim at default time.</summary>
+    /// <param name="stage">The stage containing the camera prim.</param>
+    /// <param name="primPath">The absolute path to a UsdGeomCamera prim.</param>
+    /// <param name="viewport">The output viewport used to conform the authored aperture.</param>
+    /// <returns>The renderer-neutral matrix camera.</returns>
+    public static CameraState FromStageCamera(
+        UsdStage stage,
+        string primPath,
+        ViewportDimensions viewport) =>
+        FromStageCameraCore(stage, primPath, timeCode: null, viewport);
+
+    /// <summary>Creates a matrix camera from a stage camera prim at default time.</summary>
+    /// <param name="stage">The stage containing the camera prim.</param>
+    /// <param name="primPath">The absolute path to a UsdGeomCamera prim.</param>
+    /// <param name="width">The output width in pixels.</param>
+    /// <param name="height">The output height in pixels.</param>
+    /// <returns>The renderer-neutral matrix camera.</returns>
+    public static CameraState FromStageCamera(
+        UsdStage stage,
+        string primPath,
+        int width,
+        int height) =>
+        FromStageCamera(stage, primPath, new ViewportDimensions(width, height));
+
+    /// <summary>Creates a matrix camera from a time-sampled stage camera prim.</summary>
+    /// <param name="stage">The stage containing the camera prim.</param>
+    /// <param name="primPath">The absolute path to a UsdGeomCamera prim.</param>
+    /// <param name="timeCode">The numeric time code used for optics and transform samples.</param>
+    /// <returns>The renderer-neutral matrix camera.</returns>
+    public static CameraState FromStageCamera(
+        UsdStage stage,
+        string primPath,
+        double timeCode) =>
+        FromStageCameraCore(stage, primPath, timeCode, ViewportDimensions.Empty);
+
+    /// <summary>Creates a matrix camera from a time-sampled stage camera prim.</summary>
+    /// <param name="stage">The stage containing the camera prim.</param>
+    /// <param name="primPath">The absolute path to a UsdGeomCamera prim.</param>
+    /// <param name="timeCode">The numeric time code used for optics and transform samples.</param>
+    /// <param name="viewport">The output viewport used to conform the authored aperture.</param>
+    /// <returns>The renderer-neutral matrix camera.</returns>
+    public static CameraState FromStageCamera(
+        UsdStage stage,
+        string primPath,
+        double timeCode,
+        ViewportDimensions viewport) =>
+        FromStageCameraCore(stage, primPath, timeCode, viewport);
+
+    /// <summary>Creates a matrix camera from a time-sampled stage camera prim.</summary>
+    /// <param name="stage">The stage containing the camera prim.</param>
+    /// <param name="primPath">The absolute path to a UsdGeomCamera prim.</param>
+    /// <param name="timeCode">The numeric time code used for optics and transform samples.</param>
+    /// <param name="width">The output width in pixels.</param>
+    /// <param name="height">The output height in pixels.</param>
+    /// <returns>The renderer-neutral matrix camera.</returns>
+    public static CameraState FromStageCamera(
+        UsdStage stage,
+        string primPath,
+        double timeCode,
+        int width,
+        int height) =>
+        FromStageCamera(stage, primPath, timeCode, new ViewportDimensions(width, height));
+
     /// <summary>Gets the camera selection mode.</summary>
     public CameraMode Mode { get; }
 
@@ -172,6 +243,54 @@ public readonly record struct CameraState
     }
 
     internal Vector4 GetClipPlane(int index) => _clipPlanes[index];
+
+    private static CameraState FromStageCameraCore(
+        UsdStage stage,
+        string primPath,
+        double? timeCode,
+        ViewportDimensions viewport)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        if (timeCode is double value && !double.IsFinite(value))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeCode),
+                "The stage-camera time code must be finite.");
+        }
+        if (!stage.HasPrim(primPath))
+        {
+            throw new ArgumentException(
+                $"Stage prim '{primPath}' does not exist.",
+                nameof(primPath));
+        }
+
+        UsdPrim prim = stage.GetPrim(primPath);
+        if (!UsdGeomCamera.TryWrap(prim, out UsdGeomCamera camera))
+        {
+            throw new ArgumentException(
+                $"Stage prim '{primPath}' is not a UsdGeomCamera.",
+                nameof(primPath));
+        }
+
+        UsdMatrix4d localToWorld = timeCode is double sampleTime
+            ? camera.Xformable.GetWorldTransform(sampleTime)
+            : camera.Xformable.GetWorldTransform();
+        UsdGeomCameraState optics = timeCode is double opticsTime
+            ? camera.GetState(opticsTime)
+            : camera.GetState();
+        if (!localToWorld.TryInvert(out UsdMatrix4d worldToView))
+        {
+            string sample = timeCode is double invalidTime
+                ? $" at time {invalidTime}"
+                : string.Empty;
+            throw new InvalidOperationException(
+                $"Camera '{primPath}' has a non-finite or non-invertible " +
+                $"world transform{sample}.");
+        }
+
+        return StageCameraProjectionMath.CreateCameraState(worldToView, optics, viewport);
+    }
 
     private static bool IsFinite(Matrix4x4 value) =>
         float.IsFinite(value.M11) &&

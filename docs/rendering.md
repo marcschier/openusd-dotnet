@@ -126,6 +126,11 @@ new commands are rejected once closing begins. Native handles use a registry-bac
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
 operation lease, and backend disposal dispatches session destruction and control detachment together to the UI thread.
 
+`CameraState.FromStageCamera` creates a renderer-neutral matrix camera directly from a `UsdGeomCamera` prim. The
+overloads without viewport dimensions preserve the authored aperture aspect; pass `ViewportDimensions` or width/height
+for offscreen captures so the same shared aperture-conformance and projection path used by the Viewer is applied to the
+target output aspect. Numeric-time overloads sample both the camera optics and composed world transform at that time.
+
 Viewer frame adapters capture one immutable `StageRenderState` request and forward its exact revision,
 time, and camera. Storm synchronous/asynchronous requests and the D3D12, Vulkan, and Metal hdSilk
 session sync paths therefore cannot combine a new revision with an older camera. The legacy
