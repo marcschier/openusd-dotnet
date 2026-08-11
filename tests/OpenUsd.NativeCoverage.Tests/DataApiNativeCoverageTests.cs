@@ -14,8 +14,19 @@ public sealed class DataApiNativeCoverageTests
     [Test]
     public void AttributeArraysPrimvarsAndResolvedHandlesRoundTrip()
     {
-        string directory = NativeCoverageRuntime.CreateTempDirectory(
-            nameof(AttributeArraysPrimvarsAndResolvedHandlesRoundTrip));
+        string directory;
+        try
+        {
+            directory = NativeCoverageRuntime.CreateTempDirectory(
+                nameof(AttributeArraysPrimvarsAndResolvedHandlesRoundTrip));
+        }
+        catch (InvalidOperationException exception) when (
+            exception.Message.Contains("native runtime is not staged", StringComparison.Ordinal))
+        {
+            Skip.Test(exception.Message);
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
+        }
+
         using UsdStage stage = UsdStage.Create(Path.Combine(directory, "data-api.usda"));
         UsdPrim prim = stage.DefineMesh("/Mesh").Prim;
 
@@ -36,7 +47,25 @@ public sealed class DataApiNativeCoverageTests
         displayColor.Set(colorValue, 24);
         RequireArrayEqual(prim.GetColor3fArray("primvars:displayColor", 24), [new UsdVec3f(1, 0, 0)], "sampled color");
         Require(displayColor.TrySet(colorValue), "TrySet displayColor should succeed.");
+        Require(
+            displayColor.TrySet(
+                colorValue,
+                out UsdAttributeTryFailureReason successfulSetReason),
+            "TrySet with a failure reason should succeed.");
+        RequireEqual(
+            successfulSetReason,
+            UsdAttributeTryFailureReason.None,
+            "successful TrySet reason");
         Require(displayColor.TryGetValue(out UsdScalarValue tryColor), "TryGet displayColor should succeed.");
+        Require(
+            displayColor.TryGetValue(
+                out tryColor,
+                out UsdAttributeTryFailureReason successfulGetReason),
+            "TryGet with a failure reason should succeed.");
+        RequireEqual(
+            successfulGetReason,
+            UsdAttributeTryFailureReason.None,
+            "successful TryGet reason");
         RequireEqual(tryColor.Kind, UsdScalarKind.Color3fArray, "TryGet color kind");
 
         UsdAttribute flags = prim.GetAttribute("custom:flags");
@@ -46,7 +75,26 @@ public sealed class DataApiNativeCoverageTests
         RequireArrayEqual(prim.GetTokenArray("custom:states"), ["cold", "hot"], "token array");
         RequireArrayEqual(prim.GetStringArray("custom:labels", 12), ["pump", "valve"], "sampled string array");
         Require(!displayColor.TrySet(flags.GetValue()), "TrySet should reject a mismatched value kind.");
+        Require(
+            !displayColor.TrySet(
+                flags.GetValue(),
+                out UsdAttributeTryFailureReason incompatibleReason),
+            "TrySet with a failure reason should reject a mismatched value kind.");
+        RequireEqual(
+            incompatibleReason,
+            UsdAttributeTryFailureReason.TypeIncompatible,
+            "incompatible TrySet reason");
+        UsdAttribute missing = prim.GetAttribute("custom:missing");
         Require(!prim.TryGetValue("custom:missing", out _), "TryGetValue should reject a missing attribute.");
+        Require(
+            !missing.TryGetValue(
+                out _,
+                out UsdAttributeTryFailureReason missingReason),
+            "TryGetValue with a failure reason should reject a missing attribute.");
+        RequireEqual(
+            missingReason,
+            UsdAttributeTryFailureReason.AttributeNotFound,
+            "missing TryGetValue reason");
     }
 
     [Test]

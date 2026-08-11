@@ -534,6 +534,12 @@ OpenUsd.UsdAttribute.Name.get -> string!
 OpenUsd.UsdAttribute.PrimPath.get -> string!
 OpenUsd.UsdAttribute.TypeName.get -> string!
 OpenUsd.UsdAttribute.UsdAttribute() -> void
+OpenUsd.UsdAttributeTryFailureReason
+OpenUsd.UsdAttributeTryFailureReason.AttributeNotFound = 1 -> OpenUsd.UsdAttributeTryFailureReason
+OpenUsd.UsdAttributeTryFailureReason.NativeCallFailed = 4 -> OpenUsd.UsdAttributeTryFailureReason
+OpenUsd.UsdAttributeTryFailureReason.None = 0 -> OpenUsd.UsdAttributeTryFailureReason
+OpenUsd.UsdAttributeTryFailureReason.TypeIncompatible = 2 -> OpenUsd.UsdAttributeTryFailureReason
+OpenUsd.UsdAttributeTryFailureReason.UnsupportedValueType = 3 -> OpenUsd.UsdAttributeTryFailureReason
 OpenUsd.UsdAttributeValueState
 OpenUsd.UsdAttributeValueState.Deconstruct(out bool HasAuthoredValueOpinion, out bool IsBlocked) -> void
 OpenUsd.UsdAttributeValueState.Equals(OpenUsd.UsdAttributeValueState other) -> bool
@@ -2017,9 +2023,13 @@ OpenUsd.UsdAttribute.IsArray.get -> bool
 OpenUsd.UsdAttribute.IsAuthored.get -> bool
 OpenUsd.UsdAttribute.Set(in OpenUsd.UsdScalarValue value, double timeCode) -> void
 OpenUsd.UsdAttribute.Set(in OpenUsd.UsdScalarValue value) -> void
+OpenUsd.UsdAttribute.TryGetValue(double timeCode, out OpenUsd.UsdScalarValue value, out OpenUsd.UsdAttributeTryFailureReason failureReason) -> bool
 OpenUsd.UsdAttribute.TryGetValue(double timeCode, out OpenUsd.UsdScalarValue value) -> bool
+OpenUsd.UsdAttribute.TryGetValue(out OpenUsd.UsdScalarValue value, out OpenUsd.UsdAttributeTryFailureReason failureReason) -> bool
 OpenUsd.UsdAttribute.TryGetValue(out OpenUsd.UsdScalarValue value) -> bool
+OpenUsd.UsdAttribute.TrySet(in OpenUsd.UsdScalarValue value, double timeCode, out OpenUsd.UsdAttributeTryFailureReason failureReason) -> bool
 OpenUsd.UsdAttribute.TrySet(in OpenUsd.UsdScalarValue value, double timeCode) -> bool
+OpenUsd.UsdAttribute.TrySet(in OpenUsd.UsdScalarValue value, out OpenUsd.UsdAttributeTryFailureReason failureReason) -> bool
 OpenUsd.UsdAttribute.TrySet(in OpenUsd.UsdScalarValue value) -> bool
 OpenUsd.UsdPrim.GetBoolArray(string! attributeName, double timeCode) -> bool[]!
 OpenUsd.UsdPrim.GetBoolArray(string! attributeName) -> bool[]!

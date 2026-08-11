@@ -81,16 +81,98 @@ public readonly struct UsdAttribute : IUsdStageBound
     public void Set(in UsdScalarValue value, double timeCode) => SetCore(value, timeCode);
 
     /// <summary>Attempts to author an explicitly tagged value on an existing compatible attribute.</summary>
+    /// <remarks>
+    /// Use <see cref="TrySet(in UsdScalarValue, out UsdAttributeTryFailureReason)"/> to observe
+    /// why this method returned <see langword="false"/>.
+    /// </remarks>
     public bool TrySet(in UsdScalarValue value) => TrySetCore(value, null);
 
+    /// <summary>Attempts to author an explicitly tagged value on an existing compatible attribute.</summary>
+    /// <param name="value">The explicitly tagged value to author.</param>
+    /// <param name="failureReason">
+    /// When this method returns <see langword="false"/>, receives the reason the value was not
+    /// authored; otherwise receives <see cref="UsdAttributeTryFailureReason.None"/>.
+    /// </param>
+    /// <returns>
+    /// <see langword="true"/> when the value was authored; otherwise, <see langword="false"/>.
+    /// </returns>
+    public bool TrySet(
+        in UsdScalarValue value,
+        out UsdAttributeTryFailureReason failureReason) =>
+        TrySetCore(value, null, out failureReason);
+
     /// <summary>Attempts to author an explicitly tagged value on an existing compatible time sample.</summary>
+    /// <remarks>
+    /// Use <see cref="TrySet(in UsdScalarValue, double, out UsdAttributeTryFailureReason)"/> to
+    /// observe why this method returned <see langword="false"/>.
+    /// </remarks>
     public bool TrySet(in UsdScalarValue value, double timeCode) => TrySetCore(value, timeCode);
 
+    /// <summary>Attempts to author an explicitly tagged value on an existing compatible time sample.</summary>
+    /// <param name="value">The explicitly tagged value to author.</param>
+    /// <param name="timeCode">The numeric time code to author.</param>
+    /// <param name="failureReason">
+    /// When this method returns <see langword="false"/>, receives the reason the value was not
+    /// authored; otherwise receives <see cref="UsdAttributeTryFailureReason.None"/>.
+    /// </param>
+    /// <returns>
+    /// <see langword="true"/> when the value was authored; otherwise, <see langword="false"/>.
+    /// </returns>
+    public bool TrySet(
+        in UsdScalarValue value,
+        double timeCode,
+        out UsdAttributeTryFailureReason failureReason) =>
+        TrySetCore(value, timeCode, out failureReason);
+
     /// <summary>Attempts to read an explicitly tagged supported scalar or array at default time.</summary>
+    /// <remarks>
+    /// Use <see cref="TryGetValue(out UsdScalarValue, out UsdAttributeTryFailureReason)"/> to
+    /// observe why this method returned <see langword="false"/>.
+    /// </remarks>
     public bool TryGetValue(out UsdScalarValue value) => TryGetValueCore(null, out value);
 
+    /// <summary>Attempts to read an explicitly tagged supported scalar or array at default time.</summary>
+    /// <param name="value">
+    /// When this method returns <see langword="true"/>, receives the attribute value; otherwise,
+    /// receives the default value.
+    /// </param>
+    /// <param name="failureReason">
+    /// When this method returns <see langword="false"/>, receives the reason no value was returned;
+    /// otherwise receives <see cref="UsdAttributeTryFailureReason.None"/>.
+    /// </param>
+    /// <returns>
+    /// <see langword="true"/> when a value was read; otherwise, <see langword="false"/>.
+    /// </returns>
+    public bool TryGetValue(
+        out UsdScalarValue value,
+        out UsdAttributeTryFailureReason failureReason) =>
+        TryGetValueCore(null, out value, out failureReason);
+
     /// <summary>Attempts to read an explicitly tagged supported scalar or array at a numeric time code.</summary>
+    /// <remarks>
+    /// Use <see cref="TryGetValue(double, out UsdScalarValue, out UsdAttributeTryFailureReason)"/>
+    /// to observe why this method returned <see langword="false"/>.
+    /// </remarks>
     public bool TryGetValue(double timeCode, out UsdScalarValue value) => TryGetValueCore(timeCode, out value);
+
+    /// <summary>Attempts to read an explicitly tagged supported scalar or array at a numeric time code.</summary>
+    /// <param name="timeCode">The numeric time code to read.</param>
+    /// <param name="value">
+    /// When this method returns <see langword="true"/>, receives the attribute value; otherwise,
+    /// receives the default value.
+    /// </param>
+    /// <param name="failureReason">
+    /// When this method returns <see langword="false"/>, receives the reason no value was returned;
+    /// otherwise receives <see cref="UsdAttributeTryFailureReason.None"/>.
+    /// </param>
+    /// <returns>
+    /// <see langword="true"/> when a value was read; otherwise, <see langword="false"/>.
+    /// </returns>
+    public bool TryGetValue(
+        double timeCode,
+        out UsdScalarValue value,
+        out UsdAttributeTryFailureReason failureReason) =>
+        TryGetValueCore(timeCode, out value, out failureReason);
 
     private static UsdAttributeValueState ConvertState(
         OpenUsd.Interop.OpenUsdNativeAttributeValueState state) =>
@@ -151,6 +233,64 @@ public readonly struct UsdAttribute : IUsdStageBound
         }
     }
 
+    private bool TryGetValueCore(
+        double? timeCode,
+        out UsdScalarValue value,
+        out UsdAttributeTryFailureReason failureReason)
+    {
+        value = default;
+        failureReason = UsdAttributeTryFailureReason.None;
+        if (!AttributeExists())
+        {
+            failureReason = UsdAttributeTryFailureReason.AttributeNotFound;
+            return false;
+        }
+
+        try
+        {
+            value = GetValueCore(timeCode);
+            return true;
+        }
+        catch (OpenUsd.Interop.OpenUsdNativeException)
+        {
+            value = default;
+            failureReason = UsdAttributeTryFailureReason.NativeCallFailed;
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            value = default;
+            failureReason = UsdAttributeTryFailureReason.UnsupportedValueType;
+            return false;
+        }
+    }
+
+    internal static bool TryGetExistingValueCore(
+        Func<UsdScalarValue> getValue,
+        out UsdScalarValue value,
+        out UsdAttributeTryFailureReason failureReason)
+    {
+        ArgumentNullException.ThrowIfNull(getValue);
+        try
+        {
+            value = getValue();
+            failureReason = UsdAttributeTryFailureReason.None;
+            return true;
+        }
+        catch (OpenUsd.Interop.OpenUsdNativeException)
+        {
+            value = default;
+            failureReason = UsdAttributeTryFailureReason.NativeCallFailed;
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            value = default;
+            failureReason = UsdAttributeTryFailureReason.UnsupportedValueType;
+            return false;
+        }
+    }
+
     private bool TrySetCore(in UsdScalarValue value, double? timeCode)
     {
         if (!AttributeExists())
@@ -180,6 +320,47 @@ public readonly struct UsdAttribute : IUsdStageBound
         }
         catch (OpenUsd.Interop.OpenUsdNativeException)
         {
+            return false;
+        }
+    }
+
+    private bool TrySetCore(
+        in UsdScalarValue value,
+        double? timeCode,
+        out UsdAttributeTryFailureReason failureReason)
+    {
+        failureReason = UsdAttributeTryFailureReason.None;
+        if (!AttributeExists())
+        {
+            failureReason = UsdAttributeTryFailureReason.AttributeNotFound;
+            return false;
+        }
+
+        string typeName;
+        try
+        {
+            typeName = TypeName;
+        }
+        catch (OpenUsd.Interop.OpenUsdNativeException)
+        {
+            failureReason = UsdAttributeTryFailureReason.NativeCallFailed;
+            return false;
+        }
+
+        if (!IsCompatible(typeName, value.Kind))
+        {
+            failureReason = UsdAttributeTryFailureReason.TypeIncompatible;
+            return false;
+        }
+
+        try
+        {
+            SetCore(value, timeCode);
+            return true;
+        }
+        catch (OpenUsd.Interop.OpenUsdNativeException)
+        {
+            failureReason = UsdAttributeTryFailureReason.NativeCallFailed;
             return false;
         }
     }
