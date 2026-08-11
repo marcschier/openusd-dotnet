@@ -44,9 +44,9 @@ these references:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="OpenUsd" Version="0.8.0-alpha" />
-  <PackageReference Include="OpenUsd.Rendering.Silk.Vulkan" Version="0.8.0-alpha" />
-  <PackageReference Include="OpenUsd.Runtime.Imaging" Version="0.8.0-alpha" />
+  <PackageReference Include="OpenUsd" Version="0.9.0-alpha" />
+  <PackageReference Include="OpenUsd.Rendering.Silk.Vulkan" Version="0.9.0-alpha" />
+  <PackageReference Include="OpenUsd.Runtime.Imaging" Version="0.9.0-alpha" />
 </ItemGroup>
 ```
 
@@ -145,6 +145,13 @@ The one-shot `SilkFrameCapture.Capture` helper builds a renderer per call and so
 never been synchronized. It now throws `InvalidOperationException` naming `SilkFrameCapturer` when handed an
 already-synchronized session, rather than silently returning a cleared frame with `DrawCount = 0`. A session that has
 never been synchronized still returns a blank frame for a stage with no renderable geometry, which is not an error.
+
+`SilkFrameCapture.CaptureRetained` is the capture path for a live presentation renderer, such as the Viewer's hdSilk
+backend. The presentation loop has already synchronized the session for the frame on screen, so a second session sync
+would receive no geometry. `CaptureRetained` instead renders the existing `ISilkRenderTargetRenderer` offscreen without
+synchronizing hdSilk, using the retained scene, camera, time code, and complexity from the most recently presented
+frame. Because no command page is consumed, the result reports `CommandCount = 0` and echoes the caller-supplied page
+revision.
 
 Viewer frame adapters capture one immutable `StageRenderState` request and forward its exact revision,
 time, and camera. Storm synchronous/asynchronous requests and the D3D12, Vulkan, and Metal hdSilk

@@ -13,14 +13,14 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Current distribution:** public source repository and 22 published `0.8.0-alpha` packages,
-> with pre-1.0 APIs. This set adds the five Cesium package IDs enumerated below, which were
-> buildable from the tree but withheld from NuGet.org at `0.5.0-alpha`.
+> **Current distribution:** public source repository and 22 published `0.9.0-alpha` packages,
+> with pre-1.0 APIs. This set includes the five Cesium package IDs enumerated below, which
+> became public after being withheld from NuGet.org at `0.5.0-alpha`.
 > Package identities and public APIs may still change before 1.0.
 
 ```shell
-dotnet add package OpenUsd --version 0.8.0-alpha
-dotnet add package OpenUsd.Runtime.Core --version 0.8.0-alpha
+dotnet add package OpenUsd --version 0.9.0-alpha
+dotnet add package OpenUsd.Runtime.Core --version 0.9.0-alpha
 ```
 
 `OpenUsd.Runtime.Core` is the RID-agnostic metapackage for `win-x64`, `linux-x64`, and
@@ -123,8 +123,7 @@ See [Architecture](docs/architecture.md) and [Rendering](docs/rendering.md).
 ## 📦 Package matrix
 
 All 22 package IDs below are buildable from this repository and published to NuGet.org at
-`0.8.0-alpha`. The five Cesium IDs were withheld at `0.5.0-alpha` and ship for the first time
-in this release.
+`0.9.0-alpha`. The five Cesium IDs became public after being withheld at `0.5.0-alpha`.
 
 | Package | TFM | Purpose |
 | --- | --- | --- |
@@ -402,7 +401,7 @@ tests and documentation. See [Contributing](CONTRIBUTING.md).
 
 ## Status
 
-OpenUsd is a substantial public `0.8.0-alpha` baseline with 22 packages published to NuGet.org,
+OpenUsd is a substantial public `0.9.0-alpha` baseline with 22 packages published to NuGet.org,
 but it is not a stable release. Data, rendering, Viewer, package, NativeAOT, shader, parity, and
 performance gates exist, and this README states what they do and do not prove. Public API and package
 identities may change before 1.0. Workflow badges above are the authoritative status for the default branch.
@@ -414,10 +413,13 @@ the measured divergences recorded in [Testing](docs/testing.md).
 The standalone Viewer bundle smoke is now proven on `win-x64` and `linux-x64`. Run 31290108012
 records `viewer distribution linux-x64` as successful and reports a rendered Storm/OpenGL frame under
 Xvfb after the Linux X11 error-trap self-deadlock was fixed in 278b1f6. The `osx-arm64` result is
-also established, but still red: the same run reaches `GPU composition: ready (808 × 513)`, falls
-back from Storm to Metal after the headless CGL pixel-format limit, initializes hdSilk/Metal, and
-then never reports `frame rendered` within 120 seconds. The published packages are unaffected — they
-are gated separately — but the macOS standalone Viewer bundle remains a known failing smoke.
+also established, but still red: the same evidence records `GPU composition: ready (808 x 513)`,
+`initialized=True resources=True`, and the stage-open task completing successfully as
+`RanToCompletion` on a pool thread. Probes posted after initialization at both
+`DispatcherPriority.Send` and `Background` were armed and posted, but neither priority was processed
+before the smoke timed out. The published packages are unaffected — they are gated separately — and
+the observations point at Avalonia dispatcher servicing after initialization rather than the Metal
+renderer, backend initialization, or stage-open async chain.
 
 [ci]: https://github.com/marcschier/openusd-dotnet/actions/workflows/ci.yml
 [ci-badge]: https://github.com/marcschier/openusd-dotnet/actions/workflows/ci.yml/badge.svg?branch=main
@@ -432,4 +434,4 @@ are gated separately — but the macOS standalone Viewer bundle remains a known 
 [license]: LICENSE
 [license-badge]: https://img.shields.io/badge/license-MIT-blue.svg
 [status]: #status
-[status-badge]: https://img.shields.io/badge/status-0.8.0--alpha%20%7C%20public-orange
+[status-badge]: https://img.shields.io/badge/status-0.9.0--alpha%20%7C%20public-orange
