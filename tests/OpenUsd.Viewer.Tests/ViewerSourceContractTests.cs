@@ -262,11 +262,15 @@ public sealed class ViewerSourceContractTests
         await Assert.That(smokeRunner).Contains("status = 'skipped'");
         await Assert.That(smokeRunner).Contains("macos-avalonia-metal-composition");
         await Assert.That(smokeRunner).Contains("submitted to Avalonia compositor$'");
+        await Assert.That(smokeRunner).Contains("'frame-submitted'");
+        await Assert.That(smokeRunner).Contains("'composition-ready'");
+        await Assert.That(smokeRunner).Contains("compositionStage = $compositionStage");
         await Assert.That(smokeRunner).Contains("VIEWER_BUNDLE_SMOKE_SKIPPED");
         await Assert.That(smokeRunner).Contains("Get-Command lldb");
         await Assert.That(testing).Contains(
             "artifacts/viewer-distribution-smoke/osx-arm64/viewer-composition-capability.json");
         await Assert.That(testing).Contains("submitted a frame to the Avalonia compositor");
+        await Assert.That(testing).Contains("composition-ready");
     }
 
     [Test]

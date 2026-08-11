@@ -616,9 +616,15 @@ lifecycle tests, and Storm/Metal no-restart switching loops.
 
 **macOS Viewer bundle composition.** Hosted macOS can initialize the Viewer bundle's Metal
 IOSurface path and the render gate's IOSurface Metal tests prove the producer path on the same
-runner. A Viewer bundle skip is allowed only after the status trace proves that the render loop
-submitted a frame to the Avalonia compositor and that no `frame rendered` status arrived before the
-bounded 120-second wait. In that case, the skip is recorded in
+runner. A Viewer bundle skip is allowed only after the status trace proves that Metal reported
+ready and the render loop reached one of two observed stall points, and that no `frame rendered`
+status arrived before the bounded 120-second wait. The two accepted stages are `frame-submitted`
+(the loop submitted a frame to the Avalonia compositor and it was never presented, job
+93187310918) and `composition-ready` (composition reached `ready (W x H)` and no frame was ever
+submitted, job 93732536613). Both follow `VIEWER_METAL_HDSILK_READY` and share the same accepted
+cause: the macOS UI thread stops servicing dispatcher work once Metal composition begins. Any
+trace that does not reach `ready` is not this condition and still fails. The stage reached is
+recorded as `compositionStage` in
 `artifacts/viewer-distribution-smoke/osx-arm64/viewer-composition-capability.json`. The package
 launch, native asset checks, crash/hang diagnostics, and the render gate's Metal IOSurface proofs
 still run and still fail on regression.

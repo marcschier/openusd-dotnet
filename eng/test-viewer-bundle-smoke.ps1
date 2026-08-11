@@ -546,13 +546,23 @@ function Try-WriteMacOSCompositionSkip
     $lastRenderer = $Statuses |
         Where-Object { $_ -match '^Renderer ' } |
         Select-Object -Last 1
-    if ($lastComposition -notmatch '^GPU composition: frame \d+ submitted to Avalonia compositor$')
+
+    # The wedge stalls at one of two points, both after Metal reports ready. Job 93187310918
+    # reached `frame N submitted to Avalonia compositor` and never presented; job 93732536613
+    # stalled one step earlier, at `ready (W x H)`, so no frame was ever submitted. Both share
+    # the same accepted cause: the macOS UI thread stops servicing dispatcher work once Metal
+    # composition begins. Anything short of `ready` is NOT this condition and must still fail.
+    $compositionStage = switch -Regex ($lastComposition)
+    {
+        '^GPU composition: frame \d+ submitted to Avalonia compositor$' { 'frame-submitted'; break }
+        '^GPU composition: ready \(\d+ . \d+\)$' { 'composition-ready'; break }
+        default { $null }
+    }
+    if ($null -eq $compositionStage)
     {
         return $false
     }
 
-    # Job 93187310918 proved that hosted macOS initializes IOSurface Metal but never
-    # reports `GPU composition: frame ... presented` before the bounded smoke wait.
     $reason =
         'Hosted macOS initialized Metal IOSurface composition, but Avalonia ' +
         'did not complete a compositor presentation before the 120-second ' +
@@ -568,10 +578,12 @@ function Try-WriteMacOSCompositionSkip
         rid = $Rid
         expectedStatusPattern = $ExpectedStatusPattern
         smokeSeconds = $SmokeSeconds
+        compositionStage = $compositionStage
         lastCompositionStatus = $lastComposition
         lastRendererStatus = $lastRenderer
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $compositionCapabilityFile
-    Write-Output "VIEWER_BUNDLE_SMOKE_SKIPPED rid=$Rid reason=$reason"
+    Write-Output (
+        "VIEWER_BUNDLE_SMOKE_SKIPPED rid=$Rid stage=$compositionStage reason=$reason")
     return $true
 }
 

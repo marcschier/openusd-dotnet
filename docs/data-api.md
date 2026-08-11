@@ -391,6 +391,26 @@ a payload that does not match `UsdScalarValue.Kind` throws explicitly. The defau
 report `NotFound`; typed reads of mismatched USD types report `InvalidArgument`. Existing typed
 convenience methods remain available.
 
+`TryGetValue` and `TrySet` return `false` for every non-success outcome and never throw. Because that
+single `false` conflates a missing attribute, an incompatible type, and a failed native call, each
+overload has a companion that reports the distinction through
+`UsdAttributeTryFailureReason` without changing the return value:
+
+```csharp
+if (!temperature.TryGetValue(out UsdScalarValue value, out UsdAttributeTryFailureReason reason))
+{
+    // AttributeNotFound, UnsupportedValueType, or NativeCallFailed
+    Console.WriteLine(reason);
+}
+```
+
+`None` accompanies success. `AttributeNotFound` covers a missing attribute, `TypeIncompatible` a set
+whose value kind does not match the declared USD type, `UnsupportedValueType` a get whose authored
+value `UsdScalarValue` cannot represent, and `NativeCallFailed` an underlying OpenUSD failure — the
+case previously indistinguishable from a legitimately absent value. The original overloads keep their
+existing signatures and behaviour and delegate to the same decision path, so the reporting overloads
+cannot drift from them.
+
 `GetTimeSamples` transfers sorted sample ordinates through one bulk buffer API rather than invoking
 native code per sample. `BlockValue` authors a default value block and removes authored animation;
 `ClearValue` removes the default, samples, spline, or block at the current edit target.
