@@ -816,10 +816,7 @@ public sealed class ViewerStageCameraTests
         ViewerStageCameraSnapshot snapshot = CreateSnapshot(
             UsdGeomCameraProjection.Perspective);
         var viewport = new ViewportDimensions(1920, 1080);
-        for (int index = 0; index < 64; index++)
-        {
-            ConvertProjection(snapshot, viewport);
-        }
+        AllocationWarmup.UntilQuiet(_ => ConvertProjection(snapshot, viewport));
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int index = 0; index < AllocationIterations; index++)

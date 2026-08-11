@@ -662,10 +662,7 @@ public sealed class ViewerCameraNavigationTests
         var controller = new ViewerCameraNavigationController(
             new ViewportDimensions(1280, 720));
         controller.ResetToExplicitPose();
-        for (int i = 0; i < 64; i++)
-        {
-            ExerciseHotPaths(controller);
-        }
+        AllocationWarmup.UntilQuiet(_ => ExerciseHotPaths(controller));
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < AllocationIterations; i++)

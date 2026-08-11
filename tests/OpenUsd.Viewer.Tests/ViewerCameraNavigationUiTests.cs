@@ -126,27 +126,28 @@ public sealed class ViewerCameraNavigationUiTests
                 OpenUsdStormPointerButtons.Left,
                 OpenUsdStormInputModifiers.Alt),
             0);
-        for (int index = 0; index < 32; index++)
+        int warmed = AllocationWarmup.UntilQuiet(step =>
         {
             _ = tracker.Update(
                 Navigation(
-                    checked((ulong)index + 2),
-                    index + 1,
-                    index + 2,
+                    checked((ulong)step + 2),
+                    step + 1,
+                    step + 2,
                     OpenUsdStormPointerButtons.Left,
                     OpenUsdStormInputModifiers.Alt),
                 0);
-        }
+        });
 
         float deltaSum = 0;
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int index = 0; index < AllocationIterations; index++)
         {
+            int step = warmed + index;
             ViewerStormNavigationDelta delta = tracker.Update(
                 Navigation(
-                    checked((ulong)index + 34),
-                    index + 33,
-                    index + 34,
+                    checked((ulong)step + 2),
+                    step + 1,
+                    step + 2,
                     OpenUsdStormPointerButtons.Left,
                     OpenUsdStormInputModifiers.Alt),
                 0);
@@ -562,10 +563,7 @@ public sealed class ViewerCameraNavigationUiTests
         CameraState camera = CreateCamera(1f);
         await Assert.That(pump.TryPost(camera)).IsTrue();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        for (int index = 0; index < 64; index++)
-        {
-            PostCamera(pump, camera);
-        }
+        AllocationWarmup.UntilQuiet(_ => PostCamera(pump, camera));
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int index = 0; index < AllocationIterations; index++)
