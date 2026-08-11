@@ -3213,6 +3213,9 @@ public sealed partial class MainWindow : Window, IDisposable
         try
         {
             SetBusy($"Opening {Path.GetFileName(normalizedPath)}...");
+            AvaloniaDispatcherShutdownDiagnostics.EnsureSubscribed(
+                "stage open before dispatcher probes");
+            AvaloniaDispatcherShutdownDiagnostics.LogInterpretationOnce();
             if (!IsAutomatedViewerRun())
             {
                 ViewerStartupOptions.WriteStatus(
@@ -3409,7 +3412,7 @@ public sealed partial class MainWindow : Window, IDisposable
             ViewerStartupOptions.WriteStatus(
                 "Viewer stage open: dispatcher timer tick " +
                 $"{current} elapsed-ms={stopwatch.ElapsedMilliseconds} " +
-                $"thread={Environment.CurrentManagedThreadId}");
+                FormatStageOpenThreadStatus());
         };
         ViewerStartupOptions.WriteStatus(
             "Viewer stage open: dispatcher timer armed: " +
@@ -3438,8 +3441,7 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     private static string FormatStageOpenThreadStatus() =>
-        $"thread={Environment.CurrentManagedThreadId} " +
-        $"dispatcher-access={Dispatcher.UIThread.CheckAccess()}";
+        AvaloniaDispatcherShutdownDiagnostics.FormatThreadStatus();
 
     private static bool ShouldRunStageOpenDispatcherProbe(out string reason)
     {

@@ -149,12 +149,15 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
                 "Renderer coordinator: initialized backend returning " +
                 FormatThreadStatus());
             ViewerStartupOptions.WriteStatus(
-                "Renderer coordinator: dispatcher return probe armed");
+                "Renderer coordinator: dispatcher return probe armed " +
+                FormatThreadStatus());
             Dispatcher.UIThread.Post(static () =>
                 ViewerStartupOptions.WriteStatus(
-                    "Renderer coordinator: dispatcher return probe processed"));
+                    "Renderer coordinator: dispatcher return probe processed " +
+                    FormatThreadStatus()));
             ViewerStartupOptions.WriteStatus(
-                "Renderer coordinator: dispatcher return probe posted");
+                "Renderer coordinator: dispatcher return probe posted " +
+                FormatThreadStatus());
             PostDispatcherReturnPriorityProbe(
                 "Send",
                 DispatcherPriority.Send);
@@ -183,8 +186,7 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
     }
 
     private static string FormatThreadStatus() =>
-        $"thread={Environment.CurrentManagedThreadId} " +
-        $"dispatcher-access={Dispatcher.UIThread.CheckAccess()}";
+        AvaloniaDispatcherShutdownDiagnostics.FormatThreadStatus();
 
     private static void PostDispatcherReturnPriorityProbe(
         string name,

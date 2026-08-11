@@ -17,6 +17,8 @@ public sealed class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            AvaloniaDispatcherShutdownDiagnostics.EnsureSubscribed(
+                "framework initialization before main window creation");
             desktop.MainWindow = new MainWindow();
             ViewerStartupOptions.WriteStatus(
                 $"Platform backend: {ViewerStartupOptions.PlatformDecision.BackendName}; " +

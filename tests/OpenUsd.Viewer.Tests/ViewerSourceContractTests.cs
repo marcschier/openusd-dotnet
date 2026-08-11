@@ -14,7 +14,8 @@ public sealed class ViewerSourceContractTests
             "OpenUsd.Viewer",
             "AvaloniaViewerRenderBackendHost.cs"));
 
-        await Assert.That(host).Contains("private bool AttachForSurfaceCreation(Control control)");
+        await Assert.That(host).Contains(
+            "private bool AttachForSurfaceCreation(RenderBackendKind kind, Control control)");
         await Assert.That(host).Contains("viewportHost.Attach(control, isActive: true);");
         await Assert.That(host)
             .Contains("Linux X11 NativeControlHost can stay");
@@ -121,6 +122,11 @@ public sealed class ViewerSourceContractTests
             "src",
             "OpenUsd.Viewer",
             "AvaloniaViewerRenderBackendHost.cs"));
+        string dispatcherDiagnostics = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "AvaloniaDispatcherShutdownDiagnostics.cs"));
 
         foreach (string status in new[]
         {
@@ -193,10 +199,36 @@ public sealed class ViewerSourceContractTests
             "composition attach: initialization wait completed",
             "composition attach: hide initialized candidate starting",
             "composition attach: hide initialized candidate completed",
+            "composition attach: dispatcher attach boundary probe armed",
+            "composition attach: dispatcher attach boundary probe not armed",
+            "before viewport attach",
+            "after viewport attach",
+            "keep-active",
+            "composition attach: dispatcher bisect probe armed",
+            "composition attach: dispatcher bisect probe posted",
+            "composition attach: dispatcher bisect probe processed",
+            "composition attach: dispatcher bisect probe not armed",
             "composition attach: backend session returning"
         })
         {
             await Assert.That(host).Contains(status);
+        }
+
+        foreach (string status in new[]
+        {
+            "Viewer dispatcher shutdown: probes subscribed",
+            "Viewer dispatcher shutdown: ShutdownStarted",
+            "Viewer dispatcher shutdown: ShutdownFinished",
+            "Viewer dispatcher shutdown-vs-block interpretation",
+            "ShutdownStarted or ShutdownFinished means dispatcher/application shutdown",
+            "before viewport attach without after viewport attach",
+            "dispatcher-shutdown-started-observed",
+            "dispatcher-has-shutdown-started-api=missing",
+            "desktop-shutdown-mode",
+            "desktop-main-window"
+        })
+        {
+            await Assert.That(dispatcherDiagnostics).Contains(status);
         }
 
         await Assert.That(startupOptions).Contains("StageOpenDispatcherProbe");
@@ -860,6 +892,12 @@ public sealed class ViewerSourceContractTests
 
     private static string FindRepositoryRoot()
     {
+        string currentDirectory = Environment.CurrentDirectory;
+        if (File.Exists(Path.Combine(currentDirectory, "OpenUsd.slnx")))
+        {
+            return currentDirectory;
+        }
+
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {

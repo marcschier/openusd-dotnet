@@ -49,15 +49,28 @@ internal sealed class AvaloniaViewerRenderBackendHost(
         Volatile.Read(ref _runtimeIdentities[(int)kind]) ??
         ViewerBackendRuntimeIdentity.Unknown;
 
-    private bool AttachForSurfaceCreation(Control control)
+    private bool AttachForSurfaceCreation(RenderBackendKind kind, Control control)
     {
-        bool keepActive = viewportHost.VisibleControlCount == 0;
+        int visibleControlCount = viewportHost.VisibleControlCount;
+        bool keepActive = visibleControlCount == 0;
 
         // Run 31210681699 proved that Linux X11 NativeControlHost can stay
         // uncreated forever when the first backend candidate is initialized
         // hidden, and macOS Metal composition can crash after initializing
         // against a zero-sized hidden surface.
+        LogCompositionAttachBoundaryProbe(
+            kind,
+            "before viewport attach",
+            $"control={control.GetType().Name} " +
+            $"visible-control-count={visibleControlCount} " +
+            $"keep-active={keepActive}");
         viewportHost.Attach(control, isActive: true);
+        LogCompositionAttachBoundaryProbe(
+            kind,
+            "after viewport attach",
+            $"control={control.GetType().Name} " +
+            $"visible-control-count={viewportHost.VisibleControlCount} " +
+            $"keep-active={keepActive}");
         return keepActive;
     }
 
@@ -333,7 +346,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                     control,
                     initialState,
                     RenderBackendDiagnostics.Empty);
-                keepActive = AttachForSurfaceCreation(control);
+                keepActive = AttachForSurfaceCreation(RenderBackendKind.Storm, control);
             });
         }
         catch (OperationCanceledException exception) when (cleanupOwner is not null)
@@ -413,7 +426,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
             control.SetRenderSource(scheduler, source);
             control.UpdateRenderState(initialState);
             control.StatusChanged += OnControlStatusChanged;
-            keepActive = AttachForSurfaceCreation(control);
+            keepActive = AttachForSurfaceCreation(RenderBackendKind.Storm, control);
             createdControl = control;
         });
         StormViewportControl control = createdControl ??
@@ -484,12 +497,13 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 }
             };
             control.StatusChanged += OnControlStatusChanged;
-            keepActive = AttachForSurfaceCreation(control);
+            keepActive = AttachForSurfaceCreation(kind, control);
             createdControl = control;
         });
         ViewerStartupOptions.WriteStatus(
             $"{kind} composition attach: UI control attach invoke completed " +
             FormatThreadStatus());
+        PostCompositionAttachDispatcherProbe(kind, "after UI control attach invoke returns");
         CompositionViewportControl control = createdControl ??
             throw new InvalidOperationException("The composition viewport could not be created.");
         try
@@ -504,6 +518,7 @@ internal sealed class AvaloniaViewerRenderBackendHost(
                 $"{kind} composition attach: initialization wait completed " +
                 $"initialized={initialized} resources={resources is not null} " +
                 FormatThreadStatus());
+            PostCompositionAttachDispatcherProbe(kind, "after initialization wait");
             if (!initialized || resources is null)
             {
                 throw new InvalidOperationException(
@@ -690,8 +705,63 @@ internal sealed class AvaloniaViewerRenderBackendHost(
     private void OnControlStatusChanged(object? sender, string status) => reportStatus(status);
 
     private static string FormatThreadStatus() =>
-        $"thread={Environment.CurrentManagedThreadId} " +
-        $"dispatcher-access={Dispatcher.UIThread.CheckAccess()}";
+        AvaloniaDispatcherShutdownDiagnostics.FormatThreadStatus();
+
+    private static void PostCompositionAttachDispatcherProbe(
+        RenderBackendKind kind,
+        string phase)
+    {
+        if (!ViewerStartupOptions.StageOpenDispatcherProbe)
+        {
+            ViewerStartupOptions.WriteStatus(
+                $"{kind} composition attach: dispatcher bisect probe not armed " +
+                $"phase={phase}: --stage-open-dispatcher-probe not supplied " +
+                FormatThreadStatus());
+            return;
+        }
+
+        ViewerStartupOptions.WriteStatus(
+            $"{kind} composition attach: dispatcher bisect probe armed " +
+            $"phase={phase} priority=Send " +
+            FormatThreadStatus());
+        Dispatcher.UIThread.Post(
+            static state =>
+            {
+                var probe = ((RenderBackendKind Kind, string Phase))state!;
+                ViewerStartupOptions.WriteStatus(
+                    $"{probe.Kind} composition attach: dispatcher bisect probe processed " +
+                    $"phase={probe.Phase} priority=Send " +
+                    FormatThreadStatus());
+            },
+            (kind, phase),
+            DispatcherPriority.Send);
+        ViewerStartupOptions.WriteStatus(
+            $"{kind} composition attach: dispatcher bisect probe posted " +
+            $"phase={phase} priority=Send " +
+            FormatThreadStatus());
+    }
+
+    private static void LogCompositionAttachBoundaryProbe(
+        RenderBackendKind kind,
+        string phase,
+        string details)
+    {
+        if (!ViewerStartupOptions.StageOpenDispatcherProbe)
+        {
+            ViewerStartupOptions.WriteStatus(
+                $"{kind} composition attach: dispatcher attach boundary probe not armed " +
+                $"phase={phase}: --stage-open-dispatcher-probe not supplied " +
+                $"{details} " +
+                FormatThreadStatus());
+            return;
+        }
+
+        ViewerStartupOptions.WriteStatus(
+            $"{kind} composition attach: dispatcher attach boundary probe armed " +
+            $"phase={phase} " +
+            $"{details} " +
+            FormatThreadStatus());
+    }
 
     private void SetRuntimeIdentity(
         RenderBackendKind kind,
