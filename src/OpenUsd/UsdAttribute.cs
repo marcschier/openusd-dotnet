@@ -210,28 +210,7 @@ public readonly struct UsdAttribute : IUsdStageBound
     }
 
     private bool TryGetValueCore(double? timeCode, out UsdScalarValue value)
-    {
-        value = default;
-        if (!AttributeExists())
-        {
-            return false;
-        }
-        try
-        {
-            value = GetValueCore(timeCode);
-            return true;
-        }
-        catch (OpenUsd.Interop.OpenUsdNativeException)
-        {
-            value = default;
-            return false;
-        }
-        catch (InvalidOperationException)
-        {
-            value = default;
-            return false;
-        }
-    }
+        => TryGetValueCore(timeCode, out value, out _);
 
     private bool TryGetValueCore(
         double? timeCode,
@@ -246,23 +225,11 @@ public readonly struct UsdAttribute : IUsdStageBound
             return false;
         }
 
-        try
-        {
-            value = GetValueCore(timeCode);
-            return true;
-        }
-        catch (OpenUsd.Interop.OpenUsdNativeException)
-        {
-            value = default;
-            failureReason = UsdAttributeTryFailureReason.NativeCallFailed;
-            return false;
-        }
-        catch (InvalidOperationException)
-        {
-            value = default;
-            failureReason = UsdAttributeTryFailureReason.UnsupportedValueType;
-            return false;
-        }
+        var state = new TryGetValueState(this, timeCode);
+        return TryGetExistingValueCore<StageValueAccessor, TryGetValueState>(
+            in state,
+            out value,
+            out failureReason);
     }
 
     internal static bool TryGetExistingValueCore(
@@ -271,58 +238,74 @@ public readonly struct UsdAttribute : IUsdStageBound
         out UsdAttributeTryFailureReason failureReason)
     {
         ArgumentNullException.ThrowIfNull(getValue);
+        return TryGetExistingValueCore<DelegateValueAccessor, Func<UsdScalarValue>>(
+            in getValue,
+            out value,
+            out failureReason);
+    }
+
+    internal static bool TryGetExistingValueCore<TAccessor, TState>(
+        in TState state,
+        out UsdScalarValue value,
+        out UsdAttributeTryFailureReason failureReason)
+        where TAccessor : ITryGetValueAccessor<TState>
+    {
         try
         {
-            value = getValue();
+            value = TAccessor.GetValue(in state);
             failureReason = UsdAttributeTryFailureReason.None;
             return true;
         }
-        catch (OpenUsd.Interop.OpenUsdNativeException)
+        catch (Exception exception) when (
+            TryClassifyGetValueFailure(exception, out value, out failureReason))
         {
-            value = default;
+            return false;
+        }
+    }
+
+    private static bool TryClassifyGetValueFailure(
+        Exception exception,
+        out UsdScalarValue value,
+        out UsdAttributeTryFailureReason failureReason)
+    {
+        value = default;
+        if (exception is OpenUsd.Interop.OpenUsdNativeException)
+        {
             failureReason = UsdAttributeTryFailureReason.NativeCallFailed;
-            return false;
+            return true;
         }
-        catch (InvalidOperationException)
+        if (exception is InvalidOperationException)
         {
-            value = default;
             failureReason = UsdAttributeTryFailureReason.UnsupportedValueType;
-            return false;
+            return true;
         }
+
+        failureReason = UsdAttributeTryFailureReason.None;
+        return false;
+    }
+
+    internal interface ITryGetValueAccessor<TState>
+    {
+        static abstract UsdScalarValue GetValue(in TState state);
+    }
+
+    private readonly record struct TryGetValueState(
+        UsdAttribute Attribute,
+        double? TimeCode);
+
+    private readonly struct StageValueAccessor : ITryGetValueAccessor<TryGetValueState>
+    {
+        public static UsdScalarValue GetValue(in TryGetValueState state) =>
+            state.Attribute.GetValueCore(state.TimeCode);
+    }
+
+    private readonly struct DelegateValueAccessor : ITryGetValueAccessor<Func<UsdScalarValue>>
+    {
+        public static UsdScalarValue GetValue(in Func<UsdScalarValue> state) => state();
     }
 
     private bool TrySetCore(in UsdScalarValue value, double? timeCode)
-    {
-        if (!AttributeExists())
-        {
-            return false;
-        }
-
-        string typeName;
-        try
-        {
-            typeName = TypeName;
-        }
-        catch (OpenUsd.Interop.OpenUsdNativeException)
-        {
-            return false;
-        }
-
-        if (!IsCompatible(typeName, value.Kind))
-        {
-            return false;
-        }
-
-        try
-        {
-            SetCore(value, timeCode);
-            return true;
-        }
-        catch (OpenUsd.Interop.OpenUsdNativeException)
-        {
-            return false;
-        }
-    }
+        => TrySetCore(value, timeCode, out _);
 
     private bool TrySetCore(
         in UsdScalarValue value,

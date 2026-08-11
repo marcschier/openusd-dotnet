@@ -11,10 +11,17 @@ public enum UsdAttributeTryFailureReason
     /// <summary>The attribute was not present on the owning prim.</summary>
     AttributeNotFound = 1,
 
-    /// <summary>The supplied value kind is not compatible with the attribute's declared USD type.</summary>
+    /// <summary>
+    /// A set operation was declined because the supplied value kind is not compatible with the
+    /// attribute's declared USD type; choose a value kind matching <see cref="UsdAttribute.TypeName"/>.
+    /// </summary>
     TypeIncompatible = 2,
 
-    /// <summary>The attribute value exists but cannot be represented by <see cref="UsdScalarValue"/>.</summary>
+    /// <summary>
+    /// A get operation found an attribute whose authored value could not be represented by
+    /// <see cref="UsdScalarValue"/>; use a typed accessor or the throwing <see cref="UsdAttribute.GetValue()"/>
+    /// API for details.
+    /// </summary>
     UnsupportedValueType = 3,
 
     /// <summary>The underlying native OpenUSD call failed.</summary>
