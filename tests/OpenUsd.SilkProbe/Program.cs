@@ -178,6 +178,8 @@ internal static partial class Program
                     AssetPath = assetPath,
                     BuildIdentity = SharedStageBuildIdentity.FromEnvironment(),
                     BaselineResources = baseline,
+                    WorkingSetGrowthCeilingBytes =
+                        SharedStageSoak.HeadlessWorkingSetGrowthCeilingBytes,
                     CreateGraphicsDevice = CreateGraphicsDevice,
                     ReportStatus = Console.WriteLine
                 }).ConfigureAwait(false);

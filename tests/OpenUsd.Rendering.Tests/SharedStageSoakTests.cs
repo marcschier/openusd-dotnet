@@ -198,6 +198,113 @@ public sealed class SharedStageSoakTests
     }
 
     [Test]
+    public async Task WorkingSetSlopeAboveCeilingIsReportedButDoesNotFailMemoryGate()
+    {
+        SharedStageMemoryCheckpoint[] checkpoints = Enumerable.Range(1, 12)
+            .Select(index =>
+            {
+                int mutations = index * 400;
+                return new SharedStageMemoryCheckpoint(
+                    index * 500,
+                    mutations,
+                    0,
+                    (long)(mutations * 5.5 * 1024 * 1024 / 1000),
+                    0,
+                    0,
+                    2,
+                    default);
+            })
+            .ToArray();
+        double workingSetSlope = SharedStageSoak.CalculateSlope(
+            checkpoints,
+            checkpoint => checkpoint.WorkingSetBytes);
+        bool survived = false;
+        SharedStageSoak.ValidateMemoryGrowth(
+            new SharedStageSoak.MemorySnapshot(100 * 1024 * 1024, 1_000 * 1024 * 1024),
+            new SharedStageSoak.MemorySnapshot(101 * 1024 * 1024, 1_020 * 1024 * 1024),
+            managedSlope: 64 * 1024,
+            workingSetCeiling: SharedStageSoak.ViewerWorkingSetGrowthCeilingBytes);
+        survived = true;
+
+        await Assert.That(workingSetSlope).IsGreaterThan(4 * 1024 * 1024);
+        await Assert.That(survived).IsTrue();
+    }
+
+    [Test]
+    public async Task HeadlessWorkingSetCeilingFailsOneMiBPerThousandEditNativeLeak()
+    {
+        const long sustainedLeak = 10_002L * 1024 * 1024 / 1000;
+        await Assert.That(
+                () => SharedStageSoak.ValidateMemoryGrowth(
+                    new SharedStageSoak.MemorySnapshot(100 * 1024 * 1024, 1_000 * 1024 * 1024),
+                    new SharedStageSoak.MemorySnapshot(
+                        101 * 1024 * 1024,
+                        1_000 * 1024 * 1024 + sustainedLeak),
+                    managedSlope: 64 * 1024,
+                    workingSetCeiling: SharedStageSoak.HeadlessWorkingSetGrowthCeilingBytes))
+            .Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task HeadlessWorkingSetCeilingAllowsEightMiBBackstop()
+    {
+        bool survived = false;
+        SharedStageSoak.ValidateMemoryGrowth(
+            new SharedStageSoak.MemorySnapshot(100 * 1024 * 1024, 1_000 * 1024 * 1024),
+            new SharedStageSoak.MemorySnapshot(
+                101 * 1024 * 1024,
+                1_000 * 1024 * 1024 + SharedStageSoak.HeadlessWorkingSetGrowthCeilingBytes),
+            managedSlope: 64 * 1024,
+            workingSetCeiling: SharedStageSoak.HeadlessWorkingSetGrowthCeilingBytes);
+        survived = true;
+
+        await Assert.That(survived).IsTrue();
+    }
+
+    [Test]
+    public async Task ViewerWorkingSetCeilingFailsThirteenMiBPerThousandEditNativeLeak()
+    {
+        const long sustainedLeak = 10_002L * 13 * 1024 * 1024 / 1000;
+        await Assert.That(
+                () => SharedStageSoak.ValidateMemoryGrowth(
+                    new SharedStageSoak.MemorySnapshot(100 * 1024 * 1024, 1_000 * 1024 * 1024),
+                    new SharedStageSoak.MemorySnapshot(
+                        101 * 1024 * 1024,
+                        1_000 * 1024 * 1024 + sustainedLeak),
+                    managedSlope: 64 * 1024,
+                    workingSetCeiling: SharedStageSoak.ViewerWorkingSetGrowthCeilingBytes))
+            .Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task ViewerWorkingSetCeilingAllowsOneHundredTwentyEightMiBBackstop()
+    {
+        bool survived = false;
+        SharedStageSoak.ValidateMemoryGrowth(
+            new SharedStageSoak.MemorySnapshot(100 * 1024 * 1024, 1_000 * 1024 * 1024),
+            new SharedStageSoak.MemorySnapshot(
+                101 * 1024 * 1024,
+                1_000 * 1024 * 1024 + SharedStageSoak.ViewerWorkingSetGrowthCeilingBytes),
+            managedSlope: 64 * 1024,
+            workingSetCeiling: SharedStageSoak.ViewerWorkingSetGrowthCeilingBytes);
+        survived = true;
+
+        await Assert.That(survived).IsTrue();
+    }
+
+    [Test]
+    public async Task ManagedSlopeStillFailsForManagedLeak()
+    {
+        await Assert.That(
+                () => SharedStageSoak.ValidateMemoryGrowth(
+                    new SharedStageSoak.MemorySnapshot(100 * 1024 * 1024, 1_000 * 1024 * 1024),
+                    new SharedStageSoak.MemorySnapshot(101 * 1024 * 1024, 1_020 * 1024 * 1024),
+                    managedSlope: 256 * 1024,
+                    workingSetCeiling: SharedStageSoak.ViewerWorkingSetGrowthCeilingBytes))
+            .Throws<InvalidOperationException>();
+    }
+
+    [Test]
     public async Task ReleasedResourcesRequirePostLossFrameAndNoFault()
     {
         SharedStageSoakResult missingFrame = new()

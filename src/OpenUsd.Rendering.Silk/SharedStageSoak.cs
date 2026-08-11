@@ -42,6 +42,8 @@ internal sealed record SharedStageSoakOptions
     internal required SharedStageBuildIdentity BuildIdentity { get; init; }
 
     internal SharedStageResourceSnapshot BaselineResources { get; init; }
+
+    internal long WorkingSetGrowthCeilingBytes { get; init; }
 }
 
 internal readonly record struct SharedStageRendererDiagnostics(
@@ -702,6 +704,14 @@ internal sealed record SharedStageSoakResult
 
 internal static class SharedStageSoak
 {
+    // Headless SilkProbe observed -245,760..1,454,080 bytes across 20 CI samples.
+    // 8 MiB is about 5.8x the max and catches sustained native growth above ~0.8 MiB/1k edits.
+    internal const long HeadlessWorkingSetGrowthCeilingBytes = 8L * 1024 * 1024;
+
+    // Viewer WGL observed up to 42,975,232 bytes across 3 artifact samples.
+    // 128 MiB is about 3.1x that max and catches sustained native growth above ~12.8 MiB/1k edits.
+    internal const long ViewerWorkingSetGrowthCeilingBytes = 128L * 1024 * 1024;
+
     private const int PropertyOperationCount = 5_000;
     private const int TopologyOperationCount = 2_500;
     private const int CompositionOperationCount = 2_500;
@@ -754,6 +764,10 @@ internal static class SharedStageSoak
         ArgumentOutOfRangeException.ThrowIfNotEqual(
             options.EditCount,
             TotalOperationCount,
+            nameof(options));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(
+            options.WorkingSetGrowthCeilingBytes,
+            0,
             nameof(options));
         ArgumentException.ThrowIfNullOrWhiteSpace(options.AssetPath);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.Timeout, TimeSpan.Zero);
@@ -1097,7 +1111,7 @@ internal static class SharedStageSoak
             warmMemory,
             finalMemory,
             managedSlope,
-            workingSetSlope);
+            options.WorkingSetGrowthCeilingBytes);
 
         changes.Stop();
         await changeTask.ConfigureAwait(false);
@@ -1684,16 +1698,16 @@ internal static class SharedStageSoak
             process.WorkingSet64);
     }
 
-    private static void ValidateMemoryGrowth(
+    internal static void ValidateMemoryGrowth(
         MemorySnapshot warm,
         MemorySnapshot final,
         double managedSlope,
-        double workingSetSlope)
+        long workingSetCeiling)
     {
         const long managedCeiling = 16L * 1024 * 1024;
-        const long workingSetCeiling = 128L * 1024 * 1024;
         const double managedSlopeCeiling = 128 * 1024;
-        const double workingSetSlopeCeiling = 4 * 1024 * 1024;
+        // Working-set slope is reported in the artifact, but resident set growth is
+        // not deterministic enough to hard-gate below the absolute growth ceiling.
         if (final.ManagedHeapBytes > warm.ManagedHeapBytes + managedCeiling)
         {
             throw new InvalidOperationException(
@@ -1710,11 +1724,6 @@ internal static class SharedStageSoak
         {
             throw new InvalidOperationException(
                 $"Managed retained memory grew at {managedSlope:F0} bytes per 1,000 edits.");
-        }
-        if (workingSetSlope > workingSetSlopeCeiling)
-        {
-            throw new InvalidOperationException(
-                $"Working set grew at {workingSetSlope:F0} bytes per 1,000 edits.");
         }
     }
 
@@ -1866,7 +1875,7 @@ internal static class SharedStageSoak
         }
     }
 
-    private readonly record struct MemorySnapshot(
+    internal readonly record struct MemorySnapshot(
         long ManagedHeapBytes,
         long WorkingSetBytes);
 
