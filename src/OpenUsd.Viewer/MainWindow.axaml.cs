@@ -7979,6 +7979,8 @@ public sealed partial class MainWindow : Window, IDisposable
                         _soakStormViewport.SimulateContextLossForSoakAsync,
                     BuildIdentity = SharedStageBuildIdentity.FromEnvironment(),
                     BaselineResources = baseline,
+                    WorkingSetGrowthCeilingBytes =
+                        SharedStageSoak.ViewerWorkingSetGrowthCeilingBytes,
                     CreateGraphicsDevice = CreateGraphicsDevice,
                     ReportStatus = ViewerStartupOptions.WriteStatus
                 },
