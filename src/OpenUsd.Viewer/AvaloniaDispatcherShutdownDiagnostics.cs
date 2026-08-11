@@ -9,20 +9,20 @@ namespace OpenUsd.Viewer;
 
 internal static class AvaloniaDispatcherShutdownDiagnostics
 {
-    private static int s_subscribed;
-    private static int s_interpretationLogged;
-    private static int s_shutdownStarted;
+    private static int _subscribed;
+    private static int _interpretationLogged;
+    private static int _shutdownStarted;
 
     internal static void EnsureSubscribed(string reason)
     {
-        if (Interlocked.Exchange(ref s_subscribed, 1) != 0)
+        if (Interlocked.Exchange(ref _subscribed, 1) != 0)
         {
             return;
         }
 
         Dispatcher.UIThread.ShutdownStarted += (_, _) =>
         {
-            Volatile.Write(ref s_shutdownStarted, 1);
+            Volatile.Write(ref _shutdownStarted, 1);
             ViewerStartupOptions.WriteStatus(
                 "Viewer dispatcher shutdown: ShutdownStarted " + FormatThreadStatus());
         };
@@ -40,7 +40,7 @@ internal static class AvaloniaDispatcherShutdownDiagnostics
 
     internal static void LogInterpretationOnce()
     {
-        if (Interlocked.Exchange(ref s_interpretationLogged, 1) != 0)
+        if (Interlocked.Exchange(ref _interpretationLogged, 1) != 0)
         {
             return;
         }
@@ -56,7 +56,7 @@ internal static class AvaloniaDispatcherShutdownDiagnostics
     internal static string FormatThreadStatus() =>
         $"thread={Environment.CurrentManagedThreadId} " +
         $"dispatcher-access={Dispatcher.UIThread.CheckAccess()} " +
-        $"dispatcher-shutdown-started-observed={Volatile.Read(ref s_shutdownStarted) != 0} " +
+        $"dispatcher-shutdown-started-observed={Volatile.Read(ref _shutdownStarted) != 0} " +
         "dispatcher-has-shutdown-started-api=missing " +
         FormatLifetimeState();
 
