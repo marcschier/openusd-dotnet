@@ -1,7 +1,7 @@
 # Support matrix
 
 This matrix describes the implementation and declared repository gates for the public
-`0.10.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
+`0.11.0-alpha` baseline. It is not a 1.0 compatibility promise and does not claim that every
 workflow is currently green.
 
 ## Status terms
@@ -24,7 +24,7 @@ branch.
 
 | Item | Current state |
 | --- | --- |
-| Version | `0.10.0-alpha` |
+| Version | `0.11.0-alpha` |
 | Repository visibility | Public |
 | API compatibility | Pre-1.0; public APIs may change |
 | Package identity stability | Pre-1.0; IDs may change |
@@ -42,7 +42,7 @@ centralized in [Versioning and compatibility](versioning-compatibility.md).
 ## Packages
 
 All package projects below are packable from source. Availability here means repository production,
-not public-feed publication. All 22 IDs are published to NuGet.org at `0.10.0-alpha`; the five
+not public-feed publication. All 22 IDs are published to NuGet.org at `0.11.0-alpha`; the five
 Cesium IDs became public after being withheld at `0.5.0-alpha`.
 
 | Package | Framework project | Native requirement |
