@@ -1878,8 +1878,17 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         _ = sender;
         _ = e;
-        var shortcuts = new ShortcutsWindow();
-        _ = shortcuts.ShowDialog(this);
+        try
+        {
+            var shortcuts = new ShortcutsWindow();
+            _ = shortcuts.ShowDialog(this);
+        }
+#pragma warning disable CA1031 // A dialog failure must not tear down an embedding host.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            ShowError($"Could not open keyboard shortcuts: {exception.Message}");
+        }
     }
 
     private async Task FrameSelectedAsync()

@@ -819,6 +819,41 @@ public sealed class ViewerSourceContractTests
         await Assert.That(host).DoesNotContain("visible outline is rendered");
     }
 
+    [Test]
+    public async Task ShortcutsDialogUsesGeneratedXamlAndContainsMenuFailures()
+    {
+        string root = FindRepositoryRoot();
+        string dialog = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "ShortcutsWindow.axaml.cs"));
+        string markup = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "ShortcutsWindow.axaml"));
+        string window = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "MainWindow.axaml.cs"));
+
+        await Assert.That(dialog).Contains("InitializeComponent();");
+        await Assert.That(dialog).DoesNotContain("AvaloniaXamlLoader.Load(this)");
+        await Assert.That(markup).Contains("x:Name=\"ShortcutItems\"");
+        await Assert.That(markup).Contains("x:Name=\"CloseButton\"");
+
+        string handler = SliceMethod(
+            window,
+            "private void OnShortcutsClick",
+            "private async Task FrameSelectedAsync");
+        await Assert.That(handler).Contains("try");
+        await Assert.That(handler).Contains("catch (Exception exception)");
+        await Assert.That(handler).Contains(
+            "ShowError($\"Could not open keyboard shortcuts: {exception.Message}\");");
+    }
+
     private static string SliceMethod(string source, string startMarker, string endMarker)
     {
         int start = source.IndexOf(startMarker, StringComparison.Ordinal);

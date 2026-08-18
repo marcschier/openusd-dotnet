@@ -1,7 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
 
 namespace OpenUsd.Viewer;
 
@@ -23,6 +22,4 @@ internal sealed partial class ShortcutsWindow : Window
         ShortcutItems.ItemsSource = ViewerShortcutCatalog.All;
         CloseButton.Click += (_, _) => Close();
     }
-
-    private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 }
