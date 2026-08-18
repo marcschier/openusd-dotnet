@@ -552,9 +552,9 @@ int main(int argc, char** argv)
         const ArrowEvent arrow_events[] =
         {
             {@"", 123},
-            {[NSString stringWithFormat:@"%C", NSRightArrowFunctionKey], 0},
-            {[NSString stringWithFormat:@"%C", NSUpArrowFunctionKey], 126},
-            {[NSString stringWithFormat:@"%C", NSDownArrowFunctionKey], 125}
+            {[NSString stringWithFormat:@"%C", static_cast<unichar>(NSRightArrowFunctionKey)], 0},
+            {[NSString stringWithFormat:@"%C", static_cast<unichar>(NSUpArrowFunctionKey)], 126},
+            {[NSString stringWithFormat:@"%C", static_cast<unichar>(NSDownArrowFunctionKey)], 125}
         };
         for (const ArrowEvent& arrow : arrow_events)
         {
