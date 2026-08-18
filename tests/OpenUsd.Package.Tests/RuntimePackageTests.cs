@@ -44,8 +44,8 @@ public sealed class RuntimePackageTests
     private const int RequiredStormAbiVersion = 6;
     private const int RequiredSilkSessionAbiVersion = 5;
     private const int RequiredSilkPageAbiVersion = 11;
-    private const int RequiredStormChildAbiVersion = 7;
-    private const int RequiredStormChildNavigationInputVersion = 1;
+    private const int RequiredStormChildAbiVersion = 8;
+    private const int RequiredStormChildNavigationInputVersion = 2;
 
     private static ulong HighestSetBit(ulong value) =>
         value == 0 ? 0 : 1UL << (63 - System.Numerics.BitOperations.LeadingZeroCount(value));
@@ -437,7 +437,7 @@ public sealed class RuntimePackageTests
 
         await Assert.That(result.ExitCode).IsEqualTo(0);
         await Assert.That(result.Output).Contains(
-            "Linux ELF DT_RUNPATH and ABI-7 DT_SONAME parser tests passed.");
+            "Linux ELF DT_RUNPATH and ABI-8 DT_SONAME parser tests passed.");
 
         CommandResult topologyResult = await RunProcessAsync(
             "pwsh",
@@ -452,7 +452,7 @@ public sealed class RuntimePackageTests
             runtimeEnvironment: null);
         await Assert.That(topologyResult.ExitCode).IsEqualTo(0);
         await Assert.That(topologyResult.Output).Contains(
-            "Linux Storm child ABI-7 SONAME topology tests passed.");
+            "Linux Storm child ABI-8 SONAME topology tests passed.");
 
         CommandResult evidenceResult = await RunProcessAsync(
             "pwsh",
@@ -957,14 +957,20 @@ public sealed class RuntimePackageTests
                 shimRoot,
                 "lib",
                 "libopenusd_storm_child.so");
-            string versionedStormChild = $"{stormChild}.7.0.0";
+            string versionedStormChild = $"{stormChild}.8.0.0";
             await AssertPackageEntriesAsync(
                 imagingPackage.Path,
                 [
+                    "buildTransitive/OpenUsd.Runtime.Imaging.linux-x64.targets",
                     "runtimes/linux-x64/native/libopenusd_storm_child.so",
-                    "runtimes/linux-x64/native/libopenusd_storm_child.so.7",
-                    "runtimes/linux-x64/native/libopenusd_storm_child.so.7.0.0",
+                    "runtimes/linux-x64/native/libopenusd_storm_child.so.8",
+                    "runtimes/linux-x64/native/libopenusd_storm_child.so.8.0.0",
                 ]);
+            await AssertPackageEntryContainsAsync(
+                imagingPackage.Path,
+                "buildTransitive/OpenUsd.Runtime.Imaging.linux-x64.targets",
+                "libopenusd_storm_child.so.8.0.0",
+                "libopenusd_storm_child.so.7");
             await AssertSingleNativePackageEntryAsync(
                 imagingPackage.Path,
                 "linux-x64",
@@ -972,22 +978,22 @@ public sealed class RuntimePackageTests
             await AssertSingleNativePackageEntryAsync(
                 imagingPackage.Path,
                 "linux-x64",
-                "libopenusd_storm_child.so.7");
+                "libopenusd_storm_child.so.8");
             await AssertSingleNativePackageEntryAsync(
                 imagingPackage.Path,
                 "linux-x64",
-                "libopenusd_storm_child.so.7.0.0");
+                "libopenusd_storm_child.so.8.0.0");
             await AssertPackageSymbolicLinkAsync(
                 imagingPackage.Path,
                 "runtimes/linux-x64/native/libopenusd_storm_child.so",
-                "libopenusd_storm_child.so.7");
+                "libopenusd_storm_child.so.8");
             await AssertPackageSymbolicLinkAsync(
                 imagingPackage.Path,
-                "runtimes/linux-x64/native/libopenusd_storm_child.so.7",
-                "libopenusd_storm_child.so.7.0.0");
+                "runtimes/linux-x64/native/libopenusd_storm_child.so.8",
+                "libopenusd_storm_child.so.8.0.0");
             await AssertPackageEntryMatchesFileAsync(
                 imagingPackage.Path,
-                "runtimes/linux-x64/native/libopenusd_storm_child.so.7.0.0",
+                "runtimes/linux-x64/native/libopenusd_storm_child.so.8.0.0",
                 versionedStormChild);
             await AssertLinuxStormChildInstallMatchesPackageAsync(
                 imagingPackage.Path,
@@ -1016,10 +1022,10 @@ public sealed class RuntimePackageTests
                 "libopenusd_storm_child.so");
             await AssertPackageDoesNotContainFileNameOutsideNativeAsync(
                 imagingPackage.Path,
-                "libopenusd_storm_child.so.7");
+                "libopenusd_storm_child.so.8");
             await AssertPackageDoesNotContainFileNameOutsideNativeAsync(
                 imagingPackage.Path,
-                "libopenusd_storm_child.so.7.0.0");
+                "libopenusd_storm_child.so.8.0.0");
 
             ExecutionConsumer consumer = await PublishStormChildConsumerAsync(
                 workRoot,
@@ -3825,6 +3831,21 @@ public sealed class RuntimePackageTests
         await Assert.That(entries.Any(entry => entry.Contains("native/install", StringComparison.Ordinal))).IsFalse();
     }
 
+    private static async Task AssertPackageEntryContainsAsync(
+        string packagePath,
+        string entryPath,
+        string expectedText,
+        string excludedText)
+    {
+        using ZipArchive package = ZipFile.OpenRead(packagePath);
+        ZipArchiveEntry entry = package.GetEntry(entryPath)
+            ?? throw new InvalidOperationException($"Package entry is missing: {entryPath}");
+        using var reader = new StreamReader(entry.Open());
+        string content = await reader.ReadToEndAsync();
+        await Assert.That(content).Contains(expectedText);
+        await Assert.That(content).DoesNotContain(excludedText);
+    }
+
     private static async Task AssertPackageDoesNotContainAsync(
         string packagePath,
         string excludedEntry)
@@ -4003,11 +4024,11 @@ public sealed class RuntimePackageTests
             if (linkTarget is null &&
                 installedInfo.Length < 256 &&
                 (installedInfo.Name == "libopenusd_storm_child.so" ||
-                    installedInfo.Name == "libopenusd_storm_child.so.7"))
+                    installedInfo.Name == "libopenusd_storm_child.so.8"))
             {
                 string candidate = await File.ReadAllTextAsync(installedPath);
                 if (candidate.StartsWith(
-                    "libopenusd_storm_child.so.7",
+                    "libopenusd_storm_child.so.8",
                     StringComparison.Ordinal))
                 {
                     linkTarget = candidate;
@@ -4030,15 +4051,15 @@ public sealed class RuntimePackageTests
     private static async Task AssertPublishedLinuxStormChildTopologyAsync(string publishRoot)
     {
         string linkPath = Path.Combine(publishRoot, "libopenusd_storm_child.so");
-        string sonamePath = Path.Combine(publishRoot, "libopenusd_storm_child.so.7");
+        string sonamePath = Path.Combine(publishRoot, "libopenusd_storm_child.so.8");
         await Assert.That(new FileInfo(linkPath).LinkTarget)
-            .IsEqualTo("libopenusd_storm_child.so.7");
+            .IsEqualTo("libopenusd_storm_child.so.8");
         await Assert.That(File.Exists(sonamePath)).IsTrue();
         await Assert.That(new FileInfo(sonamePath).LinkTarget)
-            .IsEqualTo("libopenusd_storm_child.so.7.0.0");
+            .IsEqualTo("libopenusd_storm_child.so.8.0.0");
         await Assert.That(File.Exists(Path.Combine(
             publishRoot,
-            "libopenusd_storm_child.so.7.0.0"))).IsTrue();
+            "libopenusd_storm_child.so.8.0.0"))).IsTrue();
         string[] stormEntries = Directory.GetFiles(
             publishRoot,
             "libopenusd_storm_child.so*",
@@ -4146,12 +4167,12 @@ public sealed class RuntimePackageTests
         await Assert.That(exports).Contains("openusd_storm_child_capture_framebuffer");
         JsonElement topology = root.GetProperty("stormChildTopology");
         await Assert.That(topology.GetProperty("soname").GetString())
-            .IsEqualTo("libopenusd_storm_child.so.7");
+            .IsEqualTo("libopenusd_storm_child.so.8");
         await Assert.That(topology.GetProperty("linkName").GetString())
             .IsEqualTo("libopenusd_storm_child.so");
         string realFile = topology.GetProperty("realFile").GetString()!;
         await Assert.That(realFile.StartsWith(
-            "libopenusd_storm_child.so.7",
+            "libopenusd_storm_child.so.8",
             StringComparison.Ordinal)).IsTrue();
         JsonElement[] topologyEntries = topology
             .GetProperty("entries")
@@ -4160,7 +4181,7 @@ public sealed class RuntimePackageTests
         await Assert.That(topologyEntries.Single(entry =>
             entry.GetProperty("name").GetString() == "libopenusd_storm_child.so")
             .GetProperty("target").GetString())
-            .IsEqualTo("libopenusd_storm_child.so.7");
+            .IsEqualTo("libopenusd_storm_child.so.8");
 
         JsonElement[] libraries = root
             .GetProperty("libraries")
@@ -4181,7 +4202,7 @@ public sealed class RuntimePackageTests
         await Assert.That(libraries.Single(library =>
             library.GetProperty("name").GetString() == "libopenusd_storm_child.so")
             .GetProperty("soname").GetString())
-            .IsEqualTo("libopenusd_storm_child.so.7");
+            .IsEqualTo("libopenusd_storm_child.so.8");
     }
 
     private static async Task AssertHdSilkPackageAsync(
@@ -5275,11 +5296,15 @@ public sealed class RuntimePackageTests
                     public ulong ToggleProjectionPressCount;
                     public uint State;
                     public uint Reserved;
+                    public ulong OrbitLeftPressCount;
+                    public ulong OrbitRightPressCount;
+                    public ulong OrbitUpPressCount;
+                    public ulong OrbitDownPressCount;
 
                     public static NativeNavigationInput CreateSentinel() => new()
                     {
                         StructSize = checked((uint)Marshal.SizeOf<NativeNavigationInput>()),
-                        Version = 1,
+                        Version = 2,
                         Sequence = 1,
                         PointerX = 1,
                         PointerY = 1,
@@ -5291,6 +5316,10 @@ public sealed class RuntimePackageTests
                         ToggleProjectionPressCount = 1,
                         State = 1,
                         Reserved = 1,
+                        OrbitLeftPressCount = 1,
+                        OrbitRightPressCount = 1,
+                        OrbitUpPressCount = 1,
+                        OrbitDownPressCount = 1,
                     };
 
                     public readonly bool IsZero =>
@@ -5306,7 +5335,11 @@ public sealed class RuntimePackageTests
                         ResetAutomaticPressCount == 0 &&
                         ToggleProjectionPressCount == 0 &&
                         State == 0 &&
-                        Reserved == 0;
+                        Reserved == 0 &&
+                        OrbitLeftPressCount == 0 &&
+                        OrbitRightPressCount == 0 &&
+                        OrbitUpPressCount == 0 &&
+                        OrbitDownPressCount == 0;
                 }
             }
             """
@@ -5827,11 +5860,15 @@ public sealed class RuntimePackageTests
                 public ulong ToggleProjectionPressCount;
                 public uint State;
                 public uint Reserved;
+                public ulong OrbitLeftPressCount;
+                public ulong OrbitRightPressCount;
+                public ulong OrbitUpPressCount;
+                public ulong OrbitDownPressCount;
 
                 public static NativeNavigationInput CreateSentinel() => new()
                 {
                     StructSize = checked((uint)Marshal.SizeOf<NativeNavigationInput>()),
-                    Version = 1,
+                    Version = 2,
                     Sequence = 1,
                     PointerX = 1,
                     PointerY = 1,
@@ -5843,6 +5880,10 @@ public sealed class RuntimePackageTests
                     ToggleProjectionPressCount = 1,
                     State = 1,
                     Reserved = 1,
+                    OrbitLeftPressCount = 1,
+                    OrbitRightPressCount = 1,
+                    OrbitUpPressCount = 1,
+                    OrbitDownPressCount = 1,
                 };
 
                 public readonly bool IsZero =>
@@ -5858,7 +5899,11 @@ public sealed class RuntimePackageTests
                     ResetAutomaticPressCount == 0 &&
                     ToggleProjectionPressCount == 0 &&
                     State == 0 &&
-                    Reserved == 0;
+                    Reserved == 0 &&
+                    OrbitLeftPressCount == 0 &&
+                    OrbitRightPressCount == 0 &&
+                    OrbitUpPressCount == 0 &&
+                    OrbitDownPressCount == 0;
             }
 
             private static (int Frames, int Upserts, int Removals)

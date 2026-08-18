@@ -14,11 +14,11 @@ public sealed class StormNavigationInputTests
     private static long _sequence;
 
     [Test]
-    public async Task NativeNavigationInputUsesPinnedAbi6Layout()
+    public async Task NativeNavigationInputUsesPinnedAbi8Layout()
     {
         await Assert.That(
             Unsafe.SizeOf<OpenUsdStormChildRuntime.NativeNavigationInput>())
-            .IsEqualTo(72);
+            .IsEqualTo(104);
         await Assert.That(Offset(nameof(
             OpenUsdStormChildRuntime.NativeNavigationInput.Sequence)))
             .IsEqualTo(8);
@@ -31,6 +31,12 @@ public sealed class StormNavigationInputTests
         await Assert.That(Offset(nameof(
             OpenUsdStormChildRuntime.NativeNavigationInput.State)))
             .IsEqualTo(64);
+        await Assert.That(Offset(nameof(
+            OpenUsdStormChildRuntime.NativeNavigationInput.OrbitLeftPressCount)))
+            .IsEqualTo(72);
+        await Assert.That(Offset(nameof(
+            OpenUsdStormChildRuntime.NativeNavigationInput.OrbitDownPressCount)))
+            .IsEqualTo(96);
     }
 
     [Test]
@@ -56,6 +62,10 @@ public sealed class StormNavigationInputTests
         await Assert.That(first.FrameSelectedPressCount).IsEqualTo(3UL);
         await Assert.That(first.ResetAutomaticPressCount).IsEqualTo(4UL);
         await Assert.That(first.ToggleProjectionPressCount).IsEqualTo(5UL);
+        await Assert.That(first.OrbitLeftPressCount).IsEqualTo(6UL);
+        await Assert.That(first.OrbitRightPressCount).IsEqualTo(7UL);
+        await Assert.That(first.OrbitUpPressCount).IsEqualTo(8UL);
+        await Assert.That(first.OrbitDownPressCount).IsEqualTo(9UL);
         await Assert.That(first.Focused).IsTrue();
         await Assert.That(first.Inside).IsTrue();
     }
@@ -125,7 +135,7 @@ public sealed class StormNavigationInputTests
         {
             _ = child;
             _ = errorBytes;
-            input.StructSize = 72;
+            input.StructSize = 104;
             input.Version = OpenUsdStormChildRuntime.NavigationInputVersion;
             input.Sequence = checked((ulong)Interlocked.Increment(ref _sequence));
             input.PointerX = 23;
@@ -140,6 +150,10 @@ public sealed class StormNavigationInputTests
             input.FrameSelectedPressCount = 3;
             input.ResetAutomaticPressCount = 4;
             input.ToggleProjectionPressCount = 5;
+            input.OrbitLeftPressCount = 6;
+            input.OrbitRightPressCount = 7;
+            input.OrbitUpPressCount = 8;
+            input.OrbitDownPressCount = 9;
             input.State =
                 OpenUsdStormNavigationState.Focused |
                 OpenUsdStormNavigationState.Inside;
@@ -178,7 +192,7 @@ public sealed class StormNavigationInputTests
         {
             _ = child;
             _ = errorBytes;
-            input.StructSize = 72;
+            input.StructSize = 104;
             input.Version = OpenUsdStormChildRuntime.NavigationInputVersion;
             input.Buttons = (OpenUsdStormPointerButtons)0x80;
             errorRequired = 0;

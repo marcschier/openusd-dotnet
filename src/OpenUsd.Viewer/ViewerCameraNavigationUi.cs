@@ -62,13 +62,21 @@ internal readonly record struct ViewerStormNavigationDelta(
     float WheelDelta,
     ulong FrameSelectedPresses,
     ulong ResetAutomaticPresses,
-    ulong ToggleProjectionPresses)
+    ulong ToggleProjectionPresses,
+    ulong OrbitLeftPresses,
+    ulong OrbitRightPresses,
+    ulong OrbitUpPresses,
+    ulong OrbitDownPresses)
 {
     internal bool HasCameraMutation =>
         Gesture != ViewerCameraPointerGesture.None ||
         WheelDelta != 0f ||
         ResetAutomaticPresses != 0 ||
-        ToggleProjectionPresses != 0;
+        ToggleProjectionPresses != 0 ||
+        OrbitLeftPresses != 0 ||
+        OrbitRightPresses != 0 ||
+        OrbitUpPresses != 0 ||
+        OrbitDownPresses != 0;
 }
 
 internal sealed class ViewerStormNavigationInputTracker
@@ -99,6 +107,10 @@ internal sealed class ViewerStormNavigationInputTracker
                 0,
                 0,
                 0,
+                0,
+                0,
+                0,
+                0,
                 0);
         }
 
@@ -115,6 +127,10 @@ internal sealed class ViewerStormNavigationInputTracker
                 ResetPointerGesture: true,
                 ViewerCameraPointerGesture.None,
                 Vector2.Zero,
+                0,
+                0,
+                0,
+                0,
                 0,
                 0,
                 0,
@@ -155,7 +171,19 @@ internal sealed class ViewerStormNavigationInputTracker
                 previous.ResetAutomaticPressCount),
             CounterDelta(
                 current.ToggleProjectionPressCount,
-                previous.ToggleProjectionPressCount));
+                previous.ToggleProjectionPressCount),
+            CounterDelta(
+                current.OrbitLeftPressCount,
+                previous.OrbitLeftPressCount),
+            CounterDelta(
+                current.OrbitRightPressCount,
+                previous.OrbitRightPressCount),
+            CounterDelta(
+                current.OrbitUpPressCount,
+                previous.OrbitUpPressCount),
+            CounterDelta(
+                current.OrbitDownPressCount,
+                previous.OrbitDownPressCount));
         SetBaseline(current, routedInputGeneration);
         return result;
     }
@@ -247,6 +275,18 @@ internal enum ViewerCameraShortcut
     FrameSelected,
     ResetAutomatic,
     ToggleProjection,
+    OrbitLeft,
+    OrbitRight,
+    OrbitUp,
+    OrbitDown,
+}
+
+internal enum ViewerCameraOrbitCommand
+{
+    Left,
+    Right,
+    Up,
+    Down,
 }
 
 internal sealed class ViewerCameraShortcutRepeatGuard
@@ -321,7 +361,8 @@ internal static class ViewerCameraShortcutPolicy
     internal static ViewerCameraShortcut Classify(
         Key key,
         KeyModifiers modifiers,
-        bool isEditing)
+        bool isEditing,
+        bool isViewportFocused = false)
     {
         if (isEditing || modifiers != KeyModifiers.None)
         {
@@ -333,6 +374,10 @@ internal static class ViewerCameraShortcutPolicy
             Key.F => ViewerCameraShortcut.FrameSelected,
             Key.Home => ViewerCameraShortcut.ResetAutomatic,
             Key.P => ViewerCameraShortcut.ToggleProjection,
+            Key.Left when isViewportFocused => ViewerCameraShortcut.OrbitLeft,
+            Key.Right when isViewportFocused => ViewerCameraShortcut.OrbitRight,
+            Key.Up when isViewportFocused => ViewerCameraShortcut.OrbitUp,
+            Key.Down when isViewportFocused => ViewerCameraShortcut.OrbitDown,
             _ => ViewerCameraShortcut.None,
         };
     }
@@ -420,6 +465,8 @@ internal readonly record struct ViewerCameraResizeUpdate(
 
 internal sealed class ViewerCameraNavigationUiAdapter
 {
+    internal const float OrbitStepRadians = MathF.PI / 36f;
+
     private readonly ViewerCameraNavigationController _controller;
     private readonly ViewerStageCameraModeState _stageCamera;
     private readonly IViewerUiThreadVerifier _uiThread;
@@ -539,6 +586,36 @@ internal sealed class ViewerCameraNavigationUiAdapter
         return _controller.ToggleProjection() || exitedStageCamera;
     }
 
+    internal bool OrbitStep(ViewerCameraOrbitCommand command)
+    {
+        _uiThread.VerifyAccess();
+        return command switch
+        {
+            ViewerCameraOrbitCommand.Left => OrbitSteps(1, 0, 0, 0),
+            ViewerCameraOrbitCommand.Right => OrbitSteps(0, 1, 0, 0),
+            ViewerCameraOrbitCommand.Up => OrbitSteps(0, 0, 1, 0),
+            ViewerCameraOrbitCommand.Down => OrbitSteps(0, 0, 0, 1),
+            _ => throw new ArgumentOutOfRangeException(nameof(command)),
+        };
+    }
+
+    internal bool OrbitSteps(
+        ulong left,
+        ulong right,
+        ulong up,
+        ulong down)
+    {
+        _uiThread.VerifyAccess();
+        if ((left | right | up | down) == 0)
+        {
+            return false;
+        }
+        bool exitedStageCamera = PrepareOrbitNavigation();
+        float yaw = CreateOrbitStepDelta(right, left);
+        float pitch = CreateOrbitStepDelta(up, down);
+        return _controller.Orbit(yaw, pitch) || exitedStageCamera;
+    }
+
     internal bool ResetToAutomatic()
     {
         _uiThread.VerifyAccess();
@@ -636,6 +713,17 @@ internal sealed class ViewerCameraNavigationUiAdapter
             _controller.ResetToAutomatic();
         }
         return exited;
+    }
+
+    private static float CreateOrbitStepDelta(ulong positive, ulong negative)
+    {
+        double value = ((double)positive - negative) * OrbitStepRadians;
+        return value switch
+        {
+            <= -float.MaxValue => -float.MaxValue,
+            >= float.MaxValue => float.MaxValue,
+            _ => (float)value,
+        };
     }
 }
 

@@ -46,7 +46,8 @@ public sealed class ViewerShortcutCatalogTests
             ViewerCameraShortcut action = ViewerCameraShortcutPolicy.Classify(
                 key.Value,
                 KeyModifiers.None,
-                isEditing: false);
+                isEditing: false,
+                isViewportFocused: true);
 
             if (action == ViewerCameraShortcut.None)
             {
@@ -56,7 +57,7 @@ public sealed class ViewerShortcutCatalogTests
 
         // Non-vacuity: an empty catalog would make the offender list trivially
         // empty and this test would pass while checking nothing.
-        await Assert.That(checkedCount).IsGreaterThanOrEqualTo(3);
+        await Assert.That(checkedCount).IsGreaterThanOrEqualTo(7);
         await Assert.That(unbound)
             .IsEmpty()
             .Because(

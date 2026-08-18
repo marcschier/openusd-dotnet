@@ -123,7 +123,7 @@ public sealed class StormPickingSourceContractTests
     }
 
     [Test]
-    public async Task ChildPickingIsPrioritizedOnEveryPlatformAndAbi7()
+    public async Task ChildPickingIsPrioritizedOnEveryPlatformAndAbi8()
     {
         string root = FindRepositoryRoot();
         string header = await File.ReadAllTextAsync(Path.Combine(
@@ -144,13 +144,13 @@ public sealed class StormPickingSourceContractTests
             "openusd_storm_child_macos.mm",
         ];
 
-        await Assert.That(header).Contains("OPENUSD_STORM_CHILD_ABI_VERSION 7u");
+        await Assert.That(header).Contains("OPENUSD_STORM_CHILD_ABI_VERSION 8u");
         await Assert.That(header).Contains("openusd_storm_child_render_v2");
         await Assert.That(header).Contains("openusd_storm_child_request_frame_v3");
         await Assert.That(header).Contains("openusd_storm_child_pick");
         await Assert.That(header).Contains("openusd_storm_child_set_selection");
-        await Assert.That(cmake).Contains("VERSION 7.0.0");
-        await Assert.That(cmake).Contains("SOVERSION 7");
+        await Assert.That(cmake).Contains("VERSION 8.0.0");
+        await Assert.That(cmake).Contains("SOVERSION 8");
         foreach (string sourceName in sources)
         {
             string source = await File.ReadAllTextAsync(Path.Combine(
@@ -205,7 +205,7 @@ public sealed class StormPickingSourceContractTests
 
         await Assert.That(renderer).Contains("RenderPickResult Pick(");
         await Assert.That(renderer).Contains("void SetSelection(");
-        await Assert.That(child).Contains("private const uint ExpectedAbiVersion = 7");
+        await Assert.That(child).Contains("private const uint ExpectedAbiVersion = 8");
         await Assert.That(child).Contains("RenderPickResult Pick(");
         await Assert.That(child).Contains("void SetSelection(");
         await Assert.That(pickingContract).Contains("public Vector3? WorldPosition");

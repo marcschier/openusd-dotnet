@@ -20,9 +20,9 @@ if (-not $stormChildAbiMatch.Success)
     throw "Could not read the Storm child ABI from $stormChildHeader."
 }
 $stormChildAbiVersion = [int]$stormChildAbiMatch.Groups[1].Value
-if ($stormChildAbiVersion -ne 7)
+if ($stormChildAbiVersion -ne 8)
 {
-    throw "macOS package evidence requires ABI 7, got $stormChildAbiVersion."
+    throw "macOS package evidence requires ABI 8, got $stormChildAbiVersion."
 }
 
 function Assert-FullSha256

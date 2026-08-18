@@ -819,6 +819,7 @@ void UpdateNavigationKey(
     uint32_t modifiers = XModifiers(event->state);
     uint32_t changed = OPENUSD_STORM_CHILD_MODIFIER_NONE;
     uint32_t command_key = 0;
+    bool count_repeats = false;
     uint64_t OpenUsdStormChildNavigationState::* command_counter = nullptr;
     if (key == XK_Alt_L || key == XK_Alt_R)
     {
@@ -855,6 +856,34 @@ void UpdateNavigationKey(
         command_counter =
             &OpenUsdStormChildNavigationState::toggle_projection_press_count;
     }
+    else if (key == XK_Left)
+    {
+        command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_LEFT;
+        count_repeats = true;
+        command_counter =
+            &OpenUsdStormChildNavigationState::orbit_left_press_count;
+    }
+    else if (key == XK_Right)
+    {
+        command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_RIGHT;
+        count_repeats = true;
+        command_counter =
+            &OpenUsdStormChildNavigationState::orbit_right_press_count;
+    }
+    else if (key == XK_Up)
+    {
+        command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_UP;
+        count_repeats = true;
+        command_counter =
+            &OpenUsdStormChildNavigationState::orbit_up_press_count;
+    }
+    else if (key == XK_Down)
+    {
+        command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_DOWN;
+        count_repeats = true;
+        command_counter =
+            &OpenUsdStormChildNavigationState::orbit_down_press_count;
+    }
     if (pressed)
     {
         modifiers |= changed;
@@ -874,6 +903,7 @@ void UpdateNavigationKey(
             command_key,
             pressed,
             repeat,
+            count_repeats,
             command_counter);
     }
     OpenUsdStormChildNavigationAdvance(&child->navigation);

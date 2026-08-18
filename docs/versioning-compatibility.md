@@ -91,7 +91,7 @@ constants, package validation, and tests must be updated together.
 | --- | ---: | --- |
 | Data shim `openusd_dotnet` | ABI 15, required capabilities `0x3FFFF` | Managed runtime validates both. |
 | Direct Storm `openusd_hydra` | ABI 6 | Managed Storm runtime requires an exact version. |
-| Viewer Storm child | ABI 7 | Managed child runtime requires an exact version. |
+| Viewer Storm child | ABI 8 | Managed child runtime requires an exact version. |
 | hdSilk session API | ABI 5 | Kept aligned through the matched Imaging runtime. |
 | hdSilk command page | ABI 11 | Every managed page is validated before parsing. |
 
@@ -102,7 +102,7 @@ The hdSilk page is a pointer-free, little-endian wire format. A page-version cha
 native header and writer, managed parser, tests, lock metadata, and package evidence. Session ABI 5 does
 not expose a separate managed runtime version query, so exact package alignment is especially important.
 
-The Storm child ABI also participates in native filename policy. Linux packages use the ABI-7 SONAME and
+The Storm child ABI also participates in native filename policy. Linux packages use the ABI-8 SONAME and
 validated symlink chain; Windows and macOS packages validate the corresponding exported contract.
 
 ## ABI change rules

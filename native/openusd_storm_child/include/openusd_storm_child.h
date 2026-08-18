@@ -26,9 +26,9 @@ extern "C" {
 
 typedef struct openusd_storm_child openusd_storm_child;
 
-#define OPENUSD_STORM_CHILD_ABI_VERSION 7u
+#define OPENUSD_STORM_CHILD_ABI_VERSION 8u
 
-#define OPENUSD_STORM_CHILD_NAVIGATION_INPUT_VERSION 1u
+#define OPENUSD_STORM_CHILD_NAVIGATION_INPUT_VERSION 2u
 
 #define OPENUSD_STORM_CHILD_POINTER_BUTTON_NONE 0u
 #define OPENUSD_STORM_CHILD_POINTER_BUTTON_LEFT 0x1u
@@ -118,16 +118,29 @@ typedef struct openusd_storm_child_navigation_input
     uint64_t toggle_projection_press_count;
     uint32_t state;
     uint32_t reserved;
+    uint64_t orbit_left_press_count;
+    uint64_t orbit_right_press_count;
+    uint64_t orbit_up_press_count;
+    uint64_t orbit_down_press_count;
 } openusd_storm_child_navigation_input;
 
 #if defined(__cplusplus)
-static_assert(sizeof(openusd_storm_child_navigation_input) == 72);
+static_assert(sizeof(openusd_storm_child_navigation_input) == 104);
 static_assert(offsetof(openusd_storm_child_navigation_input, sequence) == 8);
 static_assert(
     offsetof(openusd_storm_child_navigation_input, cumulative_wheel_delta) == 32);
 static_assert(
     offsetof(openusd_storm_child_navigation_input, frame_selected_press_count) == 40);
 static_assert(offsetof(openusd_storm_child_navigation_input, state) == 64);
+static_assert(offsetof(openusd_storm_child_navigation_input, reserved) == 68);
+static_assert(
+    offsetof(openusd_storm_child_navigation_input, orbit_left_press_count) == 72);
+static_assert(
+    offsetof(openusd_storm_child_navigation_input, orbit_right_press_count) == 80);
+static_assert(
+    offsetof(openusd_storm_child_navigation_input, orbit_up_press_count) == 88);
+static_assert(
+    offsetof(openusd_storm_child_navigation_input, orbit_down_press_count) == 96);
 #endif
 
 OPENUSD_STORM_CHILD_API uint32_t openusd_storm_child_get_abi_version(void);

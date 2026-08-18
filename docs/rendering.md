@@ -114,7 +114,7 @@ recreates the renderer, and clears current ownership. The child preserves `openu
 renderer name, rejects any other Hgi, and appends only `OpenGL 4.1 core presentation`. Main-thread waits pump Cocoa
 work so context recreation cannot deadlock the render thread.
 
-The Storm child v7 C ABI provides create/retryable destroy, synchronous render, revision-tagged asynchronous render
+The Storm child v8 C ABI provides create/retryable destroy, synchronous render, revision-tagged asynchronous render
 requests, prioritized synchronous picking and packed selection updates, resize/DPI/visibility/focus, context-loss
 recreation, diagnostics, and explicit framebuffer evidence capture. Every render request carries the shared
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
@@ -645,8 +645,9 @@ user32. Traditional AppKit wheel events normalize to signed detents. Precise tra
 40-points-per-step constant, clamp to four logical steps per event, preserve fractional values, and compensate for
 `isDirectionInvertedFromDevice`.
 
-F/Home/P command counters suppress held-key repeat. Win32 uses bit 30 plus shared pressed state,
-X11 enables detectable repeat and retains a release/press fallback, and AppKit rejects
+F/Home/P command counters suppress held-key repeat. The navigation v2 snapshot also carries four
+repeat-aware left/right/up/down counters for 5-degree orbit steps. Win32 uses bit 30 plus shared
+pressed state, X11 enables detectable repeat and retains a release/press fallback, and AppKit rejects
 `isARepeat`. Focus loss resets pressed command state. Avalonia applies the same press/release guard
 for composition backends.
 
@@ -683,7 +684,7 @@ automatic-reset pixels. `eng/run-viewer-stage-camera-smoke.ps1` executes only th
 is runtime-observed: successful D3D11 NT-handle/keyed-mutex imports and the compositor LUID classify the ANGLE/D3D11
 path, synchronous Win32 messages must traverse the real Viewer and Storm window procedures before routed/native input
 counters can advance, diagnostic `WM_DPICHANGED` must change and restore DPI, and Win32 child enumeration supplies Storm
-visibility and ownership transitions. A separate Alt-left drag targets the Storm HWND, advances ABI-7 navigation
+visibility and ownership transitions. A separate Alt-left drag targets the Storm HWND, advances ABI-8 navigation
 snapshots, changes the renderer-neutral Viewer camera and preserved Storm pixels, and records zero overlapping Avalonia
 routed events. Persistent cleanup failure must keep Storm candidate/factory/attach counts unchanged and the actual
 native-child peak at one until cleanup reaches zero. The single-pixel readback is smoke diagnostics only; interactive

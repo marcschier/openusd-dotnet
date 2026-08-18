@@ -206,7 +206,8 @@ clipping values. Control-agnostic pixel and wheel delta helpers define determini
 sensitivity without depending on Avalonia.
 
 Toolbar and Camera-menu controls provide **Reset Automatic**, **Explicit Legacy Pose**,
-**Toggle Projection**, **Use Selected Camera**, and **Frame Selected**. The toolbar reports
+**Toggle Projection**, **Use Selected Camera**, and **Frame Selected**. Four toolbar arrow controls
+orbit left, right, up, or down by 5 degrees per press. The toolbar reports
 `Automatic`, orbit `Perspective`/`Orthographic`, or `Stage Perspective`/`Stage Orthographic` plus
 the active camera path. Reset Automatic clears stage-camera mode. Orbit, pan, zoom, explicit legacy
 pose, projection toggle, and Frame Selected all leave stage-camera mode and continue with the
@@ -217,6 +218,7 @@ unmodified left click available for future picking:
 - `Alt+middle drag`: pan
 - `Alt+right drag`: perspective dolly or orthographic zoom
 - wheel over the keyboard-focused viewport: zoom
+- arrow key while the viewport has keyboard focus: orbit 5 degrees in that direction
 
 Storm wheel snapshots use the same sign and logical-step intent on every platform. Windows divides
 the native delta by 120, Linux maps wheel buttons 4/5 to +1/-1, and macOS maps traditional wheel
@@ -240,15 +242,16 @@ Selected** queries the selected prim's world bounds once on the stage scheduler 
 using the current render-purpose mask. Missing selections, missing prims, and empty bounds are
 reported without changing the camera.
 
-Native Storm child-window camera input is polled from the ABI-7 child snapshot at a bounded
+Native Storm child-window camera input is polled from the ABI-8 navigation v2 child snapshot at a bounded
 UI cadence. The snapshot carries physical pointer position, buttons, modifiers, cumulative wheel,
-focus/inside state, and cumulative F/Home/P command counters, so the child may retain native focus
+focus/inside state, cumulative F/Home/P command counters, and four repeat-aware arrow counters, so
+the child may retain native focus
 without losing orbit, pan, dolly, zoom, or shortcuts. Polling baselines reset on attach, focus
 transitions, and backend switches. Avalonia-routed camera events suppress the overlapping native
 sample to avoid duplicate handling. Composition backends continue to use Avalonia routing, and the
 toolbar and menu camera commands remain available on every backend.
-F, Home, and P execute once per physical press on native and Avalonia paths; platform auto-repeat is
-suppressed until the matching release, and focus loss clears held-command state.
+F, Home, and P execute once per physical press on native and Avalonia paths. Arrow auto-repeat stays
+enabled for continuous orbit while held, and focus loss clears held-command state.
 
 ## Diagnostics
 
@@ -283,6 +286,7 @@ Access keys are shown with underlined menu/button labels. Keyboard shortcuts inc
 - `F`: frame the selected prim
 - `Home`: reset the camera to Automatic
 - `P`: toggle Perspective/Orthographic projection
+- arrow keys: orbit by 5 degrees while the viewport has keyboard focus
 
 Camera shortcuts are ignored while a text box or combo box is being edited. Controls use logical
 markup order, automation names, and theme resources rather than fixed foreground colors.
@@ -294,7 +298,7 @@ variant controls, or sample the interactive diagnostics model. Schema 8 camera e
 automated and does not change interactive camera navigation: it temporarily applies deterministic
 managed view/projection matrices, captures bound backend pixels and Storm camera diagnostics, and
 restores automatic mode before continuing fallback, loss, quarantine, or switching scenarios.
-On Windows it additionally delivers a real Win32 Alt-left drag to the Storm child, polls the ABI-7
+On Windows it additionally delivers a real Win32 Alt-left drag to the Storm child, polls the ABI-8
 navigation snapshots, applies the normal Viewer camera adapter, and binds the changed camera and
 pixel artifacts while proving that no duplicate Avalonia routed event fired.
 Automated runs bypass interactive camera publication during resize, so temporary evidence camera

@@ -47,8 +47,8 @@ elseif(UNIX AND NOT APPLE)
     set_target_properties(
         openusd_storm_child
         PROPERTIES
-            VERSION 7.0.0
-            SOVERSION 7)
+            VERSION 8.0.0
+            SOVERSION 8)
     target_link_libraries(
         openusd_storm_child
         PRIVATE OpenGL::GL OpenGL::GLX X11::X11)

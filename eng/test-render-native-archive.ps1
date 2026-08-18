@@ -158,9 +158,9 @@ try
         $versionedLibrary = Join-Path $sourceShimRoot 'lib/libopenusd_hydra.so.1'
         $libraryLink = Join-Path $sourceShimRoot 'lib/libopenusd_hydra.so'
         $stormChildLibrary =
-            Join-Path $sourceShimRoot 'lib/libopenusd_storm_child.so.7.0.0'
+            Join-Path $sourceShimRoot 'lib/libopenusd_storm_child.so.8.0.0'
         $stormChildSonameLink =
-            Join-Path $sourceShimRoot 'lib/libopenusd_storm_child.so.7'
+            Join-Path $sourceShimRoot 'lib/libopenusd_storm_child.so.8'
         $stormChildLink = Join-Path $sourceShimRoot 'lib/libopenusd_storm_child.so'
         Write-TestFile (
             Join-Path $sourceShimRoot 'lib/libopenusd_dotnet.so') 'synthetic'
@@ -180,12 +180,12 @@ try
         {
             throw 'Could not create the synthetic native symlink.'
         }
-        & ln -s 'libopenusd_storm_child.so.7' $stormChildLink
+        & ln -s 'libopenusd_storm_child.so.8' $stormChildLink
         if ($LASTEXITCODE -ne 0)
         {
             throw 'Could not create the synthetic Storm child SONAME symlink.'
         }
-        & ln -s 'libopenusd_storm_child.so.7.0.0' $stormChildSonameLink
+        & ln -s 'libopenusd_storm_child.so.8.0.0' $stormChildSonameLink
         if ($LASTEXITCODE -ne 0)
         {
             throw 'Could not create the synthetic Storm child VERSION symlink.'
@@ -349,19 +349,19 @@ try
             & test -L $installedStormLink
             $stormLinkTarget = & readlink $installedStormLink
             if ($LASTEXITCODE -ne 0 -or
-                $stormLinkTarget -cne 'libopenusd_storm_child.so.7')
+                $stormLinkTarget -cne 'libopenusd_storm_child.so.8')
             {
                 throw (
-                    'The installed Storm child ABI-7 SONAME link target is incorrect: ' +
+                    'The installed Storm child ABI-8 SONAME link target is incorrect: ' +
                     $stormLinkTarget)
             }
             $installedStormSonameLink = Join-Path `
                 $installedShimRoot `
-                'lib/libopenusd_storm_child.so.7'
+                'lib/libopenusd_storm_child.so.8'
             & test -L $installedStormSonameLink
             $stormSonameLinkTarget = & readlink $installedStormSonameLink
             if ($LASTEXITCODE -ne 0 -or
-                $stormSonameLinkTarget -cne 'libopenusd_storm_child.so.7.0.0')
+                $stormSonameLinkTarget -cne 'libopenusd_storm_child.so.8.0.0')
             {
                 throw (
                     'The installed Storm child VERSION link target is incorrect: ' +

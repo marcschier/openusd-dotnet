@@ -89,6 +89,26 @@ internal static class ViewerShortcutCatalog
             "P",
             "Toggle projection",
             "Switches between perspective and orthographic projection."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "Left Arrow",
+            "Orbit left",
+            "Rotates 5 degrees around the focus point while the viewport has focus."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "Right Arrow",
+            "Orbit right",
+            "Rotates 5 degrees around the focus point while the viewport has focus."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "Up Arrow",
+            "Orbit up",
+            "Raises the camera 5 degrees while the viewport has focus."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "Down Arrow",
+            "Orbit down",
+            "Lowers the camera 5 degrees while the viewport has focus."),
     ];
 
     /// <summary>Every binding the dialog lists.</summary>
@@ -111,6 +131,10 @@ internal static class ViewerShortcutCatalog
             "F" => Key.F,
             "Home" => Key.Home,
             "P" => Key.P,
+            "Left Arrow" => Key.Left,
+            "Right Arrow" => Key.Right,
+            "Up Arrow" => Key.Up,
+            "Down Arrow" => Key.Down,
             _ => null,
         };
     }

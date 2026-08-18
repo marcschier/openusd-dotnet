@@ -61,7 +61,7 @@
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'linux-x64'">
     <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so.*" />
-    <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.7;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.7.0.0" />
+    <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.8;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.8.0.0" />
     <_OpenUsdCesiumShimLibrary Include="$(OpenUsdCesiumShimInstallRoot)/lib/libopenusd_cesium.so;$(OpenUsdCesiumShimInstallRoot)/lib/libopenusd_cesium.so.*" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'osx-arm64'">

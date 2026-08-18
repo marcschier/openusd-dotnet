@@ -2,8 +2,8 @@
 # Copyright (c) marcschier. Licensed under the MIT License.
 
 $script:OpenUsdStormChildLinkName = 'libopenusd_storm_child.so'
-$script:OpenUsdStormChildSoname = 'libopenusd_storm_child.so.7'
-$script:OpenUsdStormChildVersionName = 'libopenusd_storm_child.so.7.0.0'
+$script:OpenUsdStormChildSoname = 'libopenusd_storm_child.so.8'
+$script:OpenUsdStormChildVersionName = 'libopenusd_storm_child.so.8.0.0'
 
 function Assert-OpenUsdStormChildTopology
 {
@@ -35,7 +35,7 @@ function Assert-OpenUsdStormChildTopology
     {
         throw (
             'The Storm child topology requires libopenusd_storm_child.so and ' +
-            'libopenusd_storm_child.so.7.')
+            'libopenusd_storm_child.so.8.')
     }
 
     $unversioned = $entriesByName[$script:OpenUsdStormChildLinkName]
@@ -44,7 +44,7 @@ function Assert-OpenUsdStormChildTopology
     {
         throw (
             'libopenusd_storm_child.so must be a symbolic link whose exact target is ' +
-            'libopenusd_storm_child.so.7.')
+            'libopenusd_storm_child.so.8.')
     }
 
     $sonameEntry = $entriesByName[$script:OpenUsdStormChildSoname]
@@ -52,8 +52,8 @@ function Assert-OpenUsdStormChildTopology
         [string]$sonameEntry.target -cne $script:OpenUsdStormChildVersionName)
     {
         throw (
-            'libopenusd_storm_child.so.7 must be a symbolic link whose exact target is ' +
-            'libopenusd_storm_child.so.7.0.0.')
+            'libopenusd_storm_child.so.8 must be a symbolic link whose exact target is ' +
+            'libopenusd_storm_child.so.8.0.0.')
     }
 
     if (-not $entriesByName.ContainsKey($script:OpenUsdStormChildVersionName) -or

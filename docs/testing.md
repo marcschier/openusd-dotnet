@@ -348,15 +348,16 @@ affinity, exact shared-stage retention, first/live-edit frames, and context-loss
 also covers 150%/200% DPI transitions, focus/input delivery, a 10,000-request bounded coalescing
 burst, concurrent render/request/resize/diagnostics/focus versus Stop, stale handles, and retryable
 Storm destroy/abandon, WGL unbind/context deletion, DC release, and `DestroyWindow` failures.
-The ABI v7 framebuffer/navigation gate rejects invalid camera sizes, modes, NaN/Inf matrices,
+The ABI v8 framebuffer/navigation gate rejects invalid camera sizes, modes, NaN/Inf matrices,
 invalid navigation layouts, and capture before a
 frame and after destruction, reads a real
 shared-stage Storm frame, verifies dimensions/DPI and non-background pixels, proves a
 render-relevant live visibility edit changes the hash, and checks an exact centered test pattern
 with a stable hash and 12,288 non-background pixels at 256 by 192. It also proves latest-camera
 coalescing, sequenced pointer/button/modifier/wheel/command snapshots, concurrent polling, and
-camera/input persistence across context recreation. Platform probes verify that held F/Home/P keys
-advance each counter once, release/repress advances it again, and focus loss clears pressed state.
+camera/input persistence across context recreation. Platform probes verify that held F/Home/P advance
+once per physical press, held arrows continue through platform key repeat, release/repress starts a
+new sequence, and focus loss clears pressed state.
 The macOS source/native gates additionally pin non-precise detents, fractional precise deltas,
 40 points per step, four-step bounds, direction inversion, sign, and magnitude. Managed tests also prove a
 disposed session rejects diagnostic capture without entering native code.
@@ -398,9 +399,9 @@ fabricated counters, and Avalonia control counts are rejected. The quarantine pr
 factory, attach, retired-owner, native-child peak/live, and hidden retained-HWND measurements.
 Viewer evidence schema 8 additionally records canonical automatic/explicit/restored camera payloads
 and SHA-256 signatures, binds all three non-background pixel artifacts, and proves the explicit frame
-differs on Storm, D3D12, and Vulkan. Storm transitions must match child ABI v7 latest-requested
+differs on Storm, D3D12, and Vulkan. Storm transitions must match child ABI v8 latest-requested
 revision and latest requested/rendered camera signatures. Windows Storm runs also bind OS-routed
-Alt-left input, ABI-7 navigation sequence/state provenance, the changed Viewer camera, and a changed
+Alt-left input, ABI-8 navigation sequence/state provenance, the changed Viewer camera, and a changed
 pixel artifact while requiring zero duplicate Avalonia routed events. Managed and PowerShell
 adversarial tests reject schema 7, altered payloads/signatures, stale pixels, unbound camera
 artifacts, and malformed native-navigation proof. The `stage-camera-backend-smoke` run additionally
@@ -455,8 +456,8 @@ fail.
 
 Archive-mode runs execute the installed Linux probe at
 `native/install/shim/linux-x64/bin/openusd_storm_child_probe` before the viewer soak. The probe's
-Linux ABI-7 contract requires three arguments: the OpenUSD plugin directory, the stage path, and the
-installed shim `lib` directory containing `libopenusd_storm_child.so -> .so.7 -> .so.7.0.0`. Passing
+Linux ABI-8 contract requires three arguments: the OpenUSD plugin directory, the stage path, and the
+installed shim `lib` directory containing `libopenusd_storm_child.so -> .so.8 -> .so.8.0.0`. Passing
 the runtime directory is part of the gate, not a convenience: release run `30699741174` reached this
 step and failed with the probe's usage error before it could collect any Storm switching evidence.
 The older `30440292326` release failed earlier on stale Vulkan ICD discovery, which is a separate

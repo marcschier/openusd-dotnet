@@ -130,6 +130,14 @@ OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Modifiers.get -> OpenUsd.Ren
 OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Modifiers.init -> void
 OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OpenUsdStormNavigationInput() -> void
 OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OpenUsdStormNavigationInput(ulong Sequence, int PointerX, int PointerY, OpenUsd.Rendering.Storm.OpenUsdStormPointerButtons Buttons, OpenUsd.Rendering.Storm.OpenUsdStormInputModifiers Modifiers, double CumulativeWheelDelta, ulong FrameSelectedPressCount, ulong ResetAutomaticPressCount, ulong ToggleProjectionPressCount, OpenUsd.Rendering.Storm.OpenUsdStormNavigationState State) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OrbitDownPressCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OrbitDownPressCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OrbitLeftPressCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OrbitLeftPressCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OrbitRightPressCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OrbitRightPressCount.init -> void
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OrbitUpPressCount.get -> ulong
+OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.OrbitUpPressCount.init -> void
 OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.PointerX.get -> int
 OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.PointerX.init -> void
 OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.PointerY.get -> int

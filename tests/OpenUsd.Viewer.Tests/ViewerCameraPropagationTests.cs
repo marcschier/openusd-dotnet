@@ -10,6 +10,36 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerCameraPropagationTests
 {
     [Test]
+    public async Task HorizontalMouseOrbitChangesYawAndReachesBothBackends()
+    {
+        var controller = new ViewerCameraNavigationController(
+            new ViewportDimensions(800, 600));
+        controller.ResetToExplicitPose();
+        ViewerCameraNavigationState before = controller.State;
+        Vector2 orbit = ViewerCameraInputDeltas.CreateOrbitDelta(new Vector2(20f, 0f));
+
+        await Assert.That(controller.Orbit(orbit.X, orbit.Y)).IsTrue();
+
+        ViewerCameraNavigationState after = controller.State;
+        CameraState camera = controller.Camera;
+        await Assert.That(after.Yaw).IsGreaterThan(before.Yaw);
+        await Assert.That(after.Pitch).IsEqualTo(before.Pitch);
+        await Assert.That(after.Target).IsEqualTo(before.Target);
+        await Assert.That(camera.View).IsNotEqualTo(before.CreateCameraState().View);
+
+        StageRenderState state = StageRenderState.Create(new StageIdentity("yaw.usda"))
+            .WithCamera(camera);
+        var storm = new RecordingStormFrameAdapter();
+        var silk = new RecordingSilkSessionAdapter();
+
+        ViewerFrameAdapter.RequestStorm(storm, state);
+        await Assert.That(() => ViewerFrameAdapter.SyncSilk(silk, 800, 600, state))
+            .Throws<SilkBoundaryCapturedException>();
+        await Assert.That(storm.Requests[0].Camera).IsEqualTo(camera);
+        await Assert.That(silk.Request.Camera).IsEqualTo(camera);
+    }
+
+    [Test]
     public async Task ExplicitIdentityMatricesReachStormRenderAndRequestBoundaries()
     {
         var camera = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity);

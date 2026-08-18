@@ -229,7 +229,7 @@ flowchart LR
 The direct Storm adapter calls `openusd_hydra` ABI 6. Creation, rendering, picking, selection, and
 destruction remain on the creating OpenGL owner thread and context.
 
-The Viewer uses `openusd_storm_child` ABI 7 to host a native child window and a dedicated render
+The Viewer uses `openusd_storm_child` ABI 8 to host a native child window and a dedicated render
 thread. The child owns its context and prioritized command queue. Frame requests may be coalesced,
 while synchronous lifecycle, picking, input, diagnostics, and teardown commands retain explicit
 ordering. The child creates Storm from a lease on the exact scheduler stage.

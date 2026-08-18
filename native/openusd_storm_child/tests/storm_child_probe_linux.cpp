@@ -431,6 +431,10 @@ bool SendInputCompletion(Display* display, Window child)
     const KeyCode f = XKeysymToKeycode(display, XK_f);
     const KeyCode home = XKeysymToKeycode(display, XK_Home);
     const KeyCode p = XKeysymToKeycode(display, XK_p);
+    const KeyCode left = XKeysymToKeycode(display, XK_Left);
+    const KeyCode right = XKeysymToKeycode(display, XK_Right);
+    const KeyCode up = XKeysymToKeycode(display, XK_Up);
+    const KeyCode down = XKeysymToKeycode(display, XK_Down);
     const KeyCode space = XKeysymToKeycode(display, XK_space);
     const bool delivered =
         XTestFakeButtonEvent(display, Button1, False, CurrentTime) != False &&
@@ -447,6 +451,15 @@ bool SendInputCompletion(Display* display, Window child)
         SendCommandWithRepeat(display, f) &&
         SendCommandWithRepeat(display, home) &&
         SendCommandWithRepeat(display, p) &&
+        SendCommandWithRepeat(display, left) &&
+        SendCommandWithRepeat(display, right) &&
+        SendCommandWithRepeat(display, up) &&
+        SendCommandWithRepeat(display, down) &&
+        XTestFakeKeyEvent(display, alt, True, CurrentTime) != False &&
+        XTestFakeKeyEvent(display, left, True, CurrentTime) != False &&
+        XTestFakeKeyEvent(display, left, True, CurrentTime) != False &&
+        XTestFakeKeyEvent(display, left, False, CurrentTime) != False &&
+        XTestFakeKeyEvent(display, alt, False, CurrentTime) != False &&
         space != 0 &&
         XTestFakeKeyEvent(display, space, True, CurrentTime) != False &&
         XTestFakeKeyEvent(display, space, False, CurrentTime) != False;
@@ -472,8 +485,8 @@ bool ValidateStormChildRuntimeTopology(const char* runtime_path)
     namespace fs = std::filesystem;
     const fs::path directory(runtime_path);
     const fs::path link = directory / "libopenusd_storm_child.so";
-    const fs::path soname = directory / "libopenusd_storm_child.so.7";
-    const fs::path real = directory / "libopenusd_storm_child.so.7.0.0";
+    const fs::path soname = directory / "libopenusd_storm_child.so.8";
+    const fs::path real = directory / "libopenusd_storm_child.so.8.0.0";
     std::error_code error;
     const bool valid =
         fs::is_symlink(link, error) &&
@@ -549,7 +562,7 @@ int RunLifecycleSmokeChild(
     bool passed =
         Require(
             ValidateStormChildRuntimeTopology(runtime_path),
-            "Storm child runtime does not contain the exact ABI-7 SONAME link chain.") &&
+            "Storm child runtime does not contain the exact ABI-8 SONAME link chain.") &&
         Require(
             openusd_register_plugins(plugin_path, &plugin_count, &error) ==
                 OPENUSD_STATUS_OK,
@@ -850,7 +863,7 @@ int main(int argc, char** argv)
             "Storm child ABI mismatch.") &&
         Require(
             ValidateStormChildRuntimeTopology(argv[3]),
-            "Storm child runtime does not contain the exact ABI-7 SONAME link chain.") &&
+            "Storm child runtime does not contain the exact ABI-8 SONAME link chain.") &&
         Require(
             openusd_register_plugins(argv[1], &plugin_count, &error) ==
                 OPENUSD_STATUS_OK,
@@ -1308,15 +1321,23 @@ int main(int argc, char** argv)
                 navigation.cumulative_wheel_delta == 0.0 &&
                 navigation.frame_selected_press_count == 2 &&
                 navigation.reset_automatic_press_count == 2 &&
-                navigation.toggle_projection_press_count == 2,
+                navigation.toggle_projection_press_count == 2 &&
+                navigation.orbit_left_press_count == 3 &&
+                navigation.orbit_right_press_count == 3 &&
+                navigation.orbit_up_press_count == 3 &&
+                navigation.orbit_down_press_count == 3,
             "The Linux held/repressed command navigation snapshot is invalid.");
     const KeyCode p_key = XKeysymToKeycode(display, XK_p);
+    const KeyCode left_key = XKeysymToKeycode(display, XK_Left);
     passed =
         passed &&
         Require(
             p_key != 0 &&
                 XTestFakeKeyEvent(display, p_key, True, CurrentTime) != False &&
-                XTestFakeKeyEvent(display, p_key, True, CurrentTime) != False,
+                XTestFakeKeyEvent(display, p_key, True, CurrentTime) != False &&
+                left_key != 0 &&
+                XTestFakeKeyEvent(display, left_key, True, CurrentTime) != False &&
+                XTestFakeKeyEvent(display, left_key, True, CurrentTime) != False,
             "Could not hold the Linux projection key before focus loss.");
     XFlush(display);
     XSync(display, False);
@@ -1374,7 +1395,10 @@ int main(int argc, char** argv)
         Require(
             XTestFakeKeyEvent(display, p_key, False, CurrentTime) != False &&
                 XTestFakeKeyEvent(display, p_key, True, CurrentTime) != False &&
-                XTestFakeKeyEvent(display, p_key, False, CurrentTime) != False,
+                XTestFakeKeyEvent(display, p_key, False, CurrentTime) != False &&
+                XTestFakeKeyEvent(display, left_key, False, CurrentTime) != False &&
+                XTestFakeKeyEvent(display, left_key, True, CurrentTime) != False &&
+                XTestFakeKeyEvent(display, left_key, False, CurrentTime) != False,
             "Could not release and repress the Linux projection key.");
     XFlush(display);
     XSync(display, False);
@@ -1397,7 +1421,11 @@ int main(int argc, char** argv)
                 child,
                 &navigation,
                 &error) == OPENUSD_STATUS_OK &&
-                navigation.toggle_projection_press_count == 4,
+                navigation.toggle_projection_press_count == 4 &&
+                navigation.orbit_left_press_count == 6 &&
+                navigation.orbit_right_press_count == 3 &&
+                navigation.orbit_up_press_count == 3 &&
+                navigation.orbit_down_press_count == 3,
             "Linux focus loss did not reset the pressed command-key state.");
 
     passed =
@@ -1496,7 +1524,15 @@ int main(int argc, char** argv)
                 navigation.reset_automatic_press_count ==
                     before_context_navigation.reset_automatic_press_count &&
                 navigation.toggle_projection_press_count ==
-                    before_context_navigation.toggle_projection_press_count,
+                    before_context_navigation.toggle_projection_press_count &&
+                navigation.orbit_left_press_count ==
+                    before_context_navigation.orbit_left_press_count &&
+                navigation.orbit_right_press_count ==
+                    before_context_navigation.orbit_right_press_count &&
+                navigation.orbit_up_press_count ==
+                    before_context_navigation.orbit_up_press_count &&
+                navigation.orbit_down_press_count ==
+                    before_context_navigation.orbit_down_press_count,
             "Context recreation did not preserve Linux navigation input.") &&
         Require(
             openusd_storm_child_render(

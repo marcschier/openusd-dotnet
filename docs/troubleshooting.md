@@ -86,7 +86,7 @@ The current contracts are:
 
 - data ABI 15 with required capabilities `0x3FFFF`;
 - direct Storm ABI 6;
-- Storm child ABI 7;
+- Storm child ABI 8;
 - hdSilk session ABI 5; and
 - hdSilk command-page ABI 11.
 

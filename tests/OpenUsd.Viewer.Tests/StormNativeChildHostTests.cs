@@ -283,7 +283,7 @@ public sealed class StormNativeChildHostTests
     }
 
     [Test]
-    public async Task LinuxStormChildCMakePinsAbi7SonameTopology()
+    public async Task LinuxStormChildCMakePinsAbi8SonameTopology()
     {
         string root = FindRepositoryRoot();
         string targetCmake = await File.ReadAllTextAsync(Path.Combine(
@@ -304,14 +304,14 @@ public sealed class StormNativeChildHostTests
             "tests",
             "storm_child_probe_linux.cpp"));
 
-        await Assert.That(targetCmake).Contains("VERSION 7.0.0");
-        await Assert.That(targetCmake).Contains("SOVERSION 7");
+        await Assert.That(targetCmake).Contains("VERSION 8.0.0");
+        await Assert.That(targetCmake).Contains("SOVERSION 8");
         await Assert.That(probeCmake)
             .Contains("$<TARGET_SONAME_FILE_NAME:openusd_storm_child>");
         await Assert.That(probeCmake)
             .Contains("$<TARGET_LINKER_FILE_NAME:openusd_storm_child>");
-        await Assert.That(probeSource).Contains("libopenusd_storm_child.so.7.0.0");
-        await Assert.That(probeSource).Contains("libopenusd_storm_child.so.7");
+        await Assert.That(probeSource).Contains("libopenusd_storm_child.so.8.0.0");
+        await Assert.That(probeSource).Contains("libopenusd_storm_child.so.8");
         await Assert.That(probeSource).Contains("libopenusd_storm_child.so");
     }
 
@@ -332,7 +332,7 @@ public sealed class StormNativeChildHostTests
             () =>
             {
                 calls.Add("GetAbiVersion");
-                return 7;
+                return 8;
             });
 
         await Assert.That(calls.Count).IsEqualTo(3);
@@ -659,8 +659,14 @@ public sealed class StormNativeChildHostTests
             "src",
             "openusd_storm_child_macos.mm"));
 
-        await Assert.That(header).Contains("OPENUSD_STORM_CHILD_ABI_VERSION 7u");
+        await Assert.That(header).Contains("OPENUSD_STORM_CHILD_ABI_VERSION 8u");
+        await Assert.That(header).Contains(
+            "OPENUSD_STORM_CHILD_NAVIGATION_INPUT_VERSION 2u");
         await Assert.That(header).Contains("openusd_storm_child_navigation_input");
+        await Assert.That(header).Contains("orbit_left_press_count");
+        await Assert.That(header).Contains("orbit_right_press_count");
+        await Assert.That(header).Contains("orbit_up_press_count");
+        await Assert.That(header).Contains("orbit_down_press_count");
         await Assert.That(header).Contains("static_assert(sizeof(");
         string snapshot = header[header.IndexOf(
             "typedef struct openusd_storm_child_navigation_input",
@@ -678,6 +684,12 @@ public sealed class StormNativeChildHostTests
         await Assert.That(windows).Contains("WM_MBUTTONDOWN");
         await Assert.That(windows).Contains("WM_MOUSELEAVE");
         await Assert.That(windows).Contains("uintptr_t{1} << 30");
+        await Assert.That(windows).Contains("case VK_LEFT:");
+        await Assert.That(windows).Contains("case VK_RIGHT:");
+        await Assert.That(linux).Contains("key == XK_Left");
+        await Assert.That(linux).Contains("key == XK_Right");
+        await Assert.That(macOS).Contains("NSLeftArrowFunctionKey");
+        await Assert.That(macOS).Contains("NSRightArrowFunctionKey");
         string navigation = await File.ReadAllTextAsync(Path.Combine(
             root,
             "native",

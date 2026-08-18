@@ -511,7 +511,7 @@ when a backend returns identity-only results.
 | Validation panel data (`UsdValidation`) | ABI/API implemented; UI pending |
 | Root/session edit targets and layer muting | Implemented |
 | Timeline playback and authored timing | Implemented |
-| Orbit, pan, dolly/zoom, projection toggle, and framing | Implemented |
+| Orbit (including viewport-focused 5-degree arrows), pan, zoom, projection toggle, and framing | Implemented |
 | Selected `UsdGeomCamera` adoption | Implemented |
 | usdview viewport draw-mode ladder | Implemented |
 | Stage AABB/OBB statistics display | Implemented |

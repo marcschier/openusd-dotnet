@@ -20,9 +20,9 @@ if (-not $stormChildAbiMatch.Success)
     throw "Could not read the Storm child ABI from $stormChildHeader."
 }
 $stormChildAbiVersion = [int]$stormChildAbiMatch.Groups[1].Value
-if ($stormChildAbiVersion -ne 7)
+if ($stormChildAbiVersion -ne 8)
 {
-    throw "Storm child package evidence requires ABI 7, got $stormChildAbiVersion."
+    throw "Storm child package evidence requires ABI 8, got $stormChildAbiVersion."
 }
 
 function Assert-FullSha256
@@ -359,5 +359,5 @@ if ($RequireArchiveSource)
 }
 
 Write-Output (
-    'Validated Linux package evidence schema, hashes, ABI-7 DT_SONAME/link ' +
+    'Validated Linux package evidence schema, hashes, ABI-8 DT_SONAME/link ' +
     'topology, navigation/capture, DT_RUNPATH, and maps.')

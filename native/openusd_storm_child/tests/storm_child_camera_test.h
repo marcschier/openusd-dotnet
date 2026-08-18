@@ -12,7 +12,17 @@
 
 namespace openusd_storm_child_camera_test
 {
-static_assert(OPENUSD_STORM_CHILD_ABI_VERSION == 7);
+static_assert(OPENUSD_STORM_CHILD_ABI_VERSION == 8);
+static_assert(OPENUSD_STORM_CHILD_NAVIGATION_INPUT_VERSION == 2);
+static_assert(sizeof(openusd_storm_child_navigation_input) == 104);
+static_assert(
+    offsetof(openusd_storm_child_navigation_input, orbit_left_press_count) == 72);
+static_assert(
+    offsetof(openusd_storm_child_navigation_input, orbit_right_press_count) == 80);
+static_assert(
+    offsetof(openusd_storm_child_navigation_input, orbit_up_press_count) == 88);
+static_assert(
+    offsetof(openusd_storm_child_navigation_input, orbit_down_press_count) == 96);
 
 inline openusd_render_camera AutomaticCamera()
 {

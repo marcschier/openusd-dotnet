@@ -59,7 +59,11 @@ public sealed class ViewerCameraNavigationUiTests
                 wheel: 1.5,
                 frame: 2,
                 home: 3,
-                projection: 4),
+                projection: 4,
+                left: 5,
+                right: 6,
+                up: 7,
+                down: 8),
             routedInputGeneration: 0);
 
         await Assert.That(baseline.ResetPointerGesture).IsTrue();
@@ -71,6 +75,11 @@ public sealed class ViewerCameraNavigationUiTests
         await Assert.That(moved.FrameSelectedPresses).IsEqualTo(2UL);
         await Assert.That(moved.ResetAutomaticPresses).IsEqualTo(3UL);
         await Assert.That(moved.ToggleProjectionPresses).IsEqualTo(4UL);
+        await Assert.That(moved.OrbitLeftPresses).IsEqualTo(5UL);
+        await Assert.That(moved.OrbitRightPresses).IsEqualTo(6UL);
+        await Assert.That(moved.OrbitUpPresses).IsEqualTo(7UL);
+        await Assert.That(moved.OrbitDownPresses).IsEqualTo(8UL);
+        await Assert.That(moved.HasCameraMutation).IsTrue();
 
         tracker.Reset();
         _ = tracker.Update(
@@ -257,6 +266,36 @@ public sealed class ViewerCameraNavigationUiTests
             Key.D1,
             KeyModifiers.Control,
             isEditing: false)).IsEqualTo(ViewerCameraShortcut.None);
+        await Assert.That(ViewerCameraShortcutPolicy.Classify(
+            Key.Left,
+            KeyModifiers.None,
+            isEditing: false,
+            isViewportFocused: true)).IsEqualTo(ViewerCameraShortcut.OrbitLeft);
+        await Assert.That(ViewerCameraShortcutPolicy.Classify(
+            Key.Right,
+            KeyModifiers.None,
+            isEditing: false,
+            isViewportFocused: true)).IsEqualTo(ViewerCameraShortcut.OrbitRight);
+        await Assert.That(ViewerCameraShortcutPolicy.Classify(
+            Key.Up,
+            KeyModifiers.None,
+            isEditing: false,
+            isViewportFocused: true)).IsEqualTo(ViewerCameraShortcut.OrbitUp);
+        await Assert.That(ViewerCameraShortcutPolicy.Classify(
+            Key.Down,
+            KeyModifiers.None,
+            isEditing: false,
+            isViewportFocused: true)).IsEqualTo(ViewerCameraShortcut.OrbitDown);
+        await Assert.That(ViewerCameraShortcutPolicy.Classify(
+            Key.Left,
+            KeyModifiers.None,
+            isEditing: false,
+            isViewportFocused: false)).IsEqualTo(ViewerCameraShortcut.None);
+        await Assert.That(ViewerCameraShortcutPolicy.Classify(
+            Key.Right,
+            KeyModifiers.Shift,
+            isEditing: false,
+            isViewportFocused: true)).IsEqualTo(ViewerCameraShortcut.None);
     }
 
     [Test]
@@ -275,6 +314,8 @@ public sealed class ViewerCameraNavigationUiTests
 
         await Assert.That(guard.TryPress(Key.Space)).IsTrue();
         await Assert.That(guard.TryPress(Key.F)).IsTrue();
+        await Assert.That(guard.TryPress(Key.Left)).IsTrue();
+        await Assert.That(guard.TryPress(Key.Left)).IsTrue();
         guard.Reset();
         await Assert.That(guard.TryPress(Key.F)).IsTrue();
     }
@@ -394,11 +435,50 @@ public sealed class ViewerCameraNavigationUiTests
             .Throws<InvalidOperationException>();
         await Assert.That(adapter.ResetToExplicitPose)
             .Throws<InvalidOperationException>();
+        await Assert.That(() => adapter.OrbitStep(ViewerCameraOrbitCommand.Left))
+            .Throws<InvalidOperationException>();
         await Assert.That(controller.Camera).IsEqualTo(CameraState.Default);
 
         verifier.IsUiThread = true;
         await Assert.That(adapter.ResetToExplicitPose()).IsTrue();
         await Assert.That(adapter.Camera.Mode).IsEqualTo(CameraMode.Matrices);
+    }
+
+    [Test]
+    public async Task OrbitStepsChangeOneAxisAndProduceExplicitCameraMatrices()
+    {
+        var verifier = new TestUiThreadVerifier(isUiThread: true);
+        var controller = new ViewerCameraNavigationController(
+            new ViewportDimensions(800, 600));
+        var adapter = new ViewerCameraNavigationUiAdapter(controller, verifier);
+        ViewerCameraNavigationState automatic = adapter.State;
+
+        await Assert.That(adapter.OrbitStep(ViewerCameraOrbitCommand.Right)).IsTrue();
+        ViewerCameraNavigationState right = adapter.State;
+        await Assert.That(right.IsAutomatic).IsFalse();
+        await Assert.That(right.Yaw).IsGreaterThan(automatic.Yaw);
+        await Assert.That(right.Pitch).IsEqualTo(automatic.Pitch);
+        await Assert.That(right.Target).IsEqualTo(automatic.Target);
+        await Assert.That(right.Distance).IsEqualTo(automatic.Distance);
+        await Assert.That(adapter.Camera.Mode).IsEqualTo(CameraMode.Matrices);
+        await Assert.That(adapter.Camera.View)
+            .IsNotEqualTo(Matrix4x4.CreateLookAt(
+                new Vector3(4f, 3f, 4f),
+                Vector3.Zero,
+                Vector3.UnitY));
+
+        await Assert.That(adapter.OrbitStep(ViewerCameraOrbitCommand.Up)).IsTrue();
+        ViewerCameraNavigationState up = adapter.State;
+        await Assert.That(up.Yaw).IsEqualTo(right.Yaw);
+        await Assert.That(up.Pitch).IsGreaterThan(right.Pitch);
+
+        await Assert.That(adapter.OrbitStep(ViewerCameraOrbitCommand.Down)).IsTrue();
+        await Assert.That(adapter.State.Pitch).IsLessThan(up.Pitch);
+        await Assert.That(() => adapter.OrbitStep((ViewerCameraOrbitCommand)int.MaxValue))
+            .Throws<ArgumentOutOfRangeException>();
+
+        await Assert.That(adapter.OrbitSteps(2, 5, 7, 3)).IsTrue();
+        await Assert.That(adapter.State.Yaw).IsGreaterThan(right.Yaw);
     }
 
     [Test]
@@ -602,12 +682,26 @@ public sealed class ViewerCameraNavigationUiTests
         await Assert.That(markup).Contains("x:Name=\"ToggleCameraProjectionButton\"");
         await Assert.That(markup).Contains("x:Name=\"UseSelectedCameraButton\"");
         await Assert.That(markup).Contains("x:Name=\"FrameSelectedButton\"");
+        await Assert.That(markup).Contains("x:Name=\"CameraOrbitLeftButton\"");
+        await Assert.That(markup).Contains("x:Name=\"CameraOrbitRightButton\"");
+        await Assert.That(markup).Contains("x:Name=\"CameraOrbitUpButton\"");
+        await Assert.That(markup).Contains("x:Name=\"CameraOrbitDownButton\"");
         await Assert.That(markup).Contains("x:Name=\"CameraStatus\"");
         await Assert.That(markup).Contains("AutomationProperties.Name=\"Frame selected prim\"");
+        await Assert.That(markup).Contains("x:Name=\"ViewerToolbarGrid\"");
+        await Assert.That(markup).Contains("RowDefinitions=\"Auto,Auto\"");
+        await Assert.That(markup).Contains("Grid.ColumnSpan=\"5\"");
+        await Assert.That(markup).Contains("TextTrimming=\"CharacterEllipsis\"");
+        await Assert.That(markup).Contains("RowDefinitions=\"32,32\"");
+        await Assert.That(markup).Contains("ColumnDefinitions=\"32,32,32\"");
+        await Assert.That(markup).Contains("<Setter Property=\"Padding\" Value=\"0\" />");
+        await Assert.That(markup).Contains("<Setter Property=\"FontSize\" Value=\"18\" />");
         await Assert.That(window).Contains("RegisterCameraInputHandlers(this);");
         await Assert.That(window).Contains("RegisterCameraInputHandlers(ViewportHost);");
         await Assert.That(window).Contains("KeyUp += OnWindowKeyUp;");
         await Assert.That(window).Contains("_cameraShortcutRepeat.TryPress(e.Key)");
+        await Assert.That(window).Contains("ViewportHost.IsKeyboardFocusWithin");
+        await Assert.That(window).Contains("OrbitCamera(command);");
         await Assert.That(integration).Contains("ViewerCameraShortcutRepeatGuard");
         await Assert.That(integration).Contains("ResetForFocusTransfer");
         string pointerPress = SliceMethod(
@@ -706,6 +800,10 @@ public sealed class ViewerCameraNavigationUiTests
             "ToggleCameraProjectionButton.IsEnabled = enabled;");
         await Assert.That(availability).Contains(
             "FrameSelectedButton.IsEnabled = enabled;");
+        await Assert.That(availability).Contains(
+            "CameraOrbitLeftButton.IsEnabled = enabled;");
+        await Assert.That(availability).Contains(
+            "CameraOrbitRightButton.IsEnabled = enabled;");
         await Assert.That(availability).DoesNotContain(
             "RenderBackendKind.Storm");
         await Assert.That(documentation).Contains(
@@ -745,20 +843,30 @@ public sealed class ViewerCameraNavigationUiTests
         ulong frame = 0,
         ulong home = 0,
         ulong projection = 0,
+        ulong left = 0,
+        ulong right = 0,
+        ulong up = 0,
+        ulong down = 0,
         bool focused = true,
         bool inside = true) =>
         new(
-            sequence,
-            x,
-            y,
-            buttons,
-            modifiers,
-            wheel,
-            frame,
-            home,
-            projection,
-            (focused ? OpenUsdStormNavigationState.Focused : 0) |
-            (inside ? OpenUsdStormNavigationState.Inside : 0));
+                sequence,
+                x,
+                y,
+                buttons,
+                modifiers,
+                wheel,
+                frame,
+                home,
+                projection,
+                (focused ? OpenUsdStormNavigationState.Focused : 0) |
+                (inside ? OpenUsdStormNavigationState.Inside : 0))
+        {
+            OrbitLeftPressCount = left,
+            OrbitRightPressCount = right,
+            OrbitUpPressCount = up,
+            OrbitDownPressCount = down,
+        };
 
     private static UsdBounds3d CreateBounds() =>
         new(

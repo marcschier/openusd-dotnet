@@ -287,14 +287,14 @@ internal sealed record ViewerSwitchingEvidenceArtifact(
     ViewerStageCameraEvidence? StageCamera = null)
 {
     internal const int CurrentSchemaVersion = 8;
-    internal const int RequiredStormChildAbiVersion = 7;
+    internal const int RequiredStormChildAbiVersion = 8;
     internal const string StormCaptureApi =
-        "openusd_storm_child_capture_framebuffer(ABI7,preserved-texture)";
+        "openusd_storm_child_capture_framebuffer(ABI8,preserved-texture)";
     internal const string StormNavigationDeliveryApi =
-        "SendMessageTimeoutW+StormChildWndProc+ABI7Poll+" +
+        "SendMessageTimeoutW+StormChildWndProc+ABI8Poll+" +
         "ViewerCameraNavigationUiAdapter";
     internal const string StormNavigationSnapshotApi =
-        "openusd_storm_child_get_navigation_input(ABI7,v1)";
+        "openusd_storm_child_get_navigation_input(ABI8,v2)";
 
     internal static ViewerSwitchingEvidenceArtifact ReadAndValidate(string path)
     {

@@ -40,9 +40,9 @@ function Assert-Rejected
 }
 
 $versioned = @(
-    (New-Entry 'libopenusd_storm_child.so' 'symlink' 'libopenusd_storm_child.so.7'),
-    (New-Entry 'libopenusd_storm_child.so.7' 'symlink' 'libopenusd_storm_child.so.7.0.0'),
-    (New-Entry 'libopenusd_storm_child.so.7.0.0' 'regular'))
+    (New-Entry 'libopenusd_storm_child.so' 'symlink' 'libopenusd_storm_child.so.8'),
+    (New-Entry 'libopenusd_storm_child.so.8' 'symlink' 'libopenusd_storm_child.so.8.0.0'),
+    (New-Entry 'libopenusd_storm_child.so.8.0.0' 'regular'))
 
 Assert-OpenUsdStormChildTopology -Entries $versioned | Out-Null
 Assert-Rejected -Entries @($versioned[0]) -ExpectedMessage 'requires'
@@ -51,21 +51,21 @@ Assert-Rejected -Entries @(
     $versioned[1],
     $versioned[2]) -ExpectedMessage 'must be a symbolic link'
 Assert-Rejected -Entries @(
-    (New-Entry 'libopenusd_storm_child.so' 'symlink' 'libopenusd_storm_child.so.7.1'),
+    (New-Entry 'libopenusd_storm_child.so' 'symlink' 'libopenusd_storm_child.so.8.1'),
     $versioned[1],
     $versioned[2]) -ExpectedMessage 'exact target'
 Assert-Rejected -Entries @(
     $versioned[0],
-    (New-Entry 'libopenusd_storm_child.so.7' 'symlink' 'libopenusd_storm_child.so.7.0'),
-    (New-Entry 'libopenusd_storm_child.so.7.0' 'regular')) -ExpectedMessage 'Unexpected'
+    (New-Entry 'libopenusd_storm_child.so.8' 'symlink' 'libopenusd_storm_child.so.8.0'),
+    (New-Entry 'libopenusd_storm_child.so.8.0' 'regular')) -ExpectedMessage 'Unexpected'
 Assert-Rejected -Entries @(
     $versioned[0],
     $versioned[1],
     $versioned[2],
-    (New-Entry 'libopenusd_storm_child.so.7.9' 'regular')) -ExpectedMessage 'Unexpected'
+    (New-Entry 'libopenusd_storm_child.so.8.9' 'regular')) -ExpectedMessage 'Unexpected'
 Assert-Rejected -Entries @(
     $versioned[0],
-    (New-Entry 'libopenusd_storm_child.so.7' 'symlink' '/tmp/libopenusd_storm_child.so.7.1'),
+    (New-Entry 'libopenusd_storm_child.so.8' 'symlink' '/tmp/libopenusd_storm_child.so.8.1'),
     $versioned[2]) -ExpectedMessage 'exact target'
 
-Write-Output 'Linux Storm child ABI-7 SONAME topology tests passed.'
+Write-Output 'Linux Storm child ABI-8 SONAME topology tests passed.'

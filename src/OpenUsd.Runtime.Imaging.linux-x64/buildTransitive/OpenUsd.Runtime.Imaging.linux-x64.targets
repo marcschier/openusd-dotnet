@@ -59,16 +59,16 @@
     Name="RehydrateOpenUsdStormChildBuildLinks"
     AfterTargets="Build"
     Condition="'$(_OUImgLinuxApplies)' == 'true' and $([MSBuild]::IsOSPlatform('Linux'))">
-    <Exec Command="rm -f &quot;$(TargetDir)libopenusd_storm_child.so&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7&quot; &quot;$(TargetDir)libopenusd_storm_child.so&quot;" />
-    <Exec Command="test -f &quot;$(TargetDir)libopenusd_storm_child.so.7.0.0&quot; &amp;&amp; rm -f &quot;$(TargetDir)libopenusd_storm_child.so.7&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7.0.0&quot; &quot;$(TargetDir)libopenusd_storm_child.so.7&quot;" />
+    <Exec Command="rm -f &quot;$(TargetDir)libopenusd_storm_child.so&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.8&quot; &quot;$(TargetDir)libopenusd_storm_child.so&quot;" />
+    <Exec Command="test -f &quot;$(TargetDir)libopenusd_storm_child.so.8.0.0&quot; &amp;&amp; rm -f &quot;$(TargetDir)libopenusd_storm_child.so.8&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.8.0.0&quot; &quot;$(TargetDir)libopenusd_storm_child.so.8&quot;" />
   </Target>
 
   <Target
     Name="RehydrateOpenUsdStormChildPublishLinks"
     AfterTargets="CopyFilesToPublishDirectory"
     Condition="'$(_OUImgLinuxApplies)' == 'true' and $([MSBuild]::IsOSPlatform('Linux'))">
-    <Exec Command="rm -f &quot;$(PublishDir)libopenusd_storm_child.so&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7&quot; &quot;$(PublishDir)libopenusd_storm_child.so&quot;" />
-    <Exec Command="test -f &quot;$(PublishDir)libopenusd_storm_child.so.7.0.0&quot; &amp;&amp; rm -f &quot;$(PublishDir)libopenusd_storm_child.so.7&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.7.0.0&quot; &quot;$(PublishDir)libopenusd_storm_child.so.7&quot;" />
+    <Exec Command="rm -f &quot;$(PublishDir)libopenusd_storm_child.so&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.8&quot; &quot;$(PublishDir)libopenusd_storm_child.so&quot;" />
+    <Exec Command="test -f &quot;$(PublishDir)libopenusd_storm_child.so.8.0.0&quot; &amp;&amp; rm -f &quot;$(PublishDir)libopenusd_storm_child.so.8&quot; &amp;&amp; ln -s &quot;libopenusd_storm_child.so.8.0.0&quot; &quot;$(PublishDir)libopenusd_storm_child.so.8&quot;" />
   </Target>
 
 </Project>

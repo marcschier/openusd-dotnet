@@ -246,6 +246,10 @@ public sealed partial class MainWindow : Window, IDisposable
             UseSelectedCameraMenuItem.Click += OnUseSelectedCameraClick;
             FrameSelectedButton.Click += OnFrameSelectedClick;
             FrameSelectedMenuItem.Click += OnFrameSelectedClick;
+            CameraOrbitLeftButton.Click += OnCameraOrbitClick;
+            CameraOrbitRightButton.Click += OnCameraOrbitClick;
+            CameraOrbitUpButton.Click += OnCameraOrbitClick;
+            CameraOrbitDownButton.Click += OnCameraOrbitClick;
             ShortcutsMenuItem.Click += OnShortcutsClick;
             KeyDown += OnWindowKeyDown;
             KeyUp += OnWindowKeyUp;
@@ -609,7 +613,8 @@ public sealed partial class MainWindow : Window, IDisposable
         ViewerCameraShortcut cameraShortcut = ViewerCameraShortcutPolicy.Classify(
             e.Key,
             e.KeyModifiers,
-            editing);
+            editing,
+            ViewportHost.IsKeyboardFocusWithin);
         if (cameraShortcut != ViewerCameraShortcut.None &&
             !firstCameraShortcutPress)
         {
@@ -637,6 +642,21 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             MarkAvaloniaCameraInput();
             _ = FrameSelectedAsync();
+            e.Handled = true;
+            return;
+        }
+        ViewerCameraOrbitCommand? orbitCommand = cameraShortcut switch
+        {
+            ViewerCameraShortcut.OrbitLeft => ViewerCameraOrbitCommand.Left,
+            ViewerCameraShortcut.OrbitRight => ViewerCameraOrbitCommand.Right,
+            ViewerCameraShortcut.OrbitUp => ViewerCameraOrbitCommand.Up,
+            ViewerCameraShortcut.OrbitDown => ViewerCameraOrbitCommand.Down,
+            _ => null,
+        };
+        if (orbitCommand is { } command && CameraOrbitLeftButton.IsEnabled)
+        {
+            MarkAvaloniaCameraInput();
+            OrbitCamera(command);
             e.Handled = true;
             return;
         }
@@ -722,6 +742,24 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void OnToggleCameraProjectionClick(object? sender, RoutedEventArgs e) =>
         ToggleCameraProjection();
+
+    private void OnCameraOrbitClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        ViewerCameraOrbitCommand command = sender switch
+        {
+            Button button when ReferenceEquals(button, CameraOrbitLeftButton) =>
+                ViewerCameraOrbitCommand.Left,
+            Button button when ReferenceEquals(button, CameraOrbitRightButton) =>
+                ViewerCameraOrbitCommand.Right,
+            Button button when ReferenceEquals(button, CameraOrbitUpButton) =>
+                ViewerCameraOrbitCommand.Up,
+            Button button when ReferenceEquals(button, CameraOrbitDownButton) =>
+                ViewerCameraOrbitCommand.Down,
+            _ => throw new ArgumentOutOfRangeException(nameof(sender)),
+        };
+        OrbitCamera(command);
+    }
 
     private async void OnUseSelectedCameraClick(object? sender, RoutedEventArgs e)
     {
@@ -899,6 +937,18 @@ public sealed partial class MainWindow : Window, IDisposable
         PublishCameraMutation(
             _cameraNavigation.ToggleProjection(),
             "Camera projection toggled.");
+    }
+
+    private void OrbitCamera(ViewerCameraOrbitCommand command)
+    {
+        if (!CanNavigateCamera())
+        {
+            return;
+        }
+        string direction = command.ToString().ToLowerInvariant();
+        PublishCameraMutation(
+            _cameraNavigation.OrbitStep(command),
+            $"Camera orbited {direction} by 5 degrees.");
     }
 
     private bool CanUseSelectedCamera() =>
@@ -1582,6 +1632,11 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 changed |= _cameraNavigation.ToggleProjection();
             }
+            changed |= _cameraNavigation.OrbitSteps(
+                delta.OrbitLeftPresses,
+                delta.OrbitRightPresses,
+                delta.OrbitUpPresses,
+                delta.OrbitDownPresses);
             if (changed)
             {
                 UpdateCameraStatus();
@@ -1833,6 +1888,10 @@ public sealed partial class MainWindow : Window, IDisposable
             selectedCameraAutomationName);
         FrameSelectedButton.IsEnabled = enabled;
         FrameSelectedMenuItem.IsEnabled = enabled;
+        CameraOrbitLeftButton.IsEnabled = enabled;
+        CameraOrbitRightButton.IsEnabled = enabled;
+        CameraOrbitUpButton.IsEnabled = enabled;
+        CameraOrbitDownButton.IsEnabled = enabled;
     }
 
     private void UpdateCameraStatus()

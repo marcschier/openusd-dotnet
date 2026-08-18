@@ -13,6 +13,10 @@
 constexpr uint32_t OPENUSD_STORM_CHILD_COMMAND_KEY_FRAME_SELECTED = 0x1u;
 constexpr uint32_t OPENUSD_STORM_CHILD_COMMAND_KEY_RESET_AUTOMATIC = 0x2u;
 constexpr uint32_t OPENUSD_STORM_CHILD_COMMAND_KEY_TOGGLE_PROJECTION = 0x4u;
+constexpr uint32_t OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_LEFT = 0x8u;
+constexpr uint32_t OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_RIGHT = 0x10u;
+constexpr uint32_t OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_UP = 0x20u;
+constexpr uint32_t OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_DOWN = 0x40u;
 
 struct OpenUsdStormChildNavigationState
 {
@@ -26,6 +30,10 @@ struct OpenUsdStormChildNavigationState
     uint64_t frame_selected_press_count = 0;
     uint64_t reset_automatic_press_count = 0;
     uint64_t toggle_projection_press_count = 0;
+    uint64_t orbit_left_press_count = 0;
+    uint64_t orbit_right_press_count = 0;
+    uint64_t orbit_up_press_count = 0;
+    uint64_t orbit_down_press_count = 0;
     uint32_t command_keys_down = 0;
     uint32_t state = OPENUSD_STORM_CHILD_NAVIGATION_STATE_NONE;
 };
@@ -137,14 +145,14 @@ inline void OpenUsdStormChildNavigationUpdateCommandKeyLocked(
     uint32_t key,
     bool pressed,
     bool repeat,
+    bool count_repeats,
     uint64_t OpenUsdStormChildNavigationState::* counter)
 {
     const bool was_pressed = (navigation->command_keys_down & key) != 0;
     if (pressed)
     {
         navigation->command_keys_down |= key;
-        if (!repeat &&
-            !was_pressed &&
+        if (((!repeat && !was_pressed) || (repeat && count_repeats)) &&
             navigation->modifiers == OPENUSD_STORM_CHILD_MODIFIER_NONE)
         {
             ++(navigation->*counter);
@@ -192,6 +200,10 @@ inline void OpenUsdStormChildCopyNavigationInput(
     input->toggle_projection_press_count =
         navigation->toggle_projection_press_count;
     input->state = navigation->state;
+    input->orbit_left_press_count = navigation->orbit_left_press_count;
+    input->orbit_right_press_count = navigation->orbit_right_press_count;
+    input->orbit_up_press_count = navigation->orbit_up_press_count;
+    input->orbit_down_press_count = navigation->orbit_down_press_count;
 }
 
 #endif

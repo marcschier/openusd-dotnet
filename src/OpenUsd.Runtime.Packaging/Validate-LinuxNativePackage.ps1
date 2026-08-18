@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'LinuxStormChildTopology.ps1')
 
 $allowedRunpathEntries = @('$ORIGIN')
-$requiredStormChildAbiVersion = 7
+$requiredStormChildAbiVersion = 8
 
 if (-not $IsLinux)
 {
@@ -177,5 +177,5 @@ New-Item -ItemType Directory -Force -Path (
 $evidence | ConvertTo-Json -Depth 4 | Set-Content $EvidencePath -Encoding utf8NoBOM
 Write-Output (
     "Validated Linux package ELF inputs: ABI $stormChildAbiVersion, " +
-    "DT_SONAME $script:OpenUsdStormChildSoname, exact ABI-7 link topology, " +
+    "DT_SONAME $script:OpenUsdStormChildSoname, exact ABI-8 link topology, " +
     'dispatcher/picking/selection/navigation/capture exports, and exact DT_RUNPATH [$ORIGIN].')

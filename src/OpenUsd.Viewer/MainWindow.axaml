@@ -15,7 +15,12 @@
         BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
         BorderThickness="0,0,0,1"
         Padding="8">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
+      <Grid
+          x:Name="ViewerToolbarGrid"
+          RowDefinitions="Auto,Auto"
+          ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
+          RowSpacing="6"
+          ColumnSpacing="8">
         <Menu Grid.Column="0" VerticalAlignment="Center">
           <MenuItem Header="_File">
             <MenuItem
@@ -131,7 +136,12 @@
           <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
           <ComboBoxItem Content="Metal" Tag="Metal" />
         </ComboBox>
-        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4">
+        <StackPanel
+            Grid.Row="1"
+            Grid.Column="0"
+            Grid.ColumnSpan="5"
+            Orientation="Horizontal"
+            Spacing="4">
           <Button
               x:Name="ResetCameraAutomaticButton"
               AutomationProperties.Name="Reset camera to automatic"
@@ -161,18 +171,71 @@
               AutomationProperties.Name="Frame selected prim"
               Content="_Frame"
               IsEnabled="False"
-              ToolTip.Tip="Frame the selected prim at the current time (F)" />
+              ToolTip.Tip="Center and frame the selected prim at the current time (F)" />
+          <Grid
+              RowDefinitions="32,32"
+              ColumnDefinitions="32,32,32"
+              RowSpacing="2"
+              ColumnSpacing="2">
+            <Grid.Styles>
+              <Style Selector="Button">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="FontSize" Value="18" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+              </Style>
+            </Grid.Styles>
+            <Button
+                x:Name="CameraOrbitLeftButton"
+                Grid.Row="1"
+                Grid.Column="0"
+                AutomationProperties.Name="Orbit camera left"
+                Content="&#x2190;"
+                IsEnabled="False"
+                ToolTip.Tip="Orbit 5 degrees left (Left Arrow while the viewport has focus)" />
+            <Button
+                x:Name="CameraOrbitUpButton"
+                Grid.Row="0"
+                Grid.Column="1"
+                AutomationProperties.Name="Orbit camera up"
+                Content="&#x2191;"
+                IsEnabled="False"
+                ToolTip.Tip="Orbit 5 degrees up (Up Arrow while the viewport has focus)" />
+            <Button
+                x:Name="CameraOrbitDownButton"
+                Grid.Row="1"
+                Grid.Column="1"
+                AutomationProperties.Name="Orbit camera down"
+                Content="&#x2193;"
+                IsEnabled="False"
+                ToolTip.Tip="Orbit 5 degrees down (Down Arrow while the viewport has focus)" />
+            <Button
+                x:Name="CameraOrbitRightButton"
+                Grid.Row="1"
+                Grid.Column="2"
+                AutomationProperties.Name="Orbit camera right"
+                Content="&#x2192;"
+                IsEnabled="False"
+                ToolTip.Tip="Orbit 5 degrees right (Right Arrow while the viewport has focus)" />
+          </Grid>
         </StackPanel>
         <TextBlock
             x:Name="CameraStatus"
-            Grid.Column="6"
+            Grid.Row="1"
+            Grid.Column="5"
+            MaxWidth="300"
             AutomationProperties.Name="Camera navigation state"
+            HorizontalAlignment="Right"
+            TextTrimming="CharacterEllipsis"
             VerticalAlignment="Center"
             Text="Camera: Automatic" />
         <TextBlock
             x:Name="StageStatus"
-            Grid.Column="7"
+            Grid.Column="5"
+            MaxWidth="300"
             AutomationProperties.Name="Current stage"
+            HorizontalAlignment="Right"
+            TextTrimming="CharacterEllipsis"
             VerticalAlignment="Center"
             Text="No stage loaded" />
       </Grid>

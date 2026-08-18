@@ -850,6 +850,41 @@ int main(int argc, char** argv)
                 navigation.reset_automatic_press_count == 2 &&
                 navigation.toggle_projection_press_count == 2,
             "The Windows wheel or release/repress command counters are invalid.");
+    const WPARAM arrow_keys[] =
+    {
+        static_cast<WPARAM>(VK_LEFT),
+        static_cast<WPARAM>(VK_RIGHT),
+        static_cast<WPARAM>(VK_UP),
+        static_cast<WPARAM>(VK_DOWN)
+    };
+    for (WPARAM key : arrow_keys)
+    {
+        SendMessageW(native_child, WM_KEYDOWN, key, 1);
+        SendMessageW(native_child, WM_KEYDOWN, key, 0x40000001u);
+        SendMessageW(native_child, WM_KEYDOWN, key, 1);
+        SendMessageW(native_child, WM_KEYUP, key, 0xc0000001u);
+    }
+    SendMessageW(native_child, WM_SYSKEYDOWN, VK_MENU, 1);
+    for (WPARAM key : arrow_keys)
+    {
+        SendMessageW(native_child, WM_KEYDOWN, key, 1);
+        SendMessageW(native_child, WM_KEYDOWN, key, 0x40000001u);
+        SendMessageW(native_child, WM_KEYUP, key, 0xc0000001u);
+    }
+    SendMessageW(native_child, WM_SYSKEYUP, VK_MENU, 0xc0000001u);
+    navigation = NavigationInput();
+    passed =
+        passed &&
+        Require(
+            openusd_storm_child_get_navigation_input(
+                child,
+                &navigation,
+                &error) == OPENUSD_STATUS_OK &&
+                navigation.orbit_left_press_count == 2 &&
+                navigation.orbit_right_press_count == 2 &&
+                navigation.orbit_up_press_count == 2 &&
+                navigation.orbit_down_press_count == 2,
+            "Windows arrow repeats or modifier filtering are invalid.");
     SendMessageW(native_child, WM_MOUSELEAVE, 0, 0);
     navigation = NavigationInput();
     passed =
@@ -864,6 +899,7 @@ int main(int argc, char** argv)
             "The Windows navigation inside state did not clear.");
     SendMessageW(native_child, WM_KEYDOWN, 'P', 1);
     SendMessageW(native_child, WM_KEYDOWN, 'P', 0x40000001u);
+    SendMessageW(native_child, WM_KEYDOWN, VK_LEFT, 1);
     SendMessageW(native_child, WM_SYSKEYDOWN, VK_MENU, 1);
     SendMessageW(
         native_child,
@@ -887,6 +923,8 @@ int main(int argc, char** argv)
     SendMessageW(native_child, WM_SETFOCUS, 0, 0);
     SendMessageW(native_child, WM_KEYDOWN, 'P', 1);
     SendMessageW(native_child, WM_KEYUP, 'P', 0xc0000001u);
+    SendMessageW(native_child, WM_KEYDOWN, VK_LEFT, 1);
+    SendMessageW(native_child, WM_KEYUP, VK_LEFT, 0xc0000001u);
     SendMessageW(native_child, WM_MOUSEMOVE, 0, PointParameter(34, 44));
     SendMessageW(native_child, WM_KEYDOWN, VK_SPACE, 0);
     navigation = NavigationInput();
@@ -897,7 +935,11 @@ int main(int argc, char** argv)
                 child,
                 &navigation,
                 &error) == OPENUSD_STATUS_OK &&
-                navigation.toggle_projection_press_count == 4,
+                navigation.toggle_projection_press_count == 4 &&
+                navigation.orbit_left_press_count == 4 &&
+                navigation.orbit_right_press_count == 2 &&
+                navigation.orbit_up_press_count == 2 &&
+                navigation.orbit_down_press_count == 2,
             "Windows focus loss did not reset the pressed command-key state.") &&
         Require(
             openusd_storm_child_get_diagnostics(
@@ -1019,7 +1061,15 @@ int main(int argc, char** argv)
                 navigation.reset_automatic_press_count ==
                     before_context_navigation.reset_automatic_press_count &&
                 navigation.toggle_projection_press_count ==
-                    before_context_navigation.toggle_projection_press_count,
+                    before_context_navigation.toggle_projection_press_count &&
+                navigation.orbit_left_press_count ==
+                    before_context_navigation.orbit_left_press_count &&
+                navigation.orbit_right_press_count ==
+                    before_context_navigation.orbit_right_press_count &&
+                navigation.orbit_up_press_count ==
+                    before_context_navigation.orbit_up_press_count &&
+                navigation.orbit_down_press_count ==
+                    before_context_navigation.orbit_down_press_count,
             "Context recreation did not preserve native navigation input.") &&
         Require(
             openusd_storm_child_render(

@@ -385,6 +385,7 @@ void UpdateNavigationKey(
     std::lock_guard lock(child->navigation.gate);
     uint32_t modifier = OPENUSD_STORM_CHILD_MODIFIER_NONE;
     uint32_t command_key = 0;
+    bool count_repeats = false;
     uint64_t OpenUsdStormChildNavigationState::* command_counter = nullptr;
     switch (key)
     {
@@ -422,6 +423,30 @@ void UpdateNavigationKey(
             command_counter =
                 &OpenUsdStormChildNavigationState::toggle_projection_press_count;
             break;
+        case VK_LEFT:
+            command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_LEFT;
+            count_repeats = true;
+            command_counter =
+                &OpenUsdStormChildNavigationState::orbit_left_press_count;
+            break;
+        case VK_RIGHT:
+            command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_RIGHT;
+            count_repeats = true;
+            command_counter =
+                &OpenUsdStormChildNavigationState::orbit_right_press_count;
+            break;
+        case VK_UP:
+            command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_UP;
+            count_repeats = true;
+            command_counter =
+                &OpenUsdStormChildNavigationState::orbit_up_press_count;
+            break;
+        case VK_DOWN:
+            command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_DOWN;
+            count_repeats = true;
+            command_counter =
+                &OpenUsdStormChildNavigationState::orbit_down_press_count;
+            break;
         default:
             break;
     }
@@ -446,6 +471,7 @@ void UpdateNavigationKey(
             command_key,
             pressed,
             repeat,
+            count_repeats,
             command_counter);
     }
     OpenUsdStormChildNavigationAdvance(&child->navigation);

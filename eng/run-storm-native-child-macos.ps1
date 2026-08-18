@@ -192,7 +192,7 @@ $summary = [ordered]@{
         'native first/edit/preserved capture',
         'actual openusd_hydra renderer is Storm / Metal',
         'Cocoa input and main-thread ownership',
-        'ABI-7 native navigation snapshots, picking, and command counters',
+        'ABI-8 native navigation snapshots, picking, and command counters',
         'concurrent resize/context-update ordering and context recreation',
         'serialized staged recovery and first recovered frame',
         'scheduler-bound hdSilk Metal stage draws and triangles',

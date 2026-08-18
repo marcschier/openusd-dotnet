@@ -265,8 +265,8 @@ path = sys.argv[1]
 value = json.load(open(path, encoding="utf-8"))
 if get(value, "schemaVersion") != 8:
     raise SystemExit("Viewer evidence schemaVersion must be 8.")
-if get(value, "stormChildAbiVersion") != 7:
-    raise SystemExit("Viewer evidence Storm child ABI must be 7.")
+if get(value, "stormChildAbiVersion") != 8:
+    raise SystemExit("Viewer evidence Storm child ABI must be 8.")
 if get(value, "nativeNavigation"):
     raise SystemExit("Linux evidence must not contain Win32 native navigation proof.")
 states = get(value, "states") or []
@@ -322,10 +322,10 @@ for transition in transitions:
 if any(
     get(pixel, "backend") == "Storm"
     and get(pixel, "captureApi") !=
-        "openusd_storm_child_capture_framebuffer(ABI7,preserved-texture)"
+        "openusd_storm_child_capture_framebuffer(ABI8,preserved-texture)"
     for pixel in pixels
 ):
-    raise SystemExit("Storm Viewer pixels did not use the ABI 7 capture label.")
+    raise SystemExit("Storm Viewer pixels did not use the ABI 8 capture label.")
 ' "$viewer_evidence_path"
 fi
 

@@ -470,7 +470,7 @@ function Assert-ViewerNativeNavigationEvidence
     $states = @((Get-ViewerEvidenceProperty $Artifact 'states'))
     $pixels = @((Get-ViewerEvidenceProperty $Artifact 'pixels'))
     $expectedDeliveryApi =
-        'SendMessageTimeoutW+StormChildWndProc+ABI7Poll+' +
+        'SendMessageTimeoutW+StormChildWndProc+ABI8Poll+' +
         'ViewerCameraNavigationUiAdapter'
     foreach ($entry in $navigation)
     {
@@ -485,8 +485,8 @@ function Assert-ViewerNativeNavigationEvidence
             [string](Get-ViewerEvidenceProperty $entry 'deliveryApi') -ne
                 $expectedDeliveryApi -or
             [string](Get-ViewerEvidenceProperty $entry 'snapshotApi') -ne
-                'openusd_storm_child_get_navigation_input(ABI7,v1)' -or
-            [int](Get-ViewerEvidenceProperty $entry 'stormChildAbiVersion') -ne 7 -or
+                'openusd_storm_child_get_navigation_input(ABI8,v2)' -or
+            [int](Get-ViewerEvidenceProperty $entry 'stormChildAbiVersion') -ne 8 -or
             [string](Get-ViewerEvidenceProperty $entry 'gesture') -ne
                 'Alt+Left Orbit' -or
             [uint64](Get-ViewerEvidenceProperty $entry 'sequencePressed') -le
@@ -1114,11 +1114,11 @@ function Assert-ViewerAggregateEvidence
         if ($stormRun)
         {
             if ([int](Get-ViewerEvidenceProperty `
-                    $run 'stormChildAbiVersion') -ne 7 -or
+                    $run 'stormChildAbiVersion') -ne 8 -or
                 $stormPixels.Count -eq 0 -or
                 @($stormPixels | Where-Object {
                     [string](Get-ViewerEvidenceProperty $_ 'captureApi') -cne
-                        'openusd_storm_child_capture_framebuffer(ABI7,preserved-texture)'
+                        'openusd_storm_child_capture_framebuffer(ABI8,preserved-texture)'
                 }).Count -ne 0)
             {
                 throw 'Viewer aggregate Storm ABI or pixel capture provenance is invalid.'
@@ -1151,12 +1151,12 @@ function Assert-ViewerAggregateEvidence
             if ([string](Get-ViewerEvidenceProperty $entry 'backend') -cne
                     'Storm' -or
                 [string](Get-ViewerEvidenceProperty $entry 'deliveryApi') -cne
-                    'SendMessageTimeoutW+StormChildWndProc+ABI7Poll+' +
+                    'SendMessageTimeoutW+StormChildWndProc+ABI8Poll+' +
                     'ViewerCameraNavigationUiAdapter' -or
                 [string](Get-ViewerEvidenceProperty $entry 'snapshotApi') -cne
-                    'openusd_storm_child_get_navigation_input(ABI7,v1)' -or
+                    'openusd_storm_child_get_navigation_input(ABI8,v2)' -or
                 [int](Get-ViewerEvidenceProperty `
-                    $entry 'stormChildAbiVersion') -ne 7 -or
+                    $entry 'stormChildAbiVersion') -ne 8 -or
                 [string]$entry.beforeCameraSignature -ceq
                     [string]$entry.afterCameraSignature -or
                 [string]$entry.beforePixelSha256 -ceq

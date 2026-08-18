@@ -209,19 +209,19 @@ if ($sessionAbi -ne 5)
 {
     throw "hdSilk session ABI $sessionAbi does not match the package ABI 5 contract."
 }
-if ($stormChildAbi -ne 7)
+if ($stormChildAbi -ne 8)
 {
-    throw "Storm child ABI $stormChildAbi does not match the package ABI 7 contract."
+    throw "Storm child ABI $stormChildAbi does not match the package ABI 8 contract."
 }
 if ($cameraStateVersion -ne 1)
 {
     throw "Camera state version $cameraStateVersion does not match the package version 1 contract."
 }
-if ($stormChildNavigationInputVersion -ne 1)
+if ($stormChildNavigationInputVersion -ne 2)
 {
     throw (
         "Storm child navigation input version $stormChildNavigationInputVersion " +
-        'does not match the package version 1 contract.')
+        'does not match the package version 2 contract.')
 }
 
 $nativeLayout = switch ($Rid)

@@ -823,7 +823,7 @@ public sealed class WorkflowStructureContractTests
             "Build package tests",
             "Verify Metal package staging",
             "Run required package execution gates",
-            "Require Linux ABI-7 SONAME topology and package-only evidence",
+            "Require Linux ABI-8 SONAME topology and package-only evidence",
             "Require macOS signed Storm child package-only evidence",
         })
         {

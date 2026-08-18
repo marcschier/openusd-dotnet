@@ -114,6 +114,18 @@ public readonly record struct OpenUsdStormNavigationInput(
     ulong ToggleProjectionPressCount,
     OpenUsdStormNavigationState State)
 {
+    /// <summary>Gets the cumulative unmodified Left Arrow press and repeat count.</summary>
+    public ulong OrbitLeftPressCount { get; init; }
+
+    /// <summary>Gets the cumulative unmodified Right Arrow press and repeat count.</summary>
+    public ulong OrbitRightPressCount { get; init; }
+
+    /// <summary>Gets the cumulative unmodified Up Arrow press and repeat count.</summary>
+    public ulong OrbitUpPressCount { get; init; }
+
+    /// <summary>Gets the cumulative unmodified Down Arrow press and repeat count.</summary>
+    public ulong OrbitDownPressCount { get; init; }
+
     /// <summary>Gets whether the native child owns keyboard focus.</summary>
     public bool Focused => (State & OpenUsdStormNavigationState.Focused) != 0;
 
@@ -412,8 +424,8 @@ public static unsafe partial class OpenUsdStormChildRuntime
 {
     private const string LibraryName = "openusd_storm_child";
     private const int ErrorBufferSize = 4096;
-    private const uint ExpectedAbiVersion = 7;
-    internal const uint NavigationInputVersion = 1;
+    private const uint ExpectedAbiVersion = 8;
+    internal const uint NavigationInputVersion = 2;
 
     /// <summary>Gets the Storm child ABI version.</summary>
     public static uint AbiVersion => NativeMethods.GetAbiVersion();
@@ -1271,6 +1283,10 @@ public static unsafe partial class OpenUsdStormChildRuntime
         internal ulong ToggleProjectionPressCount;
         internal OpenUsdStormNavigationState State;
         internal uint Reserved;
+        internal ulong OrbitLeftPressCount;
+        internal ulong OrbitRightPressCount;
+        internal ulong OrbitUpPressCount;
+        internal ulong OrbitDownPressCount;
 
         internal static NativeNavigationInput Create() => new()
         {
@@ -1294,17 +1310,24 @@ public static unsafe partial class OpenUsdStormChildRuntime
             }
         }
 
-        internal readonly OpenUsdStormNavigationInput ToManaged() => new(
-            Sequence,
-            PointerX,
-            PointerY,
-            Buttons,
-            Modifiers,
-            CumulativeWheelDelta,
-            FrameSelectedPressCount,
-            ResetAutomaticPressCount,
-            ToggleProjectionPressCount,
-            State);
+        internal readonly OpenUsdStormNavigationInput ToManaged() =>
+            new(
+                Sequence,
+                PointerX,
+                PointerY,
+                Buttons,
+                Modifiers,
+                CumulativeWheelDelta,
+                FrameSelectedPressCount,
+                ResetAutomaticPressCount,
+                ToggleProjectionPressCount,
+                State)
+            {
+                OrbitLeftPressCount = OrbitLeftPressCount,
+                OrbitRightPressCount = OrbitRightPressCount,
+                OrbitUpPressCount = OrbitUpPressCount,
+                OrbitDownPressCount = OrbitDownPressCount,
+            };
     }
 
     private static partial class NativeMethods

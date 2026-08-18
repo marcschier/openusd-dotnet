@@ -73,7 +73,7 @@ function Assert-SonameRejected
         Assert-OpenUsdElfSoname `
             -DynamicEntries $dynamic `
             -LibraryPath 'libopenusd_storm_child.so' `
-            -RequiredSoname 'libopenusd_storm_child.so.7' |
+            -RequiredSoname 'libopenusd_storm_child.so.8' |
             Out-Null
     }
     catch
@@ -146,8 +146,8 @@ Assert-SonameRejected `
 Assert-SonameRejected `
     -Name 'multiple SONAME tags' `
     -Lines @(
-        ' 0x000000000000000e (SONAME) Library soname: [libopenusd_storm_child.so.7]',
-        ' 0x000000000000000e (SONAME) Library soname: [libopenusd_storm_child.so.7]') `
+        ' 0x000000000000000e (SONAME) Library soname: [libopenusd_storm_child.so.8]',
+        ' 0x000000000000000e (SONAME) Library soname: [libopenusd_storm_child.so.8]') `
     -ExpectedMessage 'multiple DT_SONAME'
 
-Write-Output 'Linux ELF DT_RUNPATH and ABI-7 DT_SONAME parser tests passed.'
+Write-Output 'Linux ELF DT_RUNPATH and ABI-8 DT_SONAME parser tests passed.'

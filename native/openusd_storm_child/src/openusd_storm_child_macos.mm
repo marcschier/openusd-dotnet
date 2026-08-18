@@ -333,6 +333,7 @@ void UpdateMacKey(ChildState* state, NSEvent* event, bool pressed)
     const bool key_event =
         type == NSEventTypeKeyDown || type == NSEventTypeKeyUp;
     uint32_t command_key = 0;
+    bool count_repeats = false;
     uint64_t OpenUsdStormChildNavigationState::* command_counter = nullptr;
     if (key_event)
     {
@@ -357,6 +358,34 @@ void UpdateMacKey(ChildState* state, NSEvent* event, bool pressed)
             command_counter =
                 &OpenUsdStormChildNavigationState::toggle_projection_press_count;
         }
+        else if (character == NSLeftArrowFunctionKey || [event keyCode] == 123)
+        {
+            command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_LEFT;
+            count_repeats = true;
+            command_counter =
+                &OpenUsdStormChildNavigationState::orbit_left_press_count;
+        }
+        else if (character == NSRightArrowFunctionKey || [event keyCode] == 124)
+        {
+            command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_RIGHT;
+            count_repeats = true;
+            command_counter =
+                &OpenUsdStormChildNavigationState::orbit_right_press_count;
+        }
+        else if (character == NSUpArrowFunctionKey || [event keyCode] == 126)
+        {
+            command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_UP;
+            count_repeats = true;
+            command_counter =
+                &OpenUsdStormChildNavigationState::orbit_up_press_count;
+        }
+        else if (character == NSDownArrowFunctionKey || [event keyCode] == 125)
+        {
+            command_key = OPENUSD_STORM_CHILD_COMMAND_KEY_ORBIT_DOWN;
+            count_repeats = true;
+            command_counter =
+                &OpenUsdStormChildNavigationState::orbit_down_press_count;
+        }
     }
     std::lock_guard lock(state->navigation.gate);
     state->navigation.modifiers = MacModifiers(event);
@@ -368,6 +397,7 @@ void UpdateMacKey(ChildState* state, NSEvent* event, bool pressed)
             command_key,
             pressed,
             repeat,
+            count_repeats,
             command_counter);
     }
     OpenUsdStormChildNavigationAdvance(&state->navigation);

@@ -152,12 +152,13 @@ NSEvent* KeyEvent(
     NSEventType type,
     NSString* characters,
     BOOL repeat,
-    unsigned short key_code)
+    unsigned short key_code,
+    NSEventModifierFlags modifiers = 0)
 {
     return [NSEvent
         keyEventWithType:type
         location:NSZeroPoint
-        modifierFlags:0
+        modifierFlags:modifiers
         timestamp:0
         windowNumber:[window windowNumber]
         context:nil
@@ -543,6 +544,85 @@ int main(int argc, char** argv)
                     diagnostics.wheel_count >= 1 &&
                     diagnostics.key_count >= 18,
                 "The NSResponder input counters did not advance.");
+        struct ArrowEvent
+        {
+            NSString* characters;
+            unsigned short key_code;
+        };
+        const ArrowEvent arrow_events[] =
+        {
+            {@"", 123},
+            {[NSString stringWithFormat:@"%C", NSRightArrowFunctionKey], 0},
+            {[NSString stringWithFormat:@"%C", NSUpArrowFunctionKey], 126},
+            {[NSString stringWithFormat:@"%C", NSDownArrowFunctionKey], 125}
+        };
+        for (const ArrowEvent& arrow : arrow_events)
+        {
+            [view keyDown:KeyEvent(
+                window,
+                NSEventTypeKeyDown,
+                arrow.characters,
+                NO,
+                arrow.key_code)];
+            [view keyDown:KeyEvent(
+                window,
+                NSEventTypeKeyDown,
+                arrow.characters,
+                YES,
+                arrow.key_code)];
+            [view keyDown:KeyEvent(
+                window,
+                NSEventTypeKeyDown,
+                arrow.characters,
+                NO,
+                arrow.key_code)];
+            [view keyUp:KeyEvent(
+                window,
+                NSEventTypeKeyUp,
+                arrow.characters,
+                NO,
+                arrow.key_code)];
+        }
+        [view keyDown:KeyEvent(
+            window,
+            NSEventTypeKeyDown,
+            @"",
+            NO,
+            123,
+            NSEventModifierFlagOption)];
+        [view keyDown:KeyEvent(
+            window,
+            NSEventTypeKeyDown,
+            @"",
+            YES,
+            123,
+            NSEventModifierFlagOption)];
+        [view keyUp:KeyEvent(
+            window,
+            NSEventTypeKeyUp,
+            @"",
+            NO,
+            123,
+            NSEventModifierFlagOption)];
+        [view keyUp:KeyEvent(
+            window,
+            NSEventTypeKeyUp,
+            @" ",
+            NO,
+            49)];
+        navigation = NavigationInput();
+        passed =
+            passed &&
+            Require(
+                openusd_storm_child_get_navigation_input(
+                    child,
+                    &navigation,
+                    &error) == OPENUSD_STATUS_OK &&
+                    navigation.orbit_left_press_count == 2 &&
+                    navigation.orbit_right_press_count == 2 &&
+                    navigation.orbit_up_press_count == 2 &&
+                    navigation.orbit_down_press_count == 2,
+                "Cocoa arrow repeats, key mapping, or modifier filtering are invalid.");
         NSEvent* held_p = KeyEvent(
             window,
             NSEventTypeKeyDown,
@@ -569,6 +649,14 @@ int main(int argc, char** argv)
         [view keyDown:held_p];
         [view keyDown:repeated_p];
         [view keyDown:held_p];
+        NSEvent* held_left = KeyEvent(
+            window, NSEventTypeKeyDown, @"", NO, 123);
+        NSEvent* repeated_left = KeyEvent(
+            window, NSEventTypeKeyDown, @"", YES, 123);
+        NSEvent* released_left = KeyEvent(
+            window, NSEventTypeKeyUp, @"", NO, 123);
+        [view keyDown:held_left];
+        [view keyDown:repeated_left];
         navigation = NavigationInput();
         passed =
             passed &&
@@ -577,7 +665,8 @@ int main(int argc, char** argv)
                     child,
                     &navigation,
                     &error) == OPENUSD_STATUS_OK &&
-                    navigation.toggle_projection_press_count == 3,
+                    navigation.toggle_projection_press_count == 3 &&
+                    navigation.orbit_left_press_count == 4,
                 "Held Cocoa command keys were not suppressed.");
         [window makeFirstResponder:nil];
         navigation = NavigationInput();
@@ -602,6 +691,9 @@ int main(int argc, char** argv)
         [view keyUp:released_p];
         [view keyDown:held_p];
         [view keyUp:released_p];
+        [view keyUp:released_left];
+        [view keyDown:held_left];
+        [view keyUp:released_left];
         navigation = NavigationInput();
         passed =
             passed &&
@@ -610,7 +702,11 @@ int main(int argc, char** argv)
                     child,
                     &navigation,
                     &error) == OPENUSD_STATUS_OK &&
-                    navigation.toggle_projection_press_count == 4,
+                    navigation.toggle_projection_press_count == 4 &&
+                    navigation.orbit_left_press_count == 5 &&
+                    navigation.orbit_right_press_count == 2 &&
+                    navigation.orbit_up_press_count == 2 &&
+                    navigation.orbit_down_press_count == 2,
                 "Cocoa focus loss did not reset the pressed command-key state.");
 
         [view removeFromSuperview];

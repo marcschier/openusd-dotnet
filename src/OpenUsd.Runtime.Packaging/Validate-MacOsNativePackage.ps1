@@ -11,7 +11,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'MacOsNativeValidation.Common.ps1')
-$requiredStormChildAbiVersion = 7
+$requiredStormChildAbiVersion = 8
 
 if (-not $IsMacOS)
 {

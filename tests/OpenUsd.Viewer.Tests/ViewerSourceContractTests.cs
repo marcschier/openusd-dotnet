@@ -627,9 +627,9 @@ public sealed class ViewerSourceContractTests
         await Assert.That(evidence).Contains("ViewerNativeNavigationEvidence");
         await Assert.That(evidence).Contains("ViewerStageCameraEvidence");
         await Assert.That(evidence)
-            .Contains("openusd_storm_child_capture_framebuffer(ABI7,preserved-texture)");
+            .Contains("openusd_storm_child_capture_framebuffer(ABI8,preserved-texture)");
         await Assert.That(evidence)
-            .Contains("openusd_storm_child_get_navigation_input(ABI7,v1)");
+            .Contains("openusd_storm_child_get_navigation_input(ABI8,v2)");
         await Assert.That(evidence).DoesNotContain("ABI4");
         await Assert.That(cameraEvidence).Contains("SHA256.HashData(payload)");
         await Assert.That(cameraEvidence).Contains("BinaryPrimitives.WriteUInt64LittleEndian");
@@ -643,7 +643,7 @@ public sealed class ViewerSourceContractTests
         await Assert.That(contract).Contains("Assert-ViewerStageCameraEvidence");
         await Assert.That(contract).Contains(
             "[string]$before[0].cameraSignature -ceq");
-        await Assert.That(runner).Contains("[int]$artifact.stormChildAbiVersion -ne 7");
+        await Assert.That(runner).Contains("[int]$artifact.stormChildAbiVersion -ne 8");
         await Assert.That(runner).Contains("cameraTransitionCount");
         await Assert.That(runner).Contains("nativeNavigationCount");
         await Assert.That(runner).Contains(
@@ -671,7 +671,7 @@ public sealed class ViewerSourceContractTests
     }
 
     [Test]
-    public async Task MandatoryStormChildRunnersRequireAbiSevenProvenance()
+    public async Task MandatoryStormChildRunnersRequireAbiEightProvenance()
     {
         string root = FindRepositoryRoot();
         string windowsRunner = await File.ReadAllTextAsync(Path.Combine(
@@ -684,36 +684,36 @@ public sealed class ViewerSourceContractTests
             "run-storm-native-child-linux.sh"));
 
         const string captureApi =
-            "openusd_storm_child_capture_framebuffer(ABI7,preserved-texture)";
+            "openusd_storm_child_capture_framebuffer(ABI8,preserved-texture)";
         const string navigationDeliveryApi =
-            "SendMessageTimeoutW+StormChildWndProc+ABI7Poll+" +
+            "SendMessageTimeoutW+StormChildWndProc+ABI8Poll+" +
             "ViewerCameraNavigationUiAdapter";
         const string navigationSnapshotApi =
-            "openusd_storm_child_get_navigation_input(ABI7,v1)";
+            "openusd_storm_child_get_navigation_input(ABI8,v2)";
 
         await Assert.That(windowsRunner).Contains(
-            "[int]$artifact.stormChildAbiVersion -ne 7");
+            "[int]$artifact.stormChildAbiVersion -ne 8");
         await Assert.That(windowsRunner).Contains(captureApi);
         await Assert.That(windowsRunner).Contains(navigationDeliveryApi);
         await Assert.That(windowsRunner).Contains(navigationSnapshotApi);
         await Assert.That(windowsRunner).Contains(
             "stormChildAbiVersion = [int]$navigation.stormChildAbiVersion");
-        await Assert.That(windowsRunner).DoesNotContain("ABI6");
-        await Assert.That(windowsRunner).DoesNotContain("ABI 6");
+        await Assert.That(windowsRunner).DoesNotContain("ABI7");
+        await Assert.That(windowsRunner).DoesNotContain("ABI 7");
         await Assert.That(windowsRunner).DoesNotContain(
-            "stormChildAbiVersion -ne 6");
+            "stormChildAbiVersion -ne 7");
 
         await Assert.That(linuxRunner).Contains(
-            "if get(value, \"stormChildAbiVersion\") != 7:");
+            "if get(value, \"stormChildAbiVersion\") != 8:");
         await Assert.That(linuxRunner).Contains(
-            "Viewer evidence Storm child ABI must be 7.");
+            "Viewer evidence Storm child ABI must be 8.");
         await Assert.That(linuxRunner).Contains(captureApi);
         await Assert.That(linuxRunner).Contains(
-            "Storm Viewer pixels did not use the ABI 7 capture label.");
-        await Assert.That(linuxRunner).DoesNotContain("ABI6");
-        await Assert.That(linuxRunner).DoesNotContain("ABI 6");
+            "Storm Viewer pixels did not use the ABI 8 capture label.");
+        await Assert.That(linuxRunner).DoesNotContain("ABI7");
+        await Assert.That(linuxRunner).DoesNotContain("ABI 7");
         await Assert.That(linuxRunner).DoesNotContain(
-            "\"stormChildAbiVersion\") != 6");
+            "\"stormChildAbiVersion\") != 7");
     }
 
     [Test]
