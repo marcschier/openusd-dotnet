@@ -854,6 +854,38 @@ public sealed class ViewerSourceContractTests
             "ShowError($\"Could not open keyboard shortcuts: {exception.Message}\");");
     }
 
+    [Test]
+    public async Task StageReadyCallbackIsOffDispatcherAndJoinedBeforeStageDisposal()
+    {
+        string root = FindRepositoryRoot();
+        string window = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Viewer",
+            "MainWindow.axaml.cs"));
+
+        string startup = SliceMethod(
+            window,
+            "private async Task ApplyStartupCameraAndNotifyStageReadyAsync",
+            "private string? GetStartupStageCameraPath");
+        await Assert.That(startup).Contains(
+            "ViewerHostInteraction.RunStageReadyCallbackAsync(");
+        await Assert.That(startup).Contains(
+            "_hostStageReadyTask = ObserveHostStageReadyCallbackAsync(");
+        await Assert.That(startup).DoesNotContain("await callback(");
+
+        string stop = SliceMethod(
+            window,
+            "private async Task StopCurrentDocumentAsync",
+            "private async Task LoadRecentStagesAsync");
+        int cancel = stop.IndexOf("_documentLifetime?.Cancel();", StringComparison.Ordinal);
+        int join = stop.IndexOf("await _hostStageReadyTask;", StringComparison.Ordinal);
+        int dispose = stop.IndexOf("await _coordinator.DisposeAsync();", StringComparison.Ordinal);
+        await Assert.That(cancel).IsGreaterThanOrEqualTo(0);
+        await Assert.That(join).IsGreaterThan(cancel);
+        await Assert.That(dispose).IsGreaterThan(join);
+    }
+
     private static string SliceMethod(string source, string startMarker, string endMarker)
     {
         int start = source.IndexOf(startMarker, StringComparison.Ordinal);

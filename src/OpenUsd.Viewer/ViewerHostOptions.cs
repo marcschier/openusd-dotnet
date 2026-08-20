@@ -113,16 +113,16 @@ public sealed class ViewerHostOptions
     public System.Threading.CancellationToken ShutdownToken { get; init; }
 
     /// <summary>
-    /// Invoked once, on the UI thread, after the startup stage is open and the render
-    /// loop is running. The callback receives the viewer-owned stage session; a host must
-    /// author only through <see cref="ViewerStageSession.Scheduler"/> and must never
-    /// reopen the stage path, because a second open creates a second native stage
-    /// identity and breaks authoring/render synchronisation.
+    /// Invoked independently of the UI thread after a stage is opened and its render loop
+    /// is running. The callback receives the viewer-owned stage session; a host must
+    /// author only through <see cref="ViewerStageSession.Scheduler"/> and must never reopen
+    /// the stage path, because a second open creates a second native stage identity and
+    /// breaks authoring/render synchronisation.
     /// </summary>
     /// <remarks>
-    /// The callback should start background work and return promptly; blocking it stalls
-    /// the UI thread. Exceptions are surfaced as a viewer error and do not tear down the
-    /// shell.
+    /// The callback may remain active for the document lifetime, including while it
+    /// services subscriptions. Closing or replacing the document cancels the supplied
+    /// token. Exceptions are surfaced as a viewer error and do not tear down the shell.
     /// </remarks>
     public Func<ViewerStageSession, CancellationToken, Task>? StageReadyAsync { get; init; }
 }

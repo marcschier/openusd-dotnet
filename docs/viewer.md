@@ -41,22 +41,22 @@ ViewerEntryPoint.Run(new ViewerHostOptions
     Title = "Live twin",
     StageCameraPath = "/World/HeroCamera",
     ShutdownToken = shutdownToken,
-    StageReadyAsync = (session, cancellationToken) =>
-    {
+    StageReadyAsync = async (session, cancellationToken) =>
         // Author into the viewer's own stage while it renders.
-        _ = Task.Run(() => PumpAsync(session.Scheduler, cancellationToken), CancellationToken.None);
-        return Task.CompletedTask;
-    }
+        await PumpAsync(session.Scheduler, cancellationToken).ConfigureAwait(false)
 });
 ```
 
-`StageReadyAsync` runs once on the UI thread after the startup stage is open and the render loop is
-running. It receives a `ViewerStageSession` exposing the `UsdStageScheduler` that owns the stage.
-A host **must** author only through that scheduler and must never reopen `StagePath`: a second open
+`StageReadyAsync` runs on a thread-pool context after each stage is open and its render loop is
+running. It receives a `ViewerStageSession` exposing the `UsdStageScheduler` that owns the stage. A
+host **must** author only through that scheduler and must never reopen `StagePath`: a second open
 creates a second native stage identity and breaks authoring/render synchronisation. Edits made through
-the scheduler flow into its ordered change feed, which the viewer already pumps, so they invalidate and
-redraw without any further call. Blocking the callback stalls the UI thread, so start background work
-and return promptly; a failing callback is reported as a viewer error and never tears the shell down.
+the scheduler flow into its ordered change feed, which the viewer already pumps, so they invalidate
+and redraw without any further call. The callback may own a long-running subscription and remain
+active until its cancellation token is cancelled when the document closes or is replaced. The viewer
+waits for that work to stop before disposing the stage scheduler, so callbacks should honor
+cancellation promptly. Callback continuations do not depend on the Avalonia message loop, and a
+failure is reported as a viewer error without tearing the shell down.
 
 `StageCameraPath` starts the viewport on an authored `UsdGeomCamera` prim when it resolves.
 `ShutdownToken` closes the window when cancelled, so a host that renders for a bounded time does not

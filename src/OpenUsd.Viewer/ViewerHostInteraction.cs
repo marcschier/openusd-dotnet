@@ -6,6 +6,20 @@ namespace OpenUsd.Viewer;
 
 internal static class ViewerHostInteraction
 {
+    internal static Task RunStageReadyCallbackAsync(
+        Func<CancellationToken, Task> callback,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(callback);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled(cancellationToken);
+        }
+        return Task.Run(
+            () => callback(cancellationToken),
+            CancellationToken.None);
+    }
+
     internal static bool TryMapViewportClick(
         double logicalX,
         double logicalY,

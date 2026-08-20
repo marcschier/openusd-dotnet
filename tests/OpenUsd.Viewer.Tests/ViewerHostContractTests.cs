@@ -7,6 +7,77 @@ namespace OpenUsd.Viewer.Tests;
 public sealed class ViewerHostContractTests
 {
     [Test]
+    public async Task StageReadyCallbackRunsWithoutCapturedSynchronizationContext()
+    {
+        SynchronizationContext? entryContext = null;
+        SynchronizationContext? continuationContext = null;
+        var callbackEntered = CreateCompletion();
+        var callbackContinued = CreateCompletion();
+        using var callbackLifetime = new CancellationTokenSource();
+        Task callbackTask;
+        SynchronizationContext? previousContext = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(
+                new NonPumpingSynchronizationContext());
+            callbackTask = ViewerHostInteraction.RunStageReadyCallbackAsync(
+                async cancellationToken =>
+                {
+                    entryContext = SynchronizationContext.Current;
+                    callbackEntered.SetResult();
+                    await Task.Yield();
+                    continuationContext = SynchronizationContext.Current;
+                    callbackContinued.SetResult();
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                },
+                callbackLifetime.Token);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+        }
+
+        await callbackEntered.Task.WaitAsync(TestTimeout);
+        await callbackContinued.Task.WaitAsync(TestTimeout);
+
+        await Assert.That(entryContext).IsNull();
+        await Assert.That(continuationContext).IsNull();
+        await Assert.That(callbackTask.IsCompleted).IsFalse();
+
+        callbackLifetime.Cancel();
+        await Assert.That(callbackTask).Throws<OperationCanceledException>();
+    }
+
+    [Test]
+    public async Task CancelledStageReadyCallbackIsNotStarted()
+    {
+        using var callbackLifetime = new CancellationTokenSource();
+        callbackLifetime.Cancel();
+        bool invoked = false;
+
+        Task callbackTask = ViewerHostInteraction.RunStageReadyCallbackAsync(
+            _ =>
+            {
+                invoked = true;
+                return Task.CompletedTask;
+            },
+            callbackLifetime.Token);
+
+        await Assert.That(callbackTask).Throws<OperationCanceledException>();
+        await Assert.That(invoked).IsFalse();
+    }
+
+    [Test]
+    public async Task StageReadyCallbackFaultIsObservableAtTheHostBoundary()
+    {
+        Task callbackTask = ViewerHostInteraction.RunStageReadyCallbackAsync(
+            _ => Task.FromException(new InvalidOperationException("host failed")),
+            CancellationToken.None);
+
+        await Assert.That(callbackTask).Throws<InvalidOperationException>();
+    }
+
+    [Test]
     public async Task SyntheticViewportClickDispatchesHostPickForResolvedPrim()
     {
         StageRenderState state = CreateViewportState();
@@ -231,6 +302,15 @@ public sealed class ViewerHostContractTests
 
     private static TaskCompletionSource<T> CreateCompletion<T>() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private sealed class NonPumpingSynchronizationContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            _ = callback;
+            _ = state;
+        }
+    }
 
     private sealed class DelegatePickingBackend(
         Func<RenderPickRequest, CancellationToken, ValueTask<RenderPickResult>> handler)

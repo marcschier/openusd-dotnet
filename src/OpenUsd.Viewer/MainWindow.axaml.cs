@@ -66,6 +66,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private Task? _pickTask;
     private Task? _selectionTask;
     private Task? _playbackTask;
+    private Task? _hostStageReadyTask;
     private ViewerTimeUpdatePump? _timeUpdates;
     private ViewerCameraUpdatePump? _cameraUpdates;
     private ViewerStageCameraRefreshPump? _stageCameraRefreshes;
@@ -3530,7 +3531,7 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// Applies the startup stage camera and invokes the host's stage-ready callback.
+    /// Applies the startup stage camera and starts the host's stage-ready callback.
     /// CLI camera paths win over host options, which win over primaryCameraPrim. A
     /// camera failure is reported and leaves the automatic camera in place.
     /// </summary>
@@ -3552,22 +3553,56 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 await ApplyStartupStageCameraAsync(coordinator, cameraPath!, cancellationToken);
             }
-            if (callback is not null)
-            {
-                await callback(
-                    CreateHostSession(coordinator, stagePath),
-                    cancellationToken);
-            }
         }
         catch (OperationCanceledException)
         {
-            // The document was closed while the host was starting; nothing to report.
+            // The document was closed while its startup camera was applied.
+            return;
+        }
+        catch (Exception exception)
+        {
+            ShowError($"The viewer host failed to start: {exception.Message}");
+        }
+
+        if (callback is not null)
+        {
+            ViewerStageSession session = CreateHostSession(coordinator, stagePath);
+            Task callbackTask = ViewerHostInteraction.RunStageReadyCallbackAsync(
+                token => callback(session, token),
+                cancellationToken);
+            _hostStageReadyTask = ObserveHostStageReadyCallbackAsync(
+                callbackTask,
+                coordinator,
+                cancellationToken);
+        }
+    }
+
+    private async Task ObserveHostStageReadyCallbackAsync(
+        Task callbackTask,
+        ViewerRenderCoordinator coordinator,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await callbackTask;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
 #pragma warning disable CA1031 // A host callback must not be able to tear down the shell.
         catch (Exception exception)
 #pragma warning restore CA1031
         {
-            ShowError($"The viewer host failed to start: {exception.Message}");
+            string status = $"The viewer host callback failed: {exception.Message}";
+            if (!cancellationToken.IsCancellationRequested &&
+                ReferenceEquals(_coordinator, coordinator))
+            {
+                ShowError(status);
+            }
+            else
+            {
+                ViewerStartupOptions.WriteStatus(status);
+            }
         }
     }
 
@@ -3756,6 +3791,10 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             await _selectionTask;
         }
+        if (_hostStageReadyTask is not null)
+        {
+            await _hostStageReadyTask;
+        }
         if (_renderLoop is not null)
         {
             await _renderLoop;
@@ -3777,6 +3816,7 @@ public sealed partial class MainWindow : Window, IDisposable
         _pickLifetime = null;
         _pickTask = null;
         _selectionTask = null;
+        _hostStageReadyTask = null;
         _renderLoop = null;
         _diagnosticSequence = null;
         _coordinator = null;
