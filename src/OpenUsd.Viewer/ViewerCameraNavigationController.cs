@@ -7,8 +7,8 @@ namespace OpenUsd.Viewer;
 
 internal sealed class ViewerCameraNavigationController
 {
-    internal const float DefaultFrameMargin = 1.2f;
-    internal const double PointBoundsRadius = 0.5d;
+    internal const float DefaultFrameMargin = BoundsCameraFraming.DefaultMargin;
+    internal const double PointBoundsRadius = BoundsCameraFraming.PointBoundsRadius;
 
     private ViewerCameraNavigationState _state;
     private ViewportDimensions _viewport;
@@ -200,77 +200,27 @@ internal sealed class ViewerCameraNavigationController
         UsdBounds3d bounds,
         float margin = DefaultFrameMargin)
     {
-        ThrowIfNotFinite(margin, nameof(margin));
-        if (margin < 1f)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(margin),
-                "The framing margin multiplier must be at least one.");
-        }
-        if (bounds.IsEmpty)
+        ViewerCameraNavigationState current = MaterializedState();
+        if (!BoundsCameraFraming.TryCreate(
+            bounds,
+            current.VerticalFieldOfView,
+            current.AspectRatio,
+            out BoundsCameraFraming framing,
+            margin))
         {
             return false;
         }
-
-        ViewerCameraNavigationState current = MaterializedState();
-        UsdVec3d center = bounds.Center;
-        UsdVec3d size = bounds.Size;
-        double radius = ComputeRobustRadius(size);
-        if (radius == 0d)
-        {
-            radius = PointBoundsRadius;
-        }
-        double framedRadius = MultiplySaturating(radius, margin);
-        double verticalHalfAngle = current.VerticalFieldOfView / 2d;
-        double horizontalHalfAngle = Math.Atan(
-            MultiplySaturating(Math.Tan(verticalHalfAngle), current.AspectRatio));
-        double limitingHalfAngle = Math.Min(verticalHalfAngle, horizontalHalfAngle);
-        double distanceValue = DivideSaturating(
-            framedRadius,
-            Math.Sin(limitingHalfAngle));
-        float distance = ViewerCameraNavigationMath.ClampPositive(
-            distanceValue,
-            ViewerCameraNavigationState.MinimumDistance,
-            ViewerCameraNavigationState.MaximumDistance);
-        double narrowAspectScale = Math.Min(1d, current.AspectRatio);
-        double orthographicHeightValue = DivideSaturating(
-            MultiplySaturating(framedRadius, 2d),
-            narrowAspectScale);
-        float orthographicHeight = ViewerCameraNavigationMath.ClampPositive(
-            orthographicHeightValue,
-            ViewerCameraNavigationState.MinimumOrthographicHeight,
-            ViewerCameraNavigationState.MaximumOrthographicHeight);
-        double nearValue = distance - framedRadius;
-        double farValue = AddSaturating(distance, framedRadius);
-        float nearPlane = ViewerCameraNavigationMath.ClampPositive(
-            nearValue,
-            ViewerCameraNavigationState.MinimumNearPlane,
-            ViewerCameraNavigationState.MaximumNearPlane);
-        float farPlane = ViewerCameraNavigationMath.ClampPositive(
-            farValue,
-            ViewerCameraNavigationState.MinimumNearPlane * 2f,
-            ViewerCameraNavigationState.MaximumFarPlane);
-        var target = new Vector3(
-            ViewerCameraNavigationMath.ClampSigned(
-                center.X,
-                ViewerCameraNavigationState.MaximumTargetComponent),
-            ViewerCameraNavigationMath.ClampSigned(
-                center.Y,
-                ViewerCameraNavigationState.MaximumTargetComponent),
-            ViewerCameraNavigationMath.ClampSigned(
-                center.Z,
-                ViewerCameraNavigationState.MaximumTargetComponent));
         var next = new ViewerCameraNavigationState(
             isAutomatic: false,
-            target,
-            distance,
+            framing.Target,
+            framing.Distance,
             current.Yaw,
             current.Pitch,
             current.ProjectionMode,
             current.VerticalFieldOfView,
-            orthographicHeight,
-            nearPlane,
-            farPlane,
+            framing.OrthographicHeight,
+            framing.NearPlane,
+            framing.FarPlane,
             current.AspectRatio);
         return SetState(next);
     }
@@ -301,47 +251,6 @@ internal sealed class ViewerCameraNavigationController
         _state = next;
         return true;
     }
-
-    private static double ComputeRobustRadius(UsdVec3d size)
-    {
-        double maximum = Math.Max(size.X, Math.Max(size.Y, size.Z));
-        if (maximum == 0d)
-        {
-            return 0d;
-        }
-
-        double x = size.X / maximum;
-        double y = size.Y / maximum;
-        double z = size.Z / maximum;
-        return maximum * (0.5d * Math.Sqrt((x * x) + (y * y) + (z * z)));
-    }
-
-    private static double MultiplySaturating(double left, double right)
-    {
-        if (left == 0d || right == 0d)
-        {
-            return 0d;
-        }
-        if (left >= double.MaxValue / right)
-        {
-            return double.MaxValue;
-        }
-        return left * right;
-    }
-
-    private static double DivideSaturating(double numerator, double denominator)
-    {
-        if (denominator <= 0d || numerator >= double.MaxValue * denominator)
-        {
-            return double.MaxValue;
-        }
-        return numerator / denominator;
-    }
-
-    private static double AddSaturating(double left, double right) =>
-        left >= double.MaxValue - right
-            ? double.MaxValue
-            : left + right;
 
     private static void ThrowIfNotFinite(float value, string parameterName)
     {

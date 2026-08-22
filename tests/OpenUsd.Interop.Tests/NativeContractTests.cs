@@ -22,7 +22,7 @@ public sealed class NativeContractTests
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
 
         await Assert.That(abiVersion).IsEqualTo(15U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x3FFFFUL);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x7FFFFUL);
         await Assert.That(requiredCapabilities & 0xFFFUL).IsEqualTo(0xFFFUL);
         await Assert.That(requiredCapabilities & 0x1000UL).IsEqualTo(0x1000UL);
         await Assert.That(requiredCapabilities & 0x2000UL).IsEqualTo(0x2000UL);
@@ -34,6 +34,9 @@ public sealed class NativeContractTests
 
         // Attribute arrays v2: explicit color3f[], bool[], token[] and string[] arrays.
         await Assert.That(requiredCapabilities & 0x20000UL).IsEqualTo(0x20000UL);
+
+        // Bounded inspection: allocation-free path preflight before packed traversal.
+        await Assert.That(requiredCapabilities & 0x40000UL).IsEqualTo(0x40000UL);
     }
 
     [Test]

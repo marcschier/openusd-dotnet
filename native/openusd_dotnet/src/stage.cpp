@@ -1438,6 +1438,69 @@ openusd_status openusd_stage_get_prim_paths(
     });
 }
 
+openusd_status openusd_stage_get_prim_path_statistics(
+    const openusd_stage* stage,
+    size_t maximum_prim_count,
+    size_t maximum_total_path_bytes,
+    size_t* prim_count,
+    size_t* total_path_bytes,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(prim_count);
+        ResetAbiOutput(total_path_bytes);
+        if (stage == nullptr || !stage->value || prim_count == nullptr ||
+            total_path_bytes == nullptr)
+        {
+            WriteError(error, "A valid stage and prim-path statistics outputs are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+
+        return Guard(error, [&]()
+        {
+            size_t count = 0;
+            size_t path_bytes = 0;
+            TfErrorMark mark;
+            for (const UsdPrim& prim : stage->value->Traverse())
+            {
+                const size_t current_path_bytes = prim.GetPath().GetString().size();
+                if (count == std::numeric_limits<size_t>::max() ||
+                    path_bytes > std::numeric_limits<size_t>::max() - current_path_bytes)
+                {
+                    count = std::numeric_limits<size_t>::max();
+                    path_bytes = std::numeric_limits<size_t>::max();
+                    break;
+                }
+                ++count;
+                path_bytes += current_path_bytes;
+                if (count > maximum_prim_count ||
+                    path_bytes > maximum_total_path_bytes)
+                {
+                    break;
+                }
+            }
+            if (!mark.IsClean())
+            {
+                std::string message = ConsumeErrors(mark);
+                WriteError(
+                    error,
+                    message.empty()
+                        ? "Could not compute prim-path statistics."
+                        : message);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+
+            *prim_count = count;
+            *total_path_bytes = path_bytes;
+            return OPENUSD_STATUS_OK;
+        });
+
+    });
+}
+
 openusd_status openusd_stage_get_prim_type_name(
     const openusd_stage* stage,
     const char* prim_path,

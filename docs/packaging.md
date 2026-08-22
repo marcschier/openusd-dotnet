@@ -3,6 +3,13 @@
 Use this guide to identify the managed and RID-specific packages a consumer needs, understand how
 Core and Imaging assets reach publish output, and find the package-only resolution gates.
 
+`OpenUsd.Mcp` is intentionally a non-packable repository application. Its local RID bundle script
+stages the MCP app with matching Core/Imaging assets without adding it to the public NuGet set or
+including the separately distributed Viewer. Complete native/plugin preflight and validated
+sibling-directory replacement preserve an existing RID bundle when staging fails; synthetic
+package tests execute the failure and replacement cases. See
+[OpenUSD MCP server](mcp.md#publish-a-local-rid-bundle).
+
 **On this page:** [Package resolution](#package-resolution) ·
 [Package layout](#package-layout) · [Pack](#pack) · [Release SBOM](#release-sbom) ·
 [Publish](#publish) · [Symbols](#symbol-packages-for-nugetorg) ·
@@ -62,7 +69,7 @@ packages for each supported RID:
   Consumers opt in by referencing `OpenUsd.Cesium`, which depends on the RID-agnostic
   `OpenUsd.Runtime.Cesium` metapackage.
 
-The package set requires project-owned data ABI version 15 and native capabilities `0x3FFFF`.
+The package set requires project-owned data ABI version 15 and native capabilities `0x7FFFF`.
 Package-only execution prints and verifies both values before exercising stage operations.
 
 The first package matrix covers `win-x64`, `linux-x64`, and `osx-arm64`. Package projects consume
@@ -386,7 +393,7 @@ its working directory, and successful output contains:
 ```text
 PACKAGE_EXECUTION_OK
 ABI=15
-CAPABILITIES=0x3FFFF
+CAPABILITIES=0x7FFFF
 INPUT_OPENED=true
 CAMERA_STATE_QUERY=true
 ROUNDTRIP_SAVED=true
@@ -398,7 +405,7 @@ The process output and generated consumer project must not contain repository so
 `ProjectReference`, or `native/install`.
 A separate clean-feed managed consumer loads only `OpenUsd.Interop` from its
 nupkg and invokes the compatibility validator. Data ABI 14 with the complete
-v15 mask and Data ABI 15 with the previous `0x1FFFF` mask must both throw the typed
+v15 mask and Data ABI 15 with the previous `0x3FFFF` mask must both throw the typed
 `OpenUsdNativeException`.
 
 ## Package-only Imaging execution gate
@@ -571,7 +578,7 @@ native source and header files. Generated `native/build`, `native/install`,
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
 the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 15 and
-capabilities `0x3FFFF`, Storm ABI 6, hdSilk session/page ABI 5/11, and Storm child
+capabilities `0x7FFFF`, Storm ABI 6, hdSilk session/page ABI 5/11, and Storm child
 ABI 8. Metadata schema 3 records camera-state version 1, Storm-child navigation
 input version 2, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their

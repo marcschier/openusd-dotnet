@@ -698,6 +698,19 @@ bool VerifyFailedOutputInitialization(
     {
         return false;
     }
+    size_t primCount = 1;
+    size_t totalPathBytes = 1;
+    if (openusd_stage_get_prim_path_statistics(
+            nullptr,
+            1,
+            1,
+            &primCount,
+            &totalPathBytes,
+            error) == OPENUSD_STATUS_OK ||
+        primCount != 0 || totalPathBytes != 0)
+    {
+        return false;
+    }
     list = reinterpret_cast<openusd_string_list*>(uintptr_t{1});
     view = makeSentinelView();
     if (openusd_stage_get_variant_set_names(
@@ -3843,7 +3856,8 @@ int main(int argc, char** argv)
           OPENUSD_CAPABILITY_USD_SHADE_SKEL |
           OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI |
           OPENUSD_CAPABILITY_INSPECTION_V2 |
-          OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2)) !=
+          OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2 |
+          OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION)) !=
             (OPENUSD_CAPABILITY_STRING_LIST_V2 |
              OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
              OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES |
@@ -3861,7 +3875,8 @@ int main(int argc, char** argv)
              OPENUSD_CAPABILITY_USD_SHADE_SKEL |
              OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI |
              OPENUSD_CAPABILITY_INSPECTION_V2 |
-             OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2))
+             OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2 |
+             OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION))
     {
         std::cerr << "Unexpected ABI version.\n";
         return 3;

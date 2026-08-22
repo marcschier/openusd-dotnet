@@ -280,6 +280,7 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI (UINT64_C(1) << 15)
 #define OPENUSD_CAPABILITY_INSPECTION_V2 (UINT64_C(1) << 16)
 #define OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2 (UINT64_C(1) << 17)
+#define OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION (UINT64_C(1) << 18)
 
 typedef struct openusd_vec3f
 {
@@ -1031,6 +1032,14 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_get_prim_paths(
     const openusd_stage* stage,
     openusd_string_list** list,
     openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_get_prim_path_statistics(
+    const openusd_stage* stage,
+    size_t maximum_prim_count,
+    size_t maximum_total_path_bytes,
+    size_t* prim_count,
+    size_t* total_path_bytes,
     openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_stage_get_prim_type_name(

@@ -34,6 +34,7 @@ branch.
 | CI/local-feed package build | Implemented |
 | Default managed build includes native OpenUSD | No |
 | Live-authoring boundary | Source-only sample; not a published package |
+| MCP server | Implemented net10.0 source application; local RID bundle script, not a NuGet package |
 
 See [Getting started](getting-started.md) for the supported source workflow and
 [Packaging](packaging.md) for package production and clean-consumer evidence. Compatibility rules are

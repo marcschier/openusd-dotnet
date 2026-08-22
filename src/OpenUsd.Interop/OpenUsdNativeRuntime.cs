@@ -703,6 +703,35 @@ public static unsafe partial class OpenUsdNativeRuntime
         }
     }
 
+    internal static (ulong PrimCount, ulong TotalPathBytes) GetPrimPathStatistics(
+        OpenUsdNativeStage stage,
+        ulong maximumPrimCount,
+        ulong maximumTotalPathBytes)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(
+            maximumPrimCount,
+            (ulong)nuint.MaxValue);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(
+            maximumTotalPathBytes,
+            (ulong)nuint.MaxValue);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StageGetPrimPathStatistics(
+                lease.Handle,
+                (nuint)maximumPrimCount,
+                (nuint)maximumTotalPathBytes,
+                out nuint primCount,
+                out nuint totalPathBytes,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return ((ulong)primCount, (ulong)totalPathBytes);
+        }
+    }
+
     internal static string GetPrimTypeName(OpenUsdNativeStage stage, string primPath)
     {
         ArgumentNullException.ThrowIfNull(stage);
@@ -1313,6 +1342,18 @@ public static unsafe partial class OpenUsdNativeRuntime
         GetArray<OpenUsdNativeVec3f>(
             stage, primPath, attributeName, timeCode, NativeMethods.StageGetVec3fArray, "vec3f");
 
+    internal static ulong GetVec3fArrayCount(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        double? timeCode) =>
+        GetArrayElementCount<OpenUsdNativeVec3f>(
+            stage,
+            primPath,
+            attributeName,
+            timeCode,
+            NativeMethods.StageGetVec3fArray);
+
     internal static void SetColor3fArray(
         OpenUsdNativeStage stage,
         string primPath,
@@ -1895,6 +1936,16 @@ public static unsafe partial class OpenUsdNativeRuntime
         GetGeomArray<OpenUsdNativeVec3f>(
             stage, primPath, timeCode, NativeMethods.GeomMeshGetPoints, "mesh points");
 
+    internal static ulong GetGeomMeshPointCount(
+        OpenUsdNativeStage stage,
+        string primPath,
+        double? timeCode) =>
+        GetGeomArrayElementCount<OpenUsdNativeVec3f>(
+            stage,
+            primPath,
+            timeCode,
+            NativeMethods.GeomMeshGetPoints);
+
     internal static void SetGeomMeshTopology(
         OpenUsdNativeStage stage,
         string primPath,
@@ -1930,6 +1981,14 @@ public static unsafe partial class OpenUsdNativeRuntime
             primPath,
             NativeMethods.GeomMeshGetFaceVertexCounts,
             "mesh face vertex counts");
+
+    internal static ulong GetGeomMeshFaceCount(
+        OpenUsdNativeStage stage,
+        string primPath) =>
+        GetGeomUntimedArrayElementCount<int>(
+            stage,
+            primPath,
+            NativeMethods.GeomMeshGetFaceVertexCounts);
 
     internal static int[] GetGeomMeshFaceVertexIndices(
         OpenUsdNativeStage stage,
@@ -2354,6 +2413,34 @@ public static unsafe partial class OpenUsdNativeRuntime
         return values;
     }
 
+    private static ulong GetGeomArrayElementCount<T>(
+        OpenUsdNativeStage stage,
+        string primPath,
+        double? timeCode,
+        NativeGeomArrayGetter<T> getter)
+        where T : unmanaged
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = getter(
+                lease.Handle,
+                primPath,
+                timeCode.HasValue ? 1 : 0,
+                timeCode.GetValueOrDefault(),
+                null,
+                0,
+                out nuint required,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return (ulong)required;
+        }
+    }
+
     private static T[] GetGeomUntimedArray<T>(
         OpenUsdNativeStage stage,
         string primPath,
@@ -2407,6 +2494,31 @@ public static unsafe partial class OpenUsdNativeRuntime
             }
         }
         return values;
+    }
+
+    private static ulong GetGeomUntimedArrayElementCount<T>(
+        OpenUsdNativeStage stage,
+        string primPath,
+        NativeGeomUntimedArrayGetter<T> getter)
+        where T : unmanaged
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = getter(
+                lease.Handle,
+                primPath,
+                null,
+                0,
+                out nuint required,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return (ulong)required;
+        }
     }
 
     private static void InvokeGeomIntSetter(
@@ -2596,6 +2708,37 @@ public static unsafe partial class OpenUsdNativeRuntime
             }
         }
         return values;
+    }
+
+    private static ulong GetArrayElementCount<T>(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        double? timeCode,
+        NativeArrayGetter<T> getter)
+        where T : unmanaged
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeName);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = getter(
+                lease.Handle,
+                primPath,
+                attributeName,
+                timeCode.HasValue ? 1 : 0,
+                timeCode.GetValueOrDefault(),
+                null,
+                0,
+                out nuint required,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return (ulong)required;
+        }
     }
 
     private static void SetStringLikeArray(

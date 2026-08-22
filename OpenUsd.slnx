@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/OpenUsd.Interop/OpenUsd.Interop.csproj" />
+    <Project Path="src/OpenUsd.Mcp/OpenUsd.Mcp.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core/OpenUsd.Runtime.Core.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.linux-x64/OpenUsd.Runtime.Core.linux-x64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.osx-arm64/OpenUsd.Runtime.Core.osx-arm64.csproj" />
@@ -38,6 +39,7 @@
     <Project Path="tests/OpenUsd.D3D12CompositionSmoke/OpenUsd.D3D12CompositionSmoke.csproj" />
     <Project Path="tests/OpenUsd.Interop.Tests/OpenUsd.Interop.Tests.csproj" />
     <Project Path="tests/OpenUsd.LiveAuthoring.Tests/OpenUsd.LiveAuthoring.Tests.csproj" />
+    <Project Path="tests/OpenUsd.Mcp.Tests/OpenUsd.Mcp.Tests.csproj" />
     <Project Path="tests/OpenUsd.Native.Tests/OpenUsd.Native.Tests.csproj" />
     <Project Path="tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj" />
     <Project Path="tests/OpenUsd.NativeProbe/OpenUsd.NativeProbe.csproj" />

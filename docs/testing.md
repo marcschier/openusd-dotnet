@@ -46,6 +46,15 @@ managed data, interop, package, rendering, and viewer suites; native ABI and Ope
 CTest coverage; clean-package and NativeAOT consumers; and backend-neutral plus platform render
 conformance gates.
 
+The MCP suites cover official protocol discovery/invocation/resource reads and the local RID bundle
+contract. Package tests execute synthetic win-x64, linux-x64, and osx-arm64 preflight layouts plus
+real metadata verification against synthetic Windows installs. They reject mismatched lock/source
+metadata, a capability mask missing bounded stage inspection, and changed native binary hashes
+before publish, launch, output mutation, or staging-directory creation. Failed publish, invalid
+exclusion, previous-output survival, successful replacement, and temporary staging cleanup remain
+covered for published and source-run layouts. Commands and native prerequisites are in
+[OpenUSD MCP server](mcp.md#testing).
+
 Interactive render paths may not use CPU readback. Headless image tests compare against pinned
 Storm references with perceptual tolerances rather than exact cross-driver pixels.
 

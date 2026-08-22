@@ -335,6 +335,7 @@ source consumption.
 | [Live authoring](docs/live-authoring.md) | Ordered batches, backpressure, consumers, and disposal |
 | [Rendering](docs/rendering.md) | Renderer-neutral contracts, Storm, hdSilk, picking, and selection |
 | [Viewer](docs/viewer.md) | Desktop workflows, camera controls, editing, and diagnostics |
+| [MCP server](docs/mcp.md) | Local agent workflow, 12-tool protocol, client configuration, and RID bundles |
 | [Samples](samples/README.md) | Runnable data API and live-authoring examples |
 | [Native build](docs/native-build.md) | Locked OpenUSD inputs, toolchains, and native probes |
 | [Packaging](docs/packaging.md) | Runtime asset layout and clean package consumers |

@@ -1,6 +1,5 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using System.Diagnostics;
 using System.Globalization;
 using OpenUsd.Geom;
 using OpenUsd.Interop;
@@ -1001,68 +1000,26 @@ internal static class ViewerStageSnapshotBuilder
         UsdStage stage,
         ViewerHierarchySnapshot hierarchy)
     {
-        int meshCount = 0;
-        long curveVertexCount = 0;
-        long meshVertexCount = 0;
-        long faceCount = 0;
-        foreach (ViewerHierarchyEntry entry in hierarchy.Entries)
-        {
-            UsdPrim prim = stage.GetPrim(entry.Path);
-            if (UsdGeomMesh.TryWrap(prim, out UsdGeomMesh mesh))
-            {
-                meshCount++;
-                meshVertexCount += mesh.GetPoints().LongLength;
-                faceCount += mesh.GetFaceVertexCounts().LongLength;
-            }
-            else if (UsdGeomBasisCurves.TryWrap(prim, out UsdGeomBasisCurves basisCurves))
-            {
-                curveVertexCount += basisCurves.GetPoints().LongLength;
-            }
-            else if (UsdGeomHermiteCurves.TryWrap(prim, out UsdGeomHermiteCurves hermiteCurves))
-            {
-                curveVertexCount += hermiteCurves.GetPoints().LongLength;
-            }
-            else if (UsdGeomNurbsCurves.TryWrap(prim, out UsdGeomNurbsCurves nurbsCurves))
-            {
-                curveVertexCount += nurbsCurves.GetPoints().LongLength;
-            }
-        }
-
-        Stopwatch boundsTimer = Stopwatch.StartNew();
-        UsdBounds3d worldBounds = stage.GetWorldBounds(
-            timeCode: stage.StartTimeCode,
-            purposeMask: UsdGeomPurposeMask.All);
-        UsdOrientedBounds3d orientedWorldBounds = stage.GetWorldOrientedBounds(
-            timeCode: stage.StartTimeCode,
-            purposeMask: UsdGeomPurposeMask.All);
-        boundsTimer.Stop();
-        string defaultPrimPath;
-        try
-        {
-            defaultPrimPath = stage.GetDefaultPrim().Path;
-        }
-        catch (OpenUsdNativeException exception)
-            when (exception.Status == OpenUsdNativeStatus.NotFound)
-        {
-            defaultPrimPath = string.Empty;
-        }
+        StageStatisticsAnalysis analysis = StageStatisticsAnalyzer.Analyze(
+            stage,
+            hierarchy.Entries.Select(static entry => entry.Path),
+            StageStatisticsAnalysisLimits.Viewer,
+            CancellationToken.None);
         return new ViewerStageStatisticsSnapshot(
-            stage.RootLayerIdentifier,
-            stage.SessionLayerIdentifier,
-            defaultPrimPath,
-            hierarchy.Entries.Length,
-            meshCount,
-            curveVertexCount,
-            meshVertexCount,
-            faceCount,
-            hierarchy.Entries.Count(entry => entry.ParentPath is null),
-            hierarchy.Entries.Count(entry => entry.ChildCount == 0),
-            hierarchy.Entries.Length == 0
-                ? 0
-                : hierarchy.Entries.Max(entry => entry.Depth),
-            worldBounds,
-            orientedWorldBounds,
-            boundsTimer.Elapsed);
+            analysis.RootLayerIdentifier,
+            analysis.SessionLayerIdentifier,
+            analysis.DefaultPrimPath,
+            analysis.PrimCount,
+            analysis.MeshCount,
+            analysis.CurveVertexCount,
+            analysis.MeshVertexCount,
+            analysis.FaceCount,
+            analysis.RootPrimCount,
+            analysis.LeafPrimCount,
+            analysis.MaximumDepth,
+            analysis.WorldBounds,
+            analysis.OrientedWorldBounds,
+            analysis.BoundsQueryDuration);
     }
 
     private static ViewerLayerStackSnapshot BuildLayerStack(

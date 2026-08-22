@@ -4,7 +4,7 @@
     <IsTestProject Condition="'$(IsTestProject)' == '' AND ($(MSBuildProjectName.EndsWith('.Tests')) OR $(MSBuildProjectName.EndsWith('.ConformanceTests')))">true</IsTestProject>
     <IsBenchmarkProject Condition="'$(IsBenchmarkProject)' == '' AND $(MSBuildProjectName.EndsWith('.Benchmarks'))">true</IsBenchmarkProject>
     <IsSampleProject Condition="'$(IsSampleProject)' == '' AND $(MSBuildProjectName.Contains('.HelloStage'))">true</IsSampleProject>
-    <IsApplicationProject Condition="'$(IsApplicationProject)' == '' AND ($(MSBuildProjectName.EndsWith('.Viewer')) OR $(MSBuildProjectName.EndsWith('.Viewer.App')) OR $(MSBuildProjectName.EndsWith('.NativeProbe')) OR $(MSBuildProjectName.EndsWith('.SilkProbe')))">true</IsApplicationProject>
+    <IsApplicationProject Condition="'$(IsApplicationProject)' == '' AND ($(MSBuildProjectName.EndsWith('.Viewer')) OR $(MSBuildProjectName.EndsWith('.Viewer.App')) OR $(MSBuildProjectName.EndsWith('.Mcp')) OR $(MSBuildProjectName.EndsWith('.NativeProbe')) OR $(MSBuildProjectName.EndsWith('.SilkProbe')))">true</IsApplicationProject>
   </PropertyGroup>
 
   <PropertyGroup>

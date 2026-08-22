@@ -72,7 +72,7 @@ renderer plugin resources. See [Packaging](packaging.md).
 The data boundary is declared in `native/openusd_dotnet/include/openusd_dotnet.h`. It exposes opaque
 stage, access, layer, string-list, and payload-list handles. The managed declarations in
 `OpenUsdNativeMethods.g.cs` are generated from that header by `eng/generate-interop.py`.
-The current managed contract requires data ABI 15 and capability mask `0x3FFFF`.
+The current managed contract requires data ABI 15 and capability mask `0x7FFFF`.
 
 The boundary uses a small status model:
 

@@ -298,7 +298,7 @@ public sealed class NativeAbiVersionTests
             Regex.Count(
                 implementation,
                 @"\breturn GuardStage\(stage, error",
-                RegexOptions.CultureInvariant)).IsEqualTo(291);
+                RegexOptions.CultureInvariant)).IsEqualTo(292);
 
         for (int index = 0; index < definitions.Count; index++)
         {
@@ -560,6 +560,7 @@ public sealed class NativeAbiVersionTests
                 "GuardStringListOutput(",
                 StringComparison.Ordinal)).IsTrue();
         }
+
         await Assert.That(bodies["openusd_stage_get_composed_payload_arcs"].Contains(
             "GuardPayloadArcListOutput(",
             StringComparison.Ordinal)).IsTrue();
@@ -583,6 +584,20 @@ public sealed class NativeAbiVersionTests
             managed,
             @"\bThrowIfFailedAndReleasePayloadArcList\(",
             RegexOptions.CultureInvariant)).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task PrimPathStatisticsTraverseWithoutRetainingPaths()
+    {
+        string implementation = ReadDataAbiImplementation(FindRepositoryRoot());
+        string body = ExtractExportBody(
+            implementation,
+            "openusd_stage_get_prim_path_statistics");
+
+        await Assert.That(body).Contains("stage->value->Traverse()");
+        await Assert.That(body).Contains("GetString().size()");
+        await Assert.That(body).DoesNotContain("std::vector");
+        await Assert.That(body).DoesNotContain("push_back");
     }
 
     private static Exception InvokeCompatibilityValidation(uint version, ulong capabilities)

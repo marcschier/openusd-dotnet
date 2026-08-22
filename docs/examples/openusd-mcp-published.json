@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "openusd": {
+      "command": "C:\\tools\\OpenUsd.Mcp.win-x64\\OpenUsd.Mcp.exe",
+      "args": [],
+      "env": {
+        "OPENUSD_MCP_SOURCE_ROOT": "C:\\work\\usd-input",
+        "OPENUSD_MCP_OUTPUT_ROOT": "C:\\work\\usd-output",
+        "OPENUSD_PLUGIN_PATH": "C:\\tools\\OpenUsd.Mcp.win-x64\\plugin\\usd",
+        "OPENUSD_MCP_VIEWER_ROOT": "C:\\tools\\OpenUsd.Viewer.win-x64",
+        "OPENUSD_MCP_VIEWER_PATH": "C:\\tools\\OpenUsd.Viewer.win-x64\\OpenUsd.Viewer.App.exe",
+        "PATH": "C:\\tools\\OpenUsd.Mcp.win-x64;C:\\tools\\OpenUsd.Mcp.win-x64\\bin;C:\\tools\\OpenUsd.Mcp.win-x64\\lib"
+      }
+    }
+  }
+}

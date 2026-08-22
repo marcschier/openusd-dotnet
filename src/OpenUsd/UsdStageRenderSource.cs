@@ -18,6 +18,7 @@ namespace OpenUsd;
 public sealed class UsdStageRenderSource : IDisposable, IUsdStageBound
 {
     private readonly Registration _registration;
+    private Action<UsdStageRenderSource>? _disposeCallback;
 
     internal UsdStageRenderSource(
         UsdStageScheduler scheduler,
@@ -30,7 +31,7 @@ public sealed class UsdStageRenderSource : IDisposable, IUsdStageBound
     /// <summary>Releases an abandoned retained stage registration.</summary>
     ~UsdStageRenderSource()
     {
-        _registration.Release();
+        Release();
     }
 
     /// <summary>Acquires an independent retained native-stage lease.</summary>
@@ -40,8 +41,23 @@ public sealed class UsdStageRenderSource : IDisposable, IUsdStageBound
     /// <inheritdoc/>
     public void Dispose()
     {
-        _registration.Release();
+        Release();
         GC.SuppressFinalize(this);
+    }
+
+    internal void SetDisposeCallback(Action<UsdStageRenderSource> callback)
+    {
+        ArgumentNullException.ThrowIfNull(callback);
+        if (Interlocked.CompareExchange(ref _disposeCallback, callback, null) is not null)
+        {
+            throw new InvalidOperationException("A render-source disposal callback is already set.");
+        }
+    }
+
+    private void Release()
+    {
+        _registration.Release();
+        Interlocked.Exchange(ref _disposeCallback, null)?.Invoke(this);
     }
 
     [ExcludeFromCodeCoverage(

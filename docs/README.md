@@ -15,6 +15,7 @@ deeper design or evidence documents only as needed.
 | Using the data API | [Getting started](getting-started.md) | [Data API](data-api.md) |
 | Adding live updates | [Live authoring](live-authoring.md) | [Live authoring sample][live-authoring] |
 | Using the desktop Viewer | [Getting started](getting-started.md) | [Viewer](viewer.md) |
+| Using OpenUSD from an MCP agent | [MCP server](mcp.md) | [Troubleshooting](troubleshooting.md) |
 | Working on rendering | [Rendering](rendering.md) | [Shader pipeline](shader-pipeline.md) |
 | Investigating performance | [Performance](performance.md) | [Testing](testing.md) |
 | Building native inputs | [Native build](native-build.md) | [Packaging](packaging.md) |
@@ -65,6 +66,7 @@ deeper design or evidence documents only as needed.
 | [Live authoring](live-authoring.md) | Ordered batches, validation, backpressure, consumers, and disposal |
 | [Rendering](rendering.md) | Neutral contracts, Storm, hdSilk, picking, selection, and composition |
 | [Viewer](viewer.md) | Desktop inspection, editing, cameras, settings, and diagnostics |
+| [MCP server](mcp.md) | Stdio client setup, one-session workflow, tools, resources, security, and RID bundles |
 | [Native build](native-build.md) | Locked OpenUSD source, toolchains, builds, archives, and probes |
 | [Packaging](packaging.md) | Runtime package layout, SBOM, symbols, and package-only execution |
 | [Versioning](versioning-compatibility.md) | Managed, ABI, package, runtime, and plugin compatibility |
