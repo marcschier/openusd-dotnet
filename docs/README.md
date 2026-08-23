@@ -1,9 +1,9 @@
 # OpenUsd documentation
 
-OpenUsd is a public `0.11.0-alpha` project with 22 packages published to NuGet.org, including the
-five Cesium package IDs that became public after being withheld at `0.5.0-alpha`. Start
-with the route that matches what you are trying to do, then follow the
-deeper design or evidence documents only as needed.
+OpenUsd is a public `0.11.0-alpha` project with 23 packages published to NuGet.org, including the
+`OpenUsd.Mcp.Tool` .NET tool and five Cesium package IDs that became public after being withheld at
+`0.5.0-alpha`. Start with the route that matches what you are trying to do, then follow the deeper
+design or evidence documents only as needed.
 
 ## Choose your route
 
@@ -66,7 +66,7 @@ deeper design or evidence documents only as needed.
 | [Live authoring](live-authoring.md) | Ordered batches, validation, backpressure, consumers, and disposal |
 | [Rendering](rendering.md) | Neutral contracts, Storm, hdSilk, picking, selection, and composition |
 | [Viewer](viewer.md) | Desktop inspection, editing, cameras, settings, and diagnostics |
-| [MCP server](mcp.md) | Stdio client setup, one-session workflow, tools, resources, security, and RID bundles |
+| [MCP server](mcp.md) | .NET tool install, Copilot CLI setup, workflow, tools, security, and RID bundles |
 | [Native build](native-build.md) | Locked OpenUSD source, toolchains, builds, archives, and probes |
 | [Packaging](packaging.md) | Runtime package layout, SBOM, symbols, and package-only execution |
 | [Versioning](versioning-compatibility.md) | Managed, ABI, package, runtime, and plugin compatibility |

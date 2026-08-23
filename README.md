@@ -13,7 +13,7 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Current distribution:** public source repository and 22 published `0.11.0-alpha` packages,
+> **Current distribution:** public source repository and 23 published `0.11.0-alpha` packages,
 > with pre-1.0 APIs. This set includes the five Cesium package IDs enumerated below, which
 > became public after being withheld from NuGet.org at `0.5.0-alpha`.
 > Package identities and public APIs may still change before 1.0.
@@ -54,6 +54,8 @@ and render gates that run before releases. The details and caveats live in
   the same curated capture on macOS CGL/Metal and records an explicit capability skip when hosted
   CGL cannot create the required pixel format.
 - **Cross-platform packaging gates** for `win-x64`, `linux-x64`, and `osx-arm64`.
+- **A local MCP stdio tool** installed as `OpenUsd.Mcp.Tool` with the `openusd-mcp` command and
+  12 bounded scene workflow tools.
 - **NativeAOT and trimming analyzers** across production libraries targeting .NET 8, 9, and 10.
 
 ## 🚀 Start from source
@@ -122,7 +124,7 @@ See [Architecture](docs/architecture.md) and [Rendering](docs/rendering.md).
 
 ## 📦 Package matrix
 
-All 22 package IDs below are buildable from this repository and published to NuGet.org at
+All 23 package IDs below are buildable from this repository and published to NuGet.org at
 `0.11.0-alpha`. The five Cesium IDs became public after being withheld at `0.5.0-alpha`.
 
 | Package | TFM | Purpose |
@@ -136,6 +138,8 @@ All 22 package IDs below are buildable from this repository and published to NuG
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Direct3D 12 backend |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Vulkan backend |
 | `OpenUsd.Rendering.Silk.Metal` | 8/9/10 | Metal backend |
+| `OpenUsd.Viewer` | 8/9/10 | Embeddable Avalonia Viewer shell |
+| `OpenUsd.Mcp.Tool` | 10 tool | Framework-dependent MCP stdio host; native runtime separate |
 | `OpenUsd.Runtime.Core` | 8 carrier | RID-agnostic Core metapackage for `win-x64`, `linux-x64`, and `osx-arm64` |
 | `OpenUsd.Runtime.Core.win-x64` | 8 carrier | Windows OpenUSD core runtime and data plugins |
 | `OpenUsd.Runtime.Core.linux-x64` | 8 carrier | Linux OpenUSD core runtime and data plugins |
@@ -161,6 +165,7 @@ target .NET 8, 9, and 10. Package layout and clean-consumer gates are documented
 | `OpenUsd.LiveAuthoring` sample library | ✅ | ✅ | ✅ | Source sample, not a package |
 | Runtime asset carrier projects | Carrier | — | — | RID assets consumed by supported applications |
 | Viewer, executable samples, probes | — | — | ✅ | Repository development and evidence tools |
+| `OpenUsd.Mcp.Tool` | — | — | ✅ | Framework-dependent `openusd-mcp` command |
 
 ## 🖥️ RID and viewer matrix
 
@@ -335,7 +340,7 @@ source consumption.
 | [Live authoring](docs/live-authoring.md) | Ordered batches, backpressure, consumers, and disposal |
 | [Rendering](docs/rendering.md) | Renderer-neutral contracts, Storm, hdSilk, picking, and selection |
 | [Viewer](docs/viewer.md) | Desktop workflows, camera controls, editing, and diagnostics |
-| [MCP server](docs/mcp.md) | Local agent workflow, 12-tool protocol, client configuration, and RID bundles |
+| [MCP server](docs/mcp.md) | .NET tool install, Copilot CLI setup, 12 tools, security, and RID bundles |
 | [Samples](samples/README.md) | Runnable data API and live-authoring examples |
 | [Native build](docs/native-build.md) | Locked OpenUSD inputs, toolchains, and native probes |
 | [Packaging](docs/packaging.md) | Runtime asset layout and clean package consumers |
@@ -402,7 +407,7 @@ tests and documentation. See [Contributing](CONTRIBUTING.md).
 
 ## Status
 
-OpenUsd is a substantial public `0.11.0-alpha` baseline with 22 packages published to NuGet.org,
+OpenUsd is a substantial public `0.11.0-alpha` baseline with 23 packages published to NuGet.org,
 but it is not a stable release. Data, rendering, Viewer, package, NativeAOT, shader, parity, and
 performance gates exist, and this README states what they do and do not prove. Public API and package
 identities may change before 1.0. Workflow badges above are the authoritative status for the default branch.

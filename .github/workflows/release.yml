@@ -217,6 +217,13 @@ jobs:
         if: matrix.rid == 'linux-x64'
         shell: pwsh
         run: ./eng/pack-packages.ps1 -Scope managed -OutputPath artifacts/nupkg
+      # OpenUsd.Mcp is the only application distributed as a dotnet tool. Keep it
+      # out of the general managed scope so application packaging remains opt-in,
+      # and produce it exactly once on the platform-neutral Linux leg.
+      - name: Pack the MCP dotnet tool
+        if: matrix.rid == 'linux-x64'
+        shell: pwsh
+        run: ./eng/pack-packages.ps1 -Scope tool -OutputPath artifacts/nupkg
       # mesh.metallib is a hosted macOS/Xcode artifact and is never fabricated elsewhere.
       - name: Prepare the validated Metal library and pack it
         if: matrix.rid == 'osx-arm64'

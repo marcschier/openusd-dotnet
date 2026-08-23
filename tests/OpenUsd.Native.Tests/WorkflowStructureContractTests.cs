@@ -328,16 +328,27 @@ public sealed class WorkflowStructureContractTests
         List<string> expected = [];
         foreach (string id in published)
         {
-            string projectPath = Path.Combine(root, "src", id, $"{id}.csproj");
+            string projectName = id == "OpenUsd.Mcp.Tool"
+                ? "OpenUsd.Mcp"
+                : id;
+            string projectPath = Path.Combine(
+                root,
+                "src",
+                projectName,
+                $"{projectName}.csproj");
             string project = await File.ReadAllTextAsync(projectPath);
-            bool suppressesSymbols = Regex.IsMatch(
+            bool includesSymbols = Regex.IsMatch(
+                project,
+                @"<IncludeSymbols>\s*true\s*</IncludeSymbols>",
+                RegexOptions.CultureInvariant);
+            bool suppressesSymbols = !includesSymbols && (Regex.IsMatch(
                     project,
                     @"<IncludeSymbols>\s*false\s*</IncludeSymbols>",
                     RegexOptions.CultureInvariant) ||
                 Regex.IsMatch(
                     project,
                     @"<IsApplicationProject>\s*true\s*</IsApplicationProject>",
-                    RegexOptions.CultureInvariant);
+                    RegexOptions.CultureInvariant));
             if (!suppressesSymbols)
             {
                 expected.Add(id);
@@ -345,24 +356,36 @@ public sealed class WorkflowStructureContractTests
         }
 
         await Assert.That(symbolPublished.Length)
-            .IsEqualTo(9)
-            .Because("the current 22-package release set has nine managed packages that emit snupkg files");
+            .IsEqualTo(10)
+            .Because(
+                "the current release set has nine managed libraries plus the MCP tool " +
+                "that explicitly emit snupkg files");
         await Assert.That(actual)
             .IsEquivalentTo(expected)
             .Because("-ListSymbolPublished must match the MSBuild conditions that govern snupkg production");
 
-        // Ground truth, not a restatement of the script. Directory.Build.props sets
-        // IncludeSymbols and SymbolPackageFormat inside a PropertyGroup guarded by
-        // _IsProductionLibrary, which IsApplicationProject excludes a project from. So an
-        // application project has IncludeSymbols *absent* rather than false, and packs no
-        // snupkg. Asserting only "not explicitly false" is what let the 0.7.0-alpha
-        // promotion demand openusd.viewer.0.7.0-alpha.snupkg and fail after the packages
-        // had already been pushed to the GitHub feed.
+        // Ground truth, not a restatement of the script. Applications have no symbols
+        // by default, but an explicit IncludeSymbols=true opts a package back in. Missing
+        // that distinction made the 0.7.0-alpha promotion demand an OpenUsd.Viewer
+        // symbol package that packing never produced.
         await Assert.That(actual).DoesNotContain("OpenUsd.Viewer");
         foreach (string id in symbolPublished)
         {
+            string projectName = id == "OpenUsd.Mcp.Tool"
+                ? "OpenUsd.Mcp"
+                : id;
             string project = await File.ReadAllTextAsync(
-                Path.Combine(root, "src", id, $"{id}.csproj"));
+                Path.Combine(root, "src", projectName, $"{projectName}.csproj"));
+            if (id == "OpenUsd.Mcp.Tool")
+            {
+                await Assert.That(Regex.IsMatch(
+                        project,
+                        @"<IncludeSymbols>\s*true\s*</IncludeSymbols>",
+                        RegexOptions.CultureInvariant))
+                    .IsTrue()
+                    .Because("the application-classified MCP tool opts into portable symbols");
+                continue;
+            }
             await Assert.That(Regex.IsMatch(
                     project,
                     @"<IsApplicationProject>\s*true\s*</IsApplicationProject>",
@@ -513,7 +536,11 @@ public sealed class WorkflowStructureContractTests
             .IsEqualTo($"pkg:nuget/OpenUsd@{expectedVersion}")
             .Because("the root release SBOM purl is version-coupled to version.json");
 
-        int releasePackageComponents = 0;
+        string[] published = await RunPowerShellLinesAsync(
+            root,
+            "./eng/pack-packages.ps1",
+            "-ListPublished");
+        List<string> releasePackageComponents = [];
         foreach (JsonElement component in sbom.RootElement.GetProperty("components").EnumerateArray())
         {
             if (!HasProperty(component, "openusd:release-artifact", "nupkg"))
@@ -521,8 +548,8 @@ public sealed class WorkflowStructureContractTests
                 continue;
             }
 
-            releasePackageComponents++;
             string name = component.GetProperty("name").GetString()!;
+            releasePackageComponents.Add(name);
             await Assert.That(component.GetProperty("version").GetString())
                 .IsEqualTo(expectedVersion)
                 .Because($"{name} is a published package component in the release SBOM");
@@ -532,7 +559,7 @@ public sealed class WorkflowStructureContractTests
         }
 
         await Assert.That(releasePackageComponents)
-            .IsEqualTo(22)
+            .IsEquivalentTo(published)
             .Because("every published package component must be checked for version drift");
     }
 

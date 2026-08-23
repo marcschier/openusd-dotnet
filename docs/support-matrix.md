@@ -34,7 +34,7 @@ branch.
 | CI/local-feed package build | Implemented |
 | Default managed build includes native OpenUSD | No |
 | Live-authoring boundary | Source-only sample; not a published package |
-| MCP server | Implemented net10.0 source application; local RID bundle script, not a NuGet package |
+| MCP server | `OpenUsd.Mcp.Tool` net10.0 tool; source runner and self-contained local RID bundles |
 
 See [Getting started](getting-started.md) for the supported source workflow and
 [Packaging](packaging.md) for package production and clean-consumer evidence. Compatibility rules are
@@ -43,7 +43,7 @@ centralized in [Versioning and compatibility](versioning-compatibility.md).
 ## Packages
 
 All package projects below are packable from source. Availability here means repository production,
-not public-feed publication. All 22 IDs are published to NuGet.org at `0.11.0-alpha`; the five
+not public-feed publication. All 23 IDs are published to NuGet.org at `0.11.0-alpha`; the five
 Cesium IDs became public after being withheld at `0.5.0-alpha`.
 
 | Package | Framework project | Native requirement |
@@ -58,6 +58,7 @@ Cesium IDs became public after being withheld at `0.5.0-alpha`.
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Imaging runtime; Windows/Linux execution |
 | `OpenUsd.Rendering.Silk.Metal` | 8/9/10 | Imaging runtime; macOS execution |
 | `OpenUsd.Viewer` | 8/9/10 | Backend runtime of the renderer it activates |
+| `OpenUsd.Mcp.Tool` | 10 tool | Core/Imaging runtime required for scene and render operations |
 | `OpenUsd.Runtime.Core` | `net8.0` carrier | Core metapackage for all supported RIDs |
 | `OpenUsd.Runtime.Core.win-x64` | `net8.0` carrier | Windows x64 native install |
 | `OpenUsd.Runtime.Core.linux-x64` | `net8.0` carrier | Linux x64 native install |
@@ -86,6 +87,7 @@ correlation, ordering, update-coverage, and health-reporting gaps are resolved b
 | `OpenUsd.LiveAuthoring` sample library | ✅ | ✅ | ✅ | Analyzer-enabled source-only sample |
 | Viewer library | ✅ | ✅ | ✅ | Embeddable `OpenUsd.Viewer` package |
 | Viewer desktop application | — | — | ✅ | `OpenUsd.Viewer.App` entry point |
+| MCP .NET tool | — | — | ✅ | `OpenUsd.Mcp.Tool`; command `openusd-mcp` |
 | Executable samples and probes | — | — | ✅ | Development and evidence projects |
 | Runtime asset package projects | Carrier | — | — | Assets are RID-specific |
 

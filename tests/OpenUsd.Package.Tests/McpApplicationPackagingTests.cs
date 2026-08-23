@@ -9,7 +9,7 @@ namespace OpenUsd.Package.Tests;
 public sealed class McpApplicationPackagingTests
 {
     [Test]
-    public async Task McpHostIsClassifiedAsANonPackableApplication()
+    public async Task McpHostIsClassifiedAsAPackableToolApplication()
     {
         string root = FindRepositoryRoot();
         XDocument build = XDocument.Load(Path.Combine(root, "Directory.Build.props"));
@@ -36,7 +36,18 @@ public sealed class McpApplicationPackagingTests
         await Assert.That(nonProductionPackaging.Parent?.Attribute("Condition")?.Value ?? "")
             .Contains("_IsProductionLibrary");
         await Assert.That(project.Descendants("OutputType").Single().Value).IsEqualTo("Exe");
-        await Assert.That(project.Descendants("IsPackable")).IsEmpty();
+        await Assert.That(project.Descendants("TargetFramework").Single().Value)
+            .IsEqualTo("net10.0");
+        await Assert.That(project.Descendants("IsPackable").Single().Value)
+            .IsEqualTo("true");
+        await Assert.That(project.Descendants("PackAsTool").Single().Value)
+            .IsEqualTo("true");
+        await Assert.That(project.Descendants("ToolCommandName").Single().Value)
+            .IsEqualTo("openusd-mcp");
+        await Assert.That(project.Descendants("PackageId").Single().Value)
+            .IsEqualTo("OpenUsd.Mcp.Tool");
+        await Assert.That(project.Descendants("IsAotCompatible")).IsEmpty();
+        await Assert.That(project.Descendants("IsTrimmable")).IsEmpty();
     }
 
     [Test]

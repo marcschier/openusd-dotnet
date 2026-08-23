@@ -96,6 +96,7 @@ on:
       - 'native/CMakePresets.json'
       - 'native/hdSilk/**'
       - 'native/openusd_cesium/**'
+      - 'src/OpenUsd.Mcp/**'
       - 'src/OpenUsd.Runtime.Packaging/**'
       - 'src/OpenUsd.Runtime.Core*/**'
       - 'src/OpenUsd.Runtime.Imaging*/**'

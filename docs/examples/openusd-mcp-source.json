@@ -1,23 +1,26 @@
 {
   "mcpServers": {
     "openusd": {
+      "type": "stdio",
       "command": "pwsh",
       "args": [
         "-NoLogo",
         "-NoProfile",
         "-File",
-        "C:\\git\\openusd2\\eng\\run-mcp.ps1",
+        "<REPOSITORY_ROOT>\\eng\\run-mcp.ps1",
         "-Rid",
         "win-x64",
         "-Configuration",
         "Release"
       ],
       "env": {
-        "OPENUSD_MCP_SOURCE_ROOT": "C:\\work\\usd-input",
-        "OPENUSD_MCP_OUTPUT_ROOT": "C:\\work\\usd-output",
-        "OPENUSD_MCP_VIEWER_ROOT": "C:\\tools\\OpenUsd.Viewer.win-x64",
-        "OPENUSD_MCP_VIEWER_PATH": "C:\\tools\\OpenUsd.Viewer.win-x64\\OpenUsd.Viewer.App.exe"
-      }
+        "OPENUSD_MCP_SOURCE_ROOT": "<ABSOLUTE_SOURCE_ROOT>",
+        "OPENUSD_MCP_OUTPUT_ROOT": "<ABSOLUTE_OUTPUT_ROOT>",
+        "OPENUSD_MCP_VIEWER_ROOT": "<ABSOLUTE_VIEWER_ROOT>"
+      },
+      "tools": [
+        "*"
+      ]
     }
   }
 }

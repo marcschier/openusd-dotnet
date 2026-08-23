@@ -5,20 +5,108 @@
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>OpenUsd.Mcp</AssemblyName>
     <RootNamespace>OpenUsd.Mcp</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>openusd-mcp</ToolCommandName>
+    <PackageId>OpenUsd.Mcp.Tool</PackageId>
+    <Title>OpenUSD MCP Tool</Title>
+    <Description>Model Context Protocol stdio server for inspecting, editing, rendering, and validating OpenUSD scenes.</Description>
+    <PackageTags>openusd;usd;mcp;model-context-protocol;dotnet-tool</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/marcschier/openusd-dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/marcschier/openusd-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <Authors>marcschier</Authors>
+    <Company>marcschier</Company>
+    <Product>OpenUsd</Product>
+    <Copyright>Copyright (c) marcschier</Copyright>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\OpenUsd\OpenUsd.csproj" />
-    <ProjectReference Include="..\OpenUsd.Rendering\OpenUsd.Rendering.csproj" />
-    <ProjectReference Include="..\OpenUsd.Rendering.Silk\OpenUsd.Rendering.Silk.csproj" />
-    <ProjectReference Include="..\OpenUsd.Rendering.Silk.D3D12\OpenUsd.Rendering.Silk.D3D12.csproj" />
-    <ProjectReference Include="..\OpenUsd.Rendering.Silk.Metal\OpenUsd.Rendering.Silk.Metal.csproj" />
-    <ProjectReference Include="..\OpenUsd.Rendering.Silk.Vulkan\OpenUsd.Rendering.Silk.Vulkan.csproj" />
+    <ProjectReference Include="..\OpenUsd.Interop\OpenUsd.Interop.csproj">
+      <AdditionalProperties Condition="'$(_IsPacking)' == 'true'">
+        ContinuousIntegrationBuild=true
+      </AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\OpenUsd\OpenUsd.csproj">
+      <AdditionalProperties Condition="'$(_IsPacking)' == 'true'">
+        ContinuousIntegrationBuild=true
+      </AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\OpenUsd.Rendering\OpenUsd.Rendering.csproj">
+      <AdditionalProperties Condition="'$(_IsPacking)' == 'true'">
+        ContinuousIntegrationBuild=true
+      </AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\OpenUsd.Rendering.Silk\OpenUsd.Rendering.Silk.csproj">
+      <AdditionalProperties Condition="'$(_IsPacking)' == 'true'">
+        ContinuousIntegrationBuild=true
+      </AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\OpenUsd.Rendering.Silk.D3D12\OpenUsd.Rendering.Silk.D3D12.csproj">
+      <AdditionalProperties Condition="'$(_IsPacking)' == 'true'">
+        ContinuousIntegrationBuild=true
+      </AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\OpenUsd.Rendering.Silk.Metal\OpenUsd.Rendering.Silk.Metal.csproj">
+      <AdditionalProperties Condition="'$(_IsPacking)' == 'true'">
+        ContinuousIntegrationBuild=true
+      </AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\OpenUsd.Rendering.Silk.Vulkan\OpenUsd.Rendering.Silk.Vulkan.csproj">
+      <AdditionalProperties Condition="'$(_IsPacking)' == 'true'">
+        ContinuousIntegrationBuild=true
+      </AdditionalProperties>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="ModelContextProtocol" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!--
+    PackAsTool intentionally publishes the complete managed dependency closure and
+    suppresses nuspec dependencies. Some renderer packages also contribute native
+    runtime assets to publish output. Those assets are not the verified OpenUSD,
+    Imaging, or hdSilk runtime and cannot make this RID-agnostic tool self-contained,
+    so exclude them after the SDK has assembled its tool package item list.
+  -->
+  <Target Name="FilterOpenUsdMcpToolPackageNativeAssets"
+          AfterTargets="PackTool"
+          Condition="'$(PackAsTool)' == 'true' AND '$(_IsPacking)' == 'true'">
+    <ItemGroup>
+      <TfmSpecificPackageFile Remove="$(PublishDir)runtimes\**\native\**\*" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)runtimes/**/native/**/*" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**\*.exe" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**/*.exe" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**\*.so" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**/*.so" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**\*.dylib" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**/*.dylib" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)dxcompiler.dll" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)dxil.dll" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)spirv-cross.dll" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**\openusd_*.dll" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**/openusd_*.dll" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**\usd_ms.dll" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**/usd_ms.dll" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**\vulkan-1.dll" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**/vulkan-1.dll" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**\vk_swiftshader.dll" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**/vk_swiftshader.dll" />
+    </ItemGroup>
+  </Target>
 
 </Project>

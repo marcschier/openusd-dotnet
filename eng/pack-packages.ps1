@@ -21,7 +21,7 @@ param(
     # host: the Metal package needs the macOS-only mesh.metallib, and the Linux and macOS
     # Imaging packages run ELF and Mach-O validation that only their own platform can
     # perform and whose evidence is embedded in the package.
-    [ValidateSet('all', 'managed', 'metal', 'runtime')]
+    [ValidateSet('all', 'managed', 'metal', 'runtime', 'tool')]
     [string]$Scope = 'all',
     [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
     [string]$Rid,
@@ -43,12 +43,11 @@ param(
     #
     #   * The twelve runtime packaging projects set IncludeSymbols=false because
     #     they ship native payloads and dependencies rather than assemblies.
-    #   * Application projects never get IncludeSymbols at all. Directory.Build.props
+    #   * Application projects do not get IncludeSymbols by default. Directory.Build.props
     #     sets IncludeSymbols and SymbolPackageFormat inside a PropertyGroup guarded
     #     by _IsProductionLibrary, and IsApplicationProject excludes a project from
-    #     that. OpenUsd.Viewer is packable but is classified as an application so the
-    #     strict AOT/trim and public-API gates do not apply to its Avalonia UI code,
-    #     so it packs a .nupkg and no .snupkg.
+    #     that. OpenUsd.Viewer therefore packs a .nupkg and no .snupkg. The MCP tool
+    #     is also an application, but opts into portable symbols explicitly.
     #
     # Testing only for an explicit IncludeSymbols=false misses the second case: the
     # property is absent rather than false. That mistake failed the 0.7.0-alpha
@@ -72,6 +71,7 @@ $published = @(
     'OpenUsd.Rendering.Storm'
     'OpenUsd.Cesium'
     'OpenUsd.Viewer'
+    'OpenUsd.Mcp.Tool'
     'OpenUsd.Runtime.Core'
     'OpenUsd.Runtime.Core.win-x64'
     'OpenUsd.Runtime.Core.linux-x64'
@@ -91,9 +91,37 @@ $published = @(
 # be listed here and justified beside the package ids.
 $deferred = @()
 
+# Package ids normally match their project directory and file. The MCP project keeps
+# its application assembly name while publishing a distinct tool package id.
+$packageProjects = @{
+    'OpenUsd.Mcp.Tool' = 'OpenUsd.Mcp'
+}
+
+function Get-PackageProjectName
+{
+    param([Parameter(Mandatory)][string]$PackageId)
+
+    if ($packageProjects.ContainsKey($PackageId))
+    {
+        return $packageProjects[$PackageId]
+    }
+    return $PackageId
+}
+
+function Get-PackageProjectPath
+{
+    param([Parameter(Mandatory)][string]$PackageId)
+
+    $projectName = Get-PackageProjectName $PackageId
+    return Join-Path $Root "src/$projectName/$projectName.csproj"
+}
+
 # Retained before any scope or SkipMetal filter so the src/ classification check below
 # always covers the full set whichever slice this invocation packs.
 $allPublished = $published
+$allPublishedProjects = @($allPublished | ForEach-Object {
+    Get-PackageProjectName $_
+})
 
 if ($ListPublished)
 {
@@ -105,16 +133,19 @@ if ($ListSymbolPublished)
 {
     foreach ($id in ($published | Where-Object { $deferred -notcontains $_ }))
     {
-        $projectPath = Join-Path $Root "src/$id/$id.csproj"
+        $projectPath = Get-PackageProjectPath $id
         if (-not (Test-Path $projectPath))
         {
             throw "The published package '$id' has no project at '$projectPath'."
         }
         $project = Get-Content $projectPath -Raw
+        $includesSymbols =
+            $project -match '<IncludeSymbols>\s*true\s*</IncludeSymbols>'
         $suppressesSymbols =
             $project -match '<IncludeSymbols>\s*false\s*</IncludeSymbols>' -or
-            $project -match '<IsApplicationProject>\s*true\s*</IsApplicationProject>' -or
-            $id -match '\.(Viewer|Viewer\.App|NativeProbe|SilkProbe)$'
+            (-not $includesSymbols -and (
+                $project -match '<IsApplicationProject>\s*true\s*</IsApplicationProject>' -or
+                $id -match '\.(Viewer|Viewer\.App|NativeProbe|SilkProbe)$'))
         if (-not $suppressesSymbols)
         {
             $id
@@ -124,14 +155,16 @@ if ($ListSymbolPublished)
 }
 
 $metalPackage = 'OpenUsd.Rendering.Silk.Metal'
+$toolPackage = 'OpenUsd.Mcp.Tool'
 switch ($Scope)
 {
     'managed'
     {
         # Platform-neutral libraries. Metal is excluded because it embeds a macOS
-        # artifact, so it is packed by the metal scope on a macOS host.
+        # artifact, and the MCP tool is excluded because release packing gives the
+        # application package its own explicit, single-host step.
         $published = $published | Where-Object {
-            $_ -ne $metalPackage -and (
+            $_ -ne $metalPackage -and $_ -ne $toolPackage -and (
                 -not $_.StartsWith('OpenUsd.Runtime.', [StringComparison]::Ordinal) -or
                 $_ -eq 'OpenUsd.Runtime.Core' -or
                 $_ -eq 'OpenUsd.Runtime.Imaging' -or
@@ -153,6 +186,10 @@ switch ($Scope)
             "OpenUsd.Runtime.Core.$Rid",
             "OpenUsd.Runtime.Imaging.$Rid",
             "OpenUsd.Runtime.Cesium.$Rid")
+    }
+    'tool'
+    {
+        $published = @($toolPackage)
     }
 }
 
@@ -184,7 +221,7 @@ $srcProjects = Get-ChildItem (Join-Path $Root 'src') -Directory |
     Select-Object -ExpandProperty Name
 
 $unclassified = $srcProjects | Where-Object {
-    $allPublished -notcontains $_ -and -not $notPublished.ContainsKey($_)
+    $allPublishedProjects -notcontains $_ -and -not $notPublished.ContainsKey($_)
 }
 
 if ($unclassified)
@@ -209,7 +246,7 @@ New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
 foreach ($id in $published)
 {
-    $project = Join-Path $Root "src/$id/$id.csproj"
+    $project = Get-PackageProjectPath $id
     if (-not (Test-Path $project))
     {
         throw "The published package '$id' has no project at '$project'."

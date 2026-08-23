@@ -23,7 +23,7 @@
     "properties": [
       {
         "name": "openusd:input:Directory.Packages.props:sha256",
-        "value": "0117bfb3f2a1ad5527e99a8aac5a7462fb8297dc1df21adb3ae21834385d98d9"
+        "value": "4032376363638a8d0780517e371955c9dcbe83381e33d5f7399359e51f97be9f"
       },
       {
         "name": "openusd:input:eng/cesium.lock.json:sha256",
@@ -35,7 +35,7 @@
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
-        "value": "551fa02903d74e8e679e1decf5a9ca2c9136ca7205672db013b8c54797855676"
+        "value": "cc292fa8213c23b20254740ab39095c5484316ed3137352e07db0330643bcda5"
       },
       {
         "name": "openusd:input:eng/physx.lock.json:sha256",
@@ -977,6 +977,19 @@
     },
     {
       "type": "library",
+      "bom-ref": "nuget-dependency:Microsoft.Extensions.Hosting",
+      "name": "Microsoft.Extensions.Hosting",
+      "version": "10.0.11",
+      "purl": "pkg:nuget/Microsoft.Extensions.Hosting@10.0.11",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.SourceLink.GitHub",
       "name": "Microsoft.SourceLink.GitHub",
       "version": "10.0.301",
@@ -994,6 +1007,19 @@
       "name": "Microsoft.Testing.Extensions.CodeCoverage",
       "version": "18.9.0",
       "purl": "pkg:nuget/Microsoft.Testing.Extensions.CodeCoverage@18.9.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:ModelContextProtocol",
+      "name": "ModelContextProtocol",
+      "version": "2.2.0",
+      "purl": "pkg:nuget/ModelContextProtocol@2.2.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1202,6 +1228,19 @@
       "name": "OpenUsd.Interop",
       "version": "0.11.0-alpha",
       "purl": "pkg:nuget/OpenUsd.Interop@0.11.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Mcp.Tool",
+      "name": "OpenUsd.Mcp.Tool",
+      "version": "0.11.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Mcp.Tool@0.11.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2368,6 +2407,7 @@
         "nuget:OpenUsd.Rendering.Storm",
         "nuget:OpenUsd.Cesium",
         "nuget:OpenUsd.Viewer",
+        "nuget:OpenUsd.Mcp.Tool",
         "nuget:OpenUsd.Runtime.Core",
         "nuget:OpenUsd.Runtime.Core.win-x64",
         "nuget:OpenUsd.Runtime.Core.linux-x64",
@@ -2388,8 +2428,10 @@
         "nuget-dependency:BenchmarkDotNet",
         "nuget-dependency:Microsoft.CodeAnalysis.PublicApiAnalyzers",
         "nuget-dependency:Microsoft.Direct3D.DXC",
+        "nuget-dependency:Microsoft.Extensions.Hosting",
         "nuget-dependency:Microsoft.SourceLink.GitHub",
         "nuget-dependency:Microsoft.Testing.Extensions.CodeCoverage",
+        "nuget-dependency:ModelContextProtocol",
         "nuget-dependency:Nerdbank.GitVersioning",
         "nuget-dependency:Roslynator.Analyzers",
         "nuget-dependency:Roslynator.Formatting.Analyzers",
@@ -2513,6 +2555,10 @@
       "dependsOn": []
     },
     {
+      "ref": "nuget:OpenUsd.Mcp.Tool",
+      "dependsOn": []
+    },
+    {
       "ref": "nuget:OpenUsd.Runtime.Core",
       "dependsOn": []
     },
@@ -2593,11 +2639,19 @@
       "dependsOn": []
     },
     {
+      "ref": "nuget-dependency:Microsoft.Extensions.Hosting",
+      "dependsOn": []
+    },
+    {
       "ref": "nuget-dependency:Microsoft.SourceLink.GitHub",
       "dependsOn": []
     },
     {
       "ref": "nuget-dependency:Microsoft.Testing.Extensions.CodeCoverage",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:ModelContextProtocol",
       "dependsOn": []
     },
     {

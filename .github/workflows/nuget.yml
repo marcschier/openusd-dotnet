@@ -99,6 +99,7 @@ jobs:
             OpenUsd.Rendering.Storm
             OpenUsd.Cesium
             OpenUsd.Viewer
+            OpenUsd.Mcp.Tool
             OpenUsd.Runtime.Core
             OpenUsd.Runtime.Core.win-x64
             OpenUsd.Runtime.Core.linux-x64

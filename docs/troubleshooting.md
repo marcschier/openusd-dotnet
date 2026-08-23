@@ -25,6 +25,38 @@ flowchart TD
 Capture the first exception, native diagnostic, process output, and exact command before changing the
 environment. Later failures are often consequences of the first one.
 
+## MCP tool and Copilot CLI
+
+The framework-dependent MCP tool requires a .NET 10 runtime:
+
+```powershell
+dotnet tool list --global
+dotnet --list-runtimes
+Get-Command openusd-mcp
+copilot mcp list
+copilot mcp get openusd
+```
+
+If `openusd-mcp` is missing, install `OpenUsd.Mcp.Tool`, restore the repository-local tool manifest,
+or fix the inherited `PATH`. A local-manifest registration must use
+`dotnet tool run openusd-mcp`; the bare command is for global or `--tool-path` installs.
+
+If Copilot does not list a repository server, check `.mcp.json` and `.github/mcp.json` precedence
+and confirm project trust. Project MCP configuration is skipped in untrusted directories. The user
+entry is stored in `~/.copilot/mcp-config.json`, or below `COPILOT_HOME` when that variable is set.
+
+Copilot inherits `PATH` for a stdio server but no other environment variables. Configure the
+OpenUSD source, output, plugin, and Viewer roots explicitly. Configure `LD_LIBRARY_PATH` on Linux or
+`DYLD_LIBRARY_PATH` on macOS when the native runtime requires it. The .NET tool package does not
+embed Core, Imaging, hdSilk, or plugin assets; real scene and render operations need a matching
+staged runtime.
+
+The MCP protocol owns stdout. Any banner, build output, or merged log corrupts JSON-RPC. The host
+writes all logs to stderr, so capture stderr separately. Use
+`copilot mcp get openusd` or interactive `/mcp show openusd` to distinguish command startup from
+native scene-operation failures. See [MCP server](mcp.md) for exact install, configuration, trust,
+and verification commands.
+
 ## Native library loading
 
 Common symptoms include `DllNotFoundException`, a loader error naming `openusd_dotnet`,

@@ -3,19 +3,36 @@
 Use this guide to identify the managed and RID-specific packages a consumer needs, understand how
 Core and Imaging assets reach publish output, and find the package-only resolution gates.
 
-`OpenUsd.Mcp` is intentionally a non-packable repository application. Its local RID bundle script
-stages the MCP app with matching Core/Imaging assets without adding it to the public NuGet set or
-including the separately distributed Viewer. Complete native/plugin preflight and validated
-sibling-directory replacement preserve an existing RID bundle when staging fails; synthetic
-package tests execute the failure and replacement cases. See
-[OpenUSD MCP server](mcp.md#publish-a-local-rid-bundle).
+`OpenUsd.Mcp.Tool` is a framework-dependent net10.0 .NET tool package that installs the
+`openusd-mcp` command. It contains the managed MCP host but not Core, Imaging, hdSilk, OpenUSD
+plugin assets, or the separately distributed Viewer. Its local self-contained RID bundle script
+stages the MCP app with matching Core/Imaging assets. Complete native/plugin preflight and
+validated sibling-directory replacement preserve an existing RID bundle when staging fails;
+synthetic package tests execute the failure and replacement cases. See
+[OpenUSD MCP server](mcp.md#install-the-net-tool) and
+[RID bundles](mcp.md#publish-a-local-rid-bundle).
 
 **On this page:** [Package resolution](#package-resolution) ·
+[MCP distribution](#mcp-tool-package-and-rid-bundles) ·
 [Package layout](#package-layout) · [Pack](#pack) · [Release SBOM](#release-sbom) ·
 [Publish](#publish) · [Symbols](#symbol-packages-for-nugetorg) ·
 [Core execution](#package-only-execution-gate) ·
 [Imaging execution](#package-only-imaging-execution-gate) ·
 [Required mode](#required-execution-mode) · [Related documentation](#related-documentation)
+
+## MCP tool package and RID bundles
+
+- **`OpenUsd.Mcp.Tool`:** contains the managed MCP host and `openusd-mcp` command. It requires .NET
+  10 and a separately staged native runtime for scene operations. Use it when Copilot setup should
+  follow normal .NET tool install, update, and version-pinning workflows.
+- **Self-contained RID bundle:** contains the managed host, .NET runtime, matching
+  Core/Imaging/hdSilk assets, and plugin tree. Use it when one validated, supported-RID archive
+  should run without a separately installed .NET runtime.
+
+The tool package is portable at the managed layer but does not make native OpenUSD portable or
+self-contained. Its user must configure the source/output/plugin/Viewer roots and platform loader
+path. The bundle is larger and RID-specific, but its native runtime and managed host are staged and
+validated together. Neither distribution embeds the separate Viewer application.
 
 ## Package resolution
 
@@ -274,10 +291,11 @@ generated local feed. After a Release build, run them with:
 
 ## Publish
 
-Twenty-two packages are published at `0.11.0-alpha`: the eight non-Cesium managed libraries
+Twenty-three packages are published at `0.11.0-alpha`: the eight non-Cesium managed libraries
 (`OpenUsd`, `OpenUsd.Interop`, `OpenUsd.Rendering`, `OpenUsd.Rendering.Silk`, the three hdSilk
 backends, and `OpenUsd.Rendering.Storm`), the embeddable `OpenUsd.Viewer` shell, the two runtime
-metapackages, the six per-RID Core/Imaging runtime packages, and the five Cesium IDs
+metapackages, the six per-RID Core/Imaging runtime packages, the `OpenUsd.Mcp.Tool` .NET tool, and
+the five Cesium IDs
 (`OpenUsd.Cesium`, `OpenUsd.Runtime.Cesium`, and the three per-RID Cesium runtime packages) that
 became public after being withheld at `0.5.0-alpha`. `eng/pack-packages.ps1` is the single
 source of truth for the published set. The script enumerates

@@ -3,13 +3,13 @@
 `OpenUsd.Mcp` is a local Model Context Protocol (MCP) stdio server for bounded,
 transactional inspection, editing, preview, analysis, and finalization of OpenUSD scenes.
 It gives an agent typed operations rather than arbitrary USDA, native handles, shell access,
-or unrestricted filesystem access.
-
-The server is a repository application, not a NuGet package or a promised binary release.
-Run it from source or create a local RID bundle with the repository script described below.
+or unrestricted filesystem access. Install the framework-dependent .NET tool package
+`OpenUsd.Mcp.Tool` to get the `openusd-mcp` command, run the host from source, or create a
+self-contained RID bundle.
 
 **On this page:** [Architecture](#architecture-and-session-model) ·
-[Prerequisites](#prerequisites) · [Run from source](#run-from-source) ·
+[Prerequisites](#prerequisites) · [Install](#install-the-net-tool) ·
+[Run from source](#run-from-source) ·
 [RID bundles](#publish-a-local-rid-bundle) · [Client configuration](#client-configuration) ·
 [Security](#path-roots-and-containment) · [Tools](#tool-reference) ·
 [Resources](#artifact-resources) · [Workflow](#end-to-end-agent-workflow) ·
@@ -52,17 +52,22 @@ hot paths do not perform per-element P/Invoke.
 
 ## Prerequisites
 
-- The repository-pinned **.NET SDK 10.0.301**. `global.json` disables roll-forward. Run
-  `./eng/install-dotnet.ps1` when that SDK is unavailable.
+- The **.NET 10 SDK or runtime** for the `OpenUsd.Mcp.Tool` package. Repository source builds
+  require the pinned **.NET SDK 10.0.301**; `global.json` disables roll-forward.
 - One supported host/RID: `win-x64`, `linux-x64`, or `osx-arm64`.
-- A matching Core and Imaging native install under `native/install/<rid>` and
-  `native/install/shim/<rid>`, produced or staged as described in
-  [Native build](native-build.md). Core is needed to open and edit stages. Imaging, hdSilk,
+- For actual scene operations, a matching Core and Imaging native runtime. The .NET tool package
+  does not embed Core, Imaging, hdSilk, or OpenUSD plugin assets. A repository source run uses
+  `native/install/<rid>` and `native/install/shim/<rid>`; a self-contained RID bundle stages the
+  same assets beside the executable. Core is needed to open and edit stages. Imaging, hdSilk,
   plugin metadata, and a working graphics API are needed for `render_preview`.
 - Windows preview uses D3D12 and defaults to WARP; Linux uses Vulkan; macOS uses Metal.
   Platform loader/device prerequisites from [Rendering](rendering.md) still apply.
 - `present_scene` additionally requires a separately built `OpenUsd.Viewer.App` executable.
   The MCP server never auto-launches it.
+
+Install .NET 10 from the official .NET distribution for tool-package use. For repository work,
+run `./eng/install-dotnet.ps1` on Windows or `bash ./eng/install-dotnet.sh` on Linux/macOS if
+`dotnet --version` is not `10.0.301`.
 
 Restore and build before using the source command:
 
@@ -70,6 +75,51 @@ Restore and build before using the source command:
 dotnet restore OpenUsd.slnx
 dotnet build OpenUsd.slnx -c Release
 ```
+
+## Install the .NET tool
+
+Install the command for the current user:
+
+```shell
+dotnet tool install --global OpenUsd.Mcp.Tool
+openusd-mcp
+```
+
+The second command starts a stdio protocol server and waits for an MCP client; it does not print a
+human-oriented prompt. Use `Get-Command openusd-mcp` in PowerShell or `command -v openusd-mcp` in
+bash to verify command discovery. The global tool directory must be on the `PATH` inherited by
+Copilot CLI.
+
+To pin a release, add `--version <VERSION>`. Update or remove the global tool with:
+
+```shell
+dotnet tool update --global OpenUsd.Mcp.Tool
+dotnet tool uninstall --global OpenUsd.Mcp.Tool
+```
+
+For a repository-local manifest:
+
+```shell
+dotnet new tool-manifest --output .config
+dotnet tool install OpenUsd.Mcp.Tool
+dotnet tool run openusd-mcp
+```
+
+Commit `.config/dotnet-tools.json` when collaborators should restore the same pinned version, then
+use `dotnet tool restore`. Update or remove that manifest entry with
+`dotnet tool update OpenUsd.Mcp.Tool` or `dotnet tool uninstall OpenUsd.Mcp.Tool`.
+
+For an isolated command directory instead of a global or manifest install:
+
+```shell
+dotnet tool install --tool-path <TOOL_PATH> OpenUsd.Mcp.Tool
+```
+
+Invoke `<TOOL_PATH>\openusd-mcp.exe` on Windows or `<TOOL_PATH>/openusd-mcp` on Linux/macOS.
+Use the .NET tool when .NET 10 is already managed on the host and native runtime assets are staged
+separately. Use a self-contained RID bundle when the host should not depend on an installed .NET
+runtime or when one validated archive should carry the managed host and matching Core/Imaging
+assets together.
 
 ## Run from source
 
@@ -107,8 +157,8 @@ two streams or wrap the command with a tool that writes banners to stdout.
 
 ## Publish a local RID bundle
 
-The source-distribution script publishes the net10.0 MCP application and stages the matching
-Core/Imaging native libraries and plugin resources:
+The source-distribution script publishes a self-contained net10.0 MCP application and stages the
+matching Core/Imaging native libraries and plugin resources:
 
 ```powershell
 ./eng/publish-mcp-bundle.ps1 -Rid win-x64
@@ -145,7 +195,7 @@ directory through the verifier's supported `-InstallRoot` parameter.
 
 This script is a reproducible local/source distribution path. The repository does not claim
 that MCP archives are signed, notarized, attached to releases, or available for unsupported
-RIDs. `OpenUsd.Mcp` remains non-packable and is not added to the published NuGet set.
+RIDs. The archives are distinct from the framework-dependent `OpenUsd.Mcp.Tool` NuGet package.
 
 Run a bundle with the same roots plus bundle-local runtime paths:
 
@@ -165,101 +215,206 @@ $env:PATH = (
 
 ## Client configuration
 
-MCP clients use different configuration file locations and sometimes call the server map
-`mcpServers` or `servers`, but the stdio process definition is the same: an absolute
-`command`, an `args` array, and an `env` object. Keep secrets out of these files; the server
-does not require credentials.
+GitHub Copilot CLI starts this host as a local stdio server. Configure the four security and
+runtime roots explicitly. `PATH` is the only environment variable automatically inherited by a
+Copilot CLI stdio server; configure every other required variable with repeated `--env KEY=VALUE`
+options before `--`. The unconfigured base syntax is
+`copilot mcp add openusd -- openusd-mcp`; use the configured forms below for real scene work.
 
-### Source command
+### Add the global tool to Copilot CLI
 
-For Claude Desktop and clients using the `mcpServers` shape:
+PowerShell on Windows:
+
+```powershell
+$sourceRoot = '<ABSOLUTE_SOURCE_ROOT>'
+$outputRoot = '<ABSOLUTE_OUTPUT_ROOT>'
+$pluginRoot = '<ABSOLUTE_MCP_RUNTIME_ROOT>\plugin\usd'
+$viewerRoot = '<ABSOLUTE_VIEWER_ROOT>'
+
+copilot mcp add openusd `
+  --env "OPENUSD_MCP_SOURCE_ROOT=$sourceRoot" `
+  --env "OPENUSD_MCP_OUTPUT_ROOT=$outputRoot" `
+  --env "OPENUSD_PLUGIN_PATH=$pluginRoot" `
+  --env "OPENUSD_MCP_VIEWER_ROOT=$viewerRoot" `
+  -- openusd-mcp
+```
+
+`PATH` must already contain both the global .NET tool directory and the native DLL directories.
+For example, prepend the validated runtime root, `bin`, and `lib` directories before starting
+Copilot CLI; do not replace the existing `PATH`.
+
+bash on Linux:
+
+```bash
+source_root='<ABSOLUTE_SOURCE_ROOT>'
+output_root='<ABSOLUTE_OUTPUT_ROOT>'
+runtime_root='<ABSOLUTE_MCP_RUNTIME_ROOT>'
+viewer_root='<ABSOLUTE_VIEWER_ROOT>'
+
+copilot mcp add openusd \
+  --env "OPENUSD_MCP_SOURCE_ROOT=$source_root" \
+  --env "OPENUSD_MCP_OUTPUT_ROOT=$output_root" \
+  --env "OPENUSD_PLUGIN_PATH=$runtime_root/plugin/usd" \
+  --env "OPENUSD_MCP_VIEWER_ROOT=$viewer_root" \
+  --env "LD_LIBRARY_PATH=$runtime_root:$runtime_root/bin:$runtime_root/lib" \
+  -- openusd-mcp
+```
+
+bash on macOS:
+
+```bash
+source_root='<ABSOLUTE_SOURCE_ROOT>'
+output_root='<ABSOLUTE_OUTPUT_ROOT>'
+runtime_root='<ABSOLUTE_MCP_RUNTIME_ROOT>'
+viewer_root='<ABSOLUTE_VIEWER_ROOT>'
+
+copilot mcp add openusd \
+  --env "OPENUSD_MCP_SOURCE_ROOT=$source_root" \
+  --env "OPENUSD_MCP_OUTPUT_ROOT=$output_root" \
+  --env "OPENUSD_PLUGIN_PATH=$runtime_root/plugin/usd" \
+  --env "OPENUSD_MCP_VIEWER_ROOT=$viewer_root" \
+  --env "DYLD_LIBRARY_PATH=$runtime_root:$runtime_root/bin:$runtime_root/lib" \
+  -- openusd-mcp
+```
+
+The standard Viewer filename defaults to `OpenUsd.Viewer.App.exe` on Windows and
+`OpenUsd.Viewer.App` elsewhere. Add
+`--env "OPENUSD_MCP_VIEWER_PATH=<ABSOLUTE_VIEWER_EXECUTABLE>"` before `--` only when a
+non-default confined path is required.
+
+PowerShell uses backticks for line continuation and quotes each complete `KEY=VALUE` token. bash
+uses backslashes and double quotes so the shell expands variables while preserving spaces. Do not
+put quotes inside the stored value.
+
+### Add interactively
+
+Start `copilot`, enter `/mcp add`, and complete the form:
+
+1. **Server Name:** `openusd`
+2. **Server Type:** choose **STDIO**.
+3. **Command:** `openusd-mcp`
+4. **Environment Variables:** enter JSON containing
+   `OPENUSD_MCP_SOURCE_ROOT`, `OPENUSD_MCP_OUTPUT_ROOT`, `OPENUSD_PLUGIN_PATH`, and
+   `OPENUSD_MCP_VIEWER_ROOT`; add the platform loader variable when required.
+5. **Tools:** `*`
+6. Press <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+
+Use absolute placeholder replacements in the environment JSON:
 
 ```json
 {
-  "mcpServers": {
-    "openusd": {
-      "command": "pwsh",
-      "args": [
-        "-NoLogo",
-        "-NoProfile",
-        "-File",
-        "C:\\git\\openusd2\\eng\\run-mcp.ps1",
-        "-Rid",
-        "win-x64",
-        "-Configuration",
-        "Release"
-      ],
-      "env": {
-        "OPENUSD_MCP_SOURCE_ROOT": "C:\\work\\usd-input",
-        "OPENUSD_MCP_OUTPUT_ROOT": "C:\\work\\usd-output",
-        "OPENUSD_MCP_VIEWER_ROOT": "C:\\tools\\OpenUsd.Viewer.win-x64",
-        "OPENUSD_MCP_VIEWER_PATH": "C:\\tools\\OpenUsd.Viewer.win-x64\\OpenUsd.Viewer.App.exe"
-      }
-    }
-  }
+  "OPENUSD_MCP_SOURCE_ROOT": "<ABSOLUTE_SOURCE_ROOT>",
+  "OPENUSD_MCP_OUTPUT_ROOT": "<ABSOLUTE_OUTPUT_ROOT>",
+  "OPENUSD_PLUGIN_PATH": "<ABSOLUTE_MCP_RUNTIME_PLUGIN_ROOT>",
+  "OPENUSD_MCP_VIEWER_ROOT": "<ABSOLUTE_VIEWER_ROOT>"
 }
 ```
 
-The wrapper composes the source runtime's loader and plugin paths; the MCP client still supplies
-the workspace and optional Viewer roots through `env`. A checked, valid sample is in
-[`examples/openusd-mcp-source.json`](examples/openusd-mcp-source.json).
+### Inspect, edit, update, and remove
 
-### Published bundle
+Verify the persisted server and discovered tools from the terminal:
 
-```json
-{
-  "mcpServers": {
-    "openusd": {
-      "command": "C:\\tools\\OpenUsd.Mcp.win-x64\\OpenUsd.Mcp.exe",
-      "args": [],
-      "env": {
-        "OPENUSD_MCP_SOURCE_ROOT": "C:\\work\\usd-input",
-        "OPENUSD_MCP_OUTPUT_ROOT": "C:\\work\\usd-output",
-        "OPENUSD_PLUGIN_PATH": "C:\\tools\\OpenUsd.Mcp.win-x64\\plugin\\usd",
-        "OPENUSD_MCP_VIEWER_ROOT": "C:\\tools\\OpenUsd.Viewer.win-x64",
-        "OPENUSD_MCP_VIEWER_PATH": "C:\\tools\\OpenUsd.Viewer.win-x64\\OpenUsd.Viewer.App.exe",
-        "PATH": "C:\\tools\\OpenUsd.Mcp.win-x64;C:\\tools\\OpenUsd.Mcp.win-x64\\bin;C:\\tools\\OpenUsd.Mcp.win-x64\\lib"
-      }
-    }
-  }
-}
+```shell
+copilot mcp list
+copilot mcp get openusd
 ```
 
-Use the same object below VS Code's `servers` key or the equivalent stdio-server section in
-Cursor. Do not add HTTP/SSE fields: this host implements stdio transport. A checked sample is
-in [`examples/openusd-mcp-published.json`](examples/openusd-mcp-published.json).
+In interactive mode use `/mcp show openusd` for status and the available tool list, or
+`/mcp show` for all servers. Use `/mcp edit openusd` to update the command, roots, or enabled
+tools. The non-interactive CLI has no in-place edit subcommand; run
+`copilot mcp remove openusd`, then repeat `copilot mcp add ...` to replace the user entry.
+Interactive deletion is `/mcp delete openusd`. A project-defined server must instead be changed or
+removed in its `.mcp.json` or `.github/mcp.json` file.
 
-Common client file shapes are:
+Updating the MCP registration is separate from updating the executable:
 
-- **Claude Desktop:** use the desktop configuration JSON and put the sample entry under
-  `mcpServers`.
-- **Cursor:** use user or project `mcp.json` and put the sample entry under `mcpServers`.
-- **VS Code:** use workspace `.vscode/mcp.json` or user MCP configuration, put the entry
-  under `servers`, and add `"type": "stdio"` beside `command`.
-
-For example, a VS Code published-bundle entry is:
-
-```json
-{
-  "servers": {
-    "openusd": {
-      "type": "stdio",
-      "command": "C:\\tools\\OpenUsd.Mcp.win-x64\\OpenUsd.Mcp.exe",
-      "args": [],
-      "env": {
-        "OPENUSD_MCP_SOURCE_ROOT": "C:\\work\\usd-input",
-        "OPENUSD_MCP_OUTPUT_ROOT": "C:\\work\\usd-output",
-        "OPENUSD_PLUGIN_PATH": "C:\\tools\\OpenUsd.Mcp.win-x64\\plugin\\usd",
-        "PATH": "C:\\tools\\OpenUsd.Mcp.win-x64;C:\\tools\\OpenUsd.Mcp.win-x64\\bin;C:\\tools\\OpenUsd.Mcp.win-x64\\lib"
-      }
-    }
-  }
-}
+```shell
+dotnet tool update --global OpenUsd.Mcp.Tool
 ```
 
-Client products can change configuration locations independently of this repository; use the
-client's current documentation to locate its stdio server file, while preserving the documented
-OpenUSD command, arguments, environment, and stream separation.
+Pin production automation with `--version <VERSION>` on install/update. After a major or prerelease
+change, restart Copilot CLI and run `copilot mcp get openusd` so the new process rediscovers the
+same 12-tool surface. Uninstall the executable only after removing registrations that use it:
+
+```shell
+copilot mcp remove openusd
+dotnet tool uninstall --global OpenUsd.Mcp.Tool
+```
+
+### Local manifest, tool-path, source, and bundle commands
+
+For a local manifest, make the repository containing `.config/dotnet-tools.json` the Copilot
+working directory and place the complete command after `--`:
+
+```shell
+copilot mcp add openusd --env OPENUSD_MCP_SOURCE_ROOT=<ABSOLUTE_SOURCE_ROOT> \
+  --env OPENUSD_MCP_OUTPUT_ROOT=<ABSOLUTE_OUTPUT_ROOT> \
+  --env OPENUSD_PLUGIN_PATH=<ABSOLUTE_MCP_RUNTIME_PLUGIN_ROOT> \
+  --env OPENUSD_MCP_VIEWER_ROOT=<ABSOLUTE_VIEWER_ROOT> \
+  -- dotnet tool run openusd-mcp
+```
+
+In PowerShell, replace each trailing `\` with a backtick and quote any `KEY=VALUE` containing
+spaces. A `--tool-path` install uses its absolute executable after `--`. A source checkout places
+this complete command after `--`:
+
+```text
+pwsh -NoLogo -NoProfile -File <REPOSITORY_ROOT>/eng/run-mcp.ps1 -Rid <RID> -Configuration Release
+```
+
+The wrapper configures native plugin and loader paths. A RID bundle uses its absolute
+`OpenUsd.Mcp[.exe]` path after `--`.
+
+Checked JSON variants are:
+
+- [.NET tool, Windows](examples/openusd-mcp-tool-windows.json)
+- [.NET tool, Linux](examples/openusd-mcp-tool-linux.json)
+- [.NET tool, macOS](examples/openusd-mcp-tool-macos.json)
+- [Repository source runner](examples/openusd-mcp-source.json)
+- [Self-contained RID bundle](examples/openusd-mcp-published.json)
+
+### Configuration files and project trust
+
+`copilot mcp add` writes the user configuration to `~/.copilot/mcp-config.json`. If
+`COPILOT_HOME` is set, the same `mcp-config.json` lives below that directory. User configuration is
+appropriate when all projects use the same explicitly confined roots.
+
+For repository-specific setup, put the same `mcpServers` object in `.mcp.json` for local or
+per-checkout configuration, or `.github/mcp.json` for shared committed configuration. Copilot CLI
+loads files from the working directory toward the Git root. A nearer definition wins; `.mcp.json`
+wins over `.github/mcp.json` in the same directory; project definitions win over user definitions.
+Do not commit machine-specific paths or secrets. Replace placeholders locally or keep the
+machine-specific file untracked.
+
+Project MCP servers run only after folder trust is confirmed. They are silently skipped in an
+untrusted directory. In prompt mode (`copilot -p`), an already trusted workspace loads them
+normally. Because prompt mode cannot display the trust prompt, an untrusted workspace skips them
+unless `GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP=true` is set deliberately. Do not use that override
+for an unreviewed checkout.
+
+Copilot CLI does not read VS Code's `.vscode/mcp.json` `servers` shape. Use `mcpServers` in the
+Copilot locations above.
+
+### Native runtime assets
+
+The framework-dependent tool package contains the managed MCP host, not the OpenUSD Core, Imaging,
+hdSilk, or plugin payloads. Tool discovery and no-session protocol checks can run without those
+assets, but `open_scene` and every real scene/render workflow require a version-matched runtime.
+
+Use either the staged root created by the source workflow or the runtime root from a validated RID
+bundle. It must preserve `bin`, `lib`, and `plugin/usd` and include at least the root
+`plugInfo.json`, `hdStorm/resources/plugInfo.json`, and `hdSilk/resources/plugInfo.json`. Configure:
+
+- Windows: prepend the runtime root, `bin`, and `lib` to the `PATH` of the shell that starts
+  `copilot`. Copilot passes that `PATH` to `openusd-mcp`.
+- Linux: set `LD_LIBRARY_PATH` explicitly in the MCP environment to the runtime root, `bin`, and
+  `lib`.
+- macOS: set `DYLD_LIBRARY_PATH` explicitly in the MCP environment to the runtime root, `bin`, and
+  `lib`.
+
+Always set `OPENUSD_PLUGIN_PATH` to that runtime's `plugin/usd` directory. Do not flatten the plugin
+tree, combine versions, or point the tool at a system OpenUSD install. `present_scene` still needs a
+separate Viewer root; it is not included in either the tool package or MCP RID bundle.
 
 ### Environment variables
 
@@ -290,7 +445,35 @@ OpenUSD command, arguments, environment, and stream separation.
 The source, output, Viewer root, and Viewer executable defaults are converted to absolute paths
 when host options load. `OPENUSD_PLUGIN_PATH` is preserved as supplied; the source runner and
 bundle examples deliberately supply an absolute staged plugin root. Use absolute values so client
-working-directory changes cannot silently select different resources.
+working-directory changes cannot silently select different resources. In Copilot CLI, configure
+all of these variables explicitly; only `PATH` is inherited automatically.
+
+### Verify from Copilot
+
+After `copilot mcp get openusd` reports the server and its 12 tools, start interactive Copilot in a
+trusted directory and try read-only prompts first:
+
+```text
+Use the openusd MCP server to open "shots/robot.usda", inspect the scene, summarize the bounded
+statistics, and close the scene without making edits.
+```
+
+```text
+Use openusd to open "shots/robot.usda", render one 512x512 still at time code 0, describe the
+returned image resource, and close the scene. Do not apply edits or proposals.
+```
+
+For a controlled mutation and finalization check:
+
+```text
+Use openusd to open "shots/robot.usda", create a checkpoint, define an Xform at
+"/World/McpVerification", inspect the result, finalize the current revision, report every output
+path and partial failure, then close the scene. Do not present the scene.
+```
+
+The first prompt verifies Core loading and path containment. The second additionally verifies
+Imaging, hdSilk, and artifact resources. The third verifies the optimistic revision chain,
+checkpoint, typed edit, immutable finalization, and output-root confinement.
 
 ## Path roots and containment
 
@@ -718,10 +901,19 @@ Resource reads additionally use `artifact_not_found`, `artifact_invalid_text`,
 
 ## Troubleshooting
 
+- **`openusd-mcp` is not found:** run `dotnet tool list --global`, verify
+  `OpenUsd.Mcp.Tool` is installed, and put the global .NET tool directory on the `PATH` inherited
+  by Copilot. For a local manifest run `dotnet tool restore` and configure
+  `dotnet tool run openusd-mcp` instead of the bare command.
+- **The tool cannot start:** run `dotnet --list-runtimes` and install a .NET 10 runtime. Repository
+  source builds specifically require SDK 10.0.301.
+- **Copilot lists no `openusd` server:** run `copilot mcp list` and
+  `copilot mcp get openusd`. For project configuration, confirm folder trust and the
+  `.mcp.json` or `.github/mcp.json` precedence.
 - **Malformed JSON-RPC:** a wrapper or log wrote to stdout. Keep stdout protocol-only and
-  inspect stderr separately.
-- **Server exits during startup:** verify SDK 10.0.301, the source root, and output-root
-  creation.
+  inspect stderr separately. The host writes logs to stderr; never merge stderr into stdout.
+- **Server exits during startup:** verify the .NET 10 runtime, explicit source/output/plugin/Viewer
+  roots, source-root existence, and output-root creation.
 - **`path_denied`:** use a relative supported USD path, remove traversal/reparse points,
   and verify source-root permissions.
 - **`native_failure` or a missing library:** match the host RID, stage both native installs,
@@ -752,7 +944,7 @@ Linux shell, and macOS details.
 
 | Surface | `win-x64` | `linux-x64` | `osx-arm64` |
 | --- | --- | --- | --- |
-| MCP host / 12 tools | net10.0 source app | net10.0 source app | net10.0 source app |
+| `OpenUsd.Mcp.Tool` / 12 tools | net10.0 tool | net10.0 tool | net10.0 tool |
 | Core operations | Core install | Core install | Core install |
 | Preview | hdSilk D3D12/WARP | hdSilk Vulkan | hdSilk Metal |
 | RID bundle script | Implemented | Implemented | Implemented |
@@ -760,8 +952,9 @@ Linux shell, and macOS details.
 
 There are no MCP bundles for Windows arm64, Linux arm64, macOS x64, mobile, or browser RIDs.
 The server application targets net10.0; the production libraries it consumes remain multi-targeted
-for net8.0, net9.0, and net10.0. MCP is pre-1.0 source functionality, not a stable hosted service,
-remote security boundary, or binary distribution commitment.
+for net8.0, net9.0, and net10.0. The tool package is framework-dependent and does not extend the
+supported native RID set. MCP is pre-1.0 local functionality, not a stable hosted service or remote
+security boundary.
 
 ## Testing
 
@@ -791,8 +984,8 @@ stdio test performs initialization, `tools/list`, `resources/list`, resource-tem
 and a safe no-session invocation; the official transport rejects non-protocol stdout and captures
 host logs from stderr. Native overlay/checkpoint/rollback and retained-capture integration tests run
 when the repository Core/Imaging runtime layout is present and otherwise skip with the missing path
-reported explicitly. Package tests keep the host non-packable and assert the RID script's
-Core/Imaging/plugin/exclusion and fail-before-mutation contracts. Creating a real bundle
+reported explicitly. Package tests assert the tool-package identity and command plus the RID
+script's Core/Imaging/plugin/exclusion and fail-before-mutation contracts. Creating a real bundle
 additionally requires the matching native installs:
 
 ```powershell

@@ -44,6 +44,7 @@ public sealed class PublicApiBaselineTests
         "OpenUsd",
         "OpenUsd.Cesium",
         "OpenUsd.Interop",
+        "OpenUsd.Mcp",
         "OpenUsd.Rendering",
         "OpenUsd.Rendering.Silk",
         "OpenUsd.Rendering.Silk.D3D12",
@@ -222,8 +223,11 @@ public sealed class PublicApiBaselineTests
 
         foreach (ProjectContract project in packable)
         {
+            string expectedFrameworks = project.Name == "OpenUsd.Mcp"
+                ? "net10.0"
+                : "net8.0;net9.0;net10.0";
             await Assert.That(project.TargetFrameworks)
-                .IsEqualTo("net8.0;net9.0;net10.0")
+                .IsEqualTo(expectedFrameworks)
                 .Because(project.Name);
         }
     }

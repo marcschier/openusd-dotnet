@@ -2,12 +2,12 @@
   "mcpServers": {
     "openusd": {
       "type": "stdio",
-      "command": "<MCP_BUNDLE_ROOT>\\OpenUsd.Mcp.exe",
+      "command": "openusd-mcp",
       "args": [],
       "env": {
         "OPENUSD_MCP_SOURCE_ROOT": "<ABSOLUTE_SOURCE_ROOT>",
         "OPENUSD_MCP_OUTPUT_ROOT": "<ABSOLUTE_OUTPUT_ROOT>",
-        "OPENUSD_PLUGIN_PATH": "<MCP_BUNDLE_ROOT>\\plugin\\usd",
+        "OPENUSD_PLUGIN_PATH": "<ABSOLUTE_MCP_RUNTIME_ROOT>\\plugin\\usd",
         "OPENUSD_MCP_VIEWER_ROOT": "<ABSOLUTE_VIEWER_ROOT>"
       },
       "tools": [

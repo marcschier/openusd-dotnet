@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "openusd": {
+      "type": "stdio",
+      "command": "openusd-mcp",
+      "args": [],
+      "env": {
+        "OPENUSD_MCP_SOURCE_ROOT": "<ABSOLUTE_SOURCE_ROOT>",
+        "OPENUSD_MCP_OUTPUT_ROOT": "<ABSOLUTE_OUTPUT_ROOT>",
+        "OPENUSD_PLUGIN_PATH": "<ABSOLUTE_MCP_RUNTIME_ROOT>/plugin/usd",
+        "OPENUSD_MCP_VIEWER_ROOT": "<ABSOLUTE_VIEWER_ROOT>",
+        "DYLD_LIBRARY_PATH": "<ABSOLUTE_MCP_RUNTIME_ROOT>:<ABSOLUTE_MCP_RUNTIME_ROOT>/bin:<ABSOLUTE_MCP_RUNTIME_ROOT>/lib"
+      },
+      "tools": [
+        "*"
+      ]
+    }
+  }
+}
