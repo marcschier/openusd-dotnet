@@ -1,0 +1,63 @@
+#usda 1.0
+(
+    metersPerUnit = 1
+    kilogramsPerUnit = 1
+    upAxis = "Y"
+    timeCodesPerSecond = 24
+    startTimeCode = 0
+    endTimeCode = 24
+)
+
+def PhysicsScene "Scene"
+{
+    vector3f physics:gravityDirection = (0, -1, 0)
+    float physics:gravityMagnitude = 9.81
+}
+
+def Xform "Ground"
+{
+    double3 xformOp:translate = (0, 0, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+
+    def Cube "Slab" (
+        prepend apiSchemas = ["PhysicsCollisionAPI"]
+    )
+    {
+        double size = 10
+        double3 xformOp:scale = (1, 0.05, 1)
+        uniform token[] xformOpOrder = ["xformOp:scale"]
+    }
+}
+
+def Xform "FallingBox" (
+    prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+)
+{
+    double3 xformOp:translate = (0, 4, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+    float physics:mass = 4
+    rel physics:simulationOwner = </Scene>
+
+    def Cube "Shape" (
+        prepend apiSchemas = ["PhysicsCollisionAPI"]
+    )
+    {
+        double size = 1
+    }
+}
+
+def Xform "FallingSphere" (
+    prepend apiSchemas = ["PhysicsRigidBodyAPI"]
+)
+{
+    double3 xformOp:translate = (2, 6, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+    rel physics:simulationOwner = </Scene>
+
+    def Sphere "Shape" (
+        prepend apiSchemas = ["PhysicsCollisionAPI"]
+    )
+    {
+        double radius = 0.5
+    }
+}

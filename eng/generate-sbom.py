@@ -97,7 +97,15 @@ def component(
     if purl:
         result["purl"] = purl
     if licenses:
-        result["licenses"] = [{"license": {"id": value}} for value in licenses]
+        # A CycloneDX license `id` must be an SPDX identifier. A LicenseRef- value is by definition
+        # not one, so it is emitted as a `name` instead; writing it as an `id` produces a document
+        # that fails schema validation and, worse, claims SPDX standing for proprietary terms.
+        result["licenses"] = [
+            {"license": {"name": value}}
+            if value.startswith("LicenseRef-")
+            else {"license": {"id": value}}
+            for value in licenses
+        ]
     if hashes:
         result["hashes"] = [{"alg": alg, "content": value} for alg, value in hashes.items()]
     if external_refs:
@@ -456,10 +464,32 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
             external_refs=[{"type": "vcs", "url": physx_native["repository"]}],
             properties={
                 "openusd:source": "eng/physx.lock.json",
-                "openusd:release-scope": "optional shim is built in native CI but not published as a release artifact",
+                "openusd:release-scope": physx_native["releaseScope"],
+                "openusd:release-rids": ",".join(physx_native["supportedRids"]),
             },
         ),
     )
+
+    # The GPU and device modules are recorded because the vcpkg port really does download them on
+    # every physics build, so an SBOM that omitted them would describe a build that never happened.
+    # They are recorded as build and local runtime inputs and never as release artifacts: they are
+    # packman blobs under NVIDIA proprietary terms rather than outputs of the BSD-3-Clause sources,
+    # and no OpenUsd package contains one. The distinction is the whole point of listing them.
+    for module in physx_native["gpuModules"]:
+        add_component(
+            components,
+            component(
+                f"native-input:{module}",
+                module,
+                physx_native["version"],
+                licenses=[physx_native["gpuModuleLicense"]],
+                properties={
+                    "openusd:source": "eng/physx.lock.json",
+                    "openusd:release-scope": physx_native["gpuModuleScope"],
+                    "openusd:redistributed": "false",
+                },
+            ),
+        )
 
     for name, data in (
         ("Slang", shaders["slang"]),
@@ -516,7 +546,11 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
             + [
                 {
                     "name": "openusd:scope",
-                    "value": "Published NuGet packages and Viewer bundles; PhysX is recorded as optional native CI input.",
+                    "value": (
+                            "Published NuGet packages and Viewer bundles; PhysX is statically "
+                            "linked into the published OpenUsd.Runtime.Physics.<rid> packages, and "
+                            "its proprietary GPU modules are never redistributed."
+                        ),
                 }
             ],
         },

@@ -85,6 +85,42 @@ public sealed class SilkPageAbiVersionContractTests
         await Assert.That(uint.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture)).IsEqualTo(locked);
     }
 
+    /// <summary>
+    /// Pins the Storm ABI generation to the lock the same way the command page is pinned.
+    /// </summary>
+    /// <remarks>
+    /// The Storm ABI is stated in the Hydra header, in the managed constant, and in the lock, but
+    /// the only check that compared them lived in <c>eng/native-install-metadata.ps1</c>, which
+    /// needs a completed native install and so never runs on an ordinary push. The header and the
+    /// managed constant moved to 8 while the lock still recorded 7, and nothing failed.
+    /// </remarks>
+    [Test]
+    public async Task NativeHeaderAndManagedConstantMatchTheLockedStormAbi()
+    {
+        string root = FindRepositoryRoot();
+        string header = await File.ReadAllTextAsync(
+            Path.Combine(root, "native", "openusd_hydra", "include", "openusd_hydra.h"));
+        Match match = Regex.Match(
+            header,
+            @"#define\s+OPENUSD_STORM_ABI_VERSION\s+(\d+)u",
+            RegexOptions.None,
+            TimeSpan.FromSeconds(5));
+        await Assert.That(match.Success).IsTrue();
+
+        using JsonDocument lockFile = JsonDocument.Parse(
+            await File.ReadAllTextAsync(
+                Path.Combine(root, "eng", "openusd.lock.json")));
+        uint locked = lockFile.RootElement
+            .GetProperty("abi")
+            .GetProperty("storm")
+            .GetUInt32();
+
+        await Assert.That(uint.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture))
+            .IsEqualTo(locked);
+        uint managed = RenderNativeAbiVersions.StormAbi;
+        await Assert.That(managed).IsEqualTo(locked);
+    }
+
     [Test]
     public async Task NativeProbeStaticAssertMatchesTheLockedRenderCommandAbi()
     {

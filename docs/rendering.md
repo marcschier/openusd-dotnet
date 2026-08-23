@@ -119,7 +119,7 @@ requests, prioritized synchronous picking and packed selection updates, resize/D
 recreation, diagnostics, and explicit framebuffer evidence capture. Every render request carries the shared
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
-(`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v6 and
+(`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v8 and
 hdSilk session ABI v5; the hdSilk page ABI is v11. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
@@ -566,7 +566,7 @@ loss, and still releases every slot's mappings, buffers, command pool, fence, an
 registration. The NativeAOT RHI probe gates on SwiftShader and verifies an ID hit, one-pixel
 readback, authoritative token resolution, and nullable geometry.
 
-Storm ABI v6 renders with the repository-owned camera-space directional headlight when a parity stage
+Storm ABI v8 renders with the repository-owned camera-space directional headlight when a parity stage
 has no authored `UsdLux` light. The convention is defined in `native/include/openusd_render_lighting.h`
 and `native/openusd_hydra/src/openusd_hydra.cpp`, and managed consumers read it through
 `OpenUsdStormRuntime.Headlight`: direction `(0, 0, 1)` from the shaded point toward the camera in
@@ -596,7 +596,7 @@ PCF filtering, light linking, dome textures, image-based lighting, and instanced
 scoped out until Storm's shadow and IBL paths can be ported against a measured reference rather than
 the current offscreen `SetLightingState` path.
 
-Storm ABI v6 implements nearest-hit primitive picking with the pinned OpenUSD v26.05
+Storm ABI v8 implements nearest-hit primitive picking with the pinned OpenUSD v26.05
 `UsdImagingGLEngine::TestIntersection` convention. The versioned native request binds one physical
 top-left pixel to the exact viewport, time, camera bytes, state/optional scene revision, and (for a
 child) context generation. The one-pixel projection uses the OpenUSD test bounds
@@ -726,6 +726,182 @@ The script records Viewer, Xvfb, and Weston-managed XWayland/XWM diagnostics und
 PID. Linux hosted-runner proofs use Mesa software OpenGL. A Wayland Storm run without native Glf
 EGL support and without a compositor-managed XWayland display fails early rather than silently
 selecting a different renderer.
+
+## Renderer-neutral physics render contract
+
+`OpenUsd.Rendering.Physics` owns the renderer-side physics contract. It never references
+`OpenUsd.Physics`, USD prim handles, or PhysX handles: the renderer only sees
+`PhysicsRenderObjectId`, an opaque stable simulation identity carrying the raw
+`UsdPhysicsObjectId` value, a `PhysicsRenderObjectKind`, and a point-instance index.
+
+The path is snapshot → channel → interpolator → binding table → backend override → uniform update.
+
+`PhysicsRenderSnapshot` is bounded reusable storage. Its header carries revision, fixed-step index,
+identity revision, simulation seconds, time code, fixed step seconds, and an explicit `IsComplete`
+flag; the payload holds rigid/articulation/controller/vehicle body states plus deformable regions and
+vertices. Writers use `BeginWrite`/`TryAddBody`/`TryAddDeformable`/`SetDomainStatus`/`EndWrite`;
+overflow is refused and accounted per domain rather than growing storage, and `CopyTo` copies without
+allocating and records truncation.
+
+`PhysicsRenderChannel` is the nonblocking latest-wins handoff. It owns at least three reusable
+snapshot buffers with per-buffer reference counts, so a publisher never blocks and a reader always
+observes one complete snapshot; partially written and abandoned buffers are never published. Only
+complete snapshots become latest. `DroppedPublications`, `RefusedWrites`, and `TruncatedReads` are
+capacity diagnostics, and `Invalidate` drops the retained snapshot on stop or reset.
+
+`PhysicsRenderInterpolator` retains the two latest complete snapshots and blends them by simulation
+time, clamping to the newest sample rather than extrapolating. Rotations use canonical shortest-path
+`PhysicsRenderOrientation.Slerp` with an nlerp fallback for nearly parallel quaternions. Interpolation
+is used only when the two snapshots are continuous: an identity-revision change, a rewound or
+non-adjacent step index, or an entity missing from the previous snapshot snaps to the newest state and
+is reported through `PhysicsRenderTransformOverride.Snapped`. Entity matching is by
+`PhysicsRenderObjectId`, so reordering, insertion, and deletion between snapshots are safe, and deleted
+entities simply stop producing overrides. Warmed updates reuse preallocated storage and allocate
+nothing.
+
+`PhysicsRenderDomain` covers `RigidBody`, `Articulation`, `Controller`, `Vehicle`, `Particles`,
+`Cloth`, and `Deformable`. Each domain reports `PhysicsRenderDomainStatus`
+(`Unavailable`, `Unsupported`, `Supported`, `Truncated`) individually and produces its own
+`RenderDiagnostic`, so an unsupported or unavailable CUDA particle/cloth/deformable domain diagnoses
+itself and never stops supported rigid rendering.
+
+`PhysicsRenderBindingTable` maps simulation identities to renderable prim paths and instance indices.
+Paths are stable renderer-neutral identifiers, not USD handles, and the table is bounded and refuses
+excess bindings. `PhysicsRenderTransforms.Compose` builds the row-major mesh transform from the
+physics translation and orientation while preserving the authored scale *and shear*. Because the
+matrix is applied as `v * A`, the authored basis is split by a left polar decomposition `A = S * Q`:
+`S`, the symmetric square root of `A * A^T`, carries every authored scale and shear, and `Q` is the
+authored rotation the simulated pose replaces, so the composed basis is `S * R`. Retaining only the
+row lengths would silently discard authored shear, so `S` is recovered with a fixed-sweep Jacobi
+diagonalization that allocates nothing. Degenerate input is deterministic and never emits NaN: an
+authored basis that is not finite, or whose decomposition overflows, falls back to the unstretched
+simulated pose, while a singular or near-singular basis keeps its collapsed axes collapsed because
+negative and denormal eigenvalues are clamped to zero before the square root.
+
+`SilkPhysicsTransformOverrides` is the hdSilk adapter. `Refresh` resolves overrides to retained
+`SilkMeshData` identities through `SilkSceneState.MeshesByPath` into bounded slot storage, reports
+`UnresolvedOverrides` and `DroppedOverrides` as diagnostics, and allocates nothing once warmed.
+`SilkSceneGpuResources.UpdateUniforms(frame, overrides)` then feeds the composed transform into the
+existing per-mesh `SceneParameters` batch update, so a physics-driven mesh replaces only its authored
+transform in the uniform it already uploads. No USD attribute is authored, no per-element P/Invoke is
+introduced, and unchanged uniform bytes still suppress the upload. Clearing the overrides restores the
+authored transform on the next update, so reset, stop, and invalidation return the stage to its
+authored render state. `RenderBackendCapability.PhysicsTransformOverrides` advertises backends that
+implement this path; both hdSilk and Storm advertise it.
+
+### hdSilk deformable geometry
+
+`SilkPhysicsDeformations` is the geometry half, and it differs from the transform half in one way
+that governs its whole design: replacing points in a retained scene is destructive. `Stage` retains
+a batch without touching the scene, `SilkMeshRenderer` applies it once per frame after the authored
+page and before the draw, and the geometry delta that apply produces is what invalidates the vertex
+buffers. Splitting those two steps around the authored page is what previously left the simulation
+in the CPU scene and the rest pose on the GPU, because the second apply found the points already
+simulated, reported them unchanged, and emitted an empty delta.
+
+`SilkSceneState` retains the authored mesh of every mesh whose points are simulated, one entry per
+driven mesh, dropped as soon as the mesh is restored, re-authored by a page, or removed. A region
+that disappears from the batch - a stopped simulation staging an empty batch, a body that stops
+publishing geometry, or a shrinking batch - is restored through `RestoreAuthoredPoints`, and the
+restored meshes join the same delta, so stopping uploads the authored geometry rather than leaving
+the last simulated pose on screen for a stage that authors nothing further. A page that re-authors a
+driven mesh replaces the retained baseline, so restoration returns the newest authored points rather
+than the ones the body started from.
+
+A deformed mesh drops its authored normals. They describe the rest pose, so keeping them shades a
+bent cloth as if it were still flat; an empty set is what makes the geometry builder recompute
+normals from the simulated topology, which is the path an unauthored mesh has always taken.
+Restoration puts the authored normals back with the authored points.
+
+### Storm physics transform overrides
+
+Storm applies the same renderer-neutral overrides through a project-owned batched C ABI instead of
+authoring USD. `native/include/openusd_render_physics.h` is the shared contract:
+`openusd_storm_transform_override_item` (152 bytes) carries the stable simulation object id, an offset
+and length into one packed path buffer, an instance index, per-item flags, and a row-major
+`double[16]` world transform; `openusd_storm_transform_override_update` (48 bytes) carries the struct
+size, contract version, item count, batch flags, snapshot revision, and the two buffer pointers;
+`openusd_storm_transform_override_diagnostics` (64 bytes) returns applied, unresolved, dropped, and
+unsupported counts plus capacity, revision, applied/rejected batch counts, and dirtied prim count.
+The header is validated with `static_assert` size and offset checks on both sides of the boundary.
+
+`openusd_storm_set_transform_overrides` and `openusd_storm_get_transform_override_diagnostics` are the
+imaging shim entry points, and `openusd_storm_child_set_transform_overrides` forwards the identical
+packed batch to the out-of-process child render thread as a synchronous render-thread command. One
+complete batch crosses the boundary per update, so there is no per-element P/Invoke, and native copies
+the items and path bytes synchronously and retains no managed pointer after the call returns. Batches
+larger than `OPENUSD_STORM_TRANSFORM_OVERRIDE_MAXIMUM_ITEMS` (4096 items) or
+`OPENUSD_STORM_TRANSFORM_OVERRIDE_MAXIMUM_PATH_BYTES` are rejected and counted rather than truncated.
+Adding these entry points bumped `OPENUSD_STORM_ABI_VERSION` to `7`, and the deformable geometry entry
+points described below took it to `8`. The change is additive for the
+Storm child, so `OPENUSD_STORM_CHILD_ABI_VERSION` and the Linux SONAME both stay at `8`: the packed
+batch carries its own struct size and `OPENUSD_STORM_TRANSFORM_OVERRIDE_UPDATE_VERSION`, and the
+imaging shim ABI announces the capability for the package the child ships in.
+
+Natively the batch is applied by `OpenUsdPhysicsOverrideSceneIndex`, an
+`HdSingleInputFilteringSceneIndexBase` overlay registered through
+`HdSceneIndexPluginRegistry::RegisterSceneIndexForRenderer`, which fires for both scene-index and
+legacy emulation mode. Registration is captured per engine construction, so unrelated engines - the
+hdSilk backend in the Viewer, for example - are never wrapped. The overlay replaces only the `xform`
+data source of an overridden prim, with `resetXformStack` set so downstream flattening does not
+compose parent transforms with the physics world matrix. It authors no USD: clearing the overrides
+dirties the previously overridden prims and the authored transform returns on the next scene-index
+pull, which is exactly what reset, stop, and invalidation do. Reads take an atomic count fast path and
+a `std::shared_mutex` otherwise, so a concurrent render never observes a partially applied batch.
+
+### Deformable geometry overrides
+
+A deforming body publishes one simulated position per rendered vertex rather than a transform, so it
+reaches Storm through its own packed page rather than through the transform batch.
+`openusd_storm_set_deformation_overrides` and `openusd_storm_get_deformation_override_diagnostics`
+are the imaging shim entry points, and `openusd_storm_child_set_deformation_overrides` forwards the
+identical packed batch to the out-of-process child render thread as a synchronous render-thread
+command. Both are additive exports, so `OPENUSD_STORM_CHILD_ABI_VERSION` and the Linux SONAME stay
+at `8` and only `OPENUSD_STORM_ABI_VERSION` announces the capability.
+
+One batch carries two bounded pages: one
+`openusd_storm_deformation_override_item` per simulated body, and one shared point page every
+region addresses through `point_offset` and `point_count`. One complete batch crosses the
+boundary per frame, so a deforming body costs one call no matter how many vertices it has and there
+is no per-element P/Invoke. A batch larger than
+`OPENUSD_STORM_DEFORMATION_OVERRIDE_MAXIMUM_ITEMS` (1024 regions),
+`OPENUSD_STORM_DEFORMATION_OVERRIDE_MAXIMUM_POINTS` (4194304 points) or
+`OPENUSD_STORM_DEFORMATION_OVERRIDE_MAXIMUM_PATH_BYTES` is refused whole rather than truncated,
+because a half uploaded body renders geometry no producer described.
+
+The same `OpenUsdPhysicsOverrideSceneIndex` applies it, on a channel of its own. A deformed prim has
+its `primvars:points` data source replaced and only that: its topology, its other primvars, its
+material, and its own transform are the authored ones, and a transform override may drive the same
+prim in the same frame without either channel dropping the other. Nothing is authored into USD, so
+clearing the deformations dirties `HdPrimvarsSchema::GetPointsLocator()` and the authored points
+return on the next scene-index pull - which is what reset, stop and invalidation do. Clearing one
+channel never clears the other.
+
+A region is only drawn when the rendered prim already has that many vertices. The shim reads the
+prim's current point count from its input scene index and refuses any region that disagrees, counting
+it in `mismatched_count` rather than handing the prim's own indices vertices they never addressed.
+Point instancer members are refused the same way, into `unsupported_count`, because a prototype's
+points are shared by every instance. Particle systems publish positions that belong to no rendered
+mesh vertex and are therefore never packed at all. Every refusal is per object: one unsupported body
+never stops a supported one from drawing.
+The managed batch has no copy of the rendered basis, so every item carries a rotation and a
+translation only and sets `OPENUSD_STORM_TRANSFORM_OVERRIDE_ITEM_PRESERVE_STRETCH`. When that flag is
+set the overlay reads the prim's own `xform` from its input scene index, splits it with
+`GfMatrix4d::Factor` into the symmetric scale-shear factor `r * s * -r` and the authored rotation `u`,
+and composes `stretch * simulated`. An authored scaled or sheared body therefore keeps its shape under
+simulation while only its rotation and translation are replaced, and no managed component ever reads
+the stage. Composing the authored rotation again restores the authored basis exactly. The composition
+happens once per batch outside the gate, never per `GetPrim`. A non-finite or overflowing authored
+basis falls back to the unstretched simulated pose rather than rendering a NaN, and a singular
+authored basis keeps its collapsed axes collapsed. Callers that supply a full world matrix including
+scale must leave the flag clear, otherwise the scale is applied twice.
+
+Items with `instance_index >= 0` are counted as unsupported instead of rejecting the batch, and prims
+that are not in the scene index are counted as unresolved, so a mixed batch still renders every
+supported rigid body. `StormPhysicsTransformOverrides` is the managed side: bounded reusable item and
+path storage, zero allocations on a warmed `Refresh`, and `DroppedOverrides`/`UnresolvedOverrides`
+diagnostics. `OpenUsdStormRenderer.SetPhysicsTransformOverrides` and the equivalent method on the
+Storm child session submit the batch and return `StormPhysicsOverrideDiagnostics`.
 
 ## Avalonia Vulkan composition smoke
 

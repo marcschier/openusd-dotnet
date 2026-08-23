@@ -269,17 +269,26 @@ internal static class SilkSceneUniformWriter
         SilkMeshData mesh,
         SilkFrameState frame,
         Span<byte> destination,
-        bool flipClipSpaceY = false)
+        bool flipClipSpaceY = false,
+        ReadOnlySpan<double> overrideTransform = default)
     {
         if (destination.Length != ByteSize)
         {
             throw new ArgumentException($"Scene constants must be exactly {ByteSize} bytes.", nameof(destination));
         }
+        if (!overrideTransform.IsEmpty && overrideTransform.Length != 16)
+        {
+            throw new ArgumentException(
+                "An override transform must contain exactly 16 values.",
+                nameof(overrideTransform));
+        }
 
         Span<double> meshView = stackalloc double[16];
         Span<double> projected = stackalloc double[16];
         Span<double> objectToClip = stackalloc double[16];
-        ReadOnlySpan<double> transform = mesh.Transform.Span;
+        ReadOnlySpan<double> transform = overrideTransform.IsEmpty
+            ? mesh.Transform.Span
+            : overrideTransform;
         ReadOnlySpan<float> displayColor = mesh.DisplayColor.Span;
         if (transform.Length != 16)
         {
@@ -305,7 +314,8 @@ internal static class SilkSceneUniformWriter
                 float value = ToFiniteSingle(
                     objectToClip[(column * 4) + row],
                     mesh,
-                    $"objectToClip[{column},{row}]");
+                    column,
+                    row);
                 WriteSingle(destination, ((row * 4) + column) * sizeof(float), value);
             }
         }
@@ -362,12 +372,15 @@ internal static class SilkSceneUniformWriter
         }
     }
 
-    private static float ToFiniteSingle(double value, SilkMeshData mesh, string name)
+    // The element name is passed as its row and column rather than as a formatted string because
+    // this runs sixteen times for every mesh whose transform changed, and a physics-driven mesh
+    // changes every frame; formatting eagerly would allocate on every rendered frame.
+    private static float ToFiniteSingle(double value, SilkMeshData mesh, int column, int row)
     {
         if (!double.IsFinite(value) || value > float.MaxValue || value < -float.MaxValue)
         {
             throw new InvalidDataException(
-                $"Mesh {mesh.Id} ('{mesh.Path}') has an invalid {name} value {value}.");
+                $"Mesh {mesh.Id} ('{mesh.Path}') has an invalid objectToClip[{column},{row}] value {value}.");
         }
         return (float)value;
     }

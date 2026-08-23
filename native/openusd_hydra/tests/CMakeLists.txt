@@ -57,6 +57,52 @@ elseif(APPLE)
                 "DYLD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib")
 endif()
 
+add_executable(
+    openusd_storm_physics_override_contract_probe
+    physics_override_contract_probe.cpp)
+target_compile_features(
+    openusd_storm_physics_override_contract_probe
+    PRIVATE cxx_std_17)
+target_include_directories(
+    openusd_storm_physics_override_contract_probe
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../include)
+target_link_libraries(
+    openusd_storm_physics_override_contract_probe
+    PRIVATE usd_m)
+if(MSVC)
+    target_compile_options(
+        openusd_storm_physics_override_contract_probe
+        PRIVATE /W4 /WX /permissive-)
+else()
+    target_compile_options(
+        openusd_storm_physics_override_contract_probe
+        PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(
+    NAME openusd_storm_physics_override_contract_probe
+    COMMAND openusd_storm_physics_override_contract_probe)
+if(WIN32)
+    set_tests_properties(
+        openusd_storm_physics_override_contract_probe
+        PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${pxr_DIR}/bin")
+elseif(UNIX AND NOT APPLE)
+    set_tests_properties(
+        openusd_storm_physics_override_contract_probe
+        PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "LD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib")
+elseif(APPLE)
+    set_tests_properties(
+        openusd_storm_physics_override_contract_probe
+        PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "DYLD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib")
+endif()
+
 if(WIN32)
     add_executable(
         openusd_storm_wgl_shared_stage_probe
@@ -149,4 +195,50 @@ if(WIN32)
             SKIP_RETURN_CODE 125
             ENVIRONMENT_MODIFICATION
                 "PATH=path_list_prepend:${STORM_WGL_PROBE_NATIVE_DIR};PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${pxr_DIR}/bin;USDIMAGINGGL_ENGINE_ENABLE_SCENE_INDEX=set:1")
+endif()
+
+add_executable(
+    openusd_storm_deformation_override_contract_probe
+    deformation_override_contract_probe.cpp)
+target_compile_features(
+    openusd_storm_deformation_override_contract_probe
+    PRIVATE cxx_std_17)
+target_include_directories(
+    openusd_storm_deformation_override_contract_probe
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../include)
+target_link_libraries(
+    openusd_storm_deformation_override_contract_probe
+    PRIVATE usd_m)
+if(MSVC)
+    target_compile_options(
+        openusd_storm_deformation_override_contract_probe
+        PRIVATE /W4 /WX /permissive-)
+else()
+    target_compile_options(
+        openusd_storm_deformation_override_contract_probe
+        PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(
+    NAME openusd_storm_deformation_override_contract_probe
+    COMMAND openusd_storm_deformation_override_contract_probe)
+if(WIN32)
+    set_tests_properties(
+        openusd_storm_deformation_override_contract_probe
+        PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${pxr_DIR}/lib;PATH=path_list_prepend:${pxr_DIR}/bin")
+elseif(UNIX AND NOT APPLE)
+    set_tests_properties(
+        openusd_storm_deformation_override_contract_probe
+        PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "LD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib")
+elseif(APPLE)
+    set_tests_properties(
+        openusd_storm_deformation_override_contract_probe
+        PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "DYLD_LIBRARY_PATH=path_list_prepend:${pxr_DIR}/lib")
 endif()

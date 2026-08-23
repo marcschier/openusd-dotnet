@@ -5,6 +5,7 @@
 
 #include "openusd_dotnet.h"
 #include "openusd_render_camera.h"
+#include "openusd_render_physics.h"
 #include "openusd_render_pick.h"
 
 #include <stddef.h>
@@ -246,6 +247,39 @@ OPENUSD_STORM_CHILD_API openusd_status openusd_storm_child_pick(
 OPENUSD_STORM_CHILD_API openusd_status openusd_storm_child_set_selection(
     openusd_storm_child* child,
     const openusd_storm_selection_update* update,
+    openusd_error_buffer* error);
+
+/// Applies one complete packed batch of externally simulated rigid transform
+/// overrides on the child render thread. The child copies the packed batch
+/// synchronously and retains no caller pointer after the call returns.
+///
+/// This entry point is purely additive: every previously exported symbol keeps
+/// its signature and semantics, so OPENUSD_STORM_CHILD_ABI_VERSION and the
+/// SONAME both stay put. The packed batch carries its own struct size and
+/// OPENUSD_STORM_TRANSFORM_OVERRIDE_UPDATE_VERSION, and the imaging shim it
+/// forwards to announces the capability through OPENUSD_STORM_ABI_VERSION.
+OPENUSD_STORM_CHILD_API openusd_status
+openusd_storm_child_set_transform_overrides(
+    openusd_storm_child* child,
+    const openusd_storm_transform_override_update* update,
+    openusd_storm_transform_override_diagnostics* diagnostics,
+    openusd_error_buffer* error);
+
+/// Applies one complete packed batch of externally simulated deformable
+/// geometry on the child's own render thread.
+///
+/// This entry point is purely additive in exactly the same way the transform
+/// override entry point is: every previously exported symbol keeps its
+/// signature, the packed batch carries its own struct size and
+/// OPENUSD_STORM_DEFORMATION_OVERRIDE_UPDATE_VERSION, and the imaging shim it
+/// forwards to announces the capability through OPENUSD_STORM_ABI_VERSION. The
+/// stage is never authored; the geometry lives only in the Hydra scene index
+/// graph, so a zero-region batch restores every authored point set.
+OPENUSD_STORM_CHILD_API openusd_status
+openusd_storm_child_set_deformation_overrides(
+    openusd_storm_child* child,
+    const openusd_storm_deformation_override_update* update,
+    openusd_storm_deformation_override_diagnostics* diagnostics,
     openusd_error_buffer* error);
 
 OPENUSD_STORM_CHILD_API openusd_status openusd_storm_child_resize(

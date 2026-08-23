@@ -1213,13 +1213,17 @@ jobs:
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/build-cesium-shim.ps1 -Rid osx-arm64
+      # No PhysX step here. The pinned vcpkg port declares
+      # "(windows & x64 & !mingw & !uwp) | (linux & x64) | (linux & arm64)", so the simulation SDK
+      # has no arm64-osx build, no macOS physics package exists, and the physics package gate
+      # reports absent prerequisites on this runner instead of pretending to cover a package.
       - name: Execute immutable macOS package-only gates
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
           dotnet build tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj -c Release
           $testApp = 'tests/OpenUsd.Package.Tests/bin/Release/net10.0/OpenUsd.Package.Tests'
-          & $testApp --minimum-expected-tests 22
+          & $testApp --minimum-expected-tests 26
           if ($LASTEXITCODE -ne 0) {
             throw "The macOS package-only gates failed with $LASTEXITCODE."
           }

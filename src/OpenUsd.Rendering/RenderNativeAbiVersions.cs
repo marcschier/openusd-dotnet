@@ -4,6 +4,6 @@ namespace OpenUsd.Rendering;
 
 internal static class RenderNativeAbiVersions
 {
-    internal const uint StormAbi = 6;
+    internal const uint StormAbi = 8;
     internal const uint SilkSessionAbi = 5;
 }

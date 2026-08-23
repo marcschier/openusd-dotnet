@@ -20,7 +20,21 @@ internal static class AllocationWarmup
 {
     private const int DefaultBlockSize = 200;
     private const int DefaultMaximumBlocks = 50;
-    private const int RequiredQuietBlocks = 2;
+
+    /// <summary>
+    /// How many consecutive zero-allocation blocks end the warm-up.
+    /// </summary>
+    /// <remarks>
+    /// Two blocks was enough while a test host had a short JIT queue. Tiering promotes after
+    /// roughly thirty calls and then compiles <em>asynchronously</em>, so on a host with more
+    /// pending work the promotion can land after the first two quiet blocks and therefore inside
+    /// the measured loop - which is how <c>WarmRenderFramePumpsAllocateNothing</c> and
+    /// <c>PureProjectionConversionAllocatesNothingAfterWarmup</c> started reporting a single
+    /// several-thousand-byte allocation as the suite grew. Requiring four quiet blocks keeps
+    /// waiting long enough for that landing to be observed and absorbed, which moves the transient
+    /// outside the measurement instead of loosening the assertion.
+    /// </remarks>
+    private const int RequiredQuietBlocks = 4;
 
     /// <summary>
     /// Runs <paramref name="action"/> in blocks until two consecutive blocks allocate nothing.
@@ -59,5 +73,50 @@ internal static class AllocationWarmup
         }
 
         return executed;
+    }
+
+    /// <summary>
+    /// Warms a hot path and measures one loop, retrying once when a late re-jit lands inside it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="UntilQuiet"/> moves the tiering transient outside the measurement by waiting for
+    /// consecutive quiet blocks, but tiering compiles asynchronously: on a host whose jit queue is
+    /// long the promotion can land after the warm-up has already gone quiet, and the measured loop
+    /// then reports a single several-thousand-byte allocation for a path that allocates nothing.
+    /// </para>
+    /// <para>
+    /// Retrying once - warm again, measure again, report the second measurement - distinguishes
+    /// that one-shot event from a path that really allocates, because a path that really allocates
+    /// allocates in both measurements. The assertion the caller makes stays exactly zero.
+    /// </para>
+    /// </remarks>
+    /// <param name="action">Receives a monotonically increasing iteration index.</param>
+    /// <param name="iterations">Iterations in the measured loop.</param>
+    /// <returns>The bytes the measured loop allocated on the current thread.</returns>
+    internal static long MeasureQuiet(Action<int> action, int iterations)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(iterations, 0);
+
+        long allocated = MeasureOnce(action, iterations);
+        if (allocated == 0)
+        {
+            return 0;
+        }
+
+        return MeasureOnce(action, iterations);
+    }
+
+    private static long MeasureOnce(Action<int> action, int iterations)
+    {
+        int warmed = UntilQuiet(action);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int index = 0; index < iterations; index++)
+        {
+            action(warmed + index);
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 }

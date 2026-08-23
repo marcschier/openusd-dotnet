@@ -132,7 +132,9 @@ public abstract class SilkGraphicsBufferBase : SilkGraphicsResourceBase, ISilkGr
     protected nuint ValidateWrite(int dataLength, nuint offset)
     {
         ThrowIfResourceDisposed();
-        if (!Usage.HasFlag(SilkBufferUsage.Upload))
+        // Bitwise testing avoids the boxing Enum.HasFlag performs; this runs on the per-frame
+        // uniform upload path where physics-driven meshes write every frame.
+        if ((Usage & SilkBufferUsage.Upload) != SilkBufferUsage.Upload)
         {
             throw new InvalidOperationException(
                 "The buffer was not created with SilkBufferUsage.Upload.");

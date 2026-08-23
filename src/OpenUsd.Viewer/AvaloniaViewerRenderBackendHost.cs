@@ -887,11 +887,32 @@ internal sealed class StormHostedBackendSession(
     RenderBackendDiagnostics diagnostics) :
     IViewerRenderBackendSession,
     IRenderPickingBackend,
-    IViewerRenderedPickStateSource
+    IViewerRenderedPickStateSource,
+    IViewerPhysicsOverrideTarget
 {
     private StageRenderState _state = initialState;
     private ViewerRenderedPickState? _lastRenderedPickState;
     private int _disposed;
+
+    public bool SupportsPhysicsTransformOverrides => true;
+
+    public int ApplyPhysicsOverrides(
+        in PhysicsRenderOverrideView overrides,
+        PhysicsRenderBindingTable bindings) =>
+        control.StagePhysicsOverrides(in overrides, bindings);
+
+    public int ApplyPhysicsDeformations(
+        in PhysicsRenderDeformationView deformations,
+        PhysicsRenderBindingTable bindings)
+    {
+        ArgumentNullException.ThrowIfNull(bindings);
+        return control.StagePhysicsDeformations(in deformations);
+    }
+
+    public bool TryTakeOverrideReport(out ViewerPhysicsOverrideReport report) =>
+        control.TryTakePhysicsOverrideReport(out report);
+
+    public void ClearPhysicsOverrides() => control.ClearPhysicsOverrides();
 
     public RenderBackendDiagnostics Diagnostics { get; } = diagnostics;
 
@@ -1025,13 +1046,31 @@ internal sealed class StormNativeHostedBackendSession(
     RenderBackendDiagnostics diagnostics) :
     IViewerRenderBackendSession,
     IRenderPickingBackend,
-    IViewerRenderedPickStateSource
+    IViewerRenderedPickStateSource,
+    IViewerPhysicsOverrideTarget
 {
     private StageRenderState _state = initialState;
     private SelectionState? _appliedSelection;
     private ViewerRenderedPickState? _lastRenderedPickState;
     private int _disposed;
     private long _lastReportedContextGeneration;
+
+    public bool SupportsPhysicsTransformOverrides => true;
+
+    public int ApplyPhysicsOverrides(
+        in PhysicsRenderOverrideView overrides,
+        PhysicsRenderBindingTable bindings) =>
+        control.SetPhysicsOverrides(in overrides, bindings);
+
+    public int ApplyPhysicsDeformations(
+        in PhysicsRenderDeformationView deformations,
+        PhysicsRenderBindingTable bindings) =>
+        control.SetPhysicsDeformations(in deformations, bindings);
+
+    public bool TryTakeOverrideReport(out ViewerPhysicsOverrideReport report) =>
+        control.TryTakePhysicsOverrideReport(out report);
+
+    public void ClearPhysicsOverrides() => control.ClearPhysicsOverrides();
 
     public RenderBackendDiagnostics Diagnostics { get; private set; } = diagnostics;
 
@@ -1237,11 +1276,45 @@ internal sealed class CompositionHostedBackendSession(
     IViewerSelectionOutlineDiagnosticsSource,
     IViewerFrameDiagnosticsSource,
     IViewerHydraSceneSnapshotSource,
-    IViewerFrameCaptureBackend
+    IViewerFrameCaptureBackend,
+    IViewerPhysicsOverrideTarget
 {
     private StageRenderState _state = initialState;
     private ViewerRenderedPickState? _lastRenderedPickState;
     private int _disposed;
+
+    public bool SupportsPhysicsTransformOverrides => resources.Renderer.PhysicsStage is not null;
+
+    public int ApplyPhysicsOverrides(
+        in PhysicsRenderOverrideView overrides,
+        PhysicsRenderBindingTable bindings) =>
+        resources.Renderer.PhysicsStage?.Stage(in overrides, bindings) ?? 0;
+
+    public int ApplyPhysicsDeformations(
+        in PhysicsRenderDeformationView deformations,
+        PhysicsRenderBindingTable bindings)
+    {
+        ArgumentNullException.ThrowIfNull(bindings);
+        return resources.Renderer.PhysicsStage?.StageDeformations(in deformations) ?? 0;
+    }
+
+    public void ClearPhysicsOverrides()
+    {
+        resources.Renderer.PhysicsStage?.ClearDeformations();
+        resources.Renderer.PhysicsStage?.Clear();
+    }
+
+    public bool TryTakeOverrideReport(out ViewerPhysicsOverrideReport report)
+    {
+        ViewerPhysicsOverrideStage? stage = resources.Renderer.PhysicsStage;
+        if (stage is null)
+        {
+            report = default;
+            return false;
+        }
+
+        return stage.TryTakeReport(out report);
+    }
 
     public RenderBackendDiagnostics Diagnostics { get; } = diagnostics;
 
@@ -1464,6 +1537,12 @@ internal interface ISilkStagePresentationRenderer :
     /// </summary>
     ISilkRenderTargetRenderer? RetainedRenderer => null;
 
+    /// <summary>
+    /// Gets the stage carrying physics overrides to the thread that presents this backend, or
+    /// <see langword="null"/> when the backend cannot draw physics overrides.
+    /// </summary>
+    ViewerPhysicsOverrideStage? PhysicsStage => null;
+
     void UpdateState(StageRenderState state);
 }
 
@@ -1530,8 +1609,14 @@ internal sealed class D3D12StagePresentationRenderer(
     private ulong _lastSceneRevision;
     private ulong _lastStateRevision;
     private ViewerHydraSceneSnapshot? _hydraSceneSnapshot;
+    private readonly ViewerPhysicsOverrideStage _physicsStage = new();
+    private readonly SilkPhysicsTransformOverrides _physicsOverrides =
+        new(ViewerPhysicsRenderCapacities.BodyCapacity);
+    private readonly SilkPhysicsDeformations _physicsDeformations = new();
 
     public RenderBackendKind Kind => RenderBackendKind.D3D12;
+
+    public ViewerPhysicsOverrideStage? PhysicsStage => _physicsStage;
 
     public uint LastCommandCount => Volatile.Read(ref _lastCommandCount);
 
@@ -1574,6 +1659,8 @@ internal sealed class D3D12StagePresentationRenderer(
         renderer.UpdateSelection(
             state.Selection,
             SilkSelectionOutlineSettings.Default);
+        ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, renderer);
+        _ = ViewerSilkPhysicsOverrideApplier.ApplyDeformations(_physicsStage, _physicsDeformations, renderer);
         SilkMeshRenderResult result = renderer.ApplyAndRender(
             page,
             colorTarget,
@@ -1623,8 +1710,14 @@ internal sealed class VulkanStagePresentationRenderer(
     private ulong _lastSceneRevision;
     private ulong _lastStateRevision;
     private ViewerHydraSceneSnapshot? _hydraSceneSnapshot;
+    private readonly ViewerPhysicsOverrideStage _physicsStage = new();
+    private readonly SilkPhysicsTransformOverrides _physicsOverrides =
+        new(ViewerPhysicsRenderCapacities.BodyCapacity);
+    private readonly SilkPhysicsDeformations _physicsDeformations = new();
 
     public RenderBackendKind Kind => RenderBackendKind.Vulkan;
+
+    public ViewerPhysicsOverrideStage? PhysicsStage => _physicsStage;
 
     public uint LastCommandCount => Volatile.Read(ref _lastCommandCount);
 
@@ -1664,6 +1757,9 @@ internal sealed class VulkanStagePresentationRenderer(
         context.Renderer.UpdateSelection(
             state.Selection,
             SilkSelectionOutlineSettings.Default);
+        ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, context.Renderer);
+        _ = ViewerSilkPhysicsOverrideApplier.ApplyDeformations(
+            _physicsStage, _physicsDeformations, context.Renderer);
         SilkMeshRenderResult result = context.Renderer.ApplyAndRender(
             page,
             context.ColorTarget,
@@ -1712,8 +1808,14 @@ internal sealed class MetalStagePresentationRenderer(
     private ulong _lastStateRevision;
     private long _lastReportedRevision;
     private ViewerHydraSceneSnapshot? _hydraSceneSnapshot;
+    private readonly ViewerPhysicsOverrideStage _physicsStage = new();
+    private readonly SilkPhysicsTransformOverrides _physicsOverrides =
+        new(ViewerPhysicsRenderCapacities.BodyCapacity);
+    private readonly SilkPhysicsDeformations _physicsDeformations = new();
 
     public RenderBackendKind Kind => RenderBackendKind.Metal;
+
+    public ViewerPhysicsOverrideStage? PhysicsStage => _physicsStage;
 
     public uint LastCommandCount => Volatile.Read(ref _lastCommandCount);
 
@@ -1756,6 +1858,9 @@ internal sealed class MetalStagePresentationRenderer(
         context.Renderer.UpdateSelection(
             state.Selection,
             SilkSelectionOutlineSettings.Default);
+        ViewerSilkPhysicsOverrideApplier.Apply(_physicsStage, _physicsOverrides, context.Renderer);
+        _ = ViewerSilkPhysicsOverrideApplier.ApplyDeformations(
+            _physicsStage, _physicsDeformations, context.Renderer);
         SilkMeshRenderResult result = context.Renderer.ApplyAndRender(
             page,
             context.ColorTarget,

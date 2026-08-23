@@ -1,0 +1,810 @@
+{
+  "$schemaVersion": 1,
+  "library": {
+    "name": "openUsdPhysics",
+    "path": "./",
+    "prefix": "OpenUsdPhysics",
+    "propertyNamespace": "openUsdPhysics",
+    "codeless": true,
+    "subLayers": [
+      "usdGeom/schema.usda",
+      "usdPhysics/schema.usda"
+    ],
+    "doc": "Project-owned physics extensions. Codeless: authoring and validation work against a stock OpenUSD runtime with no compiled schema library."
+  },
+  "precedence": [
+    {
+      "namespace": "openUsdPhysics",
+      "rank": 0,
+      "source": "project",
+      "description": "Project-owned OpenUsdPhysics schema. Strongest opinion and the only namespace this repository defines."
+    },
+    {
+      "namespace": "physx",
+      "rank": 1,
+      "source": "foreign",
+      "description": "Foreign physx* opinions authored by other tools. Treated as an optional raw input that is read when present and never required. No PhysxSchema definitions are vendored; see schemas/third-party/physxSchema/PROVENANCE.md."
+    },
+    {
+      "namespace": "physics",
+      "rank": 2,
+      "source": "standard",
+      "description": "Standard UsdPhysics schema shipped with OpenUSD. Weakest opinion."
+    }
+  ],
+  "gaps": [
+    {
+      "domain": "articulationTendons",
+      "reason": "Covered by OpenUsdPhysicsFixedTendon, OpenUsdPhysicsSpatialTendon, and OpenUsdPhysicsTendonAttachmentAPI.",
+      "covered": true
+    },
+    {
+      "domain": "mimicJoints",
+      "reason": "Covered by OpenUsdPhysicsMimicJointAPI.",
+      "covered": true
+    },
+    {
+      "domain": "particles",
+      "reason": "Covered by OpenUsdPhysicsParticleSystemAPI, OpenUsdPhysicsParticleSetAPI, OpenUsdPhysicsParticleClothAPI, OpenUsdPhysicsPbdMaterialAPI, OpenUsdPhysicsDiffuseParticlesAPI, OpenUsdPhysicsParticleAnisotropyAPI, OpenUsdPhysicsParticleSmoothingAPI, and OpenUsdPhysicsParticleIsosurfaceAPI.",
+      "covered": true
+    },
+    {
+      "domain": "deformables",
+      "reason": "Covered by OpenUsdPhysicsSurfaceDeformableAPI, OpenUsdPhysicsSurfaceDeformableMaterialAPI, OpenUsdPhysicsVolumeDeformableAPI, and OpenUsdPhysicsVolumeDeformableMaterialAPI.",
+      "covered": true
+    },
+    {
+      "domain": "attachments",
+      "reason": "Covered by OpenUsdPhysicsAttachment and OpenUsdPhysicsAutoAttachmentAPI.",
+      "covered": true
+    },
+    {
+      "domain": "collisionFilters",
+      "reason": "Covered by OpenUsdPhysicsCollisionFilterSettingsAPI.",
+      "covered": true
+    },
+    {
+      "domain": "cookedData",
+      "reason": "Covered by OpenUsdPhysicsCookedDataAPI. The schema references cooked data produced at build time and never embeds it.",
+      "covered": true
+    },
+    {
+      "domain": "characterControllers",
+      "reason": "Covered by OpenUsdPhysicsCharacterControllerAPI.",
+      "covered": true
+    },
+    {
+      "domain": "vehicles",
+      "reason": "Covered by the OpenUsdPhysicsVehicle* schemas.",
+      "covered": true
+    },
+    {
+      "domain": "sdkOnlySceneSettings",
+      "reason": "Covered by OpenUsdPhysicsSceneAPI, OpenUsdPhysicsRigidBodySettingsAPI, OpenUsdPhysicsCollisionSettingsAPI, OpenUsdPhysicsMaterialSettingsAPI, and OpenUsdPhysicsArticulationSettingsAPI.",
+      "covered": true
+    },
+    {
+      "domain": "simulationMetadata",
+      "reason": "Covered by OpenUsdPhysicsSimulationMetadataAPI.",
+      "covered": true
+    },
+    {
+      "domain": "multipleApplyInstances",
+      "reason": "Every class is single-apply so that each property keeps the flat 'openUsdPhysics:<group>:<name>' shape the precedence rule depends on. Domains that need several instances on one object are modelled as concrete prims instead.",
+      "covered": true
+    }
+  ],
+  "classes": [
+    {
+      "name": "OpenUsdPhysicsSceneAPI",
+      "className": "SceneAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Solver and stepping settings that the standard UsdPhysicsScene schema does not express. Apply to a PhysicsScene prim.",
+      "properties": [
+        { "name": "openUsdPhysics:scene:solverType", "type": "token", "uniform": true, "default": "tgs", "allowedTokens": ["pgs", "tgs"], "displayName": "Solver Type", "doc": "Constraint solver to use for this scene." },
+        { "name": "openUsdPhysics:scene:positionIterationCount", "type": "int64", "uniform": true, "default": 4, "displayName": "Position Iteration Count", "doc": "Solver position iterations per simulation step." },
+        { "name": "openUsdPhysics:scene:velocityIterationCount", "type": "int64", "uniform": true, "default": 1, "displayName": "Velocity Iteration Count", "doc": "Solver velocity iterations per simulation step." },
+        { "name": "openUsdPhysics:scene:timeStepsPerSecond", "type": "int64", "uniform": true, "default": 60, "displayName": "Time Steps Per Second", "doc": "Requested fixed simulation frequency. The session clamps this to the supported range and reports a diagnostic when it does." },
+        { "name": "openUsdPhysics:scene:maxSubStepCount", "type": "int64", "uniform": true, "default": 8, "displayName": "Max Sub Step Count", "doc": "Maximum fixed steps consumed for one transport tick before playback slows down instead of dropping steps." },
+        { "name": "openUsdPhysics:scene:broadPhaseType", "type": "token", "uniform": true, "default": "abp", "allowedTokens": ["sap", "mbp", "abp", "pabp"], "displayName": "Broad Phase Type", "doc": "Broad-phase algorithm to use for this scene." },
+        { "name": "openUsdPhysics:scene:frictionType", "type": "token", "uniform": true, "default": "patch", "allowedTokens": ["patch", "oneDirectional", "twoDirectional"], "displayName": "Friction Type", "doc": "Friction model used when resolving contacts." },
+        { "name": "openUsdPhysics:scene:enableCCD", "type": "bool", "uniform": true, "default": false, "displayName": "Enable CCD", "doc": "Enables continuous collision detection for the whole scene." },
+        { "name": "openUsdPhysics:scene:enableStabilization", "type": "bool", "uniform": true, "default": false, "displayName": "Enable Stabilization", "doc": "Enables the solver stabilization pass." },
+        { "name": "openUsdPhysics:scene:enableEnhancedDeterminism", "type": "bool", "uniform": true, "default": false, "displayName": "Enable Enhanced Determinism", "doc": "Requests additional ordering guarantees at a performance cost." },
+        { "name": "openUsdPhysics:scene:bounceThreshold", "type": "double", "default": 0.2, "displayName": "Bounce Threshold", "doc": "Relative normal speed below which contacts do not bounce, in stage linear units per second." },
+        { "name": "openUsdPhysics:scene:frictionOffsetThreshold", "type": "double", "default": 0.04, "displayName": "Friction Offset Threshold", "doc": "Contact separation above which friction anchors are discarded, in stage linear units." },
+        { "name": "openUsdPhysics:scene:frictionCorrelationDistance", "type": "double", "default": 0.025, "displayName": "Friction Correlation Distance", "doc": "Distance used to merge friction anchors, in stage linear units." },
+        { "name": "openUsdPhysics:scene:maxBiasCoefficient", "type": "double", "default": "inf", "displayName": "Max Bias Coefficient", "doc": "Upper bound on the solver penetration bias coefficient." },
+        { "name": "openUsdPhysics:scene:gpuRequestMode", "type": "token", "uniform": true, "default": "preferred", "allowedTokens": ["disabled", "preferred", "required"], "displayName": "GPU Request Mode", "doc": "How the session should treat optional GPU acceleration. 'required' turns an unavailable capability into a build failure instead of a per-object diagnostic." },
+        { "name": "openUsdPhysics:scene:reportContacts", "type": "bool", "uniform": true, "default": false, "displayName": "Report Contacts", "doc": "Enables scene-wide contact event collection." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsRigidBodySettingsAPI",
+      "className": "RigidBodySettingsAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Per-body solver settings that standard UsdPhysicsRigidBodyAPI does not express. Apply alongside PhysicsRigidBodyAPI.",
+      "properties": [
+        { "name": "openUsdPhysics:body:positionIterationCount", "type": "int64", "uniform": true, "default": 4, "displayName": "Position Iteration Count", "doc": "Solver position iterations for this body. Overrides the scene value." },
+        { "name": "openUsdPhysics:body:velocityIterationCount", "type": "int64", "uniform": true, "default": 1, "displayName": "Velocity Iteration Count", "doc": "Solver velocity iterations for this body. Overrides the scene value." },
+        { "name": "openUsdPhysics:body:sleepThreshold", "type": "double", "default": 0.005, "displayName": "Sleep Threshold", "doc": "Mass-normalized kinetic energy below which the body may sleep." },
+        { "name": "openUsdPhysics:body:stabilizationThreshold", "type": "double", "default": 0.00025, "displayName": "Stabilization Threshold", "doc": "Mass-normalized kinetic energy below which the stabilization pass engages." },
+        { "name": "openUsdPhysics:body:maxLinearVelocity", "type": "double", "default": "inf", "displayName": "Max Linear Velocity", "doc": "Linear velocity clamp in stage linear units per second." },
+        { "name": "openUsdPhysics:body:maxAngularVelocity", "type": "double", "default": "inf", "displayName": "Max Angular Velocity", "doc": "Angular velocity clamp in degrees per second." },
+        { "name": "openUsdPhysics:body:maxDepenetrationVelocity", "type": "double", "default": "inf", "displayName": "Max Depenetration Velocity", "doc": "Upper bound on the velocity the solver may apply to resolve penetration." },
+        { "name": "openUsdPhysics:body:maxContactImpulse", "type": "double", "default": "inf", "displayName": "Max Contact Impulse", "doc": "Upper bound on the impulse a single contact may apply." },
+        { "name": "openUsdPhysics:body:contactSlopCoefficient", "type": "double", "default": 0.0, "displayName": "Contact Slop Coefficient", "doc": "Penetration tolerance retained to reduce jitter, in stage linear units." },
+        { "name": "openUsdPhysics:body:enableCCD", "type": "bool", "default": false, "displayName": "Enable CCD", "doc": "Enables continuous collision detection for this body." },
+        { "name": "openUsdPhysics:body:enableSpeculativeCCD", "type": "bool", "default": false, "displayName": "Enable Speculative CCD", "doc": "Enables speculative contacts for this body." },
+        { "name": "openUsdPhysics:body:disableGravity", "type": "bool", "default": false, "displayName": "Disable Gravity", "doc": "Excludes this body from scene gravity." },
+        { "name": "openUsdPhysics:body:retainAccelerations", "type": "bool", "default": false, "displayName": "Retain Accelerations", "doc": "Keeps solver accelerations between steps." },
+        { "name": "openUsdPhysics:body:lockedLinearAxes", "type": "token[]", "default": [], "displayName": "Locked Linear Axes", "doc": "Translation axes the solver must not move. Valid entries are 'x', 'y', and 'z' in stage space." },
+        { "name": "openUsdPhysics:body:lockedAngularAxes", "type": "token[]", "default": [], "displayName": "Locked Angular Axes", "doc": "Rotation axes the solver must not move. Valid entries are 'x', 'y', and 'z' in stage space." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsCollisionSettingsAPI",
+      "className": "CollisionSettingsAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Per-collider tolerances and reporting that standard UsdPhysicsCollisionAPI does not express.",
+      "properties": [
+        { "name": "openUsdPhysics:collision:contactOffset", "type": "double", "default": -1.0, "displayName": "Contact Offset", "doc": "Distance at which contacts are generated, in stage linear units. A negative value requests the runtime default." },
+        { "name": "openUsdPhysics:collision:restOffset", "type": "double", "default": 0.0, "displayName": "Rest Offset", "doc": "Separation maintained at rest, in stage linear units." },
+        { "name": "openUsdPhysics:collision:torsionalPatchRadius", "type": "double", "default": 0.0, "displayName": "Torsional Patch Radius", "doc": "Radius used to derive torsional friction for patch contacts, in stage linear units." },
+        { "name": "openUsdPhysics:collision:minTorsionalPatchRadius", "type": "double", "default": 0.0, "displayName": "Min Torsional Patch Radius", "doc": "Lower bound applied to the torsional patch radius, in stage linear units." },
+        { "name": "openUsdPhysics:collision:reportContacts", "type": "bool", "default": false, "displayName": "Report Contacts", "doc": "Emits contact events for this collider." },
+        { "name": "openUsdPhysics:collision:contactImpulseThreshold", "type": "double", "default": 0.0, "displayName": "Contact Impulse Threshold", "doc": "Minimum impulse a contact must carry before it is reported as an event." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsMaterialSettingsAPI",
+      "className": "MaterialSettingsAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Material combine modes and compliant-contact settings that standard UsdPhysicsMaterialAPI does not express.",
+      "properties": [
+        { "name": "openUsdPhysics:material:frictionCombineMode", "type": "token", "uniform": true, "default": "average", "allowedTokens": ["average", "min", "multiply", "max"], "displayName": "Friction Combine Mode", "doc": "How friction coefficients of two contacting materials combine." },
+        { "name": "openUsdPhysics:material:restitutionCombineMode", "type": "token", "uniform": true, "default": "average", "allowedTokens": ["average", "min", "multiply", "max"], "displayName": "Restitution Combine Mode", "doc": "How restitution coefficients of two contacting materials combine." },
+        { "name": "openUsdPhysics:material:compliantContactStiffness", "type": "double", "default": 0.0, "displayName": "Compliant Contact Stiffness", "doc": "Contact spring stiffness. Zero selects rigid contacts." },
+        { "name": "openUsdPhysics:material:compliantContactDamping", "type": "double", "default": 0.0, "displayName": "Compliant Contact Damping", "doc": "Contact spring damping. Ignored when the stiffness is zero." },
+        { "name": "openUsdPhysics:material:improvePatchFriction", "type": "bool", "default": true, "displayName": "Improve Patch Friction", "doc": "Uses the improved patch friction model for this material." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsArticulationSettingsAPI",
+      "className": "ArticulationSettingsAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Reduced-coordinate articulation settings that standard UsdPhysicsArticulationRootAPI does not express.",
+      "properties": [
+        { "name": "openUsdPhysics:articulation:positionIterationCount", "type": "int64", "uniform": true, "default": 4, "displayName": "Position Iteration Count", "doc": "Solver position iterations for the articulation." },
+        { "name": "openUsdPhysics:articulation:velocityIterationCount", "type": "int64", "uniform": true, "default": 1, "displayName": "Velocity Iteration Count", "doc": "Solver velocity iterations for the articulation." },
+        { "name": "openUsdPhysics:articulation:sleepThreshold", "type": "double", "default": 0.005, "displayName": "Sleep Threshold", "doc": "Mass-normalized kinetic energy below which the articulation may sleep." },
+        { "name": "openUsdPhysics:articulation:stabilizationThreshold", "type": "double", "default": 0.00025, "displayName": "Stabilization Threshold", "doc": "Mass-normalized kinetic energy below which the stabilization pass engages." },
+        { "name": "openUsdPhysics:articulation:enabledSelfCollisions", "type": "bool", "uniform": true, "default": false, "displayName": "Enabled Self Collisions", "doc": "Allows links of the same articulation to collide with each other." },
+        { "name": "openUsdPhysics:articulation:fixBase", "type": "bool", "uniform": true, "default": false, "displayName": "Fix Base", "doc": "Anchors the articulation root to the world." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsSimulationMetadataAPI",
+      "className": "SimulationMetadataAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Stable simulation identity and provenance recorded on a physics object so results, events, and queries can be correlated across rebuilds.",
+      "properties": [
+        { "name": "openUsdPhysics:simulation:schemaVersion", "type": "int64", "uniform": true, "default": 1, "displayName": "Schema Version", "doc": "Version of the openUsdPhysics schema the opinions on this prim were authored against." },
+        { "name": "openUsdPhysics:simulation:identity", "type": "int64", "uniform": true, "default": 0, "displayName": "Identity", "doc": "Stable signed 64-bit simulation identity. Zero requests a derived identity from the canonical prim path and instance domain." },
+        { "name": "openUsdPhysics:simulation:identityDomain", "type": "token", "uniform": true, "default": "prim", "allowedTokens": ["prim", "instance", "component"], "displayName": "Identity Domain", "doc": "Addressing domain the identity index applies to." },
+        { "name": "openUsdPhysics:simulation:identityIndex", "type": "int64", "uniform": true, "default": -1, "displayName": "Identity Index", "doc": "Index within the identity domain. -1 addresses the prim itself." },
+        { "name": "openUsdPhysics:simulation:sourceRevision", "type": "string", "uniform": true, "default": "", "displayName": "Source Revision", "doc": "Opaque revision recorded when these opinions were produced by a bake or an export." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsCharacterControllerAPI",
+      "className": "CharacterControllerAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "A kinematic character controller. Apply to a UsdGeomXformable prim. The controller is driven by session move commands, not by authored per-frame input.",
+      "properties": [
+        { "name": "openUsdPhysics:controller:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables the controller." },
+        { "name": "openUsdPhysics:controller:shapeType", "type": "token", "uniform": true, "default": "capsule", "allowedTokens": ["capsule", "box"], "displayName": "Shape Type", "doc": "Controller volume. 'halfExtents' applies to boxes; 'radius' and 'height' apply to capsules." },
+        { "name": "openUsdPhysics:controller:radius", "type": "double", "default": 0.5, "displayName": "Radius", "doc": "Capsule radius in stage linear units." },
+        { "name": "openUsdPhysics:controller:height", "type": "double", "default": 1.0, "displayName": "Height", "doc": "Capsule segment height, excluding the caps, in stage linear units." },
+        { "name": "openUsdPhysics:controller:halfExtents", "type": "float3", "default": [0.5, 1.0, 0.5], "displayName": "Half Extents", "doc": "Box half extents in stage linear units." },
+        { "name": "openUsdPhysics:controller:upAxis", "type": "float3", "default": [0.0, 1.0, 0.0], "displayName": "Up Axis", "doc": "Controller up direction in stage space. A zero vector requests the stage upAxis." },
+        { "name": "openUsdPhysics:controller:contactOffset", "type": "double", "default": 0.02, "displayName": "Contact Offset", "doc": "Skin width kept between the controller and geometry, in stage linear units." },
+        { "name": "openUsdPhysics:controller:stepOffset", "type": "double", "default": 0.5, "displayName": "Step Offset", "doc": "Maximum obstacle height the controller can climb, in stage linear units." },
+        { "name": "openUsdPhysics:controller:slopeLimit", "type": "double", "default": 45.0, "displayName": "Slope Limit", "doc": "Maximum walkable slope in degrees, measured from the up axis." },
+        { "name": "openUsdPhysics:controller:nonWalkableMode", "type": "token", "uniform": true, "default": "preventClimbing", "allowedTokens": ["preventClimbing", "preventClimbingAndForceSliding"], "displayName": "Non Walkable Mode", "doc": "Behaviour when the controller meets a surface steeper than the slope limit." },
+        { "name": "openUsdPhysics:controller:climbingMode", "type": "token", "uniform": true, "default": "easy", "allowedTokens": ["easy", "constrained"], "displayName": "Climbing Mode", "doc": "Capsule climbing behaviour. Ignored for box controllers." },
+        { "name": "openUsdPhysics:controller:invisibleWallHeight", "type": "double", "default": 0.0, "displayName": "Invisible Wall Height", "doc": "Height of the virtual wall added above non-walkable surfaces, in stage linear units. Zero disables it." },
+        { "name": "openUsdPhysics:controller:maxJumpHeight", "type": "double", "default": 0.0, "displayName": "Max Jump Height", "doc": "Height above the controller kept clear when invisible walls are enabled, in stage linear units." },
+        { "name": "openUsdPhysics:controller:minMoveDistance", "type": "double", "default": 0.0, "displayName": "Min Move Distance", "doc": "Move requests shorter than this distance are discarded, in stage linear units." },
+        { "name": "openUsdPhysics:controller:volumeGrowth", "type": "double", "default": 1.5, "displayName": "Volume Growth", "doc": "Cache volume growth factor used when gathering nearby geometry." },
+        { "name": "openUsdPhysics:controller:scaleCoeff", "type": "double", "default": 0.8, "displayName": "Scale Coefficient", "doc": "Scale applied to the controller volume when generating its collision proxy." },
+        { "name": "openUsdPhysics:controller:density", "type": "double", "default": 10.0, "displayName": "Density", "doc": "Density of the controller kinematic proxy, in stage mass units per cubic linear unit." },
+        { "name": "openUsdPhysics:controller:material", "type": "rel", "displayName": "Material", "doc": "Single physics material applied to the controller volume." },
+        { "name": "openUsdPhysics:controller:simulationOwner", "type": "rel", "displayName": "Simulation Owner", "doc": "Single PhysicsScene that simulates this controller." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleAPI",
+      "className": "VehicleAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Marks a rigid body as a vehicle. Apply alongside PhysicsRigidBodyAPI. Wheels are described by descendant prims carrying OpenUsdPhysicsVehicleWheelAttachmentAPI.",
+      "properties": [
+        { "name": "openUsdPhysics:vehicle:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables vehicle simulation for this body." },
+        { "name": "openUsdPhysics:vehicle:driveType", "type": "token", "uniform": true, "default": "direct", "allowedTokens": ["none", "direct", "engine"], "displayName": "Drive Type", "doc": "Drivetrain model. 'none' simulates suspension and tires only, 'direct' applies wheel torques directly, and 'engine' uses the engine, clutch, gearbox, and differential." },
+        { "name": "openUsdPhysics:vehicle:suspensionQueryType", "type": "token", "uniform": true, "default": "raycast", "allowedTokens": ["raycast", "sweep"], "displayName": "Suspension Query Type", "doc": "Scene query used to find the ground under each wheel." },
+        { "name": "openUsdPhysics:vehicle:longitudinalAxis", "type": "token", "uniform": true, "default": "posZ", "allowedTokens": ["posX", "negX", "posY", "negY", "posZ", "negZ"], "displayName": "Longitudinal Axis", "doc": "Forward axis of the vehicle in its own body space." },
+        { "name": "openUsdPhysics:vehicle:lateralAxis", "type": "token", "uniform": true, "default": "posX", "allowedTokens": ["posX", "negX", "posY", "negY", "posZ", "negZ"], "displayName": "Lateral Axis", "doc": "Right axis of the vehicle in its own body space." },
+        { "name": "openUsdPhysics:vehicle:verticalAxis", "type": "token", "uniform": true, "default": "posY", "allowedTokens": ["posX", "negX", "posY", "negY", "posZ", "negZ"], "displayName": "Vertical Axis", "doc": "Up axis of the vehicle in its own body space." },
+        { "name": "openUsdPhysics:vehicle:minPassiveLongitudinalSlipDenominator", "type": "double", "default": 4.0, "displayName": "Min Passive Longitudinal Slip Denominator", "doc": "Lower bound on the longitudinal slip denominator while no drive torque is applied, in stage linear units per second." },
+        { "name": "openUsdPhysics:vehicle:minActiveLongitudinalSlipDenominator", "type": "double", "default": 0.1, "displayName": "Min Active Longitudinal Slip Denominator", "doc": "Lower bound on the longitudinal slip denominator while drive torque is applied, in stage linear units per second." },
+        { "name": "openUsdPhysics:vehicle:minLateralSlipDenominator", "type": "double", "default": 1.0, "displayName": "Min Lateral Slip Denominator", "doc": "Lower bound on the lateral slip denominator, in stage linear units per second." },
+        { "name": "openUsdPhysics:vehicle:longitudinalStickyTireThresholdSpeed", "type": "double", "default": 0.2, "displayName": "Longitudinal Sticky Tire Threshold Speed", "doc": "Longitudinal speed below which the sticky tire constraint may engage, in stage linear units per second." },
+        { "name": "openUsdPhysics:vehicle:longitudinalStickyTireThresholdTime", "type": "double", "default": 1.0, "displayName": "Longitudinal Sticky Tire Threshold Time", "doc": "Time the longitudinal speed must stay below the threshold before the sticky tire constraint engages, in seconds." },
+        { "name": "openUsdPhysics:vehicle:longitudinalStickyTireDamping", "type": "double", "default": 0.1, "displayName": "Longitudinal Sticky Tire Damping", "doc": "Damping of the longitudinal sticky tire constraint." },
+        { "name": "openUsdPhysics:vehicle:lateralStickyTireThresholdSpeed", "type": "double", "default": 0.2, "displayName": "Lateral Sticky Tire Threshold Speed", "doc": "Lateral speed below which the sticky tire constraint may engage, in stage linear units per second." },
+        { "name": "openUsdPhysics:vehicle:lateralStickyTireThresholdTime", "type": "double", "default": 1.0, "displayName": "Lateral Sticky Tire Threshold Time", "doc": "Time the lateral speed must stay below the threshold before the sticky tire constraint engages, in seconds." },
+        { "name": "openUsdPhysics:vehicle:lateralStickyTireDamping", "type": "double", "default": 1.0, "displayName": "Lateral Sticky Tire Damping", "doc": "Damping of the lateral sticky tire constraint." },
+        { "name": "openUsdPhysics:vehicle:subStepCountLowSpeed", "type": "int64", "uniform": true, "default": 3, "displayName": "Sub Step Count Low Speed", "doc": "Vehicle sub-steps per simulation step below the longitudinal speed threshold." },
+        { "name": "openUsdPhysics:vehicle:subStepCountHighSpeed", "type": "int64", "uniform": true, "default": 1, "displayName": "Sub Step Count High Speed", "doc": "Vehicle sub-steps per simulation step at or above the longitudinal speed threshold." },
+        { "name": "openUsdPhysics:vehicle:subStepThresholdLongitudinalSpeed", "type": "double", "default": 5.0, "displayName": "Sub Step Threshold Longitudinal Speed", "doc": "Longitudinal speed separating the low- and high-speed sub-step counts, in stage linear units per second." },
+        { "name": "openUsdPhysics:vehicle:drivetrain", "type": "rel", "displayName": "Drivetrain", "doc": "Single prim carrying the engine, clutch, gearbox, and differential schemas for this vehicle. When absent, those schemas are looked up on the vehicle prim itself." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleWheelAttachmentAPI",
+      "className": "VehicleWheelAttachmentAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Attaches one wheel to a vehicle. Apply to a descendant prim of the vehicle body.",
+      "properties": [
+        { "name": "openUsdPhysics:wheelAttachment:index", "type": "int64", "uniform": true, "default": -1, "displayName": "Index", "doc": "Wheel index referenced by the brake, steering, and differential wheel lists. -1 requests an index derived from traversal order." },
+        { "name": "openUsdPhysics:wheelAttachment:suspensionFramePosition", "type": "float3", "default": [0.0, 0.0, 0.0], "displayName": "Suspension Frame Position", "doc": "Suspension frame origin in vehicle body space, in stage linear units." },
+        { "name": "openUsdPhysics:wheelAttachment:suspensionFrameOrientation", "type": "float[]", "default": [1.0, 0.0, 0.0, 0.0], "displayName": "Suspension Frame Orientation", "doc": "Suspension frame orientation in vehicle body space as a unit quaternion ordered (w, x, y, z)." },
+        { "name": "openUsdPhysics:wheelAttachment:suspensionTravelDirection", "type": "float3", "default": [0.0, -1.0, 0.0], "displayName": "Suspension Travel Direction", "doc": "Direction the suspension compresses along, in vehicle body space." },
+        { "name": "openUsdPhysics:wheelAttachment:wheelFramePosition", "type": "float3", "default": [0.0, 0.0, 0.0], "displayName": "Wheel Frame Position", "doc": "Wheel centre offset from the suspension frame at maximum droop, in stage linear units." },
+        { "name": "openUsdPhysics:wheelAttachment:wheelFrameOrientation", "type": "float[]", "default": [1.0, 0.0, 0.0, 0.0], "displayName": "Wheel Frame Orientation", "doc": "Wheel orientation relative to the suspension frame as a unit quaternion ordered (w, x, y, z)." },
+        { "name": "openUsdPhysics:wheelAttachment:wheel", "type": "rel", "displayName": "Wheel", "doc": "Single prim carrying OpenUsdPhysicsVehicleWheelAPI. When absent, the schema is looked up on this prim." },
+        { "name": "openUsdPhysics:wheelAttachment:tire", "type": "rel", "displayName": "Tire", "doc": "Single prim carrying OpenUsdPhysicsVehicleTireAPI. When absent, the schema is looked up on this prim." },
+        { "name": "openUsdPhysics:wheelAttachment:suspension", "type": "rel", "displayName": "Suspension", "doc": "Single prim carrying OpenUsdPhysicsVehicleSuspensionAPI. When absent, the schema is looked up on this prim." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleWheelAPI",
+      "className": "VehicleWheelAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Rotating wheel mass properties for a vehicle wheel.",
+      "properties": [
+        { "name": "openUsdPhysics:wheel:radius", "type": "double", "default": 0.5, "displayName": "Radius", "doc": "Wheel radius in stage linear units." },
+        { "name": "openUsdPhysics:wheel:width", "type": "double", "default": 0.2, "displayName": "Width", "doc": "Wheel width in stage linear units." },
+        { "name": "openUsdPhysics:wheel:mass", "type": "double", "default": 20.0, "displayName": "Mass", "doc": "Wheel mass in stage mass units." },
+        { "name": "openUsdPhysics:wheel:momentOfInertia", "type": "double", "default": 1.0, "displayName": "Moment Of Inertia", "doc": "Wheel moment of inertia about its rotation axis." },
+        { "name": "openUsdPhysics:wheel:dampingRate", "type": "double", "default": 0.25, "displayName": "Damping Rate", "doc": "Damping applied to the wheel rotation speed." },
+        { "name": "openUsdPhysics:wheel:toeAngle", "type": "double", "default": 0.0, "displayName": "Toe Angle", "doc": "Static toe angle in degrees." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleSuspensionAPI",
+      "className": "VehicleSuspensionAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Suspension spring and camber compliance for a vehicle wheel.",
+      "properties": [
+        { "name": "openUsdPhysics:suspension:springStrength", "type": "double", "default": 10000.0, "displayName": "Spring Strength", "doc": "Suspension spring stiffness." },
+        { "name": "openUsdPhysics:suspension:springDamperRate", "type": "double", "default": 1000.0, "displayName": "Spring Damper Rate", "doc": "Suspension damping rate." },
+        { "name": "openUsdPhysics:suspension:travelDistance", "type": "double", "default": 0.5, "displayName": "Travel Distance", "doc": "Total suspension travel from maximum droop to maximum compression, in stage linear units." },
+        { "name": "openUsdPhysics:suspension:sprungMass", "type": "double", "default": 0.0, "displayName": "Sprung Mass", "doc": "Mass carried by this suspension in stage mass units. Zero requests a distribution derived from the vehicle mass and wheel placement." },
+        { "name": "openUsdPhysics:suspension:camberAtRest", "type": "double", "default": 0.0, "displayName": "Camber At Rest", "doc": "Camber angle in degrees at the rest position." },
+        { "name": "openUsdPhysics:suspension:camberAtMaxCompression", "type": "double", "default": 0.0, "displayName": "Camber At Max Compression", "doc": "Camber angle in degrees at maximum compression." },
+        { "name": "openUsdPhysics:suspension:camberAtMaxDroop", "type": "double", "default": 0.0, "displayName": "Camber At Max Droop", "doc": "Camber angle in degrees at maximum droop." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleTireAPI",
+      "className": "VehicleTireAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Tire force response for a vehicle wheel.",
+      "properties": [
+        { "name": "openUsdPhysics:tire:longitudinalStiffness", "type": "double", "default": 5000.0, "displayName": "Longitudinal Stiffness", "doc": "Longitudinal force per unit longitudinal slip." },
+        { "name": "openUsdPhysics:tire:lateralStiffnessGraph", "type": "float2[]", "default": [[0.3125, 20.0]], "displayName": "Lateral Stiffness Graph", "doc": "Lateral stiffness response as (normalized load, stiffness) pairs in ascending load order." },
+        { "name": "openUsdPhysics:tire:camberStiffness", "type": "double", "default": 0.0, "displayName": "Camber Stiffness", "doc": "Lateral force per unit camber angle in degrees." },
+        { "name": "openUsdPhysics:tire:restLoad", "type": "double", "default": 0.0, "displayName": "Rest Load", "doc": "Load carried by the tire at rest. Zero requests a value derived from the sprung mass and scene gravity." },
+        { "name": "openUsdPhysics:tire:frictionVsSlipGraph", "type": "float2[]", "default": [[0.0, 1.0], [0.1, 1.0], [1.0, 1.0]], "displayName": "Friction Vs Slip Graph", "doc": "Friction multiplier as (longitudinal slip, multiplier) pairs in ascending slip order." },
+        { "name": "openUsdPhysics:tire:frictionTable", "type": "rel", "displayName": "Friction Table", "doc": "Single OpenUsdPhysicsVehicleTireFrictionTable prim selecting friction by ground material." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleTireFrictionTable",
+      "className": "VehicleTireFrictionTable",
+      "kind": "concreteTyped",
+      "base": "Typed",
+      "doc": "Maps ground physics materials to tire friction values. Referenced by OpenUsdPhysicsVehicleTireAPI.",
+      "properties": [
+        { "name": "openUsdPhysics:frictionTable:defaultFrictionValue", "type": "double", "default": 1.0, "displayName": "Default Friction Value", "doc": "Friction used for ground materials that the table does not list." },
+        { "name": "openUsdPhysics:frictionTable:frictionValues", "type": "float[]", "default": [], "displayName": "Friction Values", "doc": "Friction value per entry of the ground materials relationship, in the same order." },
+        { "name": "openUsdPhysics:frictionTable:groundMaterials", "type": "rel", "displayName": "Ground Materials", "doc": "Ordered ground physics materials the friction values apply to." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleEngineAPI",
+      "className": "VehicleEngineAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Engine model for a vehicle whose drive type is 'engine'.",
+      "properties": [
+        { "name": "openUsdPhysics:engine:momentOfInertia", "type": "double", "default": 1.0, "displayName": "Moment Of Inertia", "doc": "Engine moment of inertia about its rotation axis." },
+        { "name": "openUsdPhysics:engine:peakTorque", "type": "double", "default": 500.0, "displayName": "Peak Torque", "doc": "Maximum torque the engine can deliver." },
+        { "name": "openUsdPhysics:engine:maxRotationSpeed", "type": "double", "default": 600.0, "displayName": "Max Rotation Speed", "doc": "Maximum engine rotation speed in radians per second." },
+        { "name": "openUsdPhysics:engine:idleRotationSpeed", "type": "double", "default": 0.0, "displayName": "Idle Rotation Speed", "doc": "Idle engine rotation speed in radians per second." },
+        { "name": "openUsdPhysics:engine:torqueCurve", "type": "float2[]", "default": [[0.0, 0.8], [0.33, 1.0], [1.0, 0.8]], "displayName": "Torque Curve", "doc": "Torque multiplier as (normalized rotation speed, multiplier) pairs in ascending speed order." },
+        { "name": "openUsdPhysics:engine:dampingRateFullThrottle", "type": "double", "default": 0.15, "displayName": "Damping Rate Full Throttle", "doc": "Engine damping at full throttle." },
+        { "name": "openUsdPhysics:engine:dampingRateZeroThrottleClutchEngaged", "type": "double", "default": 2.0, "displayName": "Damping Rate Zero Throttle Clutch Engaged", "doc": "Engine damping at zero throttle with the clutch engaged." },
+        { "name": "openUsdPhysics:engine:dampingRateZeroThrottleClutchDisengaged", "type": "double", "default": 0.35, "displayName": "Damping Rate Zero Throttle Clutch Disengaged", "doc": "Engine damping at zero throttle with the clutch disengaged." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleGearsAPI",
+      "className": "VehicleGearsAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Gearbox ratios for a vehicle whose drive type is 'engine'.",
+      "properties": [
+        { "name": "openUsdPhysics:gears:ratios", "type": "float[]", "default": [-4.0, 0.0, 4.0, 2.0, 1.5, 1.1, 1.0], "displayName": "Ratios", "doc": "Gear ratios in gear order, starting with reverse and neutral." },
+        { "name": "openUsdPhysics:gears:ratioScale", "type": "double", "default": 4.0, "displayName": "Ratio Scale", "doc": "Scale applied to every gear ratio." },
+        { "name": "openUsdPhysics:gears:switchTime", "type": "double", "default": 0.5, "displayName": "Switch Time", "doc": "Time taken to change gear, in seconds." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleAutoGearBoxAPI",
+      "className": "VehicleAutoGearBoxAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Automatic transmission thresholds. Requires OpenUsdPhysicsVehicleGearsAPI on the same prim.",
+      "properties": [
+        { "name": "openUsdPhysics:autoGearBox:upRatios", "type": "float[]", "default": [], "displayName": "Up Ratios", "doc": "Normalized engine speed above which the transmission shifts up, per forward gear." },
+        { "name": "openUsdPhysics:autoGearBox:downRatios", "type": "float[]", "default": [], "displayName": "Down Ratios", "doc": "Normalized engine speed below which the transmission shifts down, per forward gear." },
+        { "name": "openUsdPhysics:autoGearBox:latency", "type": "double", "default": 2.0, "displayName": "Latency", "doc": "Minimum time between automatic gear changes, in seconds." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleClutchAPI",
+      "className": "VehicleClutchAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Clutch model for a vehicle whose drive type is 'engine'.",
+      "properties": [
+        { "name": "openUsdPhysics:clutch:strength", "type": "double", "default": 10.0, "displayName": "Strength", "doc": "Clutch coupling strength." },
+        { "name": "openUsdPhysics:clutch:accuracyMode", "type": "token", "uniform": true, "default": "estimate", "allowedTokens": ["estimate", "bestPossible"], "displayName": "Accuracy Mode", "doc": "Accuracy of the drivetrain solve." },
+        { "name": "openUsdPhysics:clutch:estimateIterations", "type": "int64", "uniform": true, "default": 5, "displayName": "Estimate Iterations", "doc": "Iterations used when the accuracy mode is 'estimate'." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleDifferentialAPI",
+      "className": "VehicleDifferentialAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Distributes drive torque across the driven wheels of a vehicle.",
+      "properties": [
+        { "name": "openUsdPhysics:differential:wheels", "type": "int[]", "default": [], "displayName": "Wheels", "doc": "Indices of the driven wheels." },
+        { "name": "openUsdPhysics:differential:torqueRatios", "type": "float[]", "default": [], "displayName": "Torque Ratios", "doc": "Fraction of drive torque delivered to each listed wheel. Entries must sum to one." },
+        { "name": "openUsdPhysics:differential:averageWheelSpeedRatios", "type": "float[]", "default": [], "displayName": "Average Wheel Speed Ratios", "doc": "Weight of each listed wheel when computing the averaged wheel speed fed back to the drivetrain. Entries must sum to one." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleBrakesAPI",
+      "className": "VehicleBrakesAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "The two independent brake channels of a vehicle. The primary channel is the foot brake and the secondary channel is the hand brake.",
+      "properties": [
+        { "name": "openUsdPhysics:brakes:primaryWheels", "type": "int[]", "default": [], "displayName": "Primary Wheels", "doc": "Indices of the wheels braked by the primary channel." },
+        { "name": "openUsdPhysics:brakes:primaryMaxBrakeTorque", "type": "double", "default": 0.0, "displayName": "Primary Max Brake Torque", "doc": "Maximum torque the primary channel applies at full input." },
+        { "name": "openUsdPhysics:brakes:primaryTorqueMultipliers", "type": "float[]", "default": [], "displayName": "Primary Torque Multipliers", "doc": "Per-wheel multiplier applied to the primary brake torque, in primary wheel order." },
+        { "name": "openUsdPhysics:brakes:secondaryWheels", "type": "int[]", "default": [], "displayName": "Secondary Wheels", "doc": "Indices of the wheels braked by the secondary channel." },
+        { "name": "openUsdPhysics:brakes:secondaryMaxBrakeTorque", "type": "double", "default": 0.0, "displayName": "Secondary Max Brake Torque", "doc": "Maximum torque the secondary channel applies at full input." },
+        { "name": "openUsdPhysics:brakes:secondaryTorqueMultipliers", "type": "float[]", "default": [], "displayName": "Secondary Torque Multipliers", "doc": "Per-wheel multiplier applied to the secondary brake torque, in secondary wheel order." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVehicleSteeringAPI",
+      "className": "VehicleSteeringAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Maps steering input to per-wheel steer angles.",
+      "properties": [
+        { "name": "openUsdPhysics:steering:wheels", "type": "int[]", "default": [], "displayName": "Wheels", "doc": "Indices of the steered wheels." },
+        { "name": "openUsdPhysics:steering:maxSteerAngle", "type": "double", "default": 0.0, "displayName": "Max Steer Angle", "doc": "Steer angle in degrees at full steering input." },
+        { "name": "openUsdPhysics:steering:angleMultipliers", "type": "float[]", "default": [], "displayName": "Angle Multipliers", "doc": "Per-wheel multiplier applied to the steer angle, in steered wheel order." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsFixedTendon",
+      "className": "FixedTendon",
+      "kind": "concreteTyped",
+      "base": "Typed",
+      "doc": "A fixed tendon coupling articulation joint axes through a linear gearing relation. Modelled as a prim rather than an applied schema so one articulation can carry several tendons.",
+      "properties": [
+        { "name": "openUsdPhysics:fixedTendon:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables this tendon." },
+        { "name": "openUsdPhysics:fixedTendon:stiffness", "type": "double", "default": 0.0, "displayName": "Stiffness", "doc": "Spring stiffness of the tendon length constraint." },
+        { "name": "openUsdPhysics:fixedTendon:damping", "type": "double", "default": 0.0, "displayName": "Damping", "doc": "Damping of the tendon length constraint." },
+        { "name": "openUsdPhysics:fixedTendon:limitStiffness", "type": "double", "default": 0.0, "displayName": "Limit Stiffness", "doc": "Spring stiffness applied once the tendon length leaves the limit range." },
+        { "name": "openUsdPhysics:fixedTendon:offset", "type": "double", "default": 0.0, "displayName": "Offset", "doc": "Constant added to the geared sum of the joint axis positions." },
+        { "name": "openUsdPhysics:fixedTendon:restLength", "type": "double", "default": 0.0, "displayName": "Rest Length", "doc": "Tendon length at which the spring applies no force." },
+        { "name": "openUsdPhysics:fixedTendon:lowerLimit", "type": "double", "default": "-inf", "displayName": "Lower Limit", "doc": "Lower bound of the tendon length limit range." },
+        { "name": "openUsdPhysics:fixedTendon:upperLimit", "type": "double", "default": "inf", "displayName": "Upper Limit", "doc": "Upper bound of the tendon length limit range." },
+        { "name": "openUsdPhysics:fixedTendon:gearings", "type": "float[]", "default": [], "displayName": "Gearings", "doc": "Gearing applied to each joint axis, in the order of the joints relationship." },
+        { "name": "openUsdPhysics:fixedTendon:forceCoefficients", "type": "float[]", "default": [], "displayName": "Force Coefficients", "doc": "Fraction of the tendon force applied to each joint axis, in the order of the joints relationship." },
+        { "name": "openUsdPhysics:fixedTendon:articulation", "type": "rel", "displayName": "Articulation", "doc": "Single articulation root prim the tendon belongs to." },
+        { "name": "openUsdPhysics:fixedTendon:rootJoint", "type": "rel", "displayName": "Root Joint", "doc": "Single joint prim closest to the articulation root. Defines the tendon traversal order." },
+        { "name": "openUsdPhysics:fixedTendon:joints", "type": "rel", "displayName": "Joints", "doc": "Ordered joint prims coupled by this tendon. Each entry pairs with one gearing and one force coefficient." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsSpatialTendon",
+      "className": "SpatialTendon",
+      "kind": "concreteTyped",
+      "base": "Typed",
+      "doc": "A spatial tendon constraining distances between attachment points on an articulation. Attachment points carry OpenUsdPhysicsTendonAttachmentAPI.",
+      "properties": [
+        { "name": "openUsdPhysics:spatialTendon:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables this tendon." },
+        { "name": "openUsdPhysics:spatialTendon:stiffness", "type": "double", "default": 0.0, "displayName": "Stiffness", "doc": "Spring stiffness of the tendon length constraint." },
+        { "name": "openUsdPhysics:spatialTendon:damping", "type": "double", "default": 0.0, "displayName": "Damping", "doc": "Damping of the tendon length constraint." },
+        { "name": "openUsdPhysics:spatialTendon:limitStiffness", "type": "double", "default": 0.0, "displayName": "Limit Stiffness", "doc": "Spring stiffness applied once the tendon length leaves the limit range." },
+        { "name": "openUsdPhysics:spatialTendon:offset", "type": "double", "default": 0.0, "displayName": "Offset", "doc": "Constant added to the accumulated tendon length." },
+        { "name": "openUsdPhysics:spatialTendon:articulation", "type": "rel", "displayName": "Articulation", "doc": "Single articulation root prim the tendon belongs to." },
+        { "name": "openUsdPhysics:spatialTendon:rootAttachment", "type": "rel", "displayName": "Root Attachment", "doc": "Single prim carrying OpenUsdPhysicsTendonAttachmentAPI with the 'root' role. The remaining attachments are reached through their parent relationships." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsTendonAttachmentAPI",
+      "className": "TendonAttachmentAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "One attachment point of a spatial tendon. Apply to a link prim of the articulation that owns the tendon.",
+      "properties": [
+        { "name": "openUsdPhysics:tendonAttachment:role", "type": "token", "uniform": true, "default": "intermediate", "allowedTokens": ["root", "intermediate", "leaf"], "displayName": "Role", "doc": "Position of this attachment in the tendon tree. Limits and rest length apply to 'leaf' attachments only." },
+        { "name": "openUsdPhysics:tendonAttachment:localPosition", "type": "float3", "default": [0.0, 0.0, 0.0], "displayName": "Local Position", "doc": "Attachment point in the local space of the prim, in stage linear units." },
+        { "name": "openUsdPhysics:tendonAttachment:gearing", "type": "double", "default": 1.0, "displayName": "Gearing", "doc": "Gearing applied to the distance between this attachment and its parent." },
+        { "name": "openUsdPhysics:tendonAttachment:restLength", "type": "double", "default": 0.0, "displayName": "Rest Length", "doc": "Tendon length at which the spring applies no force. Applies to 'leaf' attachments." },
+        { "name": "openUsdPhysics:tendonAttachment:lowerLimit", "type": "double", "default": "-inf", "displayName": "Lower Limit", "doc": "Lower bound of the tendon length limit range. Applies to 'leaf' attachments." },
+        { "name": "openUsdPhysics:tendonAttachment:upperLimit", "type": "double", "default": "inf", "displayName": "Upper Limit", "doc": "Upper bound of the tendon length limit range. Applies to 'leaf' attachments." },
+        { "name": "openUsdPhysics:tendonAttachment:tendon", "type": "rel", "displayName": "Tendon", "doc": "Single OpenUsdPhysicsSpatialTendon prim this attachment belongs to." },
+        { "name": "openUsdPhysics:tendonAttachment:parentAttachment", "type": "rel", "displayName": "Parent Attachment", "doc": "Single prim carrying the parent attachment. Absent on the 'root' attachment." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsMimicJointAPI",
+      "className": "MimicJointAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Couples one articulation joint axis to an axis of another joint through a linear gearing relation. Apply to the joint prim that follows the reference.",
+      "properties": [
+        { "name": "openUsdPhysics:mimicJoint:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables the coupling." },
+        { "name": "openUsdPhysics:mimicJoint:axis", "type": "token", "uniform": true, "default": "rotX", "allowedTokens": ["transX", "transY", "transZ", "rotX", "rotY", "rotZ"], "displayName": "Axis", "doc": "Axis of this joint that follows the reference axis." },
+        { "name": "openUsdPhysics:mimicJoint:referenceAxis", "type": "token", "uniform": true, "default": "rotX", "allowedTokens": ["transX", "transY", "transZ", "rotX", "rotY", "rotZ"], "displayName": "Reference Axis", "doc": "Axis of the reference joint that drives this joint." },
+        { "name": "openUsdPhysics:mimicJoint:gearing", "type": "double", "default": 1.0, "displayName": "Gearing", "doc": "Ratio between the reference axis position and this axis position." },
+        { "name": "openUsdPhysics:mimicJoint:offset", "type": "double", "default": 0.0, "displayName": "Offset", "doc": "Constant added to the geared reference axis position." },
+        { "name": "openUsdPhysics:mimicJoint:naturalFrequency", "type": "double", "default": 0.0, "displayName": "Natural Frequency", "doc": "Natural frequency of the coupling constraint. Zero requests a rigid coupling." },
+        { "name": "openUsdPhysics:mimicJoint:dampingRatio", "type": "double", "default": 0.0, "displayName": "Damping Ratio", "doc": "Damping ratio of the coupling constraint. Ignored when the natural frequency is zero." },
+        { "name": "openUsdPhysics:mimicJoint:referenceJoint", "type": "rel", "displayName": "Reference Joint", "doc": "Single joint prim that drives this joint." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsParticleSystemAPI",
+      "className": "ParticleSystemAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "A position-based-dynamics particle system that owns particle sets, particle cloth, and fluids. Apply to a prim that represents the system.",
+      "properties": [
+        { "name": "openUsdPhysics:particleSystem:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables the particle system." },
+        { "name": "openUsdPhysics:particleSystem:contactOffset", "type": "double", "default": -1.0, "displayName": "Contact Offset", "doc": "Distance at which particle contacts with other objects are generated, in stage linear units. A negative value requests the runtime default." },
+        { "name": "openUsdPhysics:particleSystem:restOffset", "type": "double", "default": -1.0, "displayName": "Rest Offset", "doc": "Separation kept at rest between particles and other objects, in stage linear units. A negative value requests the runtime default." },
+        { "name": "openUsdPhysics:particleSystem:particleContactOffset", "type": "double", "default": -1.0, "displayName": "Particle Contact Offset", "doc": "Distance at which particle-particle contacts are generated, in stage linear units. A negative value requests the runtime default." },
+        { "name": "openUsdPhysics:particleSystem:solidRestOffset", "type": "double", "default": -1.0, "displayName": "Solid Rest Offset", "doc": "Separation kept at rest between two solid particles, in stage linear units. A negative value requests the runtime default." },
+        { "name": "openUsdPhysics:particleSystem:fluidRestOffset", "type": "double", "default": -1.0, "displayName": "Fluid Rest Offset", "doc": "Separation kept at rest between two fluid particles, in stage linear units. A negative value requests the runtime default." },
+        { "name": "openUsdPhysics:particleSystem:solverPositionIterationCount", "type": "int64", "uniform": true, "default": 4, "displayName": "Solver Position Iteration Count", "doc": "Solver position iterations per simulation step for this system." },
+        { "name": "openUsdPhysics:particleSystem:maxDepenetrationVelocity", "type": "double", "default": "inf", "displayName": "Max Depenetration Velocity", "doc": "Upper bound on the velocity applied to resolve particle penetration." },
+        { "name": "openUsdPhysics:particleSystem:maxNeighborhood", "type": "int64", "uniform": true, "default": 96, "displayName": "Max Neighborhood", "doc": "Maximum number of neighbours tracked per particle." },
+        { "name": "openUsdPhysics:particleSystem:neighborhoodScale", "type": "double", "default": 1.01, "displayName": "Neighborhood Scale", "doc": "Scale applied to the particle contact offset when building the neighbourhood." },
+        { "name": "openUsdPhysics:particleSystem:wind", "type": "float3", "default": [0.0, 0.0, 0.0], "displayName": "Wind", "doc": "Wind velocity applied to the system in stage space, in stage linear units per second." },
+        { "name": "openUsdPhysics:particleSystem:globalSelfCollisionEnabled", "type": "bool", "default": true, "displayName": "Global Self Collision Enabled", "doc": "Enables collisions between particles of different particle groups." },
+        { "name": "openUsdPhysics:particleSystem:nonParticleCollisionEnabled", "type": "bool", "default": true, "displayName": "Non Particle Collision Enabled", "doc": "Enables collisions between particles and rigid or deformable geometry." },
+        { "name": "openUsdPhysics:particleSystem:enableCCD", "type": "bool", "default": false, "displayName": "Enable CCD", "doc": "Enables continuous collision detection for particles of this system." },
+        { "name": "openUsdPhysics:particleSystem:simulationOwner", "type": "rel", "displayName": "Simulation Owner", "doc": "Single PhysicsScene that simulates this particle system." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsParticleSetAPI",
+      "className": "ParticleSetAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Turns the points of a UsdGeomPointBased prim into simulated particles. Apply alongside the geometry that supplies the points.",
+      "properties": [
+        { "name": "openUsdPhysics:particleSet:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables simulation of this particle set." },
+        { "name": "openUsdPhysics:particleSet:fluid", "type": "bool", "default": false, "displayName": "Fluid", "doc": "Simulates the particles with the fluid constraint model instead of the solid one." },
+        { "name": "openUsdPhysics:particleSet:selfCollision", "type": "bool", "default": true, "displayName": "Self Collision", "doc": "Enables collisions between particles of this set." },
+        { "name": "openUsdPhysics:particleSet:particleGroup", "type": "int64", "uniform": true, "default": 0, "displayName": "Particle Group", "doc": "Group index used to filter particle-particle collisions." },
+        { "name": "openUsdPhysics:particleSet:mass", "type": "double", "default": 0.0, "displayName": "Mass", "doc": "Total mass of the set in stage mass units. Zero requests a mass derived from the material density and the particle volume." },
+        { "name": "openUsdPhysics:particleSet:restPoints", "type": "float3[]", "default": [], "displayName": "Rest Points", "doc": "Rest configuration of the particles in local space. When empty the authored geometry points are used." },
+        { "name": "openUsdPhysics:particleSet:particleSystem", "type": "rel", "displayName": "Particle System", "doc": "Single prim carrying OpenUsdPhysicsParticleSystemAPI that owns these particles." },
+        { "name": "openUsdPhysics:particleSet:material", "type": "rel", "displayName": "Material", "doc": "Single material prim carrying OpenUsdPhysicsPbdMaterialAPI." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsParticleClothAPI",
+      "className": "ParticleClothAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Simulates a triangulated mesh as position-based-dynamics cloth built from distance springs. Apply alongside the mesh geometry.",
+      "properties": [
+        { "name": "openUsdPhysics:particleCloth:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables simulation of this cloth." },
+        { "name": "openUsdPhysics:particleCloth:selfCollision", "type": "bool", "default": true, "displayName": "Self Collision", "doc": "Enables collisions between particles of this cloth." },
+        { "name": "openUsdPhysics:particleCloth:selfCollisionFilter", "type": "bool", "default": true, "displayName": "Self Collision Filter", "doc": "Filters self collisions between particles that share a spring." },
+        { "name": "openUsdPhysics:particleCloth:pressure", "type": "double", "default": 0.0, "displayName": "Pressure", "doc": "Inflation pressure for closed meshes. Zero disables the pressure constraint." },
+        { "name": "openUsdPhysics:particleCloth:particleGroup", "type": "int64", "uniform": true, "default": 0, "displayName": "Particle Group", "doc": "Group index used to filter particle-particle collisions." },
+        { "name": "openUsdPhysics:particleCloth:springIndices", "type": "int[]", "default": [], "displayName": "Spring Indices", "doc": "Particle index pairs describing the springs, two indices per spring." },
+        { "name": "openUsdPhysics:particleCloth:springStiffnesses", "type": "float[]", "default": [], "displayName": "Spring Stiffnesses", "doc": "Stiffness per spring, in spring order." },
+        { "name": "openUsdPhysics:particleCloth:springDampings", "type": "float[]", "default": [], "displayName": "Spring Dampings", "doc": "Damping per spring, in spring order." },
+        { "name": "openUsdPhysics:particleCloth:springRestLengths", "type": "float[]", "default": [], "displayName": "Spring Rest Lengths", "doc": "Rest length per spring, in spring order and in stage linear units." },
+        { "name": "openUsdPhysics:particleCloth:restPoints", "type": "float3[]", "default": [], "displayName": "Rest Points", "doc": "Rest configuration of the cloth particles in local space. When empty the authored mesh points are used." },
+        { "name": "openUsdPhysics:particleCloth:particleSystem", "type": "rel", "displayName": "Particle System", "doc": "Single prim carrying OpenUsdPhysicsParticleSystemAPI that owns these particles." },
+        { "name": "openUsdPhysics:particleCloth:material", "type": "rel", "displayName": "Material", "doc": "Single material prim carrying OpenUsdPhysicsPbdMaterialAPI." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsPbdMaterialAPI",
+      "className": "PbdMaterialAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Material response for position-based-dynamics particles, fluids, and particle cloth. Apply to a UsdShadeMaterial prim.",
+      "properties": [
+        { "name": "openUsdPhysics:pbdMaterial:friction", "type": "double", "default": 0.2, "displayName": "Friction", "doc": "Friction coefficient between particles and other objects." },
+        { "name": "openUsdPhysics:pbdMaterial:particleFrictionScale", "type": "double", "default": 1.0, "displayName": "Particle Friction Scale", "doc": "Scale applied to the friction coefficient for particle-particle contacts." },
+        { "name": "openUsdPhysics:pbdMaterial:damping", "type": "double", "default": 0.0, "displayName": "Damping", "doc": "Velocity damping applied to the particles." },
+        { "name": "openUsdPhysics:pbdMaterial:viscosity", "type": "double", "default": 0.0, "displayName": "Viscosity", "doc": "Fluid viscosity. Ignored for solid particles." },
+        { "name": "openUsdPhysics:pbdMaterial:vorticityConfinement", "type": "double", "default": 0.0, "displayName": "Vorticity Confinement", "doc": "Strength of the fluid vorticity confinement term." },
+        { "name": "openUsdPhysics:pbdMaterial:surfaceTension", "type": "double", "default": 0.0, "displayName": "Surface Tension", "doc": "Fluid surface tension." },
+        { "name": "openUsdPhysics:pbdMaterial:cohesion", "type": "double", "default": 0.0, "displayName": "Cohesion", "doc": "Attraction between particles of the same set." },
+        { "name": "openUsdPhysics:pbdMaterial:adhesion", "type": "double", "default": 0.0, "displayName": "Adhesion", "doc": "Attraction between particles and other objects." },
+        { "name": "openUsdPhysics:pbdMaterial:particleAdhesionScale", "type": "double", "default": 1.0, "displayName": "Particle Adhesion Scale", "doc": "Scale applied to the adhesion for particle-particle contacts." },
+        { "name": "openUsdPhysics:pbdMaterial:adhesionOffsetScale", "type": "double", "default": 0.0, "displayName": "Adhesion Offset Scale", "doc": "Scale applied to the particle contact offset when evaluating adhesion." },
+        { "name": "openUsdPhysics:pbdMaterial:gravityScale", "type": "double", "default": 1.0, "displayName": "Gravity Scale", "doc": "Scale applied to scene gravity for these particles." },
+        { "name": "openUsdPhysics:pbdMaterial:lift", "type": "double", "default": 0.0, "displayName": "Lift", "doc": "Aerodynamic lift coefficient applied to particle cloth." },
+        { "name": "openUsdPhysics:pbdMaterial:drag", "type": "double", "default": 0.0, "displayName": "Drag", "doc": "Aerodynamic drag coefficient applied to particle cloth." },
+        { "name": "openUsdPhysics:pbdMaterial:density", "type": "double", "default": 0.0, "displayName": "Density", "doc": "Particle density in stage mass units per cubic linear unit. Zero requests the runtime default." },
+        { "name": "openUsdPhysics:pbdMaterial:cflCoefficient", "type": "double", "default": 1.0, "displayName": "CFL Coefficient", "doc": "Courant-Friedrichs-Lewy coefficient limiting the fluid time step." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsDiffuseParticlesAPI",
+      "className": "DiffuseParticlesAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Spray, foam, and bubble particles generated from a fluid particle set. Apply alongside OpenUsdPhysicsParticleSetAPI.",
+      "properties": [
+        { "name": "openUsdPhysics:diffuseParticles:enabled", "type": "bool", "default": false, "displayName": "Enabled", "doc": "Enables diffuse particle generation." },
+        { "name": "openUsdPhysics:diffuseParticles:maxParticleMultiplier", "type": "double", "default": 0.5, "displayName": "Max Particle Multiplier", "doc": "Upper bound on the diffuse particle count as a multiple of the fluid particle count." },
+        { "name": "openUsdPhysics:diffuseParticles:threshold", "type": "double", "default": 100.0, "displayName": "Threshold", "doc": "Weighted potential above which a diffuse particle is spawned." },
+        { "name": "openUsdPhysics:diffuseParticles:lifetime", "type": "double", "default": 5.0, "displayName": "Lifetime", "doc": "Diffuse particle lifetime in seconds." },
+        { "name": "openUsdPhysics:diffuseParticles:airDrag", "type": "double", "default": 0.0, "displayName": "Air Drag", "doc": "Drag applied to diffuse particles outside the fluid." },
+        { "name": "openUsdPhysics:diffuseParticles:bubbleDrag", "type": "double", "default": 0.9, "displayName": "Bubble Drag", "doc": "Drag applied to diffuse particles inside the fluid." },
+        { "name": "openUsdPhysics:diffuseParticles:buoyancy", "type": "double", "default": 1.0, "displayName": "Buoyancy", "doc": "Buoyancy applied to diffuse particles inside the fluid." },
+        { "name": "openUsdPhysics:diffuseParticles:kineticEnergyWeight", "type": "double", "default": 0.0, "displayName": "Kinetic Energy Weight", "doc": "Weight of the kinetic energy term in the spawn potential." },
+        { "name": "openUsdPhysics:diffuseParticles:pressureWeight", "type": "double", "default": 1.0, "displayName": "Pressure Weight", "doc": "Weight of the pressure term in the spawn potential." },
+        { "name": "openUsdPhysics:diffuseParticles:divergenceWeight", "type": "double", "default": 1.0, "displayName": "Divergence Weight", "doc": "Weight of the divergence term in the spawn potential." },
+        { "name": "openUsdPhysics:diffuseParticles:collisionDecay", "type": "double", "default": 0.5, "displayName": "Collision Decay", "doc": "Fraction of the remaining lifetime removed when a diffuse particle collides." },
+        { "name": "openUsdPhysics:diffuseParticles:useAccurateVelocity", "type": "bool", "default": false, "displayName": "Use Accurate Velocity", "doc": "Advects diffuse particles with the accurate fluid velocity field at a higher cost." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsParticleAnisotropyAPI",
+      "className": "ParticleAnisotropyAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Anisotropic shaping of fluid particles for surface reconstruction. Apply alongside OpenUsdPhysicsParticleSystemAPI.",
+      "properties": [
+        { "name": "openUsdPhysics:particleAnisotropy:enabled", "type": "bool", "default": false, "displayName": "Enabled", "doc": "Enables anisotropic particle shaping." },
+        { "name": "openUsdPhysics:particleAnisotropy:scale", "type": "double", "default": 1.0, "displayName": "Scale", "doc": "Scale applied to the computed anisotropy." },
+        { "name": "openUsdPhysics:particleAnisotropy:min", "type": "double", "default": 0.1, "displayName": "Min", "doc": "Lower bound on an anisotropy axis, as a fraction of the particle radius." },
+        { "name": "openUsdPhysics:particleAnisotropy:max", "type": "double", "default": 2.0, "displayName": "Max", "doc": "Upper bound on an anisotropy axis, as a fraction of the particle radius." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsParticleSmoothingAPI",
+      "className": "ParticleSmoothingAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Laplacian smoothing of fluid particle positions used for surface reconstruction. Apply alongside OpenUsdPhysicsParticleSystemAPI.",
+      "properties": [
+        { "name": "openUsdPhysics:particleSmoothing:enabled", "type": "bool", "default": false, "displayName": "Enabled", "doc": "Enables position smoothing." },
+        { "name": "openUsdPhysics:particleSmoothing:strength", "type": "double", "default": 0.8, "displayName": "Strength", "doc": "Smoothing strength between zero and one." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsParticleIsosurfaceAPI",
+      "className": "ParticleIsosurfaceAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Isosurface extraction settings for a fluid particle system. Apply alongside OpenUsdPhysicsParticleSystemAPI.",
+      "properties": [
+        { "name": "openUsdPhysics:isosurface:enabled", "type": "bool", "default": false, "displayName": "Enabled", "doc": "Enables isosurface extraction." },
+        { "name": "openUsdPhysics:isosurface:maxVertices", "type": "int64", "uniform": true, "default": 1048576, "displayName": "Max Vertices", "doc": "Upper bound on the extracted vertex count." },
+        { "name": "openUsdPhysics:isosurface:maxTriangles", "type": "int64", "uniform": true, "default": 2097152, "displayName": "Max Triangles", "doc": "Upper bound on the extracted triangle count." },
+        { "name": "openUsdPhysics:isosurface:maxSubgrids", "type": "int64", "uniform": true, "default": 1024, "displayName": "Max Subgrids", "doc": "Upper bound on the number of sparse grid blocks used during extraction." },
+        { "name": "openUsdPhysics:isosurface:gridSpacing", "type": "double", "default": 0.2, "displayName": "Grid Spacing", "doc": "Extraction grid cell size in stage linear units." },
+        { "name": "openUsdPhysics:isosurface:surfaceDistance", "type": "double", "default": 0.25, "displayName": "Surface Distance", "doc": "Distance from a particle centre at which the surface is placed, in stage linear units." },
+        { "name": "openUsdPhysics:isosurface:gridFilteringPasses", "type": "string", "default": "", "displayName": "Grid Filtering Passes", "doc": "Ordered grid filter passes. Each character selects one pass: 's' smooth, 'g' grow, 'r' reduce." },
+        { "name": "openUsdPhysics:isosurface:gridSmoothingRadius", "type": "double", "default": 0.2, "displayName": "Grid Smoothing Radius", "doc": "Radius of the grid smoothing kernel in stage linear units." },
+        { "name": "openUsdPhysics:isosurface:numMeshSmoothingPasses", "type": "int64", "uniform": true, "default": 4, "displayName": "Num Mesh Smoothing Passes", "doc": "Smoothing passes applied to the extracted mesh positions." },
+        { "name": "openUsdPhysics:isosurface:numMeshNormalSmoothingPasses", "type": "int64", "uniform": true, "default": 4, "displayName": "Num Mesh Normal Smoothing Passes", "doc": "Smoothing passes applied to the extracted mesh normals." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsSurfaceDeformableAPI",
+      "className": "SurfaceDeformableAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Simulates a triangulated mesh as a surface deformable solved on its own vertices. Apply alongside the mesh geometry.",
+      "properties": [
+        { "name": "openUsdPhysics:surfaceDeformable:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables simulation of this surface deformable." },
+        { "name": "openUsdPhysics:surfaceDeformable:solverPositionIterationCount", "type": "int64", "uniform": true, "default": 16, "displayName": "Solver Position Iteration Count", "doc": "Solver position iterations per simulation step." },
+        { "name": "openUsdPhysics:surfaceDeformable:vertexVelocityDamping", "type": "double", "default": 0.005, "displayName": "Vertex Velocity Damping", "doc": "Velocity damping applied to the simulated vertices." },
+        { "name": "openUsdPhysics:surfaceDeformable:selfCollision", "type": "bool", "default": false, "displayName": "Self Collision", "doc": "Enables collisions between parts of this surface." },
+        { "name": "openUsdPhysics:surfaceDeformable:selfCollisionFilterDistance", "type": "double", "default": 0.1, "displayName": "Self Collision Filter Distance", "doc": "Rest distance below which self collisions are filtered, in stage linear units." },
+        { "name": "openUsdPhysics:surfaceDeformable:collisionPairUpdateFrequency", "type": "int64", "uniform": true, "default": 1, "displayName": "Collision Pair Update Frequency", "doc": "Simulation steps between two collision pair rebuilds." },
+        { "name": "openUsdPhysics:surfaceDeformable:collisionIterationMultiplier", "type": "int64", "uniform": true, "default": 1, "displayName": "Collision Iteration Multiplier", "doc": "Collision iterations performed per solver position iteration." },
+        { "name": "openUsdPhysics:surfaceDeformable:maxDisplacement", "type": "double", "default": 0.0, "displayName": "Max Displacement", "doc": "Upper bound on the distance a vertex may move in one step, in stage linear units. Zero disables the clamp." },
+        { "name": "openUsdPhysics:surfaceDeformable:enableCCD", "type": "bool", "default": false, "displayName": "Enable CCD", "doc": "Enables continuous collision detection for this surface." },
+        { "name": "openUsdPhysics:surfaceDeformable:restPoints", "type": "float3[]", "default": [], "displayName": "Rest Points", "doc": "Rest configuration of the simulated vertices in local space. When empty the authored mesh points are used." },
+        { "name": "openUsdPhysics:surfaceDeformable:simulationIndices", "type": "int[]", "default": [], "displayName": "Simulation Indices", "doc": "Triangle indices of the simulated surface, three indices per triangle. When empty the authored mesh topology is used." },
+        { "name": "openUsdPhysics:surfaceDeformable:simulationOwner", "type": "rel", "displayName": "Simulation Owner", "doc": "Single PhysicsScene that simulates this surface deformable." },
+        { "name": "openUsdPhysics:surfaceDeformable:material", "type": "rel", "displayName": "Material", "doc": "Single material prim carrying OpenUsdPhysicsSurfaceDeformableMaterialAPI." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsSurfaceDeformableMaterialAPI",
+      "className": "SurfaceDeformableMaterialAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Material response for surface deformables. Apply to a UsdShadeMaterial prim.",
+      "properties": [
+        { "name": "openUsdPhysics:surfaceDeformableMaterial:density", "type": "double", "default": 1000.0, "displayName": "Density", "doc": "Material density in stage mass units per cubic linear unit." },
+        { "name": "openUsdPhysics:surfaceDeformableMaterial:youngsModulus", "type": "double", "default": 500000.0, "displayName": "Youngs Modulus", "doc": "Stretch resistance of the surface." },
+        { "name": "openUsdPhysics:surfaceDeformableMaterial:poissonsRatio", "type": "double", "default": 0.45, "displayName": "Poissons Ratio", "doc": "Transverse contraction under stretch, between zero and one half." },
+        { "name": "openUsdPhysics:surfaceDeformableMaterial:dynamicFriction", "type": "double", "default": 0.25, "displayName": "Dynamic Friction", "doc": "Friction coefficient against other objects." },
+        { "name": "openUsdPhysics:surfaceDeformableMaterial:thickness", "type": "double", "default": 0.001, "displayName": "Thickness", "doc": "Simulated shell thickness in stage linear units." },
+        { "name": "openUsdPhysics:surfaceDeformableMaterial:bendingStiffness", "type": "double", "default": 0.0, "displayName": "Bending Stiffness", "doc": "Resistance to bending across shared edges." },
+        { "name": "openUsdPhysics:surfaceDeformableMaterial:elasticityDamping", "type": "double", "default": 0.0, "displayName": "Elasticity Damping", "doc": "Damping applied to the stretch response." },
+        { "name": "openUsdPhysics:surfaceDeformableMaterial:bendingDamping", "type": "double", "default": 0.0, "displayName": "Bending Damping", "doc": "Damping applied to the bending response." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVolumeDeformableAPI",
+      "className": "VolumeDeformableAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Simulates a closed mesh as a finite-element volume deformable driven by a tetrahedral simulation mesh. Apply alongside the render geometry.",
+      "properties": [
+        { "name": "openUsdPhysics:volumeDeformable:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables simulation of this volume deformable." },
+        { "name": "openUsdPhysics:volumeDeformable:solverPositionIterationCount", "type": "int64", "uniform": true, "default": 16, "displayName": "Solver Position Iteration Count", "doc": "Solver position iterations per simulation step." },
+        { "name": "openUsdPhysics:volumeDeformable:vertexVelocityDamping", "type": "double", "default": 0.005, "displayName": "Vertex Velocity Damping", "doc": "Velocity damping applied to the simulation mesh vertices." },
+        { "name": "openUsdPhysics:volumeDeformable:sleepThreshold", "type": "double", "default": 0.05, "displayName": "Sleep Threshold", "doc": "Mass-normalized kinetic energy below which the body may sleep." },
+        { "name": "openUsdPhysics:volumeDeformable:settlingThreshold", "type": "double", "default": 0.1, "displayName": "Settling Threshold", "doc": "Mass-normalized kinetic energy below which the body starts accumulating sleep time." },
+        { "name": "openUsdPhysics:volumeDeformable:selfCollision", "type": "bool", "default": false, "displayName": "Self Collision", "doc": "Enables collisions between parts of this volume." },
+        { "name": "openUsdPhysics:volumeDeformable:selfCollisionFilterDistance", "type": "double", "default": 0.1, "displayName": "Self Collision Filter Distance", "doc": "Rest distance below which self collisions are filtered, in stage linear units." },
+        { "name": "openUsdPhysics:volumeDeformable:enableCCD", "type": "bool", "default": false, "displayName": "Enable CCD", "doc": "Enables continuous collision detection for this volume." },
+        { "name": "openUsdPhysics:volumeDeformable:maxDepenetrationVelocity", "type": "double", "default": "inf", "displayName": "Max Depenetration Velocity", "doc": "Upper bound on the velocity applied to resolve penetration." },
+        { "name": "openUsdPhysics:volumeDeformable:kinematicEnabled", "type": "bool", "default": false, "displayName": "Kinematic Enabled", "doc": "Drives the simulation mesh from the authored animation instead of the solver." },
+        { "name": "openUsdPhysics:volumeDeformable:simulationHexahedralResolution", "type": "int64", "uniform": true, "default": 10, "displayName": "Simulation Hexahedral Resolution", "doc": "Resolution of the voxel grid used to build a simulation mesh when none is authored." },
+        { "name": "openUsdPhysics:volumeDeformable:simulationRestPoints", "type": "float3[]", "default": [], "displayName": "Simulation Rest Points", "doc": "Rest positions of the tetrahedral simulation mesh vertices in local space." },
+        { "name": "openUsdPhysics:volumeDeformable:simulationIndices", "type": "int[]", "default": [], "displayName": "Simulation Indices", "doc": "Tetrahedron indices of the simulation mesh, four indices per tetrahedron." },
+        { "name": "openUsdPhysics:volumeDeformable:collisionRestPoints", "type": "float3[]", "default": [], "displayName": "Collision Rest Points", "doc": "Rest positions of the collision mesh vertices in local space. When empty the simulation mesh is used for collision." },
+        { "name": "openUsdPhysics:volumeDeformable:collisionIndices", "type": "int[]", "default": [], "displayName": "Collision Indices", "doc": "Tetrahedron indices of the collision mesh, four indices per tetrahedron." },
+        { "name": "openUsdPhysics:volumeDeformable:simulationOwner", "type": "rel", "displayName": "Simulation Owner", "doc": "Single PhysicsScene that simulates this volume deformable." },
+        { "name": "openUsdPhysics:volumeDeformable:material", "type": "rel", "displayName": "Material", "doc": "Single material prim carrying OpenUsdPhysicsVolumeDeformableMaterialAPI." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsVolumeDeformableMaterialAPI",
+      "className": "VolumeDeformableMaterialAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Material response for finite-element volume deformables. Apply to a UsdShadeMaterial prim.",
+      "properties": [
+        { "name": "openUsdPhysics:volumeDeformableMaterial:density", "type": "double", "default": 1000.0, "displayName": "Density", "doc": "Material density in stage mass units per cubic linear unit." },
+        { "name": "openUsdPhysics:volumeDeformableMaterial:youngsModulus", "type": "double", "default": 50000000.0, "displayName": "Youngs Modulus", "doc": "Resistance to deformation of the volume." },
+        { "name": "openUsdPhysics:volumeDeformableMaterial:poissonsRatio", "type": "double", "default": 0.45, "displayName": "Poissons Ratio", "doc": "Transverse contraction under stretch, between zero and one half." },
+        { "name": "openUsdPhysics:volumeDeformableMaterial:dynamicFriction", "type": "double", "default": 0.25, "displayName": "Dynamic Friction", "doc": "Friction coefficient against other objects." },
+        { "name": "openUsdPhysics:volumeDeformableMaterial:damping", "type": "double", "default": 0.0, "displayName": "Damping", "doc": "Damping applied to the elastic response." },
+        { "name": "openUsdPhysics:volumeDeformableMaterial:dampingScale", "type": "double", "default": 1.0, "displayName": "Damping Scale", "doc": "Scale applied to the damping term." },
+        { "name": "openUsdPhysics:volumeDeformableMaterial:elasticityDamping", "type": "double", "default": 0.0, "displayName": "Elasticity Damping", "doc": "Damping proportional to the elastic strain rate." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsAttachment",
+      "className": "Attachment",
+      "kind": "concreteTyped",
+      "base": "Typed",
+      "doc": "Attaches two simulated actors to each other. Modelled as a prim so one actor can take part in several attachments.",
+      "properties": [
+        { "name": "openUsdPhysics:attachment:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables this attachment." },
+        { "name": "openUsdPhysics:attachment:attachmentType", "type": "token", "uniform": true, "default": "vertex", "allowedTokens": ["vertex", "element", "surface", "rigidSurface"], "displayName": "Attachment Type", "doc": "How the attachment points bind to each actor." },
+        { "name": "openUsdPhysics:attachment:points0", "type": "float3[]", "default": [], "displayName": "Points 0", "doc": "Attachment points in the local space of the first actor, in stage linear units." },
+        { "name": "openUsdPhysics:attachment:points1", "type": "float3[]", "default": [], "displayName": "Points 1", "doc": "Attachment points in the local space of the second actor, paired with the first actor points." },
+        { "name": "openUsdPhysics:attachment:elementIndices0", "type": "int[]", "default": [], "displayName": "Element Indices 0", "doc": "Element index bound by each attachment point on the first actor. Empty selects vertex binding." },
+        { "name": "openUsdPhysics:attachment:elementIndices1", "type": "int[]", "default": [], "displayName": "Element Indices 1", "doc": "Element index bound by each attachment point on the second actor. Empty selects vertex binding." },
+        { "name": "openUsdPhysics:attachment:collisionFilterIndices0", "type": "int[]", "default": [], "displayName": "Collision Filter Indices 0", "doc": "Elements or vertices of the first actor excluded from collision with the second actor." },
+        { "name": "openUsdPhysics:attachment:collisionFilterIndices1", "type": "int[]", "default": [], "displayName": "Collision Filter Indices 1", "doc": "Elements or vertices of the second actor excluded from collision with the first actor." },
+        { "name": "openUsdPhysics:attachment:filterType0", "type": "token", "uniform": true, "default": "none", "allowedTokens": ["none", "vertices", "elements", "geometry"], "displayName": "Filter Type 0", "doc": "How the first collision filter index list is interpreted." },
+        { "name": "openUsdPhysics:attachment:filterType1", "type": "token", "uniform": true, "default": "none", "allowedTokens": ["none", "vertices", "elements", "geometry"], "displayName": "Filter Type 1", "doc": "How the second collision filter index list is interpreted." },
+        { "name": "openUsdPhysics:attachment:stiffness", "type": "double", "default": 0.0, "displayName": "Stiffness", "doc": "Spring stiffness of the attachment constraint. Zero requests a rigid attachment." },
+        { "name": "openUsdPhysics:attachment:damping", "type": "double", "default": 0.0, "displayName": "Damping", "doc": "Damping of the attachment constraint. Ignored when the stiffness is zero." },
+        { "name": "openUsdPhysics:attachment:actor0", "type": "rel", "displayName": "Actor 0", "doc": "Single first actor prim. May be a rigid body, a surface deformable, a volume deformable, or a particle object." },
+        { "name": "openUsdPhysics:attachment:actor1", "type": "rel", "displayName": "Actor 1", "doc": "Single second actor prim. May be a rigid body, a surface deformable, a volume deformable, or a particle object." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsAutoAttachmentAPI",
+      "className": "AutoAttachmentAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Derives the attachment points and collision filters of an OpenUsdPhysicsAttachment from the overlap of its two actors. Apply to the attachment prim.",
+      "properties": [
+        { "name": "openUsdPhysics:autoAttachment:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables automatic generation. Authored attachment points are replaced when this is on." },
+        { "name": "openUsdPhysics:autoAttachment:enableDeformableVertexAttachments", "type": "bool", "default": true, "displayName": "Enable Deformable Vertex Attachments", "doc": "Generates attachments at deformable vertices that overlap the other actor." },
+        { "name": "openUsdPhysics:autoAttachment:deformableVertexOverlapOffset", "type": "double", "default": 0.0, "displayName": "Deformable Vertex Overlap Offset", "doc": "Distance added to the overlap test for deformable vertices, in stage linear units." },
+        { "name": "openUsdPhysics:autoAttachment:enableRigidSurfaceAttachments", "type": "bool", "default": true, "displayName": "Enable Rigid Surface Attachments", "doc": "Generates attachments by sampling the surface of a rigid actor." },
+        { "name": "openUsdPhysics:autoAttachment:rigidSurfaceSamplingDistance", "type": "double", "default": 0.0, "displayName": "Rigid Surface Sampling Distance", "doc": "Spacing of the rigid surface samples in stage linear units. Zero requests a spacing derived from the geometry." },
+        { "name": "openUsdPhysics:autoAttachment:enableCollisionFiltering", "type": "bool", "default": true, "displayName": "Enable Collision Filtering", "doc": "Generates collision filters for the attached regions." },
+        { "name": "openUsdPhysics:autoAttachment:collisionFilteringOffset", "type": "double", "default": 0.0, "displayName": "Collision Filtering Offset", "doc": "Distance added to the region used to generate collision filters, in stage linear units." },
+        { "name": "openUsdPhysics:autoAttachment:enableDeformableFilteringPairs", "type": "bool", "default": true, "displayName": "Enable Deformable Filtering Pairs", "doc": "Generates element-level filter pairs when both actors are deformable." },
+        { "name": "openUsdPhysics:autoAttachment:maskShapes", "type": "rel", "displayName": "Mask Shapes", "doc": "Geometry prims that restrict where attachments may be generated." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsCollisionFilterSettingsAPI",
+      "className": "CollisionFilterSettingsAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "Collision filtering that standard UsdPhysicsFilteredPairsAPI and UsdPhysicsCollisionGroup do not express, including element-level filtering for deformables and particles.",
+      "properties": [
+        { "name": "openUsdPhysics:collisionFilter:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables the filters declared here." },
+        { "name": "openUsdPhysics:collisionFilter:pairFilterMode", "type": "token", "uniform": true, "default": "pairs", "allowedTokens": ["none", "pairs", "groups", "vertexPairs", "elementPairs"], "displayName": "Pair Filter Mode", "doc": "How the filtered pairs and filter indices are interpreted." },
+        { "name": "openUsdPhysics:collisionFilter:filterIndices", "type": "int[]", "default": [], "displayName": "Filter Indices", "doc": "Vertex or element indices on this prim excluded from collision with the filtered pairs." },
+        { "name": "openUsdPhysics:collisionFilter:invertFilteredGroups", "type": "bool", "default": false, "displayName": "Invert Filtered Groups", "doc": "Treats the filtered groups as the only groups this object may collide with." },
+        { "name": "openUsdPhysics:collisionFilter:mergeGroupName", "type": "string", "default": "", "displayName": "Merge Group Name", "doc": "Objects sharing a non-empty merge group name never collide with each other." },
+        { "name": "openUsdPhysics:collisionFilter:filteredPairs", "type": "rel", "displayName": "Filtered Pairs", "doc": "Prims this object must not collide with." },
+        { "name": "openUsdPhysics:collisionFilter:filterGroups", "type": "rel", "displayName": "Filter Groups", "doc": "UsdPhysicsCollisionGroup prims this object must not collide with, or may only collide with when the groups are inverted." }
+      ]
+    },
+    {
+      "name": "OpenUsdPhysicsCookedDataAPI",
+      "className": "CookedDataAPI",
+      "kind": "singleApplyAPI",
+      "base": "APISchemaBase",
+      "doc": "References cached cooked collision data produced at build time so a session does not have to cook geometry while loading. Apply alongside a collider.",
+      "properties": [
+        { "name": "openUsdPhysics:cookedData:enabled", "type": "bool", "default": true, "displayName": "Enabled", "doc": "Enables the cooked data reference." },
+        { "name": "openUsdPhysics:cookedData:format", "type": "token", "uniform": true, "default": "none", "allowedTokens": ["none", "convexMesh", "convexDecomposition", "triangleMesh", "heightField", "sdf", "tetrahedralMesh"], "displayName": "Format", "doc": "Kind of cooked data referenced here." },
+        { "name": "openUsdPhysics:cookedData:assetPath", "type": "string", "default": "", "displayName": "Asset Path", "doc": "Path of the cooked data asset, resolved against the layer that authored this opinion." },
+        { "name": "openUsdPhysics:cookedData:assetSubIdentifier", "type": "string", "default": "", "displayName": "Asset Sub Identifier", "doc": "Entry inside the cooked data asset. Empty selects the only entry." },
+        { "name": "openUsdPhysics:cookedData:contentHash", "type": "string", "default": "", "displayName": "Content Hash", "doc": "Hash of the source geometry and cooking parameters the cached data was produced from. A mismatch invalidates the cache." },
+        { "name": "openUsdPhysics:cookedData:buildRevision", "type": "string", "default": "", "displayName": "Build Revision", "doc": "Opaque revision of the tool that produced the cooked data." },
+        { "name": "openUsdPhysics:cookedData:missingDataBehavior", "type": "token", "uniform": true, "default": "cookAtRuntime", "allowedTokens": ["cookAtRuntime", "error", "ignore"], "displayName": "Missing Data Behavior", "doc": "What the session does when the cooked data is absent or its content hash does not match." },
+        { "name": "openUsdPhysics:cookedData:sdfResolution", "type": "int64", "uniform": true, "default": 256, "displayName": "SDF Resolution", "doc": "Grid resolution along the longest bounding box axis for the 'sdf' format." },
+        { "name": "openUsdPhysics:cookedData:sdfSubgridResolution", "type": "int64", "uniform": true, "default": 6, "displayName": "SDF Subgrid Resolution", "doc": "Sparse block resolution for the 'sdf' format. Zero requests a dense grid." },
+        { "name": "openUsdPhysics:cookedData:sdfNarrowBandThickness", "type": "double", "default": 0.01, "displayName": "SDF Narrow Band Thickness", "doc": "Thickness of the narrow band kept around the surface, as a fraction of the longest bounding box axis." },
+        { "name": "openUsdPhysics:cookedData:sdfBitsPerSubgridPixel", "type": "token", "uniform": true, "default": "bits16", "allowedTokens": ["bits8", "bits16", "bits32"], "displayName": "SDF Bits Per Subgrid Pixel", "doc": "Storage precision of one sparse grid sample for the 'sdf' format." }
+      ]
+    }
+  ]
+}

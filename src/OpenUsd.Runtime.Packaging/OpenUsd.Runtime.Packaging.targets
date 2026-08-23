@@ -4,6 +4,8 @@
     <OpenUsdInstallRoot Condition="'$(OpenUsdInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/$(RuntimePackageRid)'))</OpenUsdInstallRoot>
     <OpenUsdShimInstallRoot Condition="'$(OpenUsdShimInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/shim/$(RuntimePackageRid)'))</OpenUsdShimInstallRoot>
     <OpenUsdCesiumShimInstallRoot Condition="'$(OpenUsdCesiumShimInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/shim/$(RuntimePackageRid)-cesium'))</OpenUsdCesiumShimInstallRoot>
+    <OpenUsdPhysicsShimInstallRoot Condition="'$(OpenUsdPhysicsShimInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/shim/$(RuntimePackageRid)-physx'))</OpenUsdPhysicsShimInstallRoot>
+    <OpenUsdPhysXInstallRoot Condition="'$(OpenUsdPhysXInstallRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../native/install/physx/$(RuntimePackageRid)'))</OpenUsdPhysXInstallRoot>
     <OpenUsdVulkanRuntimeLibrary Condition="'$(OpenUsdVulkanRuntimeLibrary)' == '' and '$(RuntimePackageRid)' == 'win-x64'">$(MSBuildThisFileDirectory)../../native/install/vulkan-sdk-*/bin/vulkan-1.dll</OpenUsdVulkanRuntimeLibrary>
     <_OpenUsdRuntimePackagePath>runtimes/$(RuntimePackageRid)</_OpenUsdRuntimePackagePath>
     <_OpenUsdHdSilkSourcePlugInfo>$(OpenUsdShimInstallRoot)/plugin/usd/hdSilk/resources/plugInfo.json</_OpenUsdHdSilkSourcePlugInfo>
@@ -13,11 +15,60 @@
     <_OpenUsdLinuxValidationScript>$(MSBuildThisFileDirectory)Validate-LinuxNativePackage.ps1</_OpenUsdLinuxValidationScript>
     <_OpenUsdLinuxPreserveLinksScript>$(MSBuildThisFileDirectory)Preserve-LinuxStormChildPackageLinks.ps1</_OpenUsdLinuxPreserveLinksScript>
     <_OpenUsdMacOsValidationScript>$(MSBuildThisFileDirectory)Validate-MacOsNativePackage.ps1</_OpenUsdMacOsValidationScript>
+    <_OpenUsdPhysicsValidationScript>$(MSBuildThisFileDirectory)Validate-PhysicsNativePackage.ps1</_OpenUsdPhysicsValidationScript>
+    <!--
+      The ABI evidence describes the binary this package ships, so it is read from the headers the
+      same build installed beside that binary whenever they are there. The working-tree headers are
+      only the fallback, for a synthetic prefix that carries a library and no include directory: a
+      stale install prefix would otherwise be stamped with the ABI the current sources declare
+      rather than the one the packed library actually implements.
+    -->
+    <_OpenUsdPhysicsWorldHeader>$(MSBuildThisFileDirectory)../../native/openusd_physx/include/openusd_physx_world.h</_OpenUsdPhysicsWorldHeader>
+    <_OpenUsdPhysicsWorldHeader
+      Condition="Exists('$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physx_world.h')">$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physx_world.h</_OpenUsdPhysicsWorldHeader>
+    <_OpenUsdPhysicsExtractHeader>$(MSBuildThisFileDirectory)../../native/openusd_dotnet/include/openusd_physics_extract.h</_OpenUsdPhysicsExtractHeader>
+    <_OpenUsdPhysicsExtractHeader
+      Condition="Exists('$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physics_extract.h')">$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physics_extract.h</_OpenUsdPhysicsExtractHeader>
+    <_OpenUsdPhysicsValidationEvidence>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/physics-native-abi.json'))</_OpenUsdPhysicsValidationEvidence>
     <_OpenUsdStormChildHeader>$(MSBuildThisFileDirectory)../../native/openusd_storm_child/include/openusd_storm_child.h</_OpenUsdStormChildHeader>
     <_OpenUsdLinuxValidationEvidence>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/linux-native-validation.json'))</_OpenUsdLinuxValidationEvidence>
     <_OpenUsdMacOsValidationEvidence>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/runtime-package/macos-native-validation.json'))</_OpenUsdMacOsValidationEvidence>
     <_OpenUsdCesiumNotice>$(MSBuildThisFileDirectory)../../native/install/cesium/$(RuntimePackageRid)/THIRD-PARTY-CESIUM.md</_OpenUsdCesiumNotice>
+    <_OpenUsdPhysXNotice>$(OpenUsdPhysXInstallRoot)/THIRD-PARTY-PHYSX.md</_OpenUsdPhysXNotice>
+    <!--
+      Cesium and physics ship only their own opt-in payload, so neither consumes the base shim
+      install that Core and Imaging are built from. The physics shim does link the OpenUSD
+      monolith, so it still needs the locked OpenUSD install for its redistribution notice.
+      Naming both exemptions once keeps every guard, notice, and pack item below agreeing about
+      which kinds are optional add-ons.
+    -->
+    <_OpenUsdOptionalKind Condition="'$(RuntimePackageKind)' == 'Cesium' or '$(RuntimePackageKind)' == 'Physics'">true</_OpenUsdOptionalKind>
+    <_OpenUsdRequiresOpenUsdInstall Condition="'$(RuntimePackageKind)' != 'Cesium'">true</_OpenUsdRequiresOpenUsdInstall>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimePackageKind)' == 'Physics'">
+    <!--
+      The physics shim preset builds the whole native tree, so its install directory also holds a
+      copy of openusd_dotnet, openusd_hydra, openusd_hdsilk, and openusd_storm_child. Those are
+      Core and Imaging payload and are already published by those packages. Globbing this directory
+      would ship a second, older copy of each at the application root, where it masks the current
+      binary instead of being ignored.
+
+      The same directory also holds the optional PhysXGpu and PhysXDevice modules. Those are
+      packman blobs under NVIDIA proprietary terms rather than the BSD-3-Clause PhysX source, and
+      this project has no agreement to redistribute them, so no package may ever contain one. The
+      single named asset below and ValidateOpenUsdPhysicsPackageAssets are what enforce both rules.
+    -->
+    <_OpenUsdPhysicsShimNativeDirectory Condition="'$(RuntimePackageRid)' == 'win-x64'">$(OpenUsdPhysicsShimInstallRoot)/bin</_OpenUsdPhysicsShimNativeDirectory>
+    <_OpenUsdPhysicsShimNativeDirectory Condition="'$(RuntimePackageRid)' != 'win-x64'">$(OpenUsdPhysicsShimInstallRoot)/lib</_OpenUsdPhysicsShimNativeDirectory>
+    <_OpenUsdPhysicsLibraryFileName Condition="'$(RuntimePackageRid)' == 'win-x64'">openusd_physx.dll</_OpenUsdPhysicsLibraryFileName>
+    <_OpenUsdPhysicsLibraryFileName Condition="'$(RuntimePackageRid)' == 'linux-x64'">libopenusd_physx.so</_OpenUsdPhysicsLibraryFileName>
+    <_OpenUsdPhysicsLibrary>$(_OpenUsdPhysicsShimNativeDirectory)/$(_OpenUsdPhysicsLibraryFileName)</_OpenUsdPhysicsLibrary>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RuntimePackageKind)' == 'Physics'">
+    <_OpenUsdPhysicsShimLibrary Include="$(_OpenUsdPhysicsLibrary)" Condition="Exists('$(_OpenUsdPhysicsLibrary)')" />
+  </ItemGroup>
 
   <PropertyGroup Condition="'$(RuntimePackageRid)' == 'win-x64'">
     <_OpenUsdMonolithicLibrary>$(OpenUsdInstallRoot)/lib/usd_ms.dll</_OpenUsdMonolithicLibrary>
@@ -89,16 +140,33 @@
     <None Include="@(_OpenUsdCesiumShimLibrary)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/native" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(RuntimePackageKind)' == 'Physics'">
+    <None Include="@(_OpenUsdPhysicsShimLibrary)" Pack="true" PackagePath="$(_OpenUsdRuntimePackagePath)/native" />
+    <None Include="$(_OpenUsdPhysicsValidationEvidence)" Pack="true" PackagePath="build/$(PackageId).native-abi.json" />
+  </ItemGroup>
+
   <ItemGroup>
-    <None Include="$(OpenUsdInstallRoot)/THIRD-PARTY.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Condition="'$(RuntimePackageKind)' != 'Cesium'" />
+    <None Include="$(OpenUsdInstallRoot)/THIRD-PARTY.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Condition="'$(_OpenUsdOptionalKind)' != 'true'" />
     <None Include="$(_OpenUsdCesiumNotice)" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Condition="'$(RuntimePackageKind)' == 'Cesium' and Exists('$(_OpenUsdCesiumNotice)')" />
+    <!--
+      The physics shim links the OpenUSD monolith and statically links the BSD-3-Clause simulation
+      SDK, so a physics package redistributes both projects and has to carry both notices. It
+      redistributes no NVIDIA GPU module, and the PhysX notice says so explicitly rather than
+      leaving a reader to infer that everything PhysX ships is BSD-3-Clause.
+    -->
+    <None Include="$(_OpenUsdPhysXNotice)" Pack="true" PackagePath="THIRD-PARTY-PHYSX.md" Condition="'$(RuntimePackageKind)' == 'Physics'" />
+    <None Include="$(OpenUsdInstallRoot)/THIRD-PARTY.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Condition="'$(RuntimePackageKind)' == 'Physics'" />
     <None Include="$(MSBuildProjectDirectory)/buildTransitive/$(PackageId).targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
   </ItemGroup>
 
   <Target Name="ValidateOpenUsdRuntimePackageInputs" BeforeTargets="GenerateNuspec">
-    <Error Condition="'$(RuntimePackageKind)' != 'Cesium' and !Exists('$(OpenUsdInstallRoot)')" Text="The locked OpenUSD install for $(RuntimePackageRid) is missing at '$(OpenUsdInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
-    <Error Condition="'$(RuntimePackageKind)' != 'Cesium' and !Exists('$(OpenUsdShimInstallRoot)')" Text="The OpenUsd shim install for $(RuntimePackageRid) is missing at '$(OpenUsdShimInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
+    <Error Condition="'$(_OpenUsdRequiresOpenUsdInstall)' == 'true' and !Exists('$(OpenUsdInstallRoot)')" Text="The locked OpenUSD install for $(RuntimePackageRid) is missing at '$(OpenUsdInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
+    <Error Condition="'$(_OpenUsdOptionalKind)' != 'true' and !Exists('$(OpenUsdShimInstallRoot)')" Text="The OpenUsd shim install for $(RuntimePackageRid) is missing at '$(OpenUsdShimInstallRoot)'. Run eng/build-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Cesium' and !Exists('$(OpenUsdCesiumShimInstallRoot)')" Text="The OpenUsd Cesium shim install for $(RuntimePackageRid) is missing at '$(OpenUsdCesiumShimInstallRoot)'. Run eng/build-cesium-shim.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Physics' and !Exists('$(OpenUsdPhysicsShimInstallRoot)')" Text="The OpenUsd physics shim install for $(RuntimePackageRid) is missing at '$(OpenUsdPhysicsShimInstallRoot)'. Run eng/build-physx-shim.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Physics' and '$(RuntimePackageRid)' != 'win-x64' and '$(RuntimePackageRid)' != 'linux-x64'" Text="$(PackageId) targets $(RuntimePackageRid), which the pinned vcpkg PhysX port does not support. The port declares '(windows &amp; x64 &amp; !mingw &amp; !uwp) | (linux &amp; x64) | (linux &amp; arm64)', so no physics package exists outside win-x64 and linux-x64." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Physics' and !Exists('$(_OpenUsdPhysicsLibrary)')" Text="The OpenUsd physics shim is missing: '$(_OpenUsdPhysicsLibrary)'. Run eng/build-physx-native.ps1 -Rid $(RuntimePackageRid) and eng/build-physx-shim.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Physics' and !Exists('$(_OpenUsdPhysXNotice)')" Text="The PhysX redistribution notice is missing: '$(_OpenUsdPhysXNotice)'. Run eng/build-physx-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdMonolithicLibrary)')" Text="The locked OpenUSD install is incomplete: '$(_OpenUsdMonolithicLibrary)' is missing." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdDotnetLibrary)')" Text="The OpenUsd data shim is missing: '$(_OpenUsdDotnetLibrary)'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'win-x64' and '@(_OpenUsdVulkanRuntimeLibrary->Count())' != '1'" Text="The locked Windows Vulkan loader is missing or ambiguous. Expected exactly one native/install/vulkan-sdk-*/bin/vulkan-1.dll, or set OpenUsdVulkanRuntimeLibrary explicitly." />
@@ -111,6 +179,30 @@
     <Error Condition="'$(RuntimePackageKind)' == 'Cesium' and !Exists('$(_OpenUsdCesiumLibrary)')" Text="The OpenUsd Cesium shim is missing: '$(_OpenUsdCesiumLibrary)'. Run eng/build-cesium-native.ps1 and the $(RuntimePackageRid)-cesium shim preset before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and !Exists('$(OpenUsdInstallRoot)/plugin/usd/plugInfo.json')" Text="The renderer plugin resource tree is missing from '$(OpenUsdInstallRoot)/plugin/usd'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and !Exists('$(OpenUsdShimInstallRoot)/plugin/usd/hdSilk/resources/plugInfo.json')" Text="The hdSilk plugin resource tree is missing from '$(OpenUsdShimInstallRoot)/plugin/usd'." />
+  </Target>
+
+  <!--
+    The packed physics asset set is asserted by name rather than merely by count. A glob over the
+    physics shim install would pick up the Core and Imaging shims it also contains, publish a second
+    copy of each at the application root, and mask the current binary that Core and Imaging publish
+    there. It would also sweep up the proprietary NVIDIA GPU modules staged in the same directory,
+    which this project has no right to redistribute. Equality against the expected name fails either
+    change at pack time instead of at run time in a consumer application, or in a licence review.
+  -->
+  <Target
+    Name="ValidateOpenUsdPhysicsPackageAssets"
+    Condition="'$(RuntimePackageKind)' == 'Physics'"
+    BeforeTargets="GenerateNuspec"
+    DependsOnTargets="ValidateOpenUsdRuntimePackageInputs">
+    <PropertyGroup>
+      <_OpenUsdPhysicsExpectedAssetNames>$(_OpenUsdPhysicsLibraryFileName)</_OpenUsdPhysicsExpectedAssetNames>
+      <_OpenUsdPhysicsPackedAssetNames>@(_OpenUsdPhysicsShimLibrary->'%(Filename)%(Extension)')</_OpenUsdPhysicsPackedAssetNames>
+      <_OpenUsdPhysicsPackedAssetPaths>@(_OpenUsdPhysicsShimLibrary->'%(FullPath)')</_OpenUsdPhysicsPackedAssetPaths>
+    </PropertyGroup>
+    <Error
+      Condition="'$(_OpenUsdPhysicsPackedAssetNames)' != '$(_OpenUsdPhysicsExpectedAssetNames)'"
+      Text="$(PackageId) would publish native assets '$(_OpenUsdPhysicsPackedAssetNames)' but must publish exactly '$(_OpenUsdPhysicsExpectedAssetNames)'. The physics shim install also contains the Core and Imaging shims and the proprietary NVIDIA GPU modules; publishing either is a defect." />
+    <Exec Command="pwsh -NoProfile -File &quot;$(_OpenUsdPhysicsValidationScript)&quot; -PackageId &quot;$(PackageId)&quot; -Rid &quot;$(RuntimePackageRid)&quot; -WorldHeader &quot;$(_OpenUsdPhysicsWorldHeader)&quot; -ExtractHeader &quot;$(_OpenUsdPhysicsExtractHeader)&quot; -EvidencePath &quot;$(_OpenUsdPhysicsValidationEvidence)&quot; -Assets &quot;$(_OpenUsdPhysicsPackedAssetPaths)&quot;" />
   </Target>
 
   <Target
@@ -149,9 +241,13 @@
     <Exec Command="pwsh -NoProfile -File &quot;$(_OpenUsdHdSilkTransformScript)&quot; -SourcePath &quot;$(_OpenUsdHdSilkSourcePlugInfo)&quot; -DestinationPath &quot;$(_OpenUsdHdSilkMergedPackagePlugInfo)&quot; -LibraryPath &quot;$(_OpenUsdHdSilkMergedPackageLibraryPath)&quot;" />
   </Target>
 
+  <!--
+    An Imaging or Physics package is only usable with the exact Core build its native library was
+    linked against, so the dependency is pinned rather than left as a minimum version.
+  -->
   <Target
     Name="UseExactOpenUsdCorePackageDependency"
-    Condition="'$(RuntimePackageKind)' == 'Imaging'"
+    Condition="'$(RuntimePackageKind)' == 'Imaging' or '$(RuntimePackageKind)' == 'Physics'"
     AfterTargets="_GetProjectReferenceVersions">
     <ItemGroup>
       <_ProjectReferencesWithVersions Update="@(_ProjectReferencesWithVersions)">

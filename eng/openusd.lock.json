@@ -49,9 +49,11 @@
   },
   "abi": {
     "data": 15,
-    "dataCapabilities": 524287,
-    "storm": 6,
-    "renderCommands": 11
+    "dataCapabilities": 2097151,
+    "storm": 8,
+    "renderCommands": 11,
+    "physics": 7,
+    "physicsExtract": 1
   },
   "vulkanSdk": {
     "version": "1.4.321.0",

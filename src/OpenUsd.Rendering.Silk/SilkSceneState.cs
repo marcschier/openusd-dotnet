@@ -19,6 +19,14 @@ public sealed class SilkSceneState
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, SilkMaterialData> _materials =
         new(StringComparer.Ordinal);
+
+    // The authored mesh of every mesh whose points are currently simulated. A deformation
+    // destructively replaces the retained points, so without this the authored geometry exists
+    // nowhere once the first replacement is published: stopping the simulation would leave the last
+    // simulated pose on screen until USD happened to dirty the prim. One entry per driven mesh, and
+    // it is dropped the moment the mesh is restored, re-authored by a page, or removed, so the
+    // table can never outgrow the driven set.
+    private readonly Dictionary<ulong, SilkMeshData> _authoredMeshes = [];
     private readonly Func<string, ulong>? _pathHasher;
 
     /// <summary>Initializes an empty retained scene and pick identity table.</summary>
@@ -65,6 +73,158 @@ public sealed class SilkSceneState
         ArgumentNullException.ThrowIfNull(page);
         return Apply(page.GetEnumerator(), page.Revision);
     }
+
+    /// <summary>
+    /// Replaces the points of one retained mesh with externally simulated ones.
+    /// </summary>
+    /// <param name="path">The absolute authored prim path of the retained mesh.</param>
+    /// <param name="instanceIndex">The zero-based instance ordinal.</param>
+    /// <param name="points">The simulated points, three components per vertex.</param>
+    /// <param name="meshId">
+    /// Receives the retained mesh key whenever a retained mesh was found, whether or not its points
+    /// changed, so a settled body stays addressable.
+    /// </param>
+    /// <returns>What the replacement did, distinguishing settled from refused.</returns>
+    /// <remarks>
+    /// <para>
+    /// Only the point positions are replaced. The topology, attributes, material, and transform are
+    /// the authored ones, because a deforming body moves its vertices without changing what it is.
+    /// A point count that does not match the retained mesh is refused rather than resized: that is
+    /// a different mesh, and drawing a solver's vertices against another mesh's indices would
+    /// produce geometry neither side described.
+    /// </para>
+    /// <para>
+    /// Authored per-vertex normals are dropped rather than carried over, because they describe the
+    /// rest pose: keeping them shades a bent cloth as if it were still flat. An empty normal set is
+    /// what makes the geometry builder recompute normals from the deformed topology, which is the
+    /// same path an unauthored mesh has always taken. The authored mesh, normals included, is
+    /// retained here and returned by <see cref="RestoreAuthoredPoints"/>.
+    /// </para>
+    /// <para>
+    /// The retained mesh is immutable, so a replacement is a new instance published in its place.
+    /// Callers must invalidate the retained GPU geometry of the returned mesh, because vertex
+    /// buffers are rebuilt from a scene delta and this call emits none on its own.
+    /// </para>
+    /// </remarks>
+    public SilkDeformationResult ReplacePoints(
+        string path,
+        int instanceIndex,
+        ReadOnlySpan<float> points,
+        out ulong meshId)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        meshId = 0;
+        if (!_meshesByPath.TryGetValue((path, instanceIndex), out SilkMeshData? mesh))
+        {
+            return SilkDeformationResult.MeshMissing;
+        }
+
+        meshId = mesh.Id;
+        ReadOnlySpan<float> retained = mesh.GetPointSpan();
+        if (points.Length != retained.Length)
+        {
+            return SilkDeformationResult.VertexCountMismatch;
+        }
+
+        for (int index = 0; index < points.Length; index++)
+        {
+            if (!float.IsFinite(points[index]))
+            {
+                return SilkDeformationResult.NonFiniteValue;
+            }
+        }
+
+        // A settled body republishes the points it already carries. That is a
+        // success with no work to do, and it must not be mistaken for a refusal
+        // or the body would drop out of the driven set the moment it stops
+        // moving.
+        if (points.SequenceEqual(retained))
+        {
+            return SilkDeformationResult.Unchanged;
+        }
+
+        SilkMeshData replacement = mesh.WithSimulatedPoints(points);
+
+        // The authored mesh is stashed on the first replacement only. While a mesh stays driven the
+        // retained entry is the simulated one, so re-stashing it here would overwrite the rest pose
+        // with a simulated one and make restoration a no-op that draws the last frame forever. A
+        // page that re-authors the mesh drops the stash instead, so the next replacement captures
+        // the newly authored geometry.
+        _ = _authoredMeshes.TryAdd(mesh.Id, mesh);
+        _meshes[replacement.Id] = replacement;
+        _meshesByPath[(path, instanceIndex)] = replacement;
+        if (_instancesByPath.TryGetValue(path, out List<SilkMeshData>? instances))
+        {
+            for (int index = 0; index < instances.Count; index++)
+            {
+                if (instances[index].InstanceIndex == instanceIndex)
+                {
+                    instances[index] = replacement;
+                    break;
+                }
+            }
+        }
+
+        meshId = replacement.Id;
+        return SilkDeformationResult.Applied;
+    }
+
+    /// <summary>Puts the authored geometry of one simulated mesh back into the retained scene.</summary>
+    /// <param name="meshId">The retained mesh key a deformation was applied to.</param>
+    /// <returns>
+    /// <see langword="true"/> when a mesh was restored, so its retained GPU geometry must be
+    /// invalidated by the caller; <see langword="false"/> when the mesh was not simulated, was
+    /// already re-authored by a page, or has been removed from the scene.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// This is the other half of <see cref="ReplacePoints"/>, and stopping a simulation is not
+    /// complete without it. The replacement is destructive - the authored points are not retained
+    /// anywhere else in the scene - so dropping a deformation restores nothing on its own and the
+    /// last simulated pose stays on screen until USD happens to republish the prim, which for a
+    /// static stage may be never.
+    /// </para>
+    /// <para>
+    /// Like a replacement, this emits no delta of its own. The caller collects the restored mesh
+    /// keys and invalidates exactly those, so restoring costs one upload per mesh that was
+    /// simulated and nothing for the rest of the scene.
+    /// </para>
+    /// </remarks>
+    public bool RestoreAuthoredPoints(ulong meshId)
+    {
+        if (!_authoredMeshes.Remove(meshId, out SilkMeshData? authored))
+        {
+            return false;
+        }
+
+        // A mesh the scene no longer retains has nothing to restore. Its stash is still dropped
+        // above, because the mesh it described is gone.
+        if (!_meshes.ContainsKey(meshId))
+        {
+            return false;
+        }
+
+        _meshes[authored.Id] = authored;
+        _meshesByPath[(authored.Path, authored.InstanceIndex)] = authored;
+        if (_instancesByPath.TryGetValue(authored.Path, out List<SilkMeshData>? instances))
+        {
+            for (int index = 0; index < instances.Count; index++)
+            {
+                if (instances[index].InstanceIndex == authored.InstanceIndex)
+                {
+                    instances[index] = authored;
+                    break;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Reports whether the retained points of one mesh are currently simulated.</summary>
+    /// <param name="meshId">The retained mesh key.</param>
+    /// <returns><see langword="true"/> when authored geometry is retained for restoration.</returns>
+    public bool HasAuthoredGeometry(ulong meshId) => _authoredMeshes.ContainsKey(meshId);
 
     /// <summary>Applies command bytes from a test or recorded page.</summary>
     public SilkSceneDelta Apply(
@@ -220,7 +380,14 @@ public sealed class SilkSceneState
         if (replacedId is { } oldId)
         {
             _meshes.Remove(oldId);
+            _ = _authoredMeshes.Remove(oldId);
         }
+
+        // A page re-authors the geometry, so whatever rest pose was stashed for this mesh describes
+        // a version the stage has replaced. Dropping it here is what lets a mesh that is still
+        // driven capture the new authored geometry on its next replacement, and what makes a later
+        // restore return the newest authored points rather than a stale copy.
+        _ = _authoredMeshes.Remove(mesh.Id);
         _meshes[mesh.Id] = mesh;
         _meshesByPath[pathKey] = mesh;
         _pathsByHash[mesh.StableHash] = mesh.Path;
@@ -288,6 +455,10 @@ public sealed class SilkSceneState
         removedId = mesh.Id;
         _meshesByPath.Remove(pathKey);
         _meshes.Remove(mesh.Id);
+
+        // A removed mesh can never be restored, so its stashed rest pose retires with it rather
+        // than keeping a copy of every mesh the simulation ever drove.
+        _ = _authoredMeshes.Remove(mesh.Id);
 
         // Pick identity is per instance, so it retires with this record. The path hash index
         // is shared by every instance of a prototype, so it survives until the last one goes.
@@ -977,6 +1148,51 @@ public sealed class SilkMeshData
     /// <summary>Gets a defensive read-only view of point components.</summary>
     public ReadOnlyMemory<float> Points => _points;
 
+    /// <summary>Gets the retained point components without copying them.</summary>
+    internal ReadOnlySpan<float> GetPointSpan() => _points;
+
+    /// <summary>
+    /// Produces the same retained mesh with externally simulated point positions.
+    /// </summary>
+    /// <param name="points">The simulated point components, three per vertex.</param>
+    /// <returns>A new immutable mesh carrying the simulated points and no authored normals.</returns>
+    /// <remarks>
+    /// <para>
+    /// The topology fingerprint is deliberately carried over rather than recomputed: it describes
+    /// the element connectivity, which a deformation never changes. Recomputing it would be
+    /// harmless but would hide that a deformed mesh is the same mesh, and the geometry cache
+    /// already separates deformed geometry through its own point fingerprint.
+    /// </para>
+    /// <para>
+    /// Authored normals are dropped, because they describe the rest pose. Carrying them over shades
+    /// a bent cloth with the normals of the flat one it used to be, which is a lighting error no
+    /// amount of correct vertex positions can undo. An empty set is exactly what makes
+    /// <c>SilkMeshGeometryBuilder</c> recompute normals from the simulated topology, so a deformed
+    /// mesh follows the same path a mesh that authored no normals has always taken. The authored
+    /// normals are not lost: the scene retains the whole authored mesh for restoration.
+    /// </para>
+    /// </remarks>
+    internal SilkMeshData WithSimulatedPoints(ReadOnlySpan<float> points) =>
+        new(
+            PrimId,
+            Path,
+            StableHash,
+            InstanceId,
+            InstanceIndex,
+            TopologyKind,
+            TopologyRevision,
+            points.ToArray(),
+            _indices,
+            _triangleSubprims,
+            _displayColor,
+            _transform,
+            TopologyFingerprint,
+            DoubleSided,
+            CullStyle,
+            [],
+            MaterialPath,
+            _attributes);
+
     /// <summary>Gets a defensive read-only view of triangle indices.</summary>
     public ReadOnlyMemory<uint> Indices => _indices;
 
@@ -1319,6 +1535,26 @@ public sealed class SilkSceneGpuResources : IDisposable
     internal Dictionary<ulong, SilkMeshGpuResource>.ValueCollection MeshValues =>
         _meshes.Values;
 
+    /// <summary>Gets the number of distinct retained geometry payloads.</summary>
+    /// <remarks>
+    /// A retention diagnostic. Geometry is shared by fingerprint and released by reference count,
+    /// so a scene whose points change every frame must return to the same count once the previous
+    /// payload is released rather than growing one entry per frame.
+    /// </remarks>
+    internal int GeometryResourceCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (List<SilkMeshGpuGeometryResource> matches in _geometries.Values)
+            {
+                count += matches.Count;
+            }
+
+            return count;
+        }
+    }
+
     /// <summary>Gets the revision of retained mesh-resource membership or metadata.</summary>
     public ulong Revision { get; private set; }
 
@@ -1418,15 +1654,32 @@ public sealed class SilkSceneGpuResources : IDisposable
     }
 
     /// <summary>Updates only changed per-mesh SceneParameters constants.</summary>
-    public int UpdateUniforms(SilkFrameState frame)
+    public int UpdateUniforms(SilkFrameState frame) => UpdateUniforms(frame, overrides: null);
+
+    /// <summary>
+    /// Updates only changed per-mesh SceneParameters constants, replacing the authored transform of
+    /// every mesh a physics transform override drives.
+    /// </summary>
+    /// <param name="frame">The frame state the constants are projected with.</param>
+    /// <param name="overrides">
+    /// The resolved physics transform overrides, or <see langword="null"/> to draw every mesh from
+    /// its authored transform.
+    /// </param>
+    /// <returns>The number of uniform blocks uploaded.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
+    public int UpdateUniforms(SilkFrameState frame, SilkPhysicsTransformOverrides? overrides)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(frame);
         int uploads = 0;
+        bool hasOverrides = overrides is not null && overrides.HasOverrides;
         Span<byte> constants = stackalloc byte[SilkSceneUniformWriter.ByteSize];
-        foreach (SilkMeshGpuResource mesh in _meshes.Values)
+        foreach (KeyValuePair<ulong, SilkMeshGpuResource> pair in _meshes)
         {
-            if (mesh.UpdateUniform(frame, constants, _device.ClipSpaceYPointsDown))
+            ReadOnlySpan<double> transform = hasOverrides
+                ? overrides!.GetTransform(pair.Key)
+                : default;
+            if (pair.Value.UpdateUniform(frame, constants, _device.ClipSpaceYPointsDown, transform))
             {
                 uploads++;
                 _uniformUploads++;
@@ -2025,6 +2278,7 @@ public sealed class SilkMeshGpuResource : IDisposable
     private readonly SilkMeshGpuGeometryResource _geometry;
     private SilkMeshData? _uniformMesh;
     private ulong _uniformFrameRevision = ulong.MaxValue;
+    private bool _uniformOverridden;
     private bool _disposed;
 
     internal SilkMeshGpuResource(
@@ -2074,18 +2328,29 @@ public sealed class SilkMeshGpuResource : IDisposable
     internal bool UpdateUniform(
         SilkFrameState frame,
         Span<byte> destination,
-        bool flipClipSpaceY)
+        bool flipClipSpaceY) =>
+        UpdateUniform(frame, destination, flipClipSpaceY, default);
+
+    internal bool UpdateUniform(
+        SilkFrameState frame,
+        Span<byte> destination,
+        bool flipClipSpaceY,
+        ReadOnlySpan<double> overrideTransform)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (ReferenceEquals(_uniformMesh, Mesh) &&
+        bool overridden = !overrideTransform.IsEmpty;
+        if (!overridden &&
+            !_uniformOverridden &&
+            ReferenceEquals(_uniformMesh, Mesh) &&
             _uniformFrameRevision == frame.Revision)
         {
             return false;
         }
 
-        SilkSceneUniformWriter.Write(Mesh, frame, destination, flipClipSpaceY);
+        SilkSceneUniformWriter.Write(Mesh, frame, destination, flipClipSpaceY, overrideTransform);
         _uniformMesh = Mesh;
         _uniformFrameRevision = frame.Revision;
+        _uniformOverridden = overridden;
         if (destination.SequenceEqual(_uniformBytes))
         {
             return false;

@@ -1,0 +1,2235 @@
+#usda 1.0
+(
+    subLayers = [
+        @usdGeom/schema.usda@,
+        @usdPhysics/schema.usda@
+    ]
+)
+
+over "GLOBAL" (
+    customData = {
+        string libraryName = "openUsdPhysics"
+        string libraryPath = "./"
+        string libraryPrefix = "OpenUsdPhysics"
+        bool skipCodeGeneration = true
+    }
+)
+{
+}
+
+class "OpenUsdPhysicsSceneAPI" (
+    customData = {
+        string className = "SceneAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Solver and stepping settings that the standard UsdPhysicsScene schema does not express. Apply to a PhysicsScene prim."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:scene:bounceThreshold = 0.2 (
+        displayName = "Bounce Threshold"
+        doc = """Relative normal speed below which contacts do not bounce, in stage linear units per second."""
+    )
+
+    uniform token openUsdPhysics:scene:broadPhaseType = "abp" (
+        allowedTokens = ["sap", "mbp", "abp", "pabp"]
+        displayName = "Broad Phase Type"
+        doc = """Broad-phase algorithm to use for this scene."""
+    )
+
+    uniform bool openUsdPhysics:scene:enableCCD = false (
+        displayName = "Enable CCD"
+        doc = """Enables continuous collision detection for the whole scene."""
+    )
+
+    uniform bool openUsdPhysics:scene:enableEnhancedDeterminism = false (
+        displayName = "Enable Enhanced Determinism"
+        doc = """Requests additional ordering guarantees at a performance cost."""
+    )
+
+    uniform bool openUsdPhysics:scene:enableStabilization = false (
+        displayName = "Enable Stabilization"
+        doc = """Enables the solver stabilization pass."""
+    )
+
+    double openUsdPhysics:scene:frictionCorrelationDistance = 0.025 (
+        displayName = "Friction Correlation Distance"
+        doc = """Distance used to merge friction anchors, in stage linear units."""
+    )
+
+    double openUsdPhysics:scene:frictionOffsetThreshold = 0.04 (
+        displayName = "Friction Offset Threshold"
+        doc = """Contact separation above which friction anchors are discarded, in stage linear units."""
+    )
+
+    uniform token openUsdPhysics:scene:frictionType = "patch" (
+        allowedTokens = ["patch", "oneDirectional", "twoDirectional"]
+        displayName = "Friction Type"
+        doc = """Friction model used when resolving contacts."""
+    )
+
+    uniform token openUsdPhysics:scene:gpuRequestMode = "preferred" (
+        allowedTokens = ["disabled", "preferred", "required"]
+        displayName = "GPU Request Mode"
+        doc = """How the session should treat optional GPU acceleration. 'required' turns an unavailable capability into a build failure instead of a per-object diagnostic."""
+    )
+
+    double openUsdPhysics:scene:maxBiasCoefficient = inf (
+        displayName = "Max Bias Coefficient"
+        doc = """Upper bound on the solver penetration bias coefficient."""
+    )
+
+    uniform int64 openUsdPhysics:scene:maxSubStepCount = 8 (
+        displayName = "Max Sub Step Count"
+        doc = """Maximum fixed steps consumed for one transport tick before playback slows down instead of dropping steps."""
+    )
+
+    uniform int64 openUsdPhysics:scene:positionIterationCount = 4 (
+        displayName = "Position Iteration Count"
+        doc = """Solver position iterations per simulation step."""
+    )
+
+    uniform bool openUsdPhysics:scene:reportContacts = false (
+        displayName = "Report Contacts"
+        doc = """Enables scene-wide contact event collection."""
+    )
+
+    uniform token openUsdPhysics:scene:solverType = "tgs" (
+        allowedTokens = ["pgs", "tgs"]
+        displayName = "Solver Type"
+        doc = """Constraint solver to use for this scene."""
+    )
+
+    uniform int64 openUsdPhysics:scene:timeStepsPerSecond = 60 (
+        displayName = "Time Steps Per Second"
+        doc = """Requested fixed simulation frequency. The session clamps this to the supported range and reports a diagnostic when it does."""
+    )
+
+    uniform int64 openUsdPhysics:scene:velocityIterationCount = 1 (
+        displayName = "Velocity Iteration Count"
+        doc = """Solver velocity iterations per simulation step."""
+    )
+}
+
+class "OpenUsdPhysicsRigidBodySettingsAPI" (
+    customData = {
+        string className = "RigidBodySettingsAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Per-body solver settings that standard UsdPhysicsRigidBodyAPI does not express. Apply alongside PhysicsRigidBodyAPI."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:body:contactSlopCoefficient = 0 (
+        displayName = "Contact Slop Coefficient"
+        doc = """Penetration tolerance retained to reduce jitter, in stage linear units."""
+    )
+
+    bool openUsdPhysics:body:disableGravity = false (
+        displayName = "Disable Gravity"
+        doc = """Excludes this body from scene gravity."""
+    )
+
+    bool openUsdPhysics:body:enableCCD = false (
+        displayName = "Enable CCD"
+        doc = """Enables continuous collision detection for this body."""
+    )
+
+    bool openUsdPhysics:body:enableSpeculativeCCD = false (
+        displayName = "Enable Speculative CCD"
+        doc = """Enables speculative contacts for this body."""
+    )
+
+    token[] openUsdPhysics:body:lockedAngularAxes = [] (
+        displayName = "Locked Angular Axes"
+        doc = """Rotation axes the solver must not move. Valid entries are 'x', 'y', and 'z' in stage space."""
+    )
+
+    token[] openUsdPhysics:body:lockedLinearAxes = [] (
+        displayName = "Locked Linear Axes"
+        doc = """Translation axes the solver must not move. Valid entries are 'x', 'y', and 'z' in stage space."""
+    )
+
+    double openUsdPhysics:body:maxAngularVelocity = inf (
+        displayName = "Max Angular Velocity"
+        doc = """Angular velocity clamp in degrees per second."""
+    )
+
+    double openUsdPhysics:body:maxContactImpulse = inf (
+        displayName = "Max Contact Impulse"
+        doc = """Upper bound on the impulse a single contact may apply."""
+    )
+
+    double openUsdPhysics:body:maxDepenetrationVelocity = inf (
+        displayName = "Max Depenetration Velocity"
+        doc = """Upper bound on the velocity the solver may apply to resolve penetration."""
+    )
+
+    double openUsdPhysics:body:maxLinearVelocity = inf (
+        displayName = "Max Linear Velocity"
+        doc = """Linear velocity clamp in stage linear units per second."""
+    )
+
+    uniform int64 openUsdPhysics:body:positionIterationCount = 4 (
+        displayName = "Position Iteration Count"
+        doc = """Solver position iterations for this body. Overrides the scene value."""
+    )
+
+    bool openUsdPhysics:body:retainAccelerations = false (
+        displayName = "Retain Accelerations"
+        doc = """Keeps solver accelerations between steps."""
+    )
+
+    double openUsdPhysics:body:sleepThreshold = 0.005 (
+        displayName = "Sleep Threshold"
+        doc = """Mass-normalized kinetic energy below which the body may sleep."""
+    )
+
+    double openUsdPhysics:body:stabilizationThreshold = 0.00025 (
+        displayName = "Stabilization Threshold"
+        doc = """Mass-normalized kinetic energy below which the stabilization pass engages."""
+    )
+
+    uniform int64 openUsdPhysics:body:velocityIterationCount = 1 (
+        displayName = "Velocity Iteration Count"
+        doc = """Solver velocity iterations for this body. Overrides the scene value."""
+    )
+}
+
+class "OpenUsdPhysicsCollisionSettingsAPI" (
+    customData = {
+        string className = "CollisionSettingsAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Per-collider tolerances and reporting that standard UsdPhysicsCollisionAPI does not express."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:collision:contactImpulseThreshold = 0 (
+        displayName = "Contact Impulse Threshold"
+        doc = """Minimum impulse a contact must carry before it is reported as an event."""
+    )
+
+    double openUsdPhysics:collision:contactOffset = -1 (
+        displayName = "Contact Offset"
+        doc = """Distance at which contacts are generated, in stage linear units. A negative value requests the runtime default."""
+    )
+
+    double openUsdPhysics:collision:minTorsionalPatchRadius = 0 (
+        displayName = "Min Torsional Patch Radius"
+        doc = """Lower bound applied to the torsional patch radius, in stage linear units."""
+    )
+
+    bool openUsdPhysics:collision:reportContacts = false (
+        displayName = "Report Contacts"
+        doc = """Emits contact events for this collider."""
+    )
+
+    double openUsdPhysics:collision:restOffset = 0 (
+        displayName = "Rest Offset"
+        doc = """Separation maintained at rest, in stage linear units."""
+    )
+
+    double openUsdPhysics:collision:torsionalPatchRadius = 0 (
+        displayName = "Torsional Patch Radius"
+        doc = """Radius used to derive torsional friction for patch contacts, in stage linear units."""
+    )
+}
+
+class "OpenUsdPhysicsMaterialSettingsAPI" (
+    customData = {
+        string className = "MaterialSettingsAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Material combine modes and compliant-contact settings that standard UsdPhysicsMaterialAPI does not express."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:material:compliantContactDamping = 0 (
+        displayName = "Compliant Contact Damping"
+        doc = """Contact spring damping. Ignored when the stiffness is zero."""
+    )
+
+    double openUsdPhysics:material:compliantContactStiffness = 0 (
+        displayName = "Compliant Contact Stiffness"
+        doc = """Contact spring stiffness. Zero selects rigid contacts."""
+    )
+
+    uniform token openUsdPhysics:material:frictionCombineMode = "average" (
+        allowedTokens = ["average", "min", "multiply", "max"]
+        displayName = "Friction Combine Mode"
+        doc = """How friction coefficients of two contacting materials combine."""
+    )
+
+    bool openUsdPhysics:material:improvePatchFriction = true (
+        displayName = "Improve Patch Friction"
+        doc = """Uses the improved patch friction model for this material."""
+    )
+
+    uniform token openUsdPhysics:material:restitutionCombineMode = "average" (
+        allowedTokens = ["average", "min", "multiply", "max"]
+        displayName = "Restitution Combine Mode"
+        doc = """How restitution coefficients of two contacting materials combine."""
+    )
+}
+
+class "OpenUsdPhysicsArticulationSettingsAPI" (
+    customData = {
+        string className = "ArticulationSettingsAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Reduced-coordinate articulation settings that standard UsdPhysicsArticulationRootAPI does not express."""
+
+    inherits = </APISchemaBase>
+)
+{
+    uniform bool openUsdPhysics:articulation:enabledSelfCollisions = false (
+        displayName = "Enabled Self Collisions"
+        doc = """Allows links of the same articulation to collide with each other."""
+    )
+
+    uniform bool openUsdPhysics:articulation:fixBase = false (
+        displayName = "Fix Base"
+        doc = """Anchors the articulation root to the world."""
+    )
+
+    uniform int64 openUsdPhysics:articulation:positionIterationCount = 4 (
+        displayName = "Position Iteration Count"
+        doc = """Solver position iterations for the articulation."""
+    )
+
+    double openUsdPhysics:articulation:sleepThreshold = 0.005 (
+        displayName = "Sleep Threshold"
+        doc = """Mass-normalized kinetic energy below which the articulation may sleep."""
+    )
+
+    double openUsdPhysics:articulation:stabilizationThreshold = 0.00025 (
+        displayName = "Stabilization Threshold"
+        doc = """Mass-normalized kinetic energy below which the stabilization pass engages."""
+    )
+
+    uniform int64 openUsdPhysics:articulation:velocityIterationCount = 1 (
+        displayName = "Velocity Iteration Count"
+        doc = """Solver velocity iterations for the articulation."""
+    )
+}
+
+class "OpenUsdPhysicsSimulationMetadataAPI" (
+    customData = {
+        string className = "SimulationMetadataAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Stable simulation identity and provenance recorded on a physics object so results, events, and queries can be correlated across rebuilds."""
+
+    inherits = </APISchemaBase>
+)
+{
+    uniform int64 openUsdPhysics:simulation:identity = 0 (
+        displayName = "Identity"
+        doc = """Stable signed 64-bit simulation identity. Zero requests a derived identity from the canonical prim path and instance domain."""
+    )
+
+    uniform token openUsdPhysics:simulation:identityDomain = "prim" (
+        allowedTokens = ["prim", "instance", "component"]
+        displayName = "Identity Domain"
+        doc = """Addressing domain the identity index applies to."""
+    )
+
+    uniform int64 openUsdPhysics:simulation:identityIndex = -1 (
+        displayName = "Identity Index"
+        doc = """Index within the identity domain. -1 addresses the prim itself."""
+    )
+
+    uniform int64 openUsdPhysics:simulation:schemaVersion = 1 (
+        displayName = "Schema Version"
+        doc = """Version of the openUsdPhysics schema the opinions on this prim were authored against."""
+    )
+
+    uniform string openUsdPhysics:simulation:sourceRevision = "" (
+        displayName = "Source Revision"
+        doc = """Opaque revision recorded when these opinions were produced by a bake or an export."""
+    )
+}
+
+class "OpenUsdPhysicsCharacterControllerAPI" (
+    customData = {
+        string className = "CharacterControllerAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """A kinematic character controller. Apply to a UsdGeomXformable prim. The controller is driven by session move commands, not by authored per-frame input."""
+
+    inherits = </APISchemaBase>
+)
+{
+    uniform token openUsdPhysics:controller:climbingMode = "easy" (
+        allowedTokens = ["easy", "constrained"]
+        displayName = "Climbing Mode"
+        doc = """Capsule climbing behaviour. Ignored for box controllers."""
+    )
+
+    double openUsdPhysics:controller:contactOffset = 0.02 (
+        displayName = "Contact Offset"
+        doc = """Skin width kept between the controller and geometry, in stage linear units."""
+    )
+
+    double openUsdPhysics:controller:density = 10 (
+        displayName = "Density"
+        doc = """Density of the controller kinematic proxy, in stage mass units per cubic linear unit."""
+    )
+
+    bool openUsdPhysics:controller:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables the controller."""
+    )
+
+    float3 openUsdPhysics:controller:halfExtents = (0.5, 1, 0.5) (
+        displayName = "Half Extents"
+        doc = """Box half extents in stage linear units."""
+    )
+
+    double openUsdPhysics:controller:height = 1 (
+        displayName = "Height"
+        doc = """Capsule segment height, excluding the caps, in stage linear units."""
+    )
+
+    double openUsdPhysics:controller:invisibleWallHeight = 0 (
+        displayName = "Invisible Wall Height"
+        doc = """Height of the virtual wall added above non-walkable surfaces, in stage linear units. Zero disables it."""
+    )
+
+    rel openUsdPhysics:controller:material (
+        displayName = "Material"
+        doc = """Single physics material applied to the controller volume."""
+    )
+
+    double openUsdPhysics:controller:maxJumpHeight = 0 (
+        displayName = "Max Jump Height"
+        doc = """Height above the controller kept clear when invisible walls are enabled, in stage linear units."""
+    )
+
+    double openUsdPhysics:controller:minMoveDistance = 0 (
+        displayName = "Min Move Distance"
+        doc = """Move requests shorter than this distance are discarded, in stage linear units."""
+    )
+
+    uniform token openUsdPhysics:controller:nonWalkableMode = "preventClimbing" (
+        allowedTokens = ["preventClimbing", "preventClimbingAndForceSliding"]
+        displayName = "Non Walkable Mode"
+        doc = """Behaviour when the controller meets a surface steeper than the slope limit."""
+    )
+
+    double openUsdPhysics:controller:radius = 0.5 (
+        displayName = "Radius"
+        doc = """Capsule radius in stage linear units."""
+    )
+
+    double openUsdPhysics:controller:scaleCoeff = 0.8 (
+        displayName = "Scale Coefficient"
+        doc = """Scale applied to the controller volume when generating its collision proxy."""
+    )
+
+    uniform token openUsdPhysics:controller:shapeType = "capsule" (
+        allowedTokens = ["capsule", "box"]
+        displayName = "Shape Type"
+        doc = """Controller volume. 'halfExtents' applies to boxes; 'radius' and 'height' apply to capsules."""
+    )
+
+    rel openUsdPhysics:controller:simulationOwner (
+        displayName = "Simulation Owner"
+        doc = """Single PhysicsScene that simulates this controller."""
+    )
+
+    double openUsdPhysics:controller:slopeLimit = 45 (
+        displayName = "Slope Limit"
+        doc = """Maximum walkable slope in degrees, measured from the up axis."""
+    )
+
+    double openUsdPhysics:controller:stepOffset = 0.5 (
+        displayName = "Step Offset"
+        doc = """Maximum obstacle height the controller can climb, in stage linear units."""
+    )
+
+    float3 openUsdPhysics:controller:upAxis = (0, 1, 0) (
+        displayName = "Up Axis"
+        doc = """Controller up direction in stage space. A zero vector requests the stage upAxis."""
+    )
+
+    double openUsdPhysics:controller:volumeGrowth = 1.5 (
+        displayName = "Volume Growth"
+        doc = """Cache volume growth factor used when gathering nearby geometry."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleAPI" (
+    customData = {
+        string className = "VehicleAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Marks a rigid body as a vehicle. Apply alongside PhysicsRigidBodyAPI. Wheels are described by descendant prims carrying OpenUsdPhysicsVehicleWheelAttachmentAPI."""
+
+    inherits = </APISchemaBase>
+)
+{
+    uniform token openUsdPhysics:vehicle:driveType = "direct" (
+        allowedTokens = ["none", "direct", "engine"]
+        displayName = "Drive Type"
+        doc = """Drivetrain model. 'none' simulates suspension and tires only, 'direct' applies wheel torques directly, and 'engine' uses the engine, clutch, gearbox, and differential."""
+    )
+
+    rel openUsdPhysics:vehicle:drivetrain (
+        displayName = "Drivetrain"
+        doc = """Single prim carrying the engine, clutch, gearbox, and differential schemas for this vehicle. When absent, those schemas are looked up on the vehicle prim itself."""
+    )
+
+    bool openUsdPhysics:vehicle:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables vehicle simulation for this body."""
+    )
+
+    uniform token openUsdPhysics:vehicle:lateralAxis = "posX" (
+        allowedTokens = ["posX", "negX", "posY", "negY", "posZ", "negZ"]
+        displayName = "Lateral Axis"
+        doc = """Right axis of the vehicle in its own body space."""
+    )
+
+    double openUsdPhysics:vehicle:lateralStickyTireDamping = 1 (
+        displayName = "Lateral Sticky Tire Damping"
+        doc = """Damping of the lateral sticky tire constraint."""
+    )
+
+    double openUsdPhysics:vehicle:lateralStickyTireThresholdSpeed = 0.2 (
+        displayName = "Lateral Sticky Tire Threshold Speed"
+        doc = """Lateral speed below which the sticky tire constraint may engage, in stage linear units per second."""
+    )
+
+    double openUsdPhysics:vehicle:lateralStickyTireThresholdTime = 1 (
+        displayName = "Lateral Sticky Tire Threshold Time"
+        doc = """Time the lateral speed must stay below the threshold before the sticky tire constraint engages, in seconds."""
+    )
+
+    uniform token openUsdPhysics:vehicle:longitudinalAxis = "posZ" (
+        allowedTokens = ["posX", "negX", "posY", "negY", "posZ", "negZ"]
+        displayName = "Longitudinal Axis"
+        doc = """Forward axis of the vehicle in its own body space."""
+    )
+
+    double openUsdPhysics:vehicle:longitudinalStickyTireDamping = 0.1 (
+        displayName = "Longitudinal Sticky Tire Damping"
+        doc = """Damping of the longitudinal sticky tire constraint."""
+    )
+
+    double openUsdPhysics:vehicle:longitudinalStickyTireThresholdSpeed = 0.2 (
+        displayName = "Longitudinal Sticky Tire Threshold Speed"
+        doc = """Longitudinal speed below which the sticky tire constraint may engage, in stage linear units per second."""
+    )
+
+    double openUsdPhysics:vehicle:longitudinalStickyTireThresholdTime = 1 (
+        displayName = "Longitudinal Sticky Tire Threshold Time"
+        doc = """Time the longitudinal speed must stay below the threshold before the sticky tire constraint engages, in seconds."""
+    )
+
+    double openUsdPhysics:vehicle:minActiveLongitudinalSlipDenominator = 0.1 (
+        displayName = "Min Active Longitudinal Slip Denominator"
+        doc = """Lower bound on the longitudinal slip denominator while drive torque is applied, in stage linear units per second."""
+    )
+
+    double openUsdPhysics:vehicle:minLateralSlipDenominator = 1 (
+        displayName = "Min Lateral Slip Denominator"
+        doc = """Lower bound on the lateral slip denominator, in stage linear units per second."""
+    )
+
+    double openUsdPhysics:vehicle:minPassiveLongitudinalSlipDenominator = 4 (
+        displayName = "Min Passive Longitudinal Slip Denominator"
+        doc = """Lower bound on the longitudinal slip denominator while no drive torque is applied, in stage linear units per second."""
+    )
+
+    uniform int64 openUsdPhysics:vehicle:subStepCountHighSpeed = 1 (
+        displayName = "Sub Step Count High Speed"
+        doc = """Vehicle sub-steps per simulation step at or above the longitudinal speed threshold."""
+    )
+
+    uniform int64 openUsdPhysics:vehicle:subStepCountLowSpeed = 3 (
+        displayName = "Sub Step Count Low Speed"
+        doc = """Vehicle sub-steps per simulation step below the longitudinal speed threshold."""
+    )
+
+    double openUsdPhysics:vehicle:subStepThresholdLongitudinalSpeed = 5 (
+        displayName = "Sub Step Threshold Longitudinal Speed"
+        doc = """Longitudinal speed separating the low- and high-speed sub-step counts, in stage linear units per second."""
+    )
+
+    uniform token openUsdPhysics:vehicle:suspensionQueryType = "raycast" (
+        allowedTokens = ["raycast", "sweep"]
+        displayName = "Suspension Query Type"
+        doc = """Scene query used to find the ground under each wheel."""
+    )
+
+    uniform token openUsdPhysics:vehicle:verticalAxis = "posY" (
+        allowedTokens = ["posX", "negX", "posY", "negY", "posZ", "negZ"]
+        displayName = "Vertical Axis"
+        doc = """Up axis of the vehicle in its own body space."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleWheelAttachmentAPI" (
+    customData = {
+        string className = "VehicleWheelAttachmentAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Attaches one wheel to a vehicle. Apply to a descendant prim of the vehicle body."""
+
+    inherits = </APISchemaBase>
+)
+{
+    uniform int64 openUsdPhysics:wheelAttachment:index = -1 (
+        displayName = "Index"
+        doc = """Wheel index referenced by the brake, steering, and differential wheel lists. -1 requests an index derived from traversal order."""
+    )
+
+    rel openUsdPhysics:wheelAttachment:suspension (
+        displayName = "Suspension"
+        doc = """Single prim carrying OpenUsdPhysicsVehicleSuspensionAPI. When absent, the schema is looked up on this prim."""
+    )
+
+    float[] openUsdPhysics:wheelAttachment:suspensionFrameOrientation = [1, 0, 0, 0] (
+        displayName = "Suspension Frame Orientation"
+        doc = """Suspension frame orientation in vehicle body space as a unit quaternion ordered (w, x, y, z)."""
+    )
+
+    float3 openUsdPhysics:wheelAttachment:suspensionFramePosition = (0, 0, 0) (
+        displayName = "Suspension Frame Position"
+        doc = """Suspension frame origin in vehicle body space, in stage linear units."""
+    )
+
+    float3 openUsdPhysics:wheelAttachment:suspensionTravelDirection = (0, -1, 0) (
+        displayName = "Suspension Travel Direction"
+        doc = """Direction the suspension compresses along, in vehicle body space."""
+    )
+
+    rel openUsdPhysics:wheelAttachment:tire (
+        displayName = "Tire"
+        doc = """Single prim carrying OpenUsdPhysicsVehicleTireAPI. When absent, the schema is looked up on this prim."""
+    )
+
+    rel openUsdPhysics:wheelAttachment:wheel (
+        displayName = "Wheel"
+        doc = """Single prim carrying OpenUsdPhysicsVehicleWheelAPI. When absent, the schema is looked up on this prim."""
+    )
+
+    float[] openUsdPhysics:wheelAttachment:wheelFrameOrientation = [1, 0, 0, 0] (
+        displayName = "Wheel Frame Orientation"
+        doc = """Wheel orientation relative to the suspension frame as a unit quaternion ordered (w, x, y, z)."""
+    )
+
+    float3 openUsdPhysics:wheelAttachment:wheelFramePosition = (0, 0, 0) (
+        displayName = "Wheel Frame Position"
+        doc = """Wheel centre offset from the suspension frame at maximum droop, in stage linear units."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleWheelAPI" (
+    customData = {
+        string className = "VehicleWheelAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Rotating wheel mass properties for a vehicle wheel."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:wheel:dampingRate = 0.25 (
+        displayName = "Damping Rate"
+        doc = """Damping applied to the wheel rotation speed."""
+    )
+
+    double openUsdPhysics:wheel:mass = 20 (
+        displayName = "Mass"
+        doc = """Wheel mass in stage mass units."""
+    )
+
+    double openUsdPhysics:wheel:momentOfInertia = 1 (
+        displayName = "Moment Of Inertia"
+        doc = """Wheel moment of inertia about its rotation axis."""
+    )
+
+    double openUsdPhysics:wheel:radius = 0.5 (
+        displayName = "Radius"
+        doc = """Wheel radius in stage linear units."""
+    )
+
+    double openUsdPhysics:wheel:toeAngle = 0 (
+        displayName = "Toe Angle"
+        doc = """Static toe angle in degrees."""
+    )
+
+    double openUsdPhysics:wheel:width = 0.2 (
+        displayName = "Width"
+        doc = """Wheel width in stage linear units."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleSuspensionAPI" (
+    customData = {
+        string className = "VehicleSuspensionAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Suspension spring and camber compliance for a vehicle wheel."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:suspension:camberAtMaxCompression = 0 (
+        displayName = "Camber At Max Compression"
+        doc = """Camber angle in degrees at maximum compression."""
+    )
+
+    double openUsdPhysics:suspension:camberAtMaxDroop = 0 (
+        displayName = "Camber At Max Droop"
+        doc = """Camber angle in degrees at maximum droop."""
+    )
+
+    double openUsdPhysics:suspension:camberAtRest = 0 (
+        displayName = "Camber At Rest"
+        doc = """Camber angle in degrees at the rest position."""
+    )
+
+    double openUsdPhysics:suspension:springDamperRate = 1000 (
+        displayName = "Spring Damper Rate"
+        doc = """Suspension damping rate."""
+    )
+
+    double openUsdPhysics:suspension:springStrength = 10000 (
+        displayName = "Spring Strength"
+        doc = """Suspension spring stiffness."""
+    )
+
+    double openUsdPhysics:suspension:sprungMass = 0 (
+        displayName = "Sprung Mass"
+        doc = """Mass carried by this suspension in stage mass units. Zero requests a distribution derived from the vehicle mass and wheel placement."""
+    )
+
+    double openUsdPhysics:suspension:travelDistance = 0.5 (
+        displayName = "Travel Distance"
+        doc = """Total suspension travel from maximum droop to maximum compression, in stage linear units."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleTireAPI" (
+    customData = {
+        string className = "VehicleTireAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Tire force response for a vehicle wheel."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:tire:camberStiffness = 0 (
+        displayName = "Camber Stiffness"
+        doc = """Lateral force per unit camber angle in degrees."""
+    )
+
+    rel openUsdPhysics:tire:frictionTable (
+        displayName = "Friction Table"
+        doc = """Single OpenUsdPhysicsVehicleTireFrictionTable prim selecting friction by ground material."""
+    )
+
+    float2[] openUsdPhysics:tire:frictionVsSlipGraph = [(0, 1), (0.1, 1), (1, 1)] (
+        displayName = "Friction Vs Slip Graph"
+        doc = """Friction multiplier as (longitudinal slip, multiplier) pairs in ascending slip order."""
+    )
+
+    float2[] openUsdPhysics:tire:lateralStiffnessGraph = [(0.3125, 20)] (
+        displayName = "Lateral Stiffness Graph"
+        doc = """Lateral stiffness response as (normalized load, stiffness) pairs in ascending load order."""
+    )
+
+    double openUsdPhysics:tire:longitudinalStiffness = 5000 (
+        displayName = "Longitudinal Stiffness"
+        doc = """Longitudinal force per unit longitudinal slip."""
+    )
+
+    double openUsdPhysics:tire:restLoad = 0 (
+        displayName = "Rest Load"
+        doc = """Load carried by the tire at rest. Zero requests a value derived from the sprung mass and scene gravity."""
+    )
+}
+
+class OpenUsdPhysicsVehicleTireFrictionTable "OpenUsdPhysicsVehicleTireFrictionTable" (
+    customData = {
+        string className = "VehicleTireFrictionTable"
+    }
+    doc = """Maps ground physics materials to tire friction values. Referenced by OpenUsdPhysicsVehicleTireAPI."""
+
+    inherits = </Typed>
+)
+{
+    double openUsdPhysics:frictionTable:defaultFrictionValue = 1 (
+        displayName = "Default Friction Value"
+        doc = """Friction used for ground materials that the table does not list."""
+    )
+
+    float[] openUsdPhysics:frictionTable:frictionValues = [] (
+        displayName = "Friction Values"
+        doc = """Friction value per entry of the ground materials relationship, in the same order."""
+    )
+
+    rel openUsdPhysics:frictionTable:groundMaterials (
+        displayName = "Ground Materials"
+        doc = """Ordered ground physics materials the friction values apply to."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleEngineAPI" (
+    customData = {
+        string className = "VehicleEngineAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Engine model for a vehicle whose drive type is 'engine'."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:engine:dampingRateFullThrottle = 0.15 (
+        displayName = "Damping Rate Full Throttle"
+        doc = """Engine damping at full throttle."""
+    )
+
+    double openUsdPhysics:engine:dampingRateZeroThrottleClutchDisengaged = 0.35 (
+        displayName = "Damping Rate Zero Throttle Clutch Disengaged"
+        doc = """Engine damping at zero throttle with the clutch disengaged."""
+    )
+
+    double openUsdPhysics:engine:dampingRateZeroThrottleClutchEngaged = 2 (
+        displayName = "Damping Rate Zero Throttle Clutch Engaged"
+        doc = """Engine damping at zero throttle with the clutch engaged."""
+    )
+
+    double openUsdPhysics:engine:idleRotationSpeed = 0 (
+        displayName = "Idle Rotation Speed"
+        doc = """Idle engine rotation speed in radians per second."""
+    )
+
+    double openUsdPhysics:engine:maxRotationSpeed = 600 (
+        displayName = "Max Rotation Speed"
+        doc = """Maximum engine rotation speed in radians per second."""
+    )
+
+    double openUsdPhysics:engine:momentOfInertia = 1 (
+        displayName = "Moment Of Inertia"
+        doc = """Engine moment of inertia about its rotation axis."""
+    )
+
+    double openUsdPhysics:engine:peakTorque = 500 (
+        displayName = "Peak Torque"
+        doc = """Maximum torque the engine can deliver."""
+    )
+
+    float2[] openUsdPhysics:engine:torqueCurve = [(0, 0.8), (0.33, 1), (1, 0.8)] (
+        displayName = "Torque Curve"
+        doc = """Torque multiplier as (normalized rotation speed, multiplier) pairs in ascending speed order."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleGearsAPI" (
+    customData = {
+        string className = "VehicleGearsAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Gearbox ratios for a vehicle whose drive type is 'engine'."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:gears:ratioScale = 4 (
+        displayName = "Ratio Scale"
+        doc = """Scale applied to every gear ratio."""
+    )
+
+    float[] openUsdPhysics:gears:ratios = [-4, 0, 4, 2, 1.5, 1.1, 1] (
+        displayName = "Ratios"
+        doc = """Gear ratios in gear order, starting with reverse and neutral."""
+    )
+
+    double openUsdPhysics:gears:switchTime = 0.5 (
+        displayName = "Switch Time"
+        doc = """Time taken to change gear, in seconds."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleAutoGearBoxAPI" (
+    customData = {
+        string className = "VehicleAutoGearBoxAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Automatic transmission thresholds. Requires OpenUsdPhysicsVehicleGearsAPI on the same prim."""
+
+    inherits = </APISchemaBase>
+)
+{
+    float[] openUsdPhysics:autoGearBox:downRatios = [] (
+        displayName = "Down Ratios"
+        doc = """Normalized engine speed below which the transmission shifts down, per forward gear."""
+    )
+
+    double openUsdPhysics:autoGearBox:latency = 2 (
+        displayName = "Latency"
+        doc = """Minimum time between automatic gear changes, in seconds."""
+    )
+
+    float[] openUsdPhysics:autoGearBox:upRatios = [] (
+        displayName = "Up Ratios"
+        doc = """Normalized engine speed above which the transmission shifts up, per forward gear."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleClutchAPI" (
+    customData = {
+        string className = "VehicleClutchAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Clutch model for a vehicle whose drive type is 'engine'."""
+
+    inherits = </APISchemaBase>
+)
+{
+    uniform token openUsdPhysics:clutch:accuracyMode = "estimate" (
+        allowedTokens = ["estimate", "bestPossible"]
+        displayName = "Accuracy Mode"
+        doc = """Accuracy of the drivetrain solve."""
+    )
+
+    uniform int64 openUsdPhysics:clutch:estimateIterations = 5 (
+        displayName = "Estimate Iterations"
+        doc = """Iterations used when the accuracy mode is 'estimate'."""
+    )
+
+    double openUsdPhysics:clutch:strength = 10 (
+        displayName = "Strength"
+        doc = """Clutch coupling strength."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleDifferentialAPI" (
+    customData = {
+        string className = "VehicleDifferentialAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Distributes drive torque across the driven wheels of a vehicle."""
+
+    inherits = </APISchemaBase>
+)
+{
+    float[] openUsdPhysics:differential:averageWheelSpeedRatios = [] (
+        displayName = "Average Wheel Speed Ratios"
+        doc = """Weight of each listed wheel when computing the averaged wheel speed fed back to the drivetrain. Entries must sum to one."""
+    )
+
+    float[] openUsdPhysics:differential:torqueRatios = [] (
+        displayName = "Torque Ratios"
+        doc = """Fraction of drive torque delivered to each listed wheel. Entries must sum to one."""
+    )
+
+    int[] openUsdPhysics:differential:wheels = [] (
+        displayName = "Wheels"
+        doc = """Indices of the driven wheels."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleBrakesAPI" (
+    customData = {
+        string className = "VehicleBrakesAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """The two independent brake channels of a vehicle. The primary channel is the foot brake and the secondary channel is the hand brake."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:brakes:primaryMaxBrakeTorque = 0 (
+        displayName = "Primary Max Brake Torque"
+        doc = """Maximum torque the primary channel applies at full input."""
+    )
+
+    float[] openUsdPhysics:brakes:primaryTorqueMultipliers = [] (
+        displayName = "Primary Torque Multipliers"
+        doc = """Per-wheel multiplier applied to the primary brake torque, in primary wheel order."""
+    )
+
+    int[] openUsdPhysics:brakes:primaryWheels = [] (
+        displayName = "Primary Wheels"
+        doc = """Indices of the wheels braked by the primary channel."""
+    )
+
+    double openUsdPhysics:brakes:secondaryMaxBrakeTorque = 0 (
+        displayName = "Secondary Max Brake Torque"
+        doc = """Maximum torque the secondary channel applies at full input."""
+    )
+
+    float[] openUsdPhysics:brakes:secondaryTorqueMultipliers = [] (
+        displayName = "Secondary Torque Multipliers"
+        doc = """Per-wheel multiplier applied to the secondary brake torque, in secondary wheel order."""
+    )
+
+    int[] openUsdPhysics:brakes:secondaryWheels = [] (
+        displayName = "Secondary Wheels"
+        doc = """Indices of the wheels braked by the secondary channel."""
+    )
+}
+
+class "OpenUsdPhysicsVehicleSteeringAPI" (
+    customData = {
+        string className = "VehicleSteeringAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Maps steering input to per-wheel steer angles."""
+
+    inherits = </APISchemaBase>
+)
+{
+    float[] openUsdPhysics:steering:angleMultipliers = [] (
+        displayName = "Angle Multipliers"
+        doc = """Per-wheel multiplier applied to the steer angle, in steered wheel order."""
+    )
+
+    double openUsdPhysics:steering:maxSteerAngle = 0 (
+        displayName = "Max Steer Angle"
+        doc = """Steer angle in degrees at full steering input."""
+    )
+
+    int[] openUsdPhysics:steering:wheels = [] (
+        displayName = "Wheels"
+        doc = """Indices of the steered wheels."""
+    )
+}
+
+class OpenUsdPhysicsFixedTendon "OpenUsdPhysicsFixedTendon" (
+    customData = {
+        string className = "FixedTendon"
+    }
+    doc = """A fixed tendon coupling articulation joint axes through a linear gearing relation. Modelled as a prim rather than an applied schema so one articulation can carry several tendons."""
+
+    inherits = </Typed>
+)
+{
+    rel openUsdPhysics:fixedTendon:articulation (
+        displayName = "Articulation"
+        doc = """Single articulation root prim the tendon belongs to."""
+    )
+
+    double openUsdPhysics:fixedTendon:damping = 0 (
+        displayName = "Damping"
+        doc = """Damping of the tendon length constraint."""
+    )
+
+    bool openUsdPhysics:fixedTendon:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables this tendon."""
+    )
+
+    float[] openUsdPhysics:fixedTendon:forceCoefficients = [] (
+        displayName = "Force Coefficients"
+        doc = """Fraction of the tendon force applied to each joint axis, in the order of the joints relationship."""
+    )
+
+    float[] openUsdPhysics:fixedTendon:gearings = [] (
+        displayName = "Gearings"
+        doc = """Gearing applied to each joint axis, in the order of the joints relationship."""
+    )
+
+    rel openUsdPhysics:fixedTendon:joints (
+        displayName = "Joints"
+        doc = """Ordered joint prims coupled by this tendon. Each entry pairs with one gearing and one force coefficient."""
+    )
+
+    double openUsdPhysics:fixedTendon:limitStiffness = 0 (
+        displayName = "Limit Stiffness"
+        doc = """Spring stiffness applied once the tendon length leaves the limit range."""
+    )
+
+    double openUsdPhysics:fixedTendon:lowerLimit = -inf (
+        displayName = "Lower Limit"
+        doc = """Lower bound of the tendon length limit range."""
+    )
+
+    double openUsdPhysics:fixedTendon:offset = 0 (
+        displayName = "Offset"
+        doc = """Constant added to the geared sum of the joint axis positions."""
+    )
+
+    double openUsdPhysics:fixedTendon:restLength = 0 (
+        displayName = "Rest Length"
+        doc = """Tendon length at which the spring applies no force."""
+    )
+
+    rel openUsdPhysics:fixedTendon:rootJoint (
+        displayName = "Root Joint"
+        doc = """Single joint prim closest to the articulation root. Defines the tendon traversal order."""
+    )
+
+    double openUsdPhysics:fixedTendon:stiffness = 0 (
+        displayName = "Stiffness"
+        doc = """Spring stiffness of the tendon length constraint."""
+    )
+
+    double openUsdPhysics:fixedTendon:upperLimit = inf (
+        displayName = "Upper Limit"
+        doc = """Upper bound of the tendon length limit range."""
+    )
+}
+
+class OpenUsdPhysicsSpatialTendon "OpenUsdPhysicsSpatialTendon" (
+    customData = {
+        string className = "SpatialTendon"
+    }
+    doc = """A spatial tendon constraining distances between attachment points on an articulation. Attachment points carry OpenUsdPhysicsTendonAttachmentAPI."""
+
+    inherits = </Typed>
+)
+{
+    rel openUsdPhysics:spatialTendon:articulation (
+        displayName = "Articulation"
+        doc = """Single articulation root prim the tendon belongs to."""
+    )
+
+    double openUsdPhysics:spatialTendon:damping = 0 (
+        displayName = "Damping"
+        doc = """Damping of the tendon length constraint."""
+    )
+
+    bool openUsdPhysics:spatialTendon:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables this tendon."""
+    )
+
+    double openUsdPhysics:spatialTendon:limitStiffness = 0 (
+        displayName = "Limit Stiffness"
+        doc = """Spring stiffness applied once the tendon length leaves the limit range."""
+    )
+
+    double openUsdPhysics:spatialTendon:offset = 0 (
+        displayName = "Offset"
+        doc = """Constant added to the accumulated tendon length."""
+    )
+
+    rel openUsdPhysics:spatialTendon:rootAttachment (
+        displayName = "Root Attachment"
+        doc = """Single prim carrying OpenUsdPhysicsTendonAttachmentAPI with the 'root' role. The remaining attachments are reached through their parent relationships."""
+    )
+
+    double openUsdPhysics:spatialTendon:stiffness = 0 (
+        displayName = "Stiffness"
+        doc = """Spring stiffness of the tendon length constraint."""
+    )
+}
+
+class "OpenUsdPhysicsTendonAttachmentAPI" (
+    customData = {
+        string className = "TendonAttachmentAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """One attachment point of a spatial tendon. Apply to a link prim of the articulation that owns the tendon."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:tendonAttachment:gearing = 1 (
+        displayName = "Gearing"
+        doc = """Gearing applied to the distance between this attachment and its parent."""
+    )
+
+    float3 openUsdPhysics:tendonAttachment:localPosition = (0, 0, 0) (
+        displayName = "Local Position"
+        doc = """Attachment point in the local space of the prim, in stage linear units."""
+    )
+
+    double openUsdPhysics:tendonAttachment:lowerLimit = -inf (
+        displayName = "Lower Limit"
+        doc = """Lower bound of the tendon length limit range. Applies to 'leaf' attachments."""
+    )
+
+    rel openUsdPhysics:tendonAttachment:parentAttachment (
+        displayName = "Parent Attachment"
+        doc = """Single prim carrying the parent attachment. Absent on the 'root' attachment."""
+    )
+
+    double openUsdPhysics:tendonAttachment:restLength = 0 (
+        displayName = "Rest Length"
+        doc = """Tendon length at which the spring applies no force. Applies to 'leaf' attachments."""
+    )
+
+    uniform token openUsdPhysics:tendonAttachment:role = "intermediate" (
+        allowedTokens = ["root", "intermediate", "leaf"]
+        displayName = "Role"
+        doc = """Position of this attachment in the tendon tree. Limits and rest length apply to 'leaf' attachments only."""
+    )
+
+    rel openUsdPhysics:tendonAttachment:tendon (
+        displayName = "Tendon"
+        doc = """Single OpenUsdPhysicsSpatialTendon prim this attachment belongs to."""
+    )
+
+    double openUsdPhysics:tendonAttachment:upperLimit = inf (
+        displayName = "Upper Limit"
+        doc = """Upper bound of the tendon length limit range. Applies to 'leaf' attachments."""
+    )
+}
+
+class "OpenUsdPhysicsMimicJointAPI" (
+    customData = {
+        string className = "MimicJointAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Couples one articulation joint axis to an axis of another joint through a linear gearing relation. Apply to the joint prim that follows the reference."""
+
+    inherits = </APISchemaBase>
+)
+{
+    uniform token openUsdPhysics:mimicJoint:axis = "rotX" (
+        allowedTokens = ["transX", "transY", "transZ", "rotX", "rotY", "rotZ"]
+        displayName = "Axis"
+        doc = """Axis of this joint that follows the reference axis."""
+    )
+
+    double openUsdPhysics:mimicJoint:dampingRatio = 0 (
+        displayName = "Damping Ratio"
+        doc = """Damping ratio of the coupling constraint. Ignored when the natural frequency is zero."""
+    )
+
+    bool openUsdPhysics:mimicJoint:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables the coupling."""
+    )
+
+    double openUsdPhysics:mimicJoint:gearing = 1 (
+        displayName = "Gearing"
+        doc = """Ratio between the reference axis position and this axis position."""
+    )
+
+    double openUsdPhysics:mimicJoint:naturalFrequency = 0 (
+        displayName = "Natural Frequency"
+        doc = """Natural frequency of the coupling constraint. Zero requests a rigid coupling."""
+    )
+
+    double openUsdPhysics:mimicJoint:offset = 0 (
+        displayName = "Offset"
+        doc = """Constant added to the geared reference axis position."""
+    )
+
+    uniform token openUsdPhysics:mimicJoint:referenceAxis = "rotX" (
+        allowedTokens = ["transX", "transY", "transZ", "rotX", "rotY", "rotZ"]
+        displayName = "Reference Axis"
+        doc = """Axis of the reference joint that drives this joint."""
+    )
+
+    rel openUsdPhysics:mimicJoint:referenceJoint (
+        displayName = "Reference Joint"
+        doc = """Single joint prim that drives this joint."""
+    )
+}
+
+class "OpenUsdPhysicsParticleSystemAPI" (
+    customData = {
+        string className = "ParticleSystemAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """A position-based-dynamics particle system that owns particle sets, particle cloth, and fluids. Apply to a prim that represents the system."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:particleSystem:contactOffset = -1 (
+        displayName = "Contact Offset"
+        doc = """Distance at which particle contacts with other objects are generated, in stage linear units. A negative value requests the runtime default."""
+    )
+
+    bool openUsdPhysics:particleSystem:enableCCD = false (
+        displayName = "Enable CCD"
+        doc = """Enables continuous collision detection for particles of this system."""
+    )
+
+    bool openUsdPhysics:particleSystem:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables the particle system."""
+    )
+
+    double openUsdPhysics:particleSystem:fluidRestOffset = -1 (
+        displayName = "Fluid Rest Offset"
+        doc = """Separation kept at rest between two fluid particles, in stage linear units. A negative value requests the runtime default."""
+    )
+
+    bool openUsdPhysics:particleSystem:globalSelfCollisionEnabled = true (
+        displayName = "Global Self Collision Enabled"
+        doc = """Enables collisions between particles of different particle groups."""
+    )
+
+    double openUsdPhysics:particleSystem:maxDepenetrationVelocity = inf (
+        displayName = "Max Depenetration Velocity"
+        doc = """Upper bound on the velocity applied to resolve particle penetration."""
+    )
+
+    uniform int64 openUsdPhysics:particleSystem:maxNeighborhood = 96 (
+        displayName = "Max Neighborhood"
+        doc = """Maximum number of neighbours tracked per particle."""
+    )
+
+    double openUsdPhysics:particleSystem:neighborhoodScale = 1.01 (
+        displayName = "Neighborhood Scale"
+        doc = """Scale applied to the particle contact offset when building the neighbourhood."""
+    )
+
+    bool openUsdPhysics:particleSystem:nonParticleCollisionEnabled = true (
+        displayName = "Non Particle Collision Enabled"
+        doc = """Enables collisions between particles and rigid or deformable geometry."""
+    )
+
+    double openUsdPhysics:particleSystem:particleContactOffset = -1 (
+        displayName = "Particle Contact Offset"
+        doc = """Distance at which particle-particle contacts are generated, in stage linear units. A negative value requests the runtime default."""
+    )
+
+    double openUsdPhysics:particleSystem:restOffset = -1 (
+        displayName = "Rest Offset"
+        doc = """Separation kept at rest between particles and other objects, in stage linear units. A negative value requests the runtime default."""
+    )
+
+    rel openUsdPhysics:particleSystem:simulationOwner (
+        displayName = "Simulation Owner"
+        doc = """Single PhysicsScene that simulates this particle system."""
+    )
+
+    double openUsdPhysics:particleSystem:solidRestOffset = -1 (
+        displayName = "Solid Rest Offset"
+        doc = """Separation kept at rest between two solid particles, in stage linear units. A negative value requests the runtime default."""
+    )
+
+    uniform int64 openUsdPhysics:particleSystem:solverPositionIterationCount = 4 (
+        displayName = "Solver Position Iteration Count"
+        doc = """Solver position iterations per simulation step for this system."""
+    )
+
+    float3 openUsdPhysics:particleSystem:wind = (0, 0, 0) (
+        displayName = "Wind"
+        doc = """Wind velocity applied to the system in stage space, in stage linear units per second."""
+    )
+}
+
+class "OpenUsdPhysicsParticleSetAPI" (
+    customData = {
+        string className = "ParticleSetAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Turns the points of a UsdGeomPointBased prim into simulated particles. Apply alongside the geometry that supplies the points."""
+
+    inherits = </APISchemaBase>
+)
+{
+    bool openUsdPhysics:particleSet:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables simulation of this particle set."""
+    )
+
+    bool openUsdPhysics:particleSet:fluid = false (
+        displayName = "Fluid"
+        doc = """Simulates the particles with the fluid constraint model instead of the solid one."""
+    )
+
+    double openUsdPhysics:particleSet:mass = 0 (
+        displayName = "Mass"
+        doc = """Total mass of the set in stage mass units. Zero requests a mass derived from the material density and the particle volume."""
+    )
+
+    rel openUsdPhysics:particleSet:material (
+        displayName = "Material"
+        doc = """Single material prim carrying OpenUsdPhysicsPbdMaterialAPI."""
+    )
+
+    uniform int64 openUsdPhysics:particleSet:particleGroup = 0 (
+        displayName = "Particle Group"
+        doc = """Group index used to filter particle-particle collisions."""
+    )
+
+    rel openUsdPhysics:particleSet:particleSystem (
+        displayName = "Particle System"
+        doc = """Single prim carrying OpenUsdPhysicsParticleSystemAPI that owns these particles."""
+    )
+
+    float3[] openUsdPhysics:particleSet:restPoints = [] (
+        displayName = "Rest Points"
+        doc = """Rest configuration of the particles in local space. When empty the authored geometry points are used."""
+    )
+
+    bool openUsdPhysics:particleSet:selfCollision = true (
+        displayName = "Self Collision"
+        doc = """Enables collisions between particles of this set."""
+    )
+}
+
+class "OpenUsdPhysicsParticleClothAPI" (
+    customData = {
+        string className = "ParticleClothAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Simulates a triangulated mesh as position-based-dynamics cloth built from distance springs. Apply alongside the mesh geometry."""
+
+    inherits = </APISchemaBase>
+)
+{
+    bool openUsdPhysics:particleCloth:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables simulation of this cloth."""
+    )
+
+    rel openUsdPhysics:particleCloth:material (
+        displayName = "Material"
+        doc = """Single material prim carrying OpenUsdPhysicsPbdMaterialAPI."""
+    )
+
+    uniform int64 openUsdPhysics:particleCloth:particleGroup = 0 (
+        displayName = "Particle Group"
+        doc = """Group index used to filter particle-particle collisions."""
+    )
+
+    rel openUsdPhysics:particleCloth:particleSystem (
+        displayName = "Particle System"
+        doc = """Single prim carrying OpenUsdPhysicsParticleSystemAPI that owns these particles."""
+    )
+
+    double openUsdPhysics:particleCloth:pressure = 0 (
+        displayName = "Pressure"
+        doc = """Inflation pressure for closed meshes. Zero disables the pressure constraint."""
+    )
+
+    float3[] openUsdPhysics:particleCloth:restPoints = [] (
+        displayName = "Rest Points"
+        doc = """Rest configuration of the cloth particles in local space. When empty the authored mesh points are used."""
+    )
+
+    bool openUsdPhysics:particleCloth:selfCollision = true (
+        displayName = "Self Collision"
+        doc = """Enables collisions between particles of this cloth."""
+    )
+
+    bool openUsdPhysics:particleCloth:selfCollisionFilter = true (
+        displayName = "Self Collision Filter"
+        doc = """Filters self collisions between particles that share a spring."""
+    )
+
+    float[] openUsdPhysics:particleCloth:springDampings = [] (
+        displayName = "Spring Dampings"
+        doc = """Damping per spring, in spring order."""
+    )
+
+    int[] openUsdPhysics:particleCloth:springIndices = [] (
+        displayName = "Spring Indices"
+        doc = """Particle index pairs describing the springs, two indices per spring."""
+    )
+
+    float[] openUsdPhysics:particleCloth:springRestLengths = [] (
+        displayName = "Spring Rest Lengths"
+        doc = """Rest length per spring, in spring order and in stage linear units."""
+    )
+
+    float[] openUsdPhysics:particleCloth:springStiffnesses = [] (
+        displayName = "Spring Stiffnesses"
+        doc = """Stiffness per spring, in spring order."""
+    )
+}
+
+class "OpenUsdPhysicsPbdMaterialAPI" (
+    customData = {
+        string className = "PbdMaterialAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Material response for position-based-dynamics particles, fluids, and particle cloth. Apply to a UsdShadeMaterial prim."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:pbdMaterial:adhesion = 0 (
+        displayName = "Adhesion"
+        doc = """Attraction between particles and other objects."""
+    )
+
+    double openUsdPhysics:pbdMaterial:adhesionOffsetScale = 0 (
+        displayName = "Adhesion Offset Scale"
+        doc = """Scale applied to the particle contact offset when evaluating adhesion."""
+    )
+
+    double openUsdPhysics:pbdMaterial:cflCoefficient = 1 (
+        displayName = "CFL Coefficient"
+        doc = """Courant-Friedrichs-Lewy coefficient limiting the fluid time step."""
+    )
+
+    double openUsdPhysics:pbdMaterial:cohesion = 0 (
+        displayName = "Cohesion"
+        doc = """Attraction between particles of the same set."""
+    )
+
+    double openUsdPhysics:pbdMaterial:damping = 0 (
+        displayName = "Damping"
+        doc = """Velocity damping applied to the particles."""
+    )
+
+    double openUsdPhysics:pbdMaterial:density = 0 (
+        displayName = "Density"
+        doc = """Particle density in stage mass units per cubic linear unit. Zero requests the runtime default."""
+    )
+
+    double openUsdPhysics:pbdMaterial:drag = 0 (
+        displayName = "Drag"
+        doc = """Aerodynamic drag coefficient applied to particle cloth."""
+    )
+
+    double openUsdPhysics:pbdMaterial:friction = 0.2 (
+        displayName = "Friction"
+        doc = """Friction coefficient between particles and other objects."""
+    )
+
+    double openUsdPhysics:pbdMaterial:gravityScale = 1 (
+        displayName = "Gravity Scale"
+        doc = """Scale applied to scene gravity for these particles."""
+    )
+
+    double openUsdPhysics:pbdMaterial:lift = 0 (
+        displayName = "Lift"
+        doc = """Aerodynamic lift coefficient applied to particle cloth."""
+    )
+
+    double openUsdPhysics:pbdMaterial:particleAdhesionScale = 1 (
+        displayName = "Particle Adhesion Scale"
+        doc = """Scale applied to the adhesion for particle-particle contacts."""
+    )
+
+    double openUsdPhysics:pbdMaterial:particleFrictionScale = 1 (
+        displayName = "Particle Friction Scale"
+        doc = """Scale applied to the friction coefficient for particle-particle contacts."""
+    )
+
+    double openUsdPhysics:pbdMaterial:surfaceTension = 0 (
+        displayName = "Surface Tension"
+        doc = """Fluid surface tension."""
+    )
+
+    double openUsdPhysics:pbdMaterial:viscosity = 0 (
+        displayName = "Viscosity"
+        doc = """Fluid viscosity. Ignored for solid particles."""
+    )
+
+    double openUsdPhysics:pbdMaterial:vorticityConfinement = 0 (
+        displayName = "Vorticity Confinement"
+        doc = """Strength of the fluid vorticity confinement term."""
+    )
+}
+
+class "OpenUsdPhysicsDiffuseParticlesAPI" (
+    customData = {
+        string className = "DiffuseParticlesAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Spray, foam, and bubble particles generated from a fluid particle set. Apply alongside OpenUsdPhysicsParticleSetAPI."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:diffuseParticles:airDrag = 0 (
+        displayName = "Air Drag"
+        doc = """Drag applied to diffuse particles outside the fluid."""
+    )
+
+    double openUsdPhysics:diffuseParticles:bubbleDrag = 0.9 (
+        displayName = "Bubble Drag"
+        doc = """Drag applied to diffuse particles inside the fluid."""
+    )
+
+    double openUsdPhysics:diffuseParticles:buoyancy = 1 (
+        displayName = "Buoyancy"
+        doc = """Buoyancy applied to diffuse particles inside the fluid."""
+    )
+
+    double openUsdPhysics:diffuseParticles:collisionDecay = 0.5 (
+        displayName = "Collision Decay"
+        doc = """Fraction of the remaining lifetime removed when a diffuse particle collides."""
+    )
+
+    double openUsdPhysics:diffuseParticles:divergenceWeight = 1 (
+        displayName = "Divergence Weight"
+        doc = """Weight of the divergence term in the spawn potential."""
+    )
+
+    bool openUsdPhysics:diffuseParticles:enabled = false (
+        displayName = "Enabled"
+        doc = """Enables diffuse particle generation."""
+    )
+
+    double openUsdPhysics:diffuseParticles:kineticEnergyWeight = 0 (
+        displayName = "Kinetic Energy Weight"
+        doc = """Weight of the kinetic energy term in the spawn potential."""
+    )
+
+    double openUsdPhysics:diffuseParticles:lifetime = 5 (
+        displayName = "Lifetime"
+        doc = """Diffuse particle lifetime in seconds."""
+    )
+
+    double openUsdPhysics:diffuseParticles:maxParticleMultiplier = 0.5 (
+        displayName = "Max Particle Multiplier"
+        doc = """Upper bound on the diffuse particle count as a multiple of the fluid particle count."""
+    )
+
+    double openUsdPhysics:diffuseParticles:pressureWeight = 1 (
+        displayName = "Pressure Weight"
+        doc = """Weight of the pressure term in the spawn potential."""
+    )
+
+    double openUsdPhysics:diffuseParticles:threshold = 100 (
+        displayName = "Threshold"
+        doc = """Weighted potential above which a diffuse particle is spawned."""
+    )
+
+    bool openUsdPhysics:diffuseParticles:useAccurateVelocity = false (
+        displayName = "Use Accurate Velocity"
+        doc = """Advects diffuse particles with the accurate fluid velocity field at a higher cost."""
+    )
+}
+
+class "OpenUsdPhysicsParticleAnisotropyAPI" (
+    customData = {
+        string className = "ParticleAnisotropyAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Anisotropic shaping of fluid particles for surface reconstruction. Apply alongside OpenUsdPhysicsParticleSystemAPI."""
+
+    inherits = </APISchemaBase>
+)
+{
+    bool openUsdPhysics:particleAnisotropy:enabled = false (
+        displayName = "Enabled"
+        doc = """Enables anisotropic particle shaping."""
+    )
+
+    double openUsdPhysics:particleAnisotropy:max = 2 (
+        displayName = "Max"
+        doc = """Upper bound on an anisotropy axis, as a fraction of the particle radius."""
+    )
+
+    double openUsdPhysics:particleAnisotropy:min = 0.1 (
+        displayName = "Min"
+        doc = """Lower bound on an anisotropy axis, as a fraction of the particle radius."""
+    )
+
+    double openUsdPhysics:particleAnisotropy:scale = 1 (
+        displayName = "Scale"
+        doc = """Scale applied to the computed anisotropy."""
+    )
+}
+
+class "OpenUsdPhysicsParticleSmoothingAPI" (
+    customData = {
+        string className = "ParticleSmoothingAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Laplacian smoothing of fluid particle positions used for surface reconstruction. Apply alongside OpenUsdPhysicsParticleSystemAPI."""
+
+    inherits = </APISchemaBase>
+)
+{
+    bool openUsdPhysics:particleSmoothing:enabled = false (
+        displayName = "Enabled"
+        doc = """Enables position smoothing."""
+    )
+
+    double openUsdPhysics:particleSmoothing:strength = 0.8 (
+        displayName = "Strength"
+        doc = """Smoothing strength between zero and one."""
+    )
+}
+
+class "OpenUsdPhysicsParticleIsosurfaceAPI" (
+    customData = {
+        string className = "ParticleIsosurfaceAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Isosurface extraction settings for a fluid particle system. Apply alongside OpenUsdPhysicsParticleSystemAPI."""
+
+    inherits = </APISchemaBase>
+)
+{
+    bool openUsdPhysics:isosurface:enabled = false (
+        displayName = "Enabled"
+        doc = """Enables isosurface extraction."""
+    )
+
+    string openUsdPhysics:isosurface:gridFilteringPasses = "" (
+        displayName = "Grid Filtering Passes"
+        doc = """Ordered grid filter passes. Each character selects one pass: 's' smooth, 'g' grow, 'r' reduce."""
+    )
+
+    double openUsdPhysics:isosurface:gridSmoothingRadius = 0.2 (
+        displayName = "Grid Smoothing Radius"
+        doc = """Radius of the grid smoothing kernel in stage linear units."""
+    )
+
+    double openUsdPhysics:isosurface:gridSpacing = 0.2 (
+        displayName = "Grid Spacing"
+        doc = """Extraction grid cell size in stage linear units."""
+    )
+
+    uniform int64 openUsdPhysics:isosurface:maxSubgrids = 1024 (
+        displayName = "Max Subgrids"
+        doc = """Upper bound on the number of sparse grid blocks used during extraction."""
+    )
+
+    uniform int64 openUsdPhysics:isosurface:maxTriangles = 2097152 (
+        displayName = "Max Triangles"
+        doc = """Upper bound on the extracted triangle count."""
+    )
+
+    uniform int64 openUsdPhysics:isosurface:maxVertices = 1048576 (
+        displayName = "Max Vertices"
+        doc = """Upper bound on the extracted vertex count."""
+    )
+
+    uniform int64 openUsdPhysics:isosurface:numMeshNormalSmoothingPasses = 4 (
+        displayName = "Num Mesh Normal Smoothing Passes"
+        doc = """Smoothing passes applied to the extracted mesh normals."""
+    )
+
+    uniform int64 openUsdPhysics:isosurface:numMeshSmoothingPasses = 4 (
+        displayName = "Num Mesh Smoothing Passes"
+        doc = """Smoothing passes applied to the extracted mesh positions."""
+    )
+
+    double openUsdPhysics:isosurface:surfaceDistance = 0.25 (
+        displayName = "Surface Distance"
+        doc = """Distance from a particle centre at which the surface is placed, in stage linear units."""
+    )
+}
+
+class "OpenUsdPhysicsSurfaceDeformableAPI" (
+    customData = {
+        string className = "SurfaceDeformableAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Simulates a triangulated mesh as a surface deformable solved on its own vertices. Apply alongside the mesh geometry."""
+
+    inherits = </APISchemaBase>
+)
+{
+    uniform int64 openUsdPhysics:surfaceDeformable:collisionIterationMultiplier = 1 (
+        displayName = "Collision Iteration Multiplier"
+        doc = """Collision iterations performed per solver position iteration."""
+    )
+
+    uniform int64 openUsdPhysics:surfaceDeformable:collisionPairUpdateFrequency = 1 (
+        displayName = "Collision Pair Update Frequency"
+        doc = """Simulation steps between two collision pair rebuilds."""
+    )
+
+    bool openUsdPhysics:surfaceDeformable:enableCCD = false (
+        displayName = "Enable CCD"
+        doc = """Enables continuous collision detection for this surface."""
+    )
+
+    bool openUsdPhysics:surfaceDeformable:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables simulation of this surface deformable."""
+    )
+
+    rel openUsdPhysics:surfaceDeformable:material (
+        displayName = "Material"
+        doc = """Single material prim carrying OpenUsdPhysicsSurfaceDeformableMaterialAPI."""
+    )
+
+    double openUsdPhysics:surfaceDeformable:maxDisplacement = 0 (
+        displayName = "Max Displacement"
+        doc = """Upper bound on the distance a vertex may move in one step, in stage linear units. Zero disables the clamp."""
+    )
+
+    float3[] openUsdPhysics:surfaceDeformable:restPoints = [] (
+        displayName = "Rest Points"
+        doc = """Rest configuration of the simulated vertices in local space. When empty the authored mesh points are used."""
+    )
+
+    bool openUsdPhysics:surfaceDeformable:selfCollision = false (
+        displayName = "Self Collision"
+        doc = """Enables collisions between parts of this surface."""
+    )
+
+    double openUsdPhysics:surfaceDeformable:selfCollisionFilterDistance = 0.1 (
+        displayName = "Self Collision Filter Distance"
+        doc = """Rest distance below which self collisions are filtered, in stage linear units."""
+    )
+
+    int[] openUsdPhysics:surfaceDeformable:simulationIndices = [] (
+        displayName = "Simulation Indices"
+        doc = """Triangle indices of the simulated surface, three indices per triangle. When empty the authored mesh topology is used."""
+    )
+
+    rel openUsdPhysics:surfaceDeformable:simulationOwner (
+        displayName = "Simulation Owner"
+        doc = """Single PhysicsScene that simulates this surface deformable."""
+    )
+
+    uniform int64 openUsdPhysics:surfaceDeformable:solverPositionIterationCount = 16 (
+        displayName = "Solver Position Iteration Count"
+        doc = """Solver position iterations per simulation step."""
+    )
+
+    double openUsdPhysics:surfaceDeformable:vertexVelocityDamping = 0.005 (
+        displayName = "Vertex Velocity Damping"
+        doc = """Velocity damping applied to the simulated vertices."""
+    )
+}
+
+class "OpenUsdPhysicsSurfaceDeformableMaterialAPI" (
+    customData = {
+        string className = "SurfaceDeformableMaterialAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Material response for surface deformables. Apply to a UsdShadeMaterial prim."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:surfaceDeformableMaterial:bendingDamping = 0 (
+        displayName = "Bending Damping"
+        doc = """Damping applied to the bending response."""
+    )
+
+    double openUsdPhysics:surfaceDeformableMaterial:bendingStiffness = 0 (
+        displayName = "Bending Stiffness"
+        doc = """Resistance to bending across shared edges."""
+    )
+
+    double openUsdPhysics:surfaceDeformableMaterial:density = 1000 (
+        displayName = "Density"
+        doc = """Material density in stage mass units per cubic linear unit."""
+    )
+
+    double openUsdPhysics:surfaceDeformableMaterial:dynamicFriction = 0.25 (
+        displayName = "Dynamic Friction"
+        doc = """Friction coefficient against other objects."""
+    )
+
+    double openUsdPhysics:surfaceDeformableMaterial:elasticityDamping = 0 (
+        displayName = "Elasticity Damping"
+        doc = """Damping applied to the stretch response."""
+    )
+
+    double openUsdPhysics:surfaceDeformableMaterial:poissonsRatio = 0.45 (
+        displayName = "Poissons Ratio"
+        doc = """Transverse contraction under stretch, between zero and one half."""
+    )
+
+    double openUsdPhysics:surfaceDeformableMaterial:thickness = 0.001 (
+        displayName = "Thickness"
+        doc = """Simulated shell thickness in stage linear units."""
+    )
+
+    double openUsdPhysics:surfaceDeformableMaterial:youngsModulus = 500000 (
+        displayName = "Youngs Modulus"
+        doc = """Stretch resistance of the surface."""
+    )
+}
+
+class "OpenUsdPhysicsVolumeDeformableAPI" (
+    customData = {
+        string className = "VolumeDeformableAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Simulates a closed mesh as a finite-element volume deformable driven by a tetrahedral simulation mesh. Apply alongside the render geometry."""
+
+    inherits = </APISchemaBase>
+)
+{
+    int[] openUsdPhysics:volumeDeformable:collisionIndices = [] (
+        displayName = "Collision Indices"
+        doc = """Tetrahedron indices of the collision mesh, four indices per tetrahedron."""
+    )
+
+    float3[] openUsdPhysics:volumeDeformable:collisionRestPoints = [] (
+        displayName = "Collision Rest Points"
+        doc = """Rest positions of the collision mesh vertices in local space. When empty the simulation mesh is used for collision."""
+    )
+
+    bool openUsdPhysics:volumeDeformable:enableCCD = false (
+        displayName = "Enable CCD"
+        doc = """Enables continuous collision detection for this volume."""
+    )
+
+    bool openUsdPhysics:volumeDeformable:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables simulation of this volume deformable."""
+    )
+
+    bool openUsdPhysics:volumeDeformable:kinematicEnabled = false (
+        displayName = "Kinematic Enabled"
+        doc = """Drives the simulation mesh from the authored animation instead of the solver."""
+    )
+
+    rel openUsdPhysics:volumeDeformable:material (
+        displayName = "Material"
+        doc = """Single material prim carrying OpenUsdPhysicsVolumeDeformableMaterialAPI."""
+    )
+
+    double openUsdPhysics:volumeDeformable:maxDepenetrationVelocity = inf (
+        displayName = "Max Depenetration Velocity"
+        doc = """Upper bound on the velocity applied to resolve penetration."""
+    )
+
+    bool openUsdPhysics:volumeDeformable:selfCollision = false (
+        displayName = "Self Collision"
+        doc = """Enables collisions between parts of this volume."""
+    )
+
+    double openUsdPhysics:volumeDeformable:selfCollisionFilterDistance = 0.1 (
+        displayName = "Self Collision Filter Distance"
+        doc = """Rest distance below which self collisions are filtered, in stage linear units."""
+    )
+
+    double openUsdPhysics:volumeDeformable:settlingThreshold = 0.1 (
+        displayName = "Settling Threshold"
+        doc = """Mass-normalized kinetic energy below which the body starts accumulating sleep time."""
+    )
+
+    uniform int64 openUsdPhysics:volumeDeformable:simulationHexahedralResolution = 10 (
+        displayName = "Simulation Hexahedral Resolution"
+        doc = """Resolution of the voxel grid used to build a simulation mesh when none is authored."""
+    )
+
+    int[] openUsdPhysics:volumeDeformable:simulationIndices = [] (
+        displayName = "Simulation Indices"
+        doc = """Tetrahedron indices of the simulation mesh, four indices per tetrahedron."""
+    )
+
+    rel openUsdPhysics:volumeDeformable:simulationOwner (
+        displayName = "Simulation Owner"
+        doc = """Single PhysicsScene that simulates this volume deformable."""
+    )
+
+    float3[] openUsdPhysics:volumeDeformable:simulationRestPoints = [] (
+        displayName = "Simulation Rest Points"
+        doc = """Rest positions of the tetrahedral simulation mesh vertices in local space."""
+    )
+
+    double openUsdPhysics:volumeDeformable:sleepThreshold = 0.05 (
+        displayName = "Sleep Threshold"
+        doc = """Mass-normalized kinetic energy below which the body may sleep."""
+    )
+
+    uniform int64 openUsdPhysics:volumeDeformable:solverPositionIterationCount = 16 (
+        displayName = "Solver Position Iteration Count"
+        doc = """Solver position iterations per simulation step."""
+    )
+
+    double openUsdPhysics:volumeDeformable:vertexVelocityDamping = 0.005 (
+        displayName = "Vertex Velocity Damping"
+        doc = """Velocity damping applied to the simulation mesh vertices."""
+    )
+}
+
+class "OpenUsdPhysicsVolumeDeformableMaterialAPI" (
+    customData = {
+        string className = "VolumeDeformableMaterialAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Material response for finite-element volume deformables. Apply to a UsdShadeMaterial prim."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:volumeDeformableMaterial:damping = 0 (
+        displayName = "Damping"
+        doc = """Damping applied to the elastic response."""
+    )
+
+    double openUsdPhysics:volumeDeformableMaterial:dampingScale = 1 (
+        displayName = "Damping Scale"
+        doc = """Scale applied to the damping term."""
+    )
+
+    double openUsdPhysics:volumeDeformableMaterial:density = 1000 (
+        displayName = "Density"
+        doc = """Material density in stage mass units per cubic linear unit."""
+    )
+
+    double openUsdPhysics:volumeDeformableMaterial:dynamicFriction = 0.25 (
+        displayName = "Dynamic Friction"
+        doc = """Friction coefficient against other objects."""
+    )
+
+    double openUsdPhysics:volumeDeformableMaterial:elasticityDamping = 0 (
+        displayName = "Elasticity Damping"
+        doc = """Damping proportional to the elastic strain rate."""
+    )
+
+    double openUsdPhysics:volumeDeformableMaterial:poissonsRatio = 0.45 (
+        displayName = "Poissons Ratio"
+        doc = """Transverse contraction under stretch, between zero and one half."""
+    )
+
+    double openUsdPhysics:volumeDeformableMaterial:youngsModulus = 50000000 (
+        displayName = "Youngs Modulus"
+        doc = """Resistance to deformation of the volume."""
+    )
+}
+
+class OpenUsdPhysicsAttachment "OpenUsdPhysicsAttachment" (
+    customData = {
+        string className = "Attachment"
+    }
+    doc = """Attaches two simulated actors to each other. Modelled as a prim so one actor can take part in several attachments."""
+
+    inherits = </Typed>
+)
+{
+    rel openUsdPhysics:attachment:actor0 (
+        displayName = "Actor 0"
+        doc = """Single first actor prim. May be a rigid body, a surface deformable, a volume deformable, or a particle object."""
+    )
+
+    rel openUsdPhysics:attachment:actor1 (
+        displayName = "Actor 1"
+        doc = """Single second actor prim. May be a rigid body, a surface deformable, a volume deformable, or a particle object."""
+    )
+
+    uniform token openUsdPhysics:attachment:attachmentType = "vertex" (
+        allowedTokens = ["vertex", "element", "surface", "rigidSurface"]
+        displayName = "Attachment Type"
+        doc = """How the attachment points bind to each actor."""
+    )
+
+    int[] openUsdPhysics:attachment:collisionFilterIndices0 = [] (
+        displayName = "Collision Filter Indices 0"
+        doc = """Elements or vertices of the first actor excluded from collision with the second actor."""
+    )
+
+    int[] openUsdPhysics:attachment:collisionFilterIndices1 = [] (
+        displayName = "Collision Filter Indices 1"
+        doc = """Elements or vertices of the second actor excluded from collision with the first actor."""
+    )
+
+    double openUsdPhysics:attachment:damping = 0 (
+        displayName = "Damping"
+        doc = """Damping of the attachment constraint. Ignored when the stiffness is zero."""
+    )
+
+    int[] openUsdPhysics:attachment:elementIndices0 = [] (
+        displayName = "Element Indices 0"
+        doc = """Element index bound by each attachment point on the first actor. Empty selects vertex binding."""
+    )
+
+    int[] openUsdPhysics:attachment:elementIndices1 = [] (
+        displayName = "Element Indices 1"
+        doc = """Element index bound by each attachment point on the second actor. Empty selects vertex binding."""
+    )
+
+    bool openUsdPhysics:attachment:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables this attachment."""
+    )
+
+    uniform token openUsdPhysics:attachment:filterType0 = "none" (
+        allowedTokens = ["none", "vertices", "elements", "geometry"]
+        displayName = "Filter Type 0"
+        doc = """How the first collision filter index list is interpreted."""
+    )
+
+    uniform token openUsdPhysics:attachment:filterType1 = "none" (
+        allowedTokens = ["none", "vertices", "elements", "geometry"]
+        displayName = "Filter Type 1"
+        doc = """How the second collision filter index list is interpreted."""
+    )
+
+    float3[] openUsdPhysics:attachment:points0 = [] (
+        displayName = "Points 0"
+        doc = """Attachment points in the local space of the first actor, in stage linear units."""
+    )
+
+    float3[] openUsdPhysics:attachment:points1 = [] (
+        displayName = "Points 1"
+        doc = """Attachment points in the local space of the second actor, paired with the first actor points."""
+    )
+
+    double openUsdPhysics:attachment:stiffness = 0 (
+        displayName = "Stiffness"
+        doc = """Spring stiffness of the attachment constraint. Zero requests a rigid attachment."""
+    )
+}
+
+class "OpenUsdPhysicsAutoAttachmentAPI" (
+    customData = {
+        string className = "AutoAttachmentAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Derives the attachment points and collision filters of an OpenUsdPhysicsAttachment from the overlap of its two actors. Apply to the attachment prim."""
+
+    inherits = </APISchemaBase>
+)
+{
+    double openUsdPhysics:autoAttachment:collisionFilteringOffset = 0 (
+        displayName = "Collision Filtering Offset"
+        doc = """Distance added to the region used to generate collision filters, in stage linear units."""
+    )
+
+    double openUsdPhysics:autoAttachment:deformableVertexOverlapOffset = 0 (
+        displayName = "Deformable Vertex Overlap Offset"
+        doc = """Distance added to the overlap test for deformable vertices, in stage linear units."""
+    )
+
+    bool openUsdPhysics:autoAttachment:enableCollisionFiltering = true (
+        displayName = "Enable Collision Filtering"
+        doc = """Generates collision filters for the attached regions."""
+    )
+
+    bool openUsdPhysics:autoAttachment:enableDeformableFilteringPairs = true (
+        displayName = "Enable Deformable Filtering Pairs"
+        doc = """Generates element-level filter pairs when both actors are deformable."""
+    )
+
+    bool openUsdPhysics:autoAttachment:enableDeformableVertexAttachments = true (
+        displayName = "Enable Deformable Vertex Attachments"
+        doc = """Generates attachments at deformable vertices that overlap the other actor."""
+    )
+
+    bool openUsdPhysics:autoAttachment:enableRigidSurfaceAttachments = true (
+        displayName = "Enable Rigid Surface Attachments"
+        doc = """Generates attachments by sampling the surface of a rigid actor."""
+    )
+
+    bool openUsdPhysics:autoAttachment:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables automatic generation. Authored attachment points are replaced when this is on."""
+    )
+
+    rel openUsdPhysics:autoAttachment:maskShapes (
+        displayName = "Mask Shapes"
+        doc = """Geometry prims that restrict where attachments may be generated."""
+    )
+
+    double openUsdPhysics:autoAttachment:rigidSurfaceSamplingDistance = 0 (
+        displayName = "Rigid Surface Sampling Distance"
+        doc = """Spacing of the rigid surface samples in stage linear units. Zero requests a spacing derived from the geometry."""
+    )
+}
+
+class "OpenUsdPhysicsCollisionFilterSettingsAPI" (
+    customData = {
+        string className = "CollisionFilterSettingsAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """Collision filtering that standard UsdPhysicsFilteredPairsAPI and UsdPhysicsCollisionGroup do not express, including element-level filtering for deformables and particles."""
+
+    inherits = </APISchemaBase>
+)
+{
+    bool openUsdPhysics:collisionFilter:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables the filters declared here."""
+    )
+
+    rel openUsdPhysics:collisionFilter:filterGroups (
+        displayName = "Filter Groups"
+        doc = """UsdPhysicsCollisionGroup prims this object must not collide with, or may only collide with when the groups are inverted."""
+    )
+
+    int[] openUsdPhysics:collisionFilter:filterIndices = [] (
+        displayName = "Filter Indices"
+        doc = """Vertex or element indices on this prim excluded from collision with the filtered pairs."""
+    )
+
+    rel openUsdPhysics:collisionFilter:filteredPairs (
+        displayName = "Filtered Pairs"
+        doc = """Prims this object must not collide with."""
+    )
+
+    bool openUsdPhysics:collisionFilter:invertFilteredGroups = false (
+        displayName = "Invert Filtered Groups"
+        doc = """Treats the filtered groups as the only groups this object may collide with."""
+    )
+
+    string openUsdPhysics:collisionFilter:mergeGroupName = "" (
+        displayName = "Merge Group Name"
+        doc = """Objects sharing a non-empty merge group name never collide with each other."""
+    )
+
+    uniform token openUsdPhysics:collisionFilter:pairFilterMode = "pairs" (
+        allowedTokens = ["none", "pairs", "groups", "vertexPairs", "elementPairs"]
+        displayName = "Pair Filter Mode"
+        doc = """How the filtered pairs and filter indices are interpreted."""
+    )
+}
+
+class "OpenUsdPhysicsCookedDataAPI" (
+    customData = {
+        string className = "CookedDataAPI"
+        token apiSchemaType = "singleApply"
+    }
+    doc = """References cached cooked collision data produced at build time so a session does not have to cook geometry while loading. Apply alongside a collider."""
+
+    inherits = </APISchemaBase>
+)
+{
+    string openUsdPhysics:cookedData:assetPath = "" (
+        displayName = "Asset Path"
+        doc = """Path of the cooked data asset, resolved against the layer that authored this opinion."""
+    )
+
+    string openUsdPhysics:cookedData:assetSubIdentifier = "" (
+        displayName = "Asset Sub Identifier"
+        doc = """Entry inside the cooked data asset. Empty selects the only entry."""
+    )
+
+    string openUsdPhysics:cookedData:buildRevision = "" (
+        displayName = "Build Revision"
+        doc = """Opaque revision of the tool that produced the cooked data."""
+    )
+
+    string openUsdPhysics:cookedData:contentHash = "" (
+        displayName = "Content Hash"
+        doc = """Hash of the source geometry and cooking parameters the cached data was produced from. A mismatch invalidates the cache."""
+    )
+
+    bool openUsdPhysics:cookedData:enabled = true (
+        displayName = "Enabled"
+        doc = """Enables the cooked data reference."""
+    )
+
+    uniform token openUsdPhysics:cookedData:format = "none" (
+        allowedTokens = ["none", "convexMesh", "convexDecomposition", "triangleMesh", "heightField", "sdf", "tetrahedralMesh"]
+        displayName = "Format"
+        doc = """Kind of cooked data referenced here."""
+    )
+
+    uniform token openUsdPhysics:cookedData:missingDataBehavior = "cookAtRuntime" (
+        allowedTokens = ["cookAtRuntime", "error", "ignore"]
+        displayName = "Missing Data Behavior"
+        doc = """What the session does when the cooked data is absent or its content hash does not match."""
+    )
+
+    uniform token openUsdPhysics:cookedData:sdfBitsPerSubgridPixel = "bits16" (
+        allowedTokens = ["bits8", "bits16", "bits32"]
+        displayName = "SDF Bits Per Subgrid Pixel"
+        doc = """Storage precision of one sparse grid sample for the 'sdf' format."""
+    )
+
+    double openUsdPhysics:cookedData:sdfNarrowBandThickness = 0.01 (
+        displayName = "SDF Narrow Band Thickness"
+        doc = """Thickness of the narrow band kept around the surface, as a fraction of the longest bounding box axis."""
+    )
+
+    uniform int64 openUsdPhysics:cookedData:sdfResolution = 256 (
+        displayName = "SDF Resolution"
+        doc = """Grid resolution along the longest bounding box axis for the 'sdf' format."""
+    )
+
+    uniform int64 openUsdPhysics:cookedData:sdfSubgridResolution = 6 (
+        displayName = "SDF Subgrid Resolution"
+        doc = """Sparse block resolution for the 'sdf' format. Zero requests a dense grid."""
+    )
+}

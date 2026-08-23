@@ -59,6 +59,8 @@ enum class CommandKind
     Capture,
     Pick,
     Selection,
+    TransformOverrides,
+    DeformationOverrides,
     ContextLoss,
     Stop
 };
@@ -92,6 +94,10 @@ struct Command
     std::vector<uint8_t> captured_pixels;
     std::unique_ptr<OpenUsdStormChildPickPayload> pick;
     std::unique_ptr<OpenUsdStormChildSelectionPayload> selection;
+    std::unique_ptr<OpenUsdStormChildTransformOverridePayload>
+        transform_overrides;
+    std::unique_ptr<OpenUsdStormChildDeformationOverridePayload>
+        deformation_overrides;
     std::string error;
     std::condition_variable completion;
 };
@@ -1847,6 +1853,16 @@ void RenderThreadMain(ChildState* child)
                 command->status =
                     command->selection->Execute(child->renderer, command->error);
                 break;
+            case CommandKind::TransformOverrides:
+                command->status = command->transform_overrides->Execute(
+                    child->renderer,
+                    command->error);
+                break;
+            case CommandKind::DeformationOverrides:
+                command->status = command->deformation_overrides->Execute(
+                    child->renderer,
+                    command->error);
+                break;
             case CommandKind::ContextLoss:
                 command->status =
                     RecreateAfterContextLoss(child, command->error);
@@ -2207,6 +2223,172 @@ openusd_status QueuePick(
         command->status != OPENUSD_STATUS_BUFFER_TOO_SMALL)
     {
         WriteError(error, command->error);
+    }
+    return command->status;
+}
+
+openusd_status QueueTransformOverrides(
+    ChildState* child,
+    const openusd_storm_transform_override_update* update,
+    openusd_storm_transform_override_diagnostics* diagnostics,
+    openusd_error_buffer* error)
+{
+    if (update == nullptr ||
+        update->struct_size !=
+            sizeof(openusd_storm_transform_override_update) ||
+        update->version != OPENUSD_STORM_TRANSFORM_OVERRIDE_UPDATE_VERSION ||
+        !OpenUsdStormChildValidTransformOverrideCapacities(
+            update->item_count,
+            update->path_bytes_size) ||
+        (update->item_count != 0 && update->items == nullptr) ||
+        (update->path_bytes_size != 0 && update->path_bytes == nullptr))
+    {
+        WriteError(
+            error,
+            "The packed Storm child transform override update is invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (diagnostics != nullptr &&
+        (diagnostics->struct_size !=
+             sizeof(openusd_storm_transform_override_diagnostics) ||
+         diagnostics->version !=
+             OPENUSD_STORM_TRANSFORM_OVERRIDE_DIAGNOSTICS_VERSION))
+    {
+        WriteError(
+            error,
+            "The Storm child transform override diagnostics struct is invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    const openusd_status child_status = ValidateChild(child, error);
+    if (child_status != OPENUSD_STATUS_OK)
+    {
+        return child_status;
+    }
+    auto command = std::make_shared<Command>();
+    command->kind = CommandKind::TransformOverrides;
+    command->wait = true;
+    command->transform_overrides =
+        std::make_unique<OpenUsdStormChildTransformOverridePayload>();
+    command->transform_overrides->update = *update;
+    command->transform_overrides->capture_diagnostics = diagnostics != nullptr;
+    if (update->item_count != 0)
+    {
+        command->transform_overrides->items.assign(
+            update->items,
+            update->items + update->item_count);
+    }
+    if (update->path_bytes_size != 0)
+    {
+        command->transform_overrides->path_bytes.assign(
+            update->path_bytes,
+            update->path_bytes + update->path_bytes_size);
+    }
+
+    std::unique_lock lock(child->gate);
+    if (child->lifecycle != LifecycleState::Running)
+    {
+        WriteError(error, "The Storm child is closing or stopped.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    child->synchronous_commands.push_front(command);
+    UpdatePendingPeak(child);
+    child->commands_available.notify_one();
+    command->completion.wait(lock, [&command] { return command->done; });
+    if (command->status != OPENUSD_STATUS_OK)
+    {
+        WriteError(error, command->error);
+        return command->status;
+    }
+    if (diagnostics != nullptr)
+    {
+        *diagnostics = command->transform_overrides->diagnostics;
+    }
+    return command->status;
+}
+
+openusd_status QueueDeformationOverrides(
+    ChildState* child,
+    const openusd_storm_deformation_override_update* update,
+    openusd_storm_deformation_override_diagnostics* diagnostics,
+    openusd_error_buffer* error)
+{
+    if (update == nullptr ||
+        update->struct_size !=
+            sizeof(openusd_storm_deformation_override_update) ||
+        update->version != OPENUSD_STORM_DEFORMATION_OVERRIDE_UPDATE_VERSION ||
+        !OpenUsdStormChildValidDeformationOverrideCapacities(
+            update->item_count,
+            update->point_count,
+            update->path_bytes_size) ||
+        (update->item_count != 0 && update->items == nullptr) ||
+        (update->point_count != 0 && update->points == nullptr) ||
+        (update->path_bytes_size != 0 && update->path_bytes == nullptr))
+    {
+        WriteError(
+            error,
+            "The packed Storm child deformation override update is invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (diagnostics != nullptr &&
+        (diagnostics->struct_size !=
+             sizeof(openusd_storm_deformation_override_diagnostics) ||
+         diagnostics->version !=
+             OPENUSD_STORM_DEFORMATION_OVERRIDE_DIAGNOSTICS_VERSION))
+    {
+        WriteError(
+            error,
+            "The Storm child deformation override diagnostics struct is invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    const openusd_status child_status = ValidateChild(child, error);
+    if (child_status != OPENUSD_STATUS_OK)
+    {
+        return child_status;
+    }
+    auto command = std::make_shared<Command>();
+    command->kind = CommandKind::DeformationOverrides;
+    command->wait = true;
+    command->deformation_overrides =
+        std::make_unique<OpenUsdStormChildDeformationOverridePayload>();
+    command->deformation_overrides->update = *update;
+    command->deformation_overrides->capture_diagnostics = diagnostics != nullptr;
+    if (update->item_count != 0)
+    {
+        command->deformation_overrides->items.assign(
+            update->items,
+            update->items + update->item_count);
+    }
+    if (update->point_count != 0)
+    {
+        command->deformation_overrides->points.assign(
+            update->points,
+            update->points + (static_cast<size_t>(update->point_count) * 3u));
+    }
+    if (update->path_bytes_size != 0)
+    {
+        command->deformation_overrides->path_bytes.assign(
+            update->path_bytes,
+            update->path_bytes + update->path_bytes_size);
+    }
+
+    std::unique_lock lock(child->gate);
+    if (child->lifecycle != LifecycleState::Running)
+    {
+        WriteError(error, "The Storm child is closing or stopped.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    child->synchronous_commands.push_front(command);
+    UpdatePendingPeak(child);
+    child->commands_available.notify_one();
+    command->completion.wait(lock, [&command] { return command->done; });
+    if (command->status != OPENUSD_STATUS_OK)
+    {
+        WriteError(error, command->error);
+        return command->status;
+    }
+    if (diagnostics != nullptr)
+    {
+        *diagnostics = command->deformation_overrides->diagnostics;
     }
     return command->status;
 }
@@ -2883,6 +3065,32 @@ extern "C" openusd_status openusd_storm_child_set_selection(
     {
         const std::shared_ptr<ChildState> state = LookupChild(child);
         return QueueSelection(state.get(), update, error);
+    });
+}
+
+extern "C" openusd_status openusd_storm_child_set_transform_overrides(
+    openusd_storm_child* child,
+    const openusd_storm_transform_override_update* update,
+    openusd_storm_transform_override_diagnostics* diagnostics,
+    openusd_error_buffer* error)
+{
+    return Guard(error, [&]
+    {
+        const std::shared_ptr<ChildState> state = LookupChild(child);
+        return QueueTransformOverrides(state.get(), update, diagnostics, error);
+    });
+}
+
+extern "C" openusd_status openusd_storm_child_set_deformation_overrides(
+    openusd_storm_child* child,
+    const openusd_storm_deformation_override_update* update,
+    openusd_storm_deformation_override_diagnostics* diagnostics,
+    openusd_error_buffer* error)
+{
+    return Guard(error, [&]
+    {
+        const std::shared_ptr<ChildState> state = LookupChild(child);
+        return QueueDeformationOverrides(state.get(), update, diagnostics, error);
     });
 }
 

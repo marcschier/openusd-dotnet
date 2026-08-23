@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('win-x64', 'linux-x64', 'osx-arm64')]
+    [ValidateSet('win-x64', 'linux-x64')]
     [string]$Rid,
     [int]$Jobs = [Environment]::ProcessorCount,
     [switch]$ForceFetch,
@@ -20,7 +20,6 @@ $triplet = switch ($Rid)
 {
     'win-x64' { $lock.vcpkg.windowsTriplet }
     'linux-x64' { $lock.vcpkg.linuxTriplet }
-    'osx-arm64' { $lock.vcpkg.macosTriplet }
 }
 
 $vcpkgRoot = Join-Path $repoRoot "native/.cache/vcpkg-$($lock.vcpkg.baseline.Substring(0, 12))"
@@ -58,10 +57,6 @@ if ($Rid -eq 'linux-x64' -and -not $IsLinux)
 {
     throw 'linux-x64 must be built on Linux.'
 }
-if ($Rid -eq 'osx-arm64' -and -not $IsMacOS)
-{
-    throw 'osx-arm64 must be built on macOS.'
-}
 
 New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
@@ -83,12 +78,31 @@ if (-not (Test-Path $vcpkgTripletRoot))
 Copy-Item (Join-Path $vcpkgTripletRoot '*') $installRoot -Recurse -Force
 
 $noticePath = Join-Path $installRoot 'THIRD-PARTY-PHYSX.md'
+# The notice separates what is redistributed from what is not, on purpose. The SDK sources this
+# port compiles are BSD-3-Clause and are statically linked into openusd_physx, so they are
+# redistributed. The GPU and device modules are separate packman blobs the port downloads under
+# NVIDIA proprietary terms; nothing in this repository redistributes them, and a notice that
+# named only the BSD licence would imply otherwise to anyone reading a package.
 $noticeLines = @(
     '# PhysX third-party notices',
     '',
     "PhysX $($lock.physx.tag) is licensed under $($lock.physx.license).",
     "Repository: $($lock.physx.repository)",
     "vcpkg baseline: $($lock.vcpkg.baseline)",
+    '',
+    '## Redistributed here',
+    '',
+    'The PhysX SDK static libraries built from the repository above, including PhysXVehicle2,',
+    'linked into the `openusd_physx` C ABI shim. These are covered by the licence named above.',
+    '',
+    '## Not redistributed',
+    '',
+    "The optional GPU acceleration modules ($($lock.physx.gpuModules -join ', ')) are separate",
+    'binary packages that the vcpkg port downloads from NVIDIA rather than building from the',
+    "BSD-3-Clause sources. They are licensed under $($lock.physx.gpuModuleLicense) and are not",
+    'included in any OpenUsd package. A user with the appropriate NVIDIA licence supplies them',
+    'beside the runtime to enable GPU domains; without them the runtime reports no CUDA',
+    'capability and skips every GPU-only object with a diagnostic.',
     ''
 )
 $copyrightPath = Join-Path $installRoot 'share/physx/copyright'

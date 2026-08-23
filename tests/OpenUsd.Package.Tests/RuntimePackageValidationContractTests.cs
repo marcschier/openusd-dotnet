@@ -19,7 +19,10 @@ public sealed class RuntimePackageValidationContractTests
         "OpenUsd.Runtime.Imaging",
         "OpenUsd.Runtime.Imaging.linux-x64",
         "OpenUsd.Runtime.Imaging.osx-arm64",
-        "OpenUsd.Runtime.Imaging.win-x64"
+        "OpenUsd.Runtime.Imaging.win-x64",
+        "OpenUsd.Runtime.Physics",
+        "OpenUsd.Runtime.Physics.linux-x64",
+        "OpenUsd.Runtime.Physics.win-x64"
     ];
 
     [Test]

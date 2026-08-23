@@ -5,6 +5,7 @@ archives, and the package and render consumers that reuse them.
 
 **On this page:** [Build and archive flow](#build-and-archive-flow) ·
 [Locked inputs](#locked-inputs) · [Cesium-native quarantine](#cesium-native-quarantine) ·
+[PhysX quarantine](#physx-quarantine) ·
 [Local build](#local-build) · [Archive consumers](#verified-archives-and-consumers) ·
 [macOS install names](#macos-install-name-policy) · [Related documentation](#related-documentation)
 
@@ -98,6 +99,50 @@ expected values. It is deliberately stronger than a load-only check.
 install/library byte counts for each RID. Local Windows verification measured `win-x64` at
 1,012,407,536 install bytes and 984,482,970 static-library bytes. Linux and macOS sizes must come
 from CI because they cannot be verified on the Windows workstation.
+
+## PhysX quarantine
+
+`eng/physx.lock.json` pins PhysX 5.5.0 through the same vcpkg baseline the Cesium lock uses, and
+installs it into `native/install/physx/<rid>` so a consumer who only needs USD authoring or
+rendering never receives the simulation dependency set. The port declares:
+
+```text
+(windows & x64 & !mingw & !uwp) | (linux & x64) | (linux & arm64)
+```
+
+There is no `arm64-osx` build, so `-Rid` accepts `win-x64` and `linux-x64` only and macOS has no
+physics package. Build it, then build the shim:
+
+```shell
+./eng/build-physx-native.ps1 -Rid win-x64 -PlanOnly
+./eng/build-physx-native.ps1 -Rid win-x64
+./eng/build-physx-shim.ps1 -Rid win-x64
+```
+
+The linkage is static, including `PhysXVehicle2`, so `openusd_physx` contains the whole CPU solver
+and has no PhysX runtime dependency of its own. The port's CMake config appends `PhysXVehicle2` to
+its aggregate SDK target only inside an `if(WIN32)`, while `openusd_physx` compiles
+`physx::vehicle2` unconditionally, so `native/openusd_physx/CMakeLists.txt` locates that library
+explicitly on every other platform and fails configure when it is absent rather than building a
+solver that cannot run the vehicles the package advertises.
+
+The `*-physx` presets set `OPENUSD_WITH_VULKAN=OFF`. The physics shim links neither Vulkan nor
+hdSilk, and inheriting the imaging platform presets otherwise made every physics build require a
+Vulkan SDK it never used.
+
+The GPU acceleration modules (`PhysXGpu_64` and, on Windows, `PhysXDevice64`) are packman binaries
+the port downloads from NVIDIA rather than building from the BSD-3-Clause sources. They are staged
+beside the built shim so local runs and CI probes can exercise GPU domains, and they are licensed
+under NVIDIA proprietary terms this project has no agreement to redistribute, so no OpenUsd package
+contains one. The generated `THIRD-PARTY-PHYSX.md` states both facts separately.
+
+`eng/build-physx-shim.ps1` installs into `native/install/shim/<rid>-physx` and never into
+`native/install/shim/<rid>`. The `<rid>-physx` preset configures the whole native project, so
+`cmake --install` writes `openusd_dotnet`, `openusd_hydra`, `openusd_hdsilk`, and
+`openusd_storm_child` as well. Installing those over the verified prefix would replace binaries a
+separate pipeline run built and verified, at exactly the paths packaging reads. The physics package
+therefore names the single asset it publishes instead of globbing that prefix; see
+[Packaging](packaging.md#physics-packages).
 
 ## Local build
 

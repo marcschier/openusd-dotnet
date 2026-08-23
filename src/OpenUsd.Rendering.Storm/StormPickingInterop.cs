@@ -497,7 +497,7 @@ internal static unsafe class StormPickingInterop
         float.IsFinite(color.Z) && color.Z is >= 0 and <= 1 &&
         float.IsFinite(color.W) && color.W is >= 0 and <= 1;
 
-    private static void ThrowIfFailed(
+    internal static void ThrowIfFailed(
         OpenUsdNativeStatus status,
         ReadOnlySpan<byte> errorBytes,
         nuint errorRequired,
@@ -531,7 +531,7 @@ internal static unsafe class StormPickingInterop
         return message;
     }
 
-    private static OpenUsdStormException IncompatibleResult(string message) =>
+    internal static OpenUsdStormException IncompatibleResult(string message) =>
         new(OpenUsdNativeStatus.NativeError, message);
 
     internal interface IStormPickCall

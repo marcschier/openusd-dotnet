@@ -35,11 +35,11 @@
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
-        "value": "cc292fa8213c23b20254740ab39095c5484316ed3137352e07db0330643bcda5"
+        "value": "9f32386d9e0fdc780dac8497cb3b3d3af34b9b051b7cb1487a458106c161b39d"
       },
       {
         "name": "openusd:input:eng/physx.lock.json:sha256",
-        "value": "8f88514bd1fca0c9ae02c86209b74cd10bccf39ee47cfa0ffac9bc264d8fefd1"
+        "value": "9754c113d2671b6d3eac386398c90bafbd835e574cf880a29cee3db3f1c8d647"
       },
       {
         "name": "openusd:input:eng/publish-viewer-bundle.ps1:sha256",
@@ -63,7 +63,7 @@
       },
       {
         "name": "openusd:scope",
-        "value": "Published NuGet packages and Viewer bundles; PhysX is recorded as optional native CI input."
+        "value": "Published NuGet packages and Viewer bundles; PhysX is statically linked into the published OpenUsd.Runtime.Physics.<rid> packages, and its proprietary GPU modules are never redistributed."
       }
     ]
   },
@@ -84,6 +84,60 @@
         {
           "name": "openusd:unresolved",
           "value": "Exact runtime pack patch is selected by the pinned .NET SDK during restore; the repository pins SDK 10.0.301 but does not record the restored runtime pack version."
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native-input:PhysXDevice64",
+      "name": "PhysXDevice64",
+      "version": "5.5.0",
+      "licenses": [
+        {
+          "license": {
+            "name": "LicenseRef-NvidiaProprietary"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/physx.lock.json"
+        },
+        {
+          "name": "openusd:release-scope",
+          "value": "downloaded by the vcpkg port as a build and local runtime input; never redistributed in any OpenUsd package"
+        },
+        {
+          "name": "openusd:redistributed",
+          "value": "false"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "native-input:PhysXGpu_64",
+      "name": "PhysXGpu_64",
+      "version": "5.5.0",
+      "licenses": [
+        {
+          "license": {
+            "name": "LicenseRef-NvidiaProprietary"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/physx.lock.json"
+        },
+        {
+          "name": "openusd:release-scope",
+          "value": "downloaded by the vcpkg port as a build and local runtime input; never redistributed in any OpenUsd package"
+        },
+        {
+          "name": "openusd:redistributed",
+          "value": "false"
         }
       ]
     },
@@ -547,7 +601,11 @@
         },
         {
           "name": "openusd:release-scope",
-          "value": "optional shim is built in native CI but not published as a release artifact"
+          "value": "statically linked into the published OpenUsd.Runtime.Physics.<rid> packages"
+        },
+        {
+          "name": "openusd:release-rids",
+          "value": "win-x64,linux-x64"
         }
       ]
     },
@@ -1250,6 +1308,19 @@
     },
     {
       "type": "library",
+      "bom-ref": "nuget:OpenUsd.Physics",
+      "name": "OpenUsd.Physics",
+      "version": "0.11.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Physics@0.11.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering",
       "name": "OpenUsd.Rendering",
       "version": "0.11.0-alpha",
@@ -1475,6 +1546,45 @@
       "name": "OpenUsd.Runtime.Imaging.win-x64",
       "version": "0.11.0-alpha",
       "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.win-x64@0.11.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Physics",
+      "name": "OpenUsd.Runtime.Physics",
+      "version": "0.11.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Physics@0.11.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Physics.linux-x64",
+      "name": "OpenUsd.Runtime.Physics.linux-x64",
+      "version": "0.11.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Physics.linux-x64@0.11.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Runtime.Physics.win-x64",
+      "name": "OpenUsd.Runtime.Physics.win-x64",
+      "version": "0.11.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Physics.win-x64@0.11.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2406,6 +2516,7 @@
         "nuget:OpenUsd.Rendering.Silk.Vulkan",
         "nuget:OpenUsd.Rendering.Storm",
         "nuget:OpenUsd.Cesium",
+        "nuget:OpenUsd.Physics",
         "nuget:OpenUsd.Viewer",
         "nuget:OpenUsd.Mcp.Tool",
         "nuget:OpenUsd.Runtime.Core",
@@ -2420,6 +2531,9 @@
         "nuget:OpenUsd.Runtime.Cesium.win-x64",
         "nuget:OpenUsd.Runtime.Cesium.linux-x64",
         "nuget:OpenUsd.Runtime.Cesium.osx-arm64",
+        "nuget:OpenUsd.Runtime.Physics",
+        "nuget:OpenUsd.Runtime.Physics.win-x64",
+        "nuget:OpenUsd.Runtime.Physics.linux-x64",
         "nuget-dependency:Avalonia",
         "nuget-dependency:Avalonia.Desktop",
         "nuget-dependency:Avalonia.Fonts.Inter",
@@ -2509,6 +2623,8 @@
         "vcpkg:zlib-ng",
         "vcpkg:zstd",
         "native:PhysX",
+        "native-input:PhysXGpu_64",
+        "native-input:PhysXDevice64",
         "shader-toolchain:Slang",
         "shader-toolchain:SPIRV-Tools",
         "shader-toolchain:SPIRV-Headers"
@@ -2548,6 +2664,10 @@
     },
     {
       "ref": "nuget:OpenUsd.Cesium",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Physics",
       "dependsOn": []
     },
     {
@@ -2604,6 +2724,18 @@
     },
     {
       "ref": "nuget:OpenUsd.Runtime.Cesium.osx-arm64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Physics",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Physics.win-x64",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Runtime.Physics.linux-x64",
       "dependsOn": []
     },
     {
@@ -2960,6 +3092,14 @@
     },
     {
       "ref": "native:PhysX",
+      "dependsOn": []
+    },
+    {
+      "ref": "native-input:PhysXGpu_64",
+      "dependsOn": []
+    },
+    {
+      "ref": "native-input:PhysXDevice64",
       "dependsOn": []
     },
     {

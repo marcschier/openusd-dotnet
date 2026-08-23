@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenUsd.Runtime.Core.win-x64/OpenUsd.Runtime.Core.win-x64.csproj" IncludeAssets="all" PrivateAssets="none" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackageId>OpenUsd.Runtime.Physics.win-x64</PackageId>
+    <Description>OpenUSD retained PhysX simulation native runtime shim for Windows x64.</Description>
+    <PackageTags>openusd;usd;physics;physx;simulation;native;runtime;windows;x64</PackageTags>
+    <RuntimePackageKind>Physics</RuntimePackageKind>
+    <RuntimePackageRid>win-x64</RuntimePackageRid>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <!--
+      Package validation compares managed lib/ref assemblies. This package suppresses build output and
+      ships only native assets and buildTransitive targets, so the opt-out is intentional.
+    -->
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <Import Project="../OpenUsd.Runtime.Packaging/OpenUsd.Runtime.Packaging.targets" />
+
+</Project>

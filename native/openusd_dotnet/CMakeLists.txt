@@ -1,5 +1,6 @@
 set(OPENUSD_DOTNET_SOURCES
     include/openusd_dotnet.h
+    include/openusd_physics_extract.h
     private/openusd_renderer_stage_bridge.h
     src/attribute.cpp
     src/collections.cpp
@@ -10,9 +11,12 @@ set(OPENUSD_DOTNET_SOURCES
     src/layer.cpp
     src/metadata.cpp
     src/pcp.cpp
+    src/physics_bake.cpp
+    src/physics_extract.cpp
     src/relationship.cpp
     src/renderer_stage_bridge.cpp
     src/runtime.cpp
+    src/session_overlay.cpp
     src/stage.cpp
     src/ts.cpp
     src/validation.cpp
@@ -127,4 +131,4 @@ install(TARGETS openusd_dotnet
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES include/openusd_dotnet.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES include/openusd_dotnet.h include/openusd_physics_extract.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

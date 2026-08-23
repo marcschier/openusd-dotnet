@@ -1,0 +1,283 @@
+#usda 1.0
+(
+    metersPerUnit = 1
+    kilogramsPerUnit = 1
+    upAxis = "Y"
+    timeCodesPerSecond = 24
+    startTimeCode = 0
+    endTimeCode = 24
+)
+
+def PhysicsScene "Scene"
+{
+    vector3f physics:gravityDirection = (0, -1, 0)
+    float physics:gravityMagnitude = 9.81
+}
+
+def PhysicsMaterial "RoadMaterial"
+{
+    float physics:staticFriction = 1
+    float physics:dynamicFriction = 1
+    float physics:restitution = 0
+    float physics:density = 1000
+}
+
+def Cube "Ground" (
+    prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+)
+{
+    double size = 2
+    rel material:binding:physics = </RoadMaterial>
+    float3 xformOp:scale = (500, 0.5, 500)
+    double3 xformOp:translate = (0, -0.5, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+}
+
+def Cube "Box" (
+    prepend apiSchemas = ["PhysicsCollisionAPI", "PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+)
+{
+    double size = 1
+    float physics:mass = 4
+    bool physics:sleepEnabled = 0
+    double3 xformOp:translate = (0, 4, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+    rel physics:simulationOwner = </Scene>
+}
+
+def Cube "KinematicBox" (
+    prepend apiSchemas = ["PhysicsCollisionAPI", "PhysicsRigidBodyAPI"]
+)
+{
+    double size = 1
+    bool physics:kinematicEnabled = 1
+    double3 xformOp:translate = (3, 1, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+    rel physics:simulationOwner = </Scene>
+}
+
+def Xform "Arm" (
+    prepend apiSchemas = ["PhysicsArticulationRootAPI"]
+)
+{
+    def Sphere "Base" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        double radius = 0.2
+        float physics:mass = 1
+        double3 xformOp:translate = (10, 5, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def PhysicsFixedJoint "BaseAnchor"
+    {
+        rel physics:body1 = </Arm/Base>
+    }
+
+    def Sphere "Link" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        double radius = 0.2
+        float physics:mass = 1
+        double3 xformOp:translate = (11, 5, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def PhysicsRevoluteJoint "Elbow"
+    {
+        uniform token physics:axis = "Z"
+        rel physics:body0 = </Arm/Base>
+        rel physics:body1 = </Arm/Link>
+        point3f physics:localPos0 = (0.5, 0, 0)
+        point3f physics:localPos1 = (-0.5, 0, 0)
+    }
+}
+
+def Xform "Walker" (
+    prepend apiSchemas = ["OpenUsdPhysicsCharacterControllerAPI"]
+)
+{
+    uniform token openUsdPhysics:controller:shapeType = "capsule"
+    double openUsdPhysics:controller:radius = 0.3
+    double openUsdPhysics:controller:height = 1
+    double openUsdPhysics:controller:stepOffset = 0.3
+    double openUsdPhysics:controller:slopeLimit = 45
+    float3 openUsdPhysics:controller:upAxis = (0, 1, 0)
+    double3 xformOp:translate = (6, 2, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+}
+
+def Cube "Car" (
+    prepend apiSchemas = [
+        "PhysicsCollisionAPI",
+        "PhysicsRigidBodyAPI",
+        "PhysicsMassAPI",
+        "MaterialBindingAPI",
+        "OpenUsdPhysicsVehicleAPI",
+        "OpenUsdPhysicsVehicleEngineAPI",
+        "OpenUsdPhysicsVehicleGearsAPI",
+        "OpenUsdPhysicsVehicleAutoGearBoxAPI",
+        "OpenUsdPhysicsVehicleClutchAPI",
+        "OpenUsdPhysicsVehicleDifferentialAPI",
+        "OpenUsdPhysicsVehicleBrakesAPI",
+        "OpenUsdPhysicsVehicleSteeringAPI"
+    ]
+)
+{
+    double size = 2
+    rel material:binding:physics = </RoadMaterial>
+    float physics:mass = 1500
+    bool physics:sleepEnabled = 0
+    float3 xformOp:scale = (0.9, 0.25, 2)
+    double3 xformOp:translate = (-6, 0.8, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+
+    bool openUsdPhysics:vehicle:enabled = 1
+    uniform token openUsdPhysics:vehicle:driveType = "engine"
+    uniform token openUsdPhysics:vehicle:longitudinalAxis = "posZ"
+    uniform token openUsdPhysics:vehicle:lateralAxis = "posX"
+    uniform token openUsdPhysics:vehicle:verticalAxis = "posY"
+    uniform token openUsdPhysics:vehicle:suspensionQueryType = "raycast"
+
+    double openUsdPhysics:engine:peakTorque = 500
+    double openUsdPhysics:engine:momentOfInertia = 1
+    double openUsdPhysics:engine:idleRotationSpeed = 75
+    double openUsdPhysics:engine:maxRotationSpeed = 600
+    double openUsdPhysics:engine:dampingRateFullThrottle = 0.15
+    double openUsdPhysics:engine:dampingRateZeroThrottleClutchEngaged = 2
+    double openUsdPhysics:engine:dampingRateZeroThrottleClutchDisengaged = 0.35
+
+    float[] openUsdPhysics:gears:ratios = [-4, 0, 4, 2, 1.5, 1.1]
+    double openUsdPhysics:gears:ratioScale = 4
+    double openUsdPhysics:gears:switchTime = 0.5
+
+    float[] openUsdPhysics:autoGearBox:upRatios = [0.65, 0.65, 0.65, 0.65]
+    float[] openUsdPhysics:autoGearBox:downRatios = [0.15, 0.15, 0.15, 0.15]
+    double openUsdPhysics:autoGearBox:latency = 2
+
+    double openUsdPhysics:clutch:strength = 10
+
+    int[] openUsdPhysics:differential:wheels = [0, 1, 2, 3]
+    float[] openUsdPhysics:differential:torqueRatios = [0.25, 0.25, 0.25, 0.25]
+
+    double openUsdPhysics:brakes:primaryMaxBrakeTorque = 3000
+    int[] openUsdPhysics:brakes:primaryWheels = [0, 1, 2, 3]
+    float[] openUsdPhysics:brakes:primaryTorqueMultipliers = [1, 1, 1, 1]
+    double openUsdPhysics:brakes:secondaryMaxBrakeTorque = 5000
+    int[] openUsdPhysics:brakes:secondaryWheels = [2, 3]
+    float[] openUsdPhysics:brakes:secondaryTorqueMultipliers = [1, 1]
+
+    double openUsdPhysics:steering:maxSteerAngle = 28.6478898
+    int[] openUsdPhysics:steering:wheels = [0, 1]
+    float[] openUsdPhysics:steering:angleMultipliers = [1, 1]
+
+    def Xform "WheelFrontLeft" (
+        prepend apiSchemas = [
+            "OpenUsdPhysicsVehicleWheelAttachmentAPI",
+            "OpenUsdPhysicsVehicleWheelAPI",
+            "OpenUsdPhysicsVehicleSuspensionAPI",
+            "OpenUsdPhysicsVehicleTireAPI"
+        ]
+    )
+    {
+        int openUsdPhysics:wheelAttachment:index = 0
+        float3 openUsdPhysics:wheelAttachment:suspensionFramePosition = (-0.9, 0, 1.4)
+        float3 openUsdPhysics:wheelAttachment:suspensionTravelDirection = (0, -1, 0)
+        float3 openUsdPhysics:wheelAttachment:wheelFramePosition = (0, 0, 0)
+        double openUsdPhysics:wheel:radius = 0.35
+        double openUsdPhysics:wheel:width = 0.3
+        double openUsdPhysics:wheel:mass = 20
+        double openUsdPhysics:wheel:momentOfInertia = 1.225
+        double openUsdPhysics:wheel:dampingRate = 0.25
+        double openUsdPhysics:suspension:springStrength = 35000
+        double openUsdPhysics:suspension:springDamperRate = 4500
+        double openUsdPhysics:suspension:travelDistance = 0.25
+        double openUsdPhysics:suspension:sprungMass = 375
+        double openUsdPhysics:tire:longitudinalStiffness = 5000
+        double openUsdPhysics:tire:camberStiffness = 0
+        double openUsdPhysics:tire:restLoad = 0
+    }
+
+    def Xform "WheelFrontRight" (
+        prepend apiSchemas = [
+            "OpenUsdPhysicsVehicleWheelAttachmentAPI",
+            "OpenUsdPhysicsVehicleWheelAPI",
+            "OpenUsdPhysicsVehicleSuspensionAPI",
+            "OpenUsdPhysicsVehicleTireAPI"
+        ]
+    )
+    {
+        int openUsdPhysics:wheelAttachment:index = 1
+        float3 openUsdPhysics:wheelAttachment:suspensionFramePosition = (0.9, 0, 1.4)
+        float3 openUsdPhysics:wheelAttachment:suspensionTravelDirection = (0, -1, 0)
+        float3 openUsdPhysics:wheelAttachment:wheelFramePosition = (0, 0, 0)
+        double openUsdPhysics:wheel:radius = 0.35
+        double openUsdPhysics:wheel:width = 0.3
+        double openUsdPhysics:wheel:mass = 20
+        double openUsdPhysics:wheel:momentOfInertia = 1.225
+        double openUsdPhysics:wheel:dampingRate = 0.25
+        double openUsdPhysics:suspension:springStrength = 35000
+        double openUsdPhysics:suspension:springDamperRate = 4500
+        double openUsdPhysics:suspension:travelDistance = 0.25
+        double openUsdPhysics:suspension:sprungMass = 375
+        double openUsdPhysics:tire:longitudinalStiffness = 5000
+        double openUsdPhysics:tire:camberStiffness = 0
+        double openUsdPhysics:tire:restLoad = 0
+    }
+
+    def Xform "WheelRearLeft" (
+        prepend apiSchemas = [
+            "OpenUsdPhysicsVehicleWheelAttachmentAPI",
+            "OpenUsdPhysicsVehicleWheelAPI",
+            "OpenUsdPhysicsVehicleSuspensionAPI",
+            "OpenUsdPhysicsVehicleTireAPI"
+        ]
+    )
+    {
+        int openUsdPhysics:wheelAttachment:index = 2
+        float3 openUsdPhysics:wheelAttachment:suspensionFramePosition = (-0.9, 0, -1.4)
+        float3 openUsdPhysics:wheelAttachment:suspensionTravelDirection = (0, -1, 0)
+        float3 openUsdPhysics:wheelAttachment:wheelFramePosition = (0, 0, 0)
+        double openUsdPhysics:wheel:radius = 0.35
+        double openUsdPhysics:wheel:width = 0.3
+        double openUsdPhysics:wheel:mass = 20
+        double openUsdPhysics:wheel:momentOfInertia = 1.225
+        double openUsdPhysics:wheel:dampingRate = 0.25
+        double openUsdPhysics:suspension:springStrength = 35000
+        double openUsdPhysics:suspension:springDamperRate = 4500
+        double openUsdPhysics:suspension:travelDistance = 0.25
+        double openUsdPhysics:suspension:sprungMass = 375
+        double openUsdPhysics:tire:longitudinalStiffness = 5000
+        double openUsdPhysics:tire:camberStiffness = 0
+        double openUsdPhysics:tire:restLoad = 0
+    }
+
+    def Xform "WheelRearRight" (
+        prepend apiSchemas = [
+            "OpenUsdPhysicsVehicleWheelAttachmentAPI",
+            "OpenUsdPhysicsVehicleWheelAPI",
+            "OpenUsdPhysicsVehicleSuspensionAPI",
+            "OpenUsdPhysicsVehicleTireAPI"
+        ]
+    )
+    {
+        int openUsdPhysics:wheelAttachment:index = 3
+        float3 openUsdPhysics:wheelAttachment:suspensionFramePosition = (0.9, 0, -1.4)
+        float3 openUsdPhysics:wheelAttachment:suspensionTravelDirection = (0, -1, 0)
+        float3 openUsdPhysics:wheelAttachment:wheelFramePosition = (0, 0, 0)
+        double openUsdPhysics:wheel:radius = 0.35
+        double openUsdPhysics:wheel:width = 0.3
+        double openUsdPhysics:wheel:mass = 20
+        double openUsdPhysics:wheel:momentOfInertia = 1.225
+        double openUsdPhysics:wheel:dampingRate = 0.25
+        double openUsdPhysics:suspension:springStrength = 35000
+        double openUsdPhysics:suspension:springDamperRate = 4500
+        double openUsdPhysics:suspension:travelDistance = 0.25
+        double openUsdPhysics:suspension:sprungMass = 375
+        double openUsdPhysics:tire:longitudinalStiffness = 5000
+        double openUsdPhysics:tire:camberStiffness = 0
+        double openUsdPhysics:tire:restLoad = 0
+    }
+}

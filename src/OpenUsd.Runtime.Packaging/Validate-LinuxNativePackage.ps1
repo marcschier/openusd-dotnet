@@ -131,6 +131,7 @@ $requiredExports = @(
     'openusd_storm_child_request_frame_v3',
     'openusd_storm_child_pick',
     'openusd_storm_child_set_selection',
+    'openusd_storm_child_set_transform_overrides',
     'openusd_storm_child_get_navigation_input',
     'openusd_storm_child_capture_framebuffer')
 foreach ($export in $requiredExports)

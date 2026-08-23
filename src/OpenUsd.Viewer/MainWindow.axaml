@@ -17,7 +17,7 @@
         Padding="8">
       <Grid
           x:Name="ViewerToolbarGrid"
-          RowDefinitions="Auto,Auto"
+          RowDefinitions="Auto,Auto,Auto"
           ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
           RowSpacing="6"
           ColumnSpacing="8">
@@ -238,6 +238,156 @@
             TextTrimming="CharacterEllipsis"
             VerticalAlignment="Center"
             Text="No stage loaded" />
+        <Grid
+            x:Name="PhysicsToolbarGrid"
+            Grid.Row="2"
+            Grid.Column="0"
+            Grid.ColumnSpan="6"
+            ColumnDefinitions="Auto,Auto,Auto,*,Auto"
+            ColumnSpacing="8"
+            ClipToBounds="False">
+          <StackPanel
+              x:Name="PhysicsCommandBar"
+              AutomationProperties.Name="Physics simulation controls"
+              Orientation="Horizontal"
+              Spacing="4"
+              ClipToBounds="False">
+            <Button
+                x:Name="PhysicsEnableButton"
+                AutomationProperties.Name="Enable physics simulation"
+                Content="_Physics"
+                IsEnabled="False"
+                ToolTip.Tip="Build an interactive simulation for this stage" />
+            <Button
+                x:Name="PhysicsPlayPauseButton"
+                AutomationProperties.Name="Play physics simulation"
+                Content="Play"
+                IsEnabled="False"
+                ToolTip.Tip="Play or pause the interactive simulation (K)" />
+            <Button
+                x:Name="PhysicsStopButton"
+                AutomationProperties.Name="Stop physics simulation"
+                Content="Stop"
+                IsEnabled="False"
+                ToolTip.Tip="Return the simulation to the authored start (J)" />
+            <Button
+                x:Name="PhysicsStepButton"
+                AutomationProperties.Name="Step one physics frame"
+                Content="Step"
+                IsEnabled="False"
+                ToolTip.Tip="Advance exactly one fixed simulation step (N)" />
+            <CheckBox
+                x:Name="PhysicsLoopCheckBox"
+                AutomationProperties.Name="Loop physics playback"
+                Content="Loop"
+                IsEnabled="False"
+                ToolTip.Tip="Wrap to the authored start when playback reaches the end" />
+            <ComboBox
+                x:Name="PhysicsSpeedSelector"
+                Width="96"
+                AutomationProperties.Name="Physics playback speed"
+                IsEnabled="False"
+                SelectedIndex="2"
+                ToolTip.Tip="Change how fast playback runs. The fixed simulation step never changes.">
+              <ComboBoxItem Content="0.25x" Tag="0.25" />
+              <ComboBoxItem Content="0.5x" Tag="0.5" />
+              <ComboBoxItem Content="1x" Tag="1" />
+              <ComboBoxItem Content="2x" Tag="2" />
+              <ComboBoxItem Content="4x" Tag="4" />
+            </ComboBox>
+            <CheckBox
+                x:Name="PhysicsPreviewCheckBox"
+                AutomationProperties.Name="Apply physics preview to the session overlay"
+                Content="Apply Preview"
+                IsEnabled="False"
+                ToolTip.Tip="Author the simulated poses into the session overlay" />
+            <Button
+                x:Name="PhysicsBakeButton"
+                AutomationProperties.Name="Bake physics simulation"
+                Content="Bake..."
+                IsEnabled="False"
+                ToolTip.Tip="Write simulated poses into a file-backed layer (B)" />
+            <ComboBox
+                x:Name="PhysicsGizmoSelector"
+                Width="104"
+                AutomationProperties.Name="Physics manipulation gizmo"
+                IsEnabled="False"
+                SelectedIndex="0"
+                ToolTip.Tip="Choose what a viewport drag manipulates">
+              <ComboBoxItem Content="No Gizmo" Tag="None" />
+              <ComboBoxItem Content="Move" Tag="Translate" />
+              <ComboBoxItem Content="Rotate" Tag="Rotate" />
+              <ComboBoxItem Content="Scale" Tag="Scale" />
+              <ComboBoxItem Content="Drag Body" Tag="Drag" />
+            </ComboBox>
+            <CheckBox
+                x:Name="PhysicsSnapCheckBox"
+                AutomationProperties.Name="Snap gizmo drags to increments"
+                Content="Snap"
+                IsEnabled="False"
+                ToolTip.Tip="Quantize gizmo drags to the configured increments" />
+            <Button
+                x:Name="PhysicsUndoButton"
+                AutomationProperties.Name="Undo the last physics property edit"
+                Content="Undo"
+                IsEnabled="False"
+                ToolTip.Tip="Undo the last physics property edit" />
+            <Button
+                x:Name="PhysicsRedoButton"
+                AutomationProperties.Name="Redo the last undone physics property edit"
+                Content="Redo"
+                IsEnabled="False"
+                ToolTip.Tip="Redo the last undone physics property edit" />
+          </StackPanel>
+          <Button
+              x:Name="PhysicsOverflowButton"
+              Grid.Column="1"
+              AutomationProperties.Name="More physics controls"
+              Content="&#x22EF;"
+              IsVisible="False"
+              ToolTip.Tip="Physics controls that do not fit the current width" />
+          <StackPanel
+              x:Name="PhysicsBakeProgressPanel"
+              Grid.Column="2"
+              Orientation="Horizontal"
+              Spacing="4"
+              IsVisible="False"
+              VerticalAlignment="Center">
+            <ProgressBar
+                x:Name="PhysicsBakeProgressBar"
+                Width="120"
+                AutomationProperties.Name="Physics bake progress"
+                Minimum="0"
+                Maximum="1"
+                Value="0"
+                VerticalAlignment="Center" />
+            <Button
+                x:Name="PhysicsBakeCancelButton"
+                AutomationProperties.Name="Cancel the running physics bake"
+                Content="Cancel Bake"
+                IsEnabled="False"
+                ToolTip.Tip="Stop the running bake and roll back everything it authored" />
+          </StackPanel>
+          <Slider
+              x:Name="PhysicsScrubber"
+              Grid.Column="3"
+              MinWidth="120"
+              AutomationProperties.Name="Physics simulation time code"
+              IsEnabled="False"
+              Minimum="0"
+              Maximum="1"
+              Value="0"
+              ToolTip.Tip="Scrub the simulation between the authored start and end time codes" />
+          <TextBlock
+              x:Name="PhysicsStatus"
+              Grid.Column="4"
+              MaxWidth="360"
+              AutomationProperties.Name="Physics simulation state"
+              HorizontalAlignment="Right"
+              TextTrimming="CharacterEllipsis"
+              VerticalAlignment="Center"
+              Text="Physics: off" />
+        </Grid>
       </Grid>
     </Border>
 
@@ -535,6 +685,297 @@
                   Text="No Hydra scene snapshot."
                   TextWrapping="NoWrap" />
             </Grid>
+          </TabItem>
+          <TabItem x:Name="PhysicsTab" Header="P_hysics">
+            <ScrollViewer Margin="0,8,0,0">
+              <StackPanel Spacing="8">
+                <TextBlock
+                    x:Name="PhysicsInspectorState"
+                    AutomationProperties.Name="Physics simulation status"
+                    Text="Enable physics for this stage to inspect its simulation."
+                    TextWrapping="Wrap" />
+                <TextBlock Text="Capabilities" FontWeight="SemiBold" />
+                <ItemsControl
+                    x:Name="PhysicsCapabilityRows"
+                    AutomationProperties.Name="Physics capability matrix">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="local:ViewerPhysicsCapabilityRow">
+                      <Grid ColumnDefinitions="160,80,*" Margin="0,0,0,4">
+                        <TextBlock Grid.Column="0" Text="{Binding Name}" TextWrapping="Wrap" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Text="{Binding StatusText}"
+                            FontWeight="SemiBold"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Grid.Column="2"
+                            Text="{Binding Detail}"
+                            Opacity="0.75"
+                            TextWrapping="Wrap" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="Diagnostics" FontWeight="SemiBold" />
+                <ItemsControl
+                    x:Name="PhysicsDiagnosticRows"
+                    AutomationProperties.Name="Physics diagnostics">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="local:ViewerPhysicsDiagnosticRow">
+                      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="Simulated objects" FontWeight="SemiBold" />
+                <ItemsControl
+                    x:Name="PhysicsObjectRows"
+                    AutomationProperties.Name="Simulated physics objects">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="local:ViewerPhysicsObjectRow">
+                      <Grid ColumnDefinitions="*,120" Margin="0,0,0,4">
+                        <TextBlock Grid.Column="0" Text="{Binding Path}" TextWrapping="Wrap" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Text="{Binding StatusText}"
+                            Opacity="0.75"
+                            TextWrapping="Wrap" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="Authoring" FontWeight="SemiBold" />
+                <TextBlock
+                    x:Name="PhysicsAuthoringState"
+                    AutomationProperties.Name="Physics authoring status"
+                    Text="Enable physics for this stage to author its simulation inputs."
+                    TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <Button
+                      x:Name="PhysicsRefreshPropertiesButton"
+                      AutomationProperties.Name="Reload physics properties"
+                      Content="Reload Properties"
+                      IsEnabled="False"
+                      ToolTip.Tip="Re-extract every physics object and its properties" />
+                  <ComboBox
+                      x:Name="PhysicsObjectSelector"
+                      Width="200"
+                      AutomationProperties.Name="Physics object to author"
+                      IsEnabled="False"
+                      ToolTip.Tip="Choose the extracted object whose properties are listed" />
+                </StackPanel>
+                <ListBox
+                    x:Name="PhysicsPropertyList"
+                    Height="180"
+                    AutomationProperties.Name="Physics properties"
+                    IsEnabled="False">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="local:ViewerPhysicsPropertyRow">
+                      <Grid ColumnDefinitions="180,*,110" Margin="0,0,0,2">
+                        <TextBlock Grid.Column="0" Text="{Binding Label}" TextWrapping="Wrap" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Text="{Binding ValueText}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Grid.Column="2"
+                            Text="{Binding StatusText}"
+                            Opacity="0.75"
+                            TextWrapping="Wrap" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock
+                    x:Name="PhysicsPropertyDetail"
+                    AutomationProperties.Name="Physics property description"
+                    Text="Select a property to author it."
+                    TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBox
+                      x:Name="PhysicsPropertyValueBox"
+                      Width="200"
+                      AutomationProperties.Name="Physics property value"
+                      IsEnabled="False"
+                      ToolTip.Tip="The value authored into the session overlay's user layer" />
+                  <ComboBox
+                      x:Name="PhysicsPropertyTokenSelector"
+                      Width="160"
+                      AutomationProperties.Name="Physics property token"
+                      IsEnabled="False"
+                      IsVisible="False"
+                      ToolTip.Tip="Choose one of the tokens the schema declares" />
+                  <Button
+                      x:Name="PhysicsApplyPropertyButton"
+                      AutomationProperties.Name="Author the physics property"
+                      Content="Apply"
+                      IsEnabled="False"
+                      ToolTip.Tip="Author this value into the session overlay's user layer" />
+                  <Button
+                      x:Name="PhysicsClearPropertyButton"
+                      AutomationProperties.Name="Clear the authored physics property"
+                      Content="Clear"
+                      IsEnabled="False"
+                      ToolTip.Tip="Remove the opinion this inspector authored" />
+                </StackPanel>
+                <TextBlock Text="Interaction" FontWeight="SemiBold" />
+                <TextBlock
+                    x:Name="PhysicsInteractionState"
+                    AutomationProperties.Name="Physics interaction status"
+                    Text="Enable physics and select a simulated object to drive it."
+                    TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBox
+                      x:Name="PhysicsForceDirectionBox"
+                      Width="140"
+                      AutomationProperties.Name="Force direction"
+                      Text="0 1 0"
+                      IsEnabled="False"
+                      ToolTip.Tip="Direction the force or impulse acts in, in stage space" />
+                  <TextBox
+                      x:Name="PhysicsForceMagnitudeBox"
+                      Width="90"
+                      AutomationProperties.Name="Force magnitude"
+                      Text="10"
+                      IsEnabled="False"
+                      ToolTip.Tip="Magnitude of the force or impulse" />
+                  <ComboBox
+                      x:Name="PhysicsForceModeSelector"
+                      Width="140"
+                      AutomationProperties.Name="Force mode"
+                      IsEnabled="False"
+                      SelectedIndex="0"
+                      ToolTip.Tip="How the value is integrated by the solver">
+                    <ComboBoxItem Content="Force" Tag="Default" />
+                    <ComboBoxItem Content="Acceleration" Tag="Acceleration" />
+                    <ComboBoxItem Content="Velocity Change" Tag="VelocityChange" />
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <Button
+                      x:Name="PhysicsApplyForceButton"
+                      AutomationProperties.Name="Apply a force to the selected body"
+                      Content="Force"
+                      IsEnabled="False"
+                      ToolTip.Tip="Apply a continuous force on the next simulation step" />
+                  <Button
+                      x:Name="PhysicsApplyImpulseButton"
+                      AutomationProperties.Name="Apply an impulse to the selected body"
+                      Content="Impulse"
+                      IsEnabled="False"
+                      ToolTip.Tip="Apply an instantaneous impulse on the next simulation step" />
+                  <Button
+                      x:Name="PhysicsApplyTorqueButton"
+                      AutomationProperties.Name="Apply a torque to the selected body"
+                      Content="Torque"
+                      IsEnabled="False"
+                      ToolTip.Tip="Apply a continuous torque on the next simulation step" />
+                  <Button
+                      x:Name="PhysicsWakeButton"
+                      AutomationProperties.Name="Wake the selected body"
+                      Content="Wake"
+                      IsEnabled="False"
+                      ToolTip.Tip="Wake the selected body on the next simulation step" />
+                  <Button
+                      x:Name="PhysicsSleepButton"
+                      AutomationProperties.Name="Put the selected body to sleep"
+                      Content="Sleep"
+                      IsEnabled="False"
+                      ToolTip.Tip="Put the selected body to sleep on the next simulation step" />
+                </StackPanel>
+                <TextBlock Text="Character controller" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <CheckBox
+                      x:Name="PhysicsControllerDriveCheckBox"
+                      AutomationProperties.Name="Drive the selected character controller"
+                      Content="Drive with WASD"
+                      IsEnabled="False"
+                      ToolTip.Tip="Move the selected controller with the movement keys" />
+                  <TextBox
+                      x:Name="PhysicsControllerSpeedBox"
+                      Width="90"
+                      AutomationProperties.Name="Character controller speed"
+                      Text="2"
+                      IsEnabled="False"
+                      ToolTip.Tip="Speed in stage linear units per second" />
+                </StackPanel>
+                <TextBlock Text="Vehicle" FontWeight="SemiBold" />
+                <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Throttle" />
+                  <Slider
+                      x:Name="PhysicsVehicleThrottleSlider"
+                      Grid.Row="0"
+                      Grid.Column="1"
+                      AutomationProperties.Name="Vehicle throttle"
+                      IsEnabled="False"
+                      Minimum="0"
+                      Maximum="1"
+                      Value="0" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Brake" />
+                  <Slider
+                      x:Name="PhysicsVehicleBrakeSlider"
+                      Grid.Row="1"
+                      Grid.Column="1"
+                      AutomationProperties.Name="Vehicle brake"
+                      IsEnabled="False"
+                      Minimum="0"
+                      Maximum="1"
+                      Value="0" />
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Steer" />
+                  <Slider
+                      x:Name="PhysicsVehicleSteerSlider"
+                      Grid.Row="2"
+                      Grid.Column="1"
+                      AutomationProperties.Name="Vehicle steering"
+                      IsEnabled="False"
+                      Minimum="-1"
+                      Maximum="1"
+                      Value="0" />
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Hand brake" />
+                  <Slider
+                      x:Name="PhysicsVehicleHandBrakeSlider"
+                      Grid.Row="3"
+                      Grid.Column="1"
+                      AutomationProperties.Name="Vehicle hand brake"
+                      IsEnabled="False"
+                      Minimum="0"
+                      Maximum="1"
+                      Value="0" />
+                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Clutch" />
+                  <Slider
+                      x:Name="PhysicsVehicleClutchSlider"
+                      Grid.Row="4"
+                      Grid.Column="1"
+                      AutomationProperties.Name="Vehicle clutch"
+                      IsEnabled="False"
+                      Minimum="0"
+                      Maximum="1"
+                      Value="0" />
+                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Gear" />
+                  <ComboBox
+                      x:Name="PhysicsVehicleGearSelector"
+                      Grid.Row="5"
+                      Grid.Column="1"
+                      AutomationProperties.Name="Vehicle gear"
+                      IsEnabled="False"
+                      SelectedIndex="0"
+                      ToolTip.Tip="Gear 0 leaves the choice to the drivetrain">
+                    <ComboBoxItem Content="Automatic" Tag="0" />
+                    <ComboBoxItem Content="Reverse" Tag="1" />
+                    <ComboBoxItem Content="Neutral" Tag="2" />
+                    <ComboBoxItem Content="First" Tag="3" />
+                    <ComboBoxItem Content="Second" Tag="4" />
+                    <ComboBoxItem Content="Third" Tag="5" />
+                    <ComboBoxItem Content="Fourth" Tag="6" />
+                  </ComboBox>
+                </Grid>
+                <CheckBox
+                    x:Name="PhysicsVehicleDriveCheckBox"
+                    AutomationProperties.Name="Drive the selected vehicle"
+                    Content="Send vehicle input every step"
+                    IsEnabled="False"
+                    ToolTip.Tip="Submit the throttle, brake, steering, and gear on every step" />
+              </StackPanel>
+            </ScrollViewer>
           </TabItem>
           <TabItem x:Name="TfDebugTab" Header="_TfDebug">
             <Grid Margin="0,8,0,0" RowDefinitions="Auto,Auto,*">

@@ -17,9 +17,20 @@ internal sealed class StormNativeControlHost : NativeControlHost
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly string _pluginPath;
     private readonly UsdStageRenderSource _source;
+    private readonly object _physicsGate = new();
+    private readonly StormPhysicsTransformOverrides _physicsOverrides = new(
+        ViewerPhysicsRenderCapacities.BodyCapacity,
+        ViewerPhysicsRenderCapacities.StormPathBytes);
+    private readonly StormPhysicsDeformationOverrides _physicsDeformations = new(
+        ViewerPhysicsRenderCapacities.DeformableCapacity,
+        ViewerPhysicsRenderCapacities.DeformableVertexCapacity,
+        ViewerPhysicsRenderCapacities.StormPathBytes);
+    private StormPhysicsDeformationDiagnostics _physicsDeformationDiagnostics;
     private IViewerStormFrameAdapter? _frameAdapter;
     private OpenUsdStormChildSession? _session;
     private TopLevel? _topLevel;
+    private ViewerPhysicsOverrideReport _physicsReport;
+    private bool _hasPhysicsReport;
     private int _destroyed;
 
     internal StormNativeControlHost(
@@ -108,6 +119,116 @@ internal sealed class StormNativeControlHost : NativeControlHost
     }
 
     internal void SimulateContextLoss() => GetSession().SimulateContextLoss();
+
+    /// <summary>Queues one physics override batch on the native child's render thread.</summary>
+    /// <param name="overrides">The overrides one render update produced.</param>
+    /// <param name="bindings">The table naming the prim each identity drives.</param>
+    /// <returns>The number of overrides the child accepted.</returns>
+    internal int SetPhysicsOverrides(
+        in PhysicsRenderOverrideView overrides,
+        PhysicsRenderBindingTable bindings)
+    {
+        OpenUsdStormChildSession? session = Volatile.Read(ref _session);
+        if (session is null || Volatile.Read(ref _destroyed) != 0)
+        {
+            return 0;
+        }
+
+        lock (_physicsGate)
+        {
+            int resolved = _physicsOverrides.Refresh(in overrides, bindings);
+            session.SetPhysicsTransformOverrides(_physicsOverrides);
+            _physicsReport = new ViewerPhysicsOverrideReport(
+                overrides.Revision,
+                resolved,
+                Math.Max(0, overrides.Count - resolved));
+            _hasPhysicsReport = true;
+            return resolved;
+        }
+    }
+
+    /// <summary>Queues one deformable geometry batch on the native child's render thread.</summary>
+    /// <param name="deformations">The geometry one render update produced.</param>
+    /// <param name="bindings">The table naming the prim each identity drives.</param>
+    /// <returns>The number of regions the child accepted.</returns>
+    /// <remarks>
+    /// The regions and their shared point page are packed once and handed over in one call, so a
+    /// deforming body costs one boundary crossing per frame no matter how many vertices it has.
+    /// </remarks>
+    internal int SetPhysicsDeformations(
+        in PhysicsRenderDeformationView deformations,
+        PhysicsRenderBindingTable bindings)
+    {
+        OpenUsdStormChildSession? session = Volatile.Read(ref _session);
+        if (session is null || Volatile.Read(ref _destroyed) != 0)
+        {
+            return 0;
+        }
+
+        lock (_physicsGate)
+        {
+            int resolved = _physicsDeformations.Refresh(in deformations, bindings);
+            _physicsDeformationDiagnostics =
+                session.SetPhysicsDeformationOverrides(_physicsDeformations);
+            return resolved;
+        }
+    }
+
+    /// <summary>Gets what the child reported about the last deformation batch it accepted.</summary>
+    internal StormPhysicsDeformationDiagnostics PhysicsDeformationDiagnostics
+    {
+        get
+        {
+            lock (_physicsGate)
+            {
+                return _physicsDeformationDiagnostics;
+            }
+        }
+    }
+
+    /// <summary>Takes the newest report of what the child actually resolved.</summary>
+    /// <param name="report">Receives the newest unread report.</param>
+    /// <returns><see langword="true"/> when a report was taken.</returns>
+    /// <remarks>
+    /// The native child resolves a batch against the binding table synchronously while it is being
+    /// queued, so the report is complete as soon as the batch has been handed over.
+    /// </remarks>
+    internal bool TryTakePhysicsOverrideReport(out ViewerPhysicsOverrideReport report)
+    {
+        lock (_physicsGate)
+        {
+            if (!_hasPhysicsReport)
+            {
+                report = default;
+                return false;
+            }
+
+            report = _physicsReport;
+            _hasPhysicsReport = false;
+            return true;
+        }
+    }
+
+    /// <summary>Queues an empty batch so the child restores the authored transforms.</summary>
+    internal void ClearPhysicsOverrides()
+    {
+        OpenUsdStormChildSession? session = Volatile.Read(ref _session);
+        if (session is null || Volatile.Read(ref _destroyed) != 0)
+        {
+            return;
+        }
+
+        lock (_physicsGate)
+        {
+            _physicsDeformations.Clear();
+            _physicsDeformationDiagnostics =
+                session.SetPhysicsDeformationOverrides(_physicsDeformations);
+            _physicsOverrides.Clear();
+            session.SetPhysicsTransformOverrides(_physicsOverrides);
+            _physicsReport = default;
+            _hasPhysicsReport = false;
+        }
+    }
 
     internal OpenUsdStormChildDiagnostics GetDiagnostics() => GetSession().GetDiagnostics();
 

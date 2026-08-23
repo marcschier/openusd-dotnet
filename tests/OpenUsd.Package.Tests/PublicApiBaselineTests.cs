@@ -11,6 +11,7 @@ public sealed class PublicApiBaselineTests
         "OpenUsd",
         "OpenUsd.Cesium",
         "OpenUsd.Interop",
+        "OpenUsd.Physics",
         "OpenUsd.Rendering",
         "OpenUsd.Rendering.Silk",
         "OpenUsd.Rendering.Silk.D3D12",
@@ -29,14 +30,17 @@ public sealed class PublicApiBaselineTests
         "OpenUsd.Runtime.Cesium.win-x64",
         "OpenUsd.Runtime.Imaging.linux-x64",
         "OpenUsd.Runtime.Imaging.osx-arm64",
-        "OpenUsd.Runtime.Imaging.win-x64"
+        "OpenUsd.Runtime.Imaging.win-x64",
+        "OpenUsd.Runtime.Physics.linux-x64",
+        "OpenUsd.Runtime.Physics.win-x64"
     ];
 
     private static readonly string[] ExpectedDependencyOnlyRuntimeProjects =
     [
         "OpenUsd.Runtime.Core",
         "OpenUsd.Runtime.Cesium",
-        "OpenUsd.Runtime.Imaging"
+        "OpenUsd.Runtime.Imaging",
+        "OpenUsd.Runtime.Physics"
     ];
 
     private static readonly string[] ExpectedPackableManagedProjects =
@@ -45,6 +49,7 @@ public sealed class PublicApiBaselineTests
         "OpenUsd.Cesium",
         "OpenUsd.Interop",
         "OpenUsd.Mcp",
+        "OpenUsd.Physics",
         "OpenUsd.Rendering",
         "OpenUsd.Rendering.Silk",
         "OpenUsd.Rendering.Silk.D3D12",

@@ -8,6 +8,7 @@ install(
         include/openusd_render_camera.h
         include/openusd_render_lighting.h
         include/openusd_render_pick.h
+        include/openusd_render_physics.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 option(OPENUSD_ENABLE_ASAN "Enable AddressSanitizer for project native targets" OFF)
@@ -61,12 +62,31 @@ find_package(OpenGL REQUIRED)
 option(OPENUSD_WITH_VULKAN "Resolve Vulkan targets required by the OpenUSD build" OFF)
 if(OPENUSD_WITH_VULKAN)
     find_package(Vulkan REQUIRED COMPONENTS shaderc_combined)
-elseif(OPENUSD_WITH_CESIUM AND NOT TARGET Vulkan::Vulkan)
-    # The Cesium shim does not link Vulkan, but OpenUSD's exported hgiVulkan
-    # target can mention Vulkan targets even when no Cesium package ships the
-    # locally rebuilt renderer binaries from this preset.
-    add_library(Vulkan::Vulkan INTERFACE IMPORTED)
-    add_library(Vulkan::shaderc_combined INTERFACE IMPORTED)
+else()
+    # OpenUSD's exported hgiVulkan target names Vulkan::Vulkan and
+    # Vulkan::shaderc_combined in its interface whenever the locked OpenUSD build
+    # enabled Vulkan, which the viewer-standard profile does on Windows and Linux.
+    # find_package(pxr) below imports that target regardless of what this build
+    # links, so generation fails on a dangling target reference unless the names
+    # exist.
+    #
+    # The placeholders are deliberately unconditional on which optional shim is
+    # enabled. This branch used to require OPENUSD_WITH_CESIUM, which silently
+    # made "no Vulkan" mean "no Vulkan, but only for Cesium": turning Vulkan off
+    # for the physics presets then failed configure on a target that has nothing
+    # to do with physics. The condition that matters is whether the names are
+    # missing, not why they are missing.
+    #
+    # Interface libraries with no properties are correct here rather than a
+    # convenience: nothing in this build links Vulkan when the option is off, so
+    # the placeholders must contribute no include directory, no library, and no
+    # compile definition. A real loader is resolved only by the ON branch.
+    if(NOT TARGET Vulkan::Vulkan)
+        add_library(Vulkan::Vulkan INTERFACE IMPORTED)
+    endif()
+    if(NOT TARGET Vulkan::shaderc_combined)
+        add_library(Vulkan::shaderc_combined INTERFACE IMPORTED)
+    endif()
 endif()
 if(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
@@ -102,7 +122,7 @@ if(OPENUSD_BUILD_NATIVE_TESTS)
     if(OPENUSD_WITH_CESIUM)
         add_subdirectory(openusd_cesium_probe)
     endif()
-    if(OPENUSD_WITH_PHYSX)
-        add_subdirectory(openusd_physx_probe)
-    endif()
+    # The physics probe directory also holds the PhysX free page contract probe,
+    # so it is always added and guards the targets that need the simulation SDK.
+    add_subdirectory(openusd_physx_probe)
 endif()

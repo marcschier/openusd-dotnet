@@ -1,9 +1,10 @@
 # OpenUsd documentation
 
-OpenUsd is a public `0.11.0-alpha` project with 23 packages published to NuGet.org, including the
-`OpenUsd.Mcp.Tool` .NET tool and five Cesium package IDs that became public after being withheld at
-`0.5.0-alpha`. Start with the route that matches what you are trying to do, then follow the deeper
-design or evidence documents only as needed.
+OpenUsd is a public `0.11.0-alpha` project with 27 packages published to NuGet.org, including the
+`OpenUsd.Mcp.Tool` .NET tool, the five Cesium package IDs that became public after being withheld at
+`0.5.0-alpha`, and the four physics package IDs introduced in `0.11.0-alpha`. Start
+with the route that matches what you are trying to do, then follow the
+deeper design or evidence documents only as needed.
 
 ## Choose your route
 
@@ -17,6 +18,8 @@ design or evidence documents only as needed.
 | Using the desktop Viewer | [Getting started](getting-started.md) | [Viewer](viewer.md) |
 | Using OpenUSD from an MCP agent | [MCP server](mcp.md) | [Troubleshooting](troubleshooting.md) |
 | Working on rendering | [Rendering](rendering.md) | [Shader pipeline](shader-pipeline.md) |
+| Simulating physics | [Physics extraction](physics-extraction.md) | [Physics baking](physics-baking.md) |
+| Baking simulated physics | [Physics baking](physics-baking.md) | [Programming model](programming-model.md) |
 | Investigating performance | [Performance](performance.md) | [Testing](testing.md) |
 | Building native inputs | [Native build](native-build.md) | [Packaging](packaging.md) |
 | Preparing package evidence | [Packaging](packaging.md) | [Testing](testing.md) |
@@ -73,6 +76,8 @@ design or evidence documents only as needed.
 | [Shader pipeline](shader-pipeline.md) | Reproducible shader inputs, outputs, validation, and Metal staging |
 | [Performance](performance.md) | Native-call shape, allocations, retained resources, and benchmarks |
 | [Testing](testing.md) | Managed, native, package, performance, continuous render, and soak gates |
+| [Physics extraction](physics-extraction.md) | One stage traversal into an immutable, pointer-free simulation page |
+| [Physics baking](physics-baking.md) | Preview overlay apply and transactional bake into a destination layer |
 | [Troubleshooting](troubleshooting.md) | Native loading, plugins, platform shells, AOT, and evidence triage |
 
 ## Repository examples

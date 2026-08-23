@@ -116,7 +116,14 @@ public sealed class SilkMeshRenderer :
     private readonly SilkShaderBinaryFormat _shaderFormat;
     private readonly ISilkPickingGraphicsDevice? _pickingDevice;
     private readonly ISilkSelectionOutlineGraphicsDevice? _selectionOutlineDevice;
+    // The batch table is rebuilt from scratch every frame rather than accumulated, because a
+    // BatchKey holds the geometry resource by reference: deformable geometry produces a new
+    // resource whenever its points change, so a table that only cleared its lists would keep one
+    // dead key per deformed frame, hold the disposed resource alive, and lengthen the per-frame
+    // sweep forever. The lists themselves are pooled, so rebuilding costs no steady-state
+    // allocation.
     private readonly Dictionary<BatchKey, List<SilkMeshGpuResource>> _batches = [];
+    private readonly List<List<SilkMeshGpuResource>> _batchPool = [];
     private readonly List<BatchKey> _batchOrder = [];
     private ISilkPickGraphicsPipeline? _pickPipeline;
     private SilkPickReadbackRing? _pickReadbacks;
@@ -293,6 +300,27 @@ public sealed class SilkMeshRenderer :
 
     /// <summary>Gets the retained GPU resources and upload diagnostics.</summary>
     public SilkSceneGpuResources GpuResources { get; }
+
+    /// <summary>
+    /// Gets or sets the physics transform overrides applied to retained meshes for every rendered
+    /// frame, or <see langword="null"/> to draw every mesh from its authored transform.
+    /// </summary>
+    /// <remarks>
+    /// The renderer only reads the resolved override table; it never authors USD and never sees a
+    /// simulation handle. Clearing the table, or setting this to <see langword="null"/>, restores
+    /// the authored render state on the next rendered frame.
+    /// </remarks>
+    public SilkPhysicsTransformOverrides? PhysicsOverrides { get; set; }
+
+    /// <summary>Gets or sets the deformable geometry currently driving retained meshes.</summary>
+    /// <remarks>
+    /// The batch is re-applied on every render, immediately after any authored scene page has been
+    /// applied and before anything is drawn. That ordering is the whole point: the delegate
+    /// republishes authored geometry on every page, so a deformation applied before the page would
+    /// be overwritten by it and the frame would draw the rest pose. Re-applying also invalidates
+    /// exactly the meshes whose points changed, which is what reaches the vertex buffers.
+    /// </remarks>
+    public SilkPhysicsDeformations? PhysicsDeformations { get; set; }
 
     /// <inheritdoc/>
     public SelectionState Selection
@@ -630,6 +658,12 @@ public sealed class SilkMeshRenderer :
             _bindingLayout.Dispose();
             _fragmentShader.Dispose();
             _vertexShader.Dispose();
+
+            // Batch keys reference geometry resources the GPU scene has just disposed, so the table
+            // is emptied here rather than left holding them for the lifetime of the renderer.
+            _batches.Clear();
+            _batchPool.Clear();
+            _batchOrder.Clear();
         }
     }
 
@@ -641,7 +675,8 @@ public sealed class SilkMeshRenderer :
     {
         ValidateTargets(colorTarget, depthTarget);
         ValidateOptions(options);
-        int uniformUploads = GpuResources.UpdateUniforms(Scene.Frame);
+        SyncPhysicsDeformations();
+        int uniformUploads = GpuResources.UpdateUniforms(Scene.Frame, PhysicsOverrides);
         ISilkGraphicsBuffer frameBuffer = GpuResources.RequireFrameBuffer(Scene.Frame);
         bool renderSelectionOutline = PrepareSelectionOutline(depthTarget);
         using ISilkGraphicsCommandList commands = _device.CreateCommandList();
@@ -653,6 +688,19 @@ public sealed class SilkMeshRenderer :
                     "A selection-outline-capable device must create " +
                     "selection-outline-capable command lists.");
         }
+        // The batch table is released before anything branches on the frame's shape, so a frame
+        // that takes the single-mesh fast path - or that has no drawable mesh at all - still drops
+        // the keys the previous frame produced. Leaving that inside the grouped branch meant a
+        // scene that shrank to one mesh kept the whole multi-mesh table, and every geometry
+        // resource it named, for the life of the renderer.
+        foreach (List<SilkMeshGpuResource> batch in _batches.Values)
+        {
+            batch.Clear();
+            _batchPool.Add(batch);
+        }
+        _batches.Clear();
+        _batchOrder.Clear();
+
         SilkMeshGpuResource? singleMesh = null;
         if (GpuResources.MeshValues.Count == 1)
         {
@@ -681,11 +729,8 @@ public sealed class SilkMeshRenderer :
 
         if (singleMesh is null)
         {
-            foreach (List<SilkMeshGpuResource> batch in _batches.Values)
-            {
-                batch.Clear();
-            }
-            _batchOrder.Clear();
+            // Dictionary.Clear above kept its capacity, so refilling it allocates nothing once the
+            // scene has been drawn once.
             foreach (SilkMeshGpuResource mesh in GpuResources.MeshValues)
             {
                 if (mesh.IndexCount == 0)
@@ -702,11 +747,8 @@ public sealed class SilkMeshRenderer :
                     mesh.Mesh.TopologyKind);
                 if (!_batches.TryGetValue(key, out List<SilkMeshGpuResource>? batch))
                 {
-                    batch = [];
+                    batch = RentBatch();
                     _batches.Add(key, batch);
-                }
-                if (batch.Count == 0)
-                {
                     _batchOrder.Add(key);
                 }
                 batch.Add(mesh);
@@ -1215,6 +1257,61 @@ public sealed class SilkMeshRenderer :
         {
             _selectionResolutionDirty = true;
         }
+    }
+
+    /// <summary>Takes a pooled batch list, or a new one when the pool is empty.</summary>
+    /// <remarks>
+    /// The pool can never exceed the number of distinct batches one frame produced, which is
+    /// bounded by the live geometry in the scene: lists are returned at the start of the frame and
+    /// taken again while grouping the same frame's meshes.
+    /// </remarks>
+    private List<SilkMeshGpuResource> RentBatch()
+    {
+        int last = _batchPool.Count - 1;
+        if (last < 0)
+        {
+            return [];
+        }
+
+        List<SilkMeshGpuResource> batch = _batchPool[last];
+        _batchPool.RemoveAt(last);
+        return batch;
+    }
+
+    /// <summary>Gets the number of batch keys the most recent frame grouped meshes into.</summary>
+    /// <remarks>
+    /// A diagnostic for the retention gates only. It is the count that grew without bound while a
+    /// batch key held a disposed geometry resource for every deformed frame ever drawn.
+    /// </remarks>
+    internal int BatchKeyCount => _batches.Count;
+
+    /// <summary>Gets the number of pooled batch lists that are not in use.</summary>
+    internal int PooledBatchCount => _batchPool.Count;
+
+    /// <summary>
+    /// Applies simulated geometry over the authored scene and uploads what changed.
+    /// </summary>
+    /// <remarks>
+    /// This runs after any authored page has been applied and before the frame is drawn, so the
+    /// simulated points win over authored geometry for the frame and the geometry delta the apply
+    /// produces is uploaded here, exactly once. A body that has settled applies as unchanged,
+    /// produces an empty delta, and costs nothing.
+    /// </remarks>
+    private void SyncPhysicsDeformations()
+    {
+        SilkPhysicsDeformations? deformations = PhysicsDeformations;
+        if (deformations is null || !deformations.HasBatch)
+        {
+            return;
+        }
+
+        _ = deformations.Reapply(Scene);
+        if (!deformations.HasPendingGeometry)
+        {
+            return;
+        }
+
+        GpuResources.Apply(Scene, deformations.Delta);
     }
 
     private void UpdateSelectionStatusBeforeRender()

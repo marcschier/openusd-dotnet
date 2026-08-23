@@ -1,0 +1,148 @@
+{
+  "$schemaVersion": 1,
+  "component": "PhysxSchema",
+  "purpose": "Codeless USD schema artifacts (plugInfo.json, generatedSchema.usda) for the physx* property namespace.",
+  "decision": "not-vendored",
+  "decisionSummary": "Approved decision (option B): do not vendor PhysxSchema. No PhysxSchema codeless artifacts exist at the pinned PhysX SDK revision (tag 106.4-physx-5.5.0), and the separately versioned main-branch schema line (embedded schema version 25.11.1) is not tied to that pinned tag. The project-owned openUsdPhysics schema plugin was expanded instead so every agreed physics domain is representable without any vendored PhysxSchema content.",
+  "versionIdentifiers": {
+    "note": "Two independent version identifiers are involved and must not be conflated. '106.4' versions the PhysX SDK repository tag; it is not a PhysxSchema version. The USD schema line carries its own version in schemas/physx/VERSION. There is no such thing as 'PhysxSchema 106.4'.",
+    "repositoryCompatibilityBaseline": {
+      "meaning": "The PhysX SDK source revision this repository pins and builds against.",
+      "repository": "https://github.com/NVIDIA-Omniverse/PhysX.git",
+      "tag": "106.4-physx-5.5.0",
+      "resolvedCommit": "dd587fedd79836442a4117164ea8c46685453c34",
+      "sdkVersion": "PhysX 5.5.0",
+      "pinnedBy": "eng/physx.lock.json",
+      "carriesUsdSchemaArtifacts": false
+    },
+    "embeddedSchemaVersion": {
+      "meaning": "The version the PhysxSchema USD schema line declares for itself, read from the upstream VERSION file.",
+      "versionFile": "schemas/physx/VERSION",
+      "value": "25.11.1",
+      "observedOnBranch": "main",
+      "observedCommit": "3ca45ad36e9755f7c8c5bea9f7c57d308d9f0c54",
+      "relationToTag": "Independent of the 106.4-physx-5.5.0 tag. The schema line is versioned and released separately from the SDK tag."
+    }
+  },
+  "verifiedUtc": "2026-08-19",
+  "verificationMethod": "GitHub REST contents API and raw.githubusercontent.com over HTTPS; every listed URL was fetched and its status recorded.",
+  "pinnedBaseline": {
+    "source": "eng/physx.lock.json",
+    "repository": "https://github.com/NVIDIA-Omniverse/PhysX.git",
+    "tag": "106.4-physx-5.5.0",
+    "resolvedCommit": "dd587fedd79836442a4117164ea8c46685453c34",
+    "declaredLicense": "BSD-3-Clause",
+    "licenseFile": {
+      "path": "LICENSE.md",
+      "gitBlobSha1": "4db78a72f6e6f48be4ea78b97ea5b848039bc74e",
+      "bytes": 1548,
+      "identifier": "BSD-3-Clause",
+      "copyright": "Copyright (c) 2008-2024, NVIDIA Corporation"
+    },
+    "rootEntries": [
+      ".github",
+      "CONTRIBUTING.md",
+      "LICENSE.md",
+      "README.md",
+      "SECURITY.md",
+      "blast",
+      "flow",
+      "physx"
+    ],
+    "schemaArtifactsPresent": false,
+    "evidence": [
+      {
+        "url": "https://api.github.com/repos/NVIDIA-Omniverse/PhysX/git/ref/tags/106.4-physx-5.5.0",
+        "status": 200,
+        "observed": "Tag resolves directly to commit dd587fedd79836442a4117164ea8c46685453c34."
+      },
+      {
+        "url": "https://api.github.com/repos/NVIDIA-Omniverse/PhysX/contents/?ref=dd587fedd79836442a4117164ea8c46685453c34",
+        "status": 200,
+        "observed": "Repository root at the pinned commit contains no schemas/, no usd/, and no physxSchema/ directory."
+      },
+      {
+        "url": "https://api.github.com/repos/NVIDIA-Omniverse/PhysX/contents/schemas/physx?ref=dd587fedd79836442a4117164ea8c46685453c34",
+        "status": 404,
+        "observed": "No schema tree exists at the pinned commit."
+      },
+      {
+        "url": "https://api.github.com/repos/NVIDIA-Omniverse/PhysX/contents/LICENSE.md?ref=dd587fedd79836442a4117164ea8c46685453c34",
+        "status": 200,
+        "observed": "BSD-3-Clause covering the C++ SDK sources that are present in that commit."
+      }
+    ]
+  },
+  "upstreamSchemaLine": {
+    "note": "PhysxSchema USD artifacts are published on a separately versioned release line. They are not '106.4' artifacts: 106.4 is an SDK repository tag, while this schema line declares version 25.11.1 in its own VERSION file.",
+    "repository": "https://github.com/NVIDIA-Omniverse/PhysX.git",
+    "branch": "main",
+    "observedCommit": "3ca45ad36e9755f7c8c5bea9f7c57d308d9f0c54",
+    "schemaVersionFile": "schemas/physx/VERSION",
+    "schemaVersion": "25.11.1",
+    "licenseFile": {
+      "path": "LICENSE.md",
+      "gitBlobSha1": "2388f6f9a26a42277e0dd0bf4b7b55af5aee29e5",
+      "bytes": 1517,
+      "identifier": "BSD-3-Clause",
+      "copyright": "Copyright (c) 2008-2025, NVIDIA Corporation"
+    },
+    "artifacts": [
+      {
+        "path": "schemas/physx/source/physxSchema/schema.usda",
+        "gitBlobSha1": "9442b2253a81346c97fff972a9a2b7c59dc7caf1",
+        "sha256": "0a6099b43e7cb1c9220f986b0fa67a4761b134ab3cd4ff9ea720048d9890a90e",
+        "bytes": 254426
+      },
+      {
+        "path": "schemas/physx/source/physxSchema/generatedSchema.usda",
+        "gitBlobSha1": "14abb136b9095528c148e9edf3613221f6cd97e3",
+        "sha256": "35c6d9577b1fef8bb37b7c974d65dea1eeabfdeec0b0c1aa57dc399cb402e35b",
+        "bytes": 139920
+      },
+      {
+        "path": "schemas/physx/source/physxSchema/plugInfo.json",
+        "gitBlobSha1": "7b57b6e0dc54b5027f1f02bdebfa194f2d525d37",
+        "sha256": "0d9e70dfd2c4d2b3a45920c406b2470bbe7f5d1d34e62d1b073872bd2af43cb3",
+        "bytes": 42022
+      }
+    ],
+    "hashNote": "sha256 values were computed from the raw.githubusercontent.com bytes at the observed commit. The downloaded copies were deleted; no PhysxSchema bytes are stored in this repository."
+  },
+  "rejectedSources": [
+    {
+      "source": "https://pypi.org/project/physx-usd-schemas/",
+      "version": "25.11.1",
+      "licenseExpression": "LicenseRef-NVIDIA-Omniverse",
+      "status": 200,
+      "reason": "The prebuilt wheel carries a custom NVIDIA Omniverse license reference rather than an OSI-approved license, so it is not redistributable by this project."
+    },
+    {
+      "source": "Omniverse Kit extension omni.usd.schema.physx",
+      "reason": "Distributed under the NVIDIA Omniverse License Agreement; not redistributable by a third-party open-source project."
+    }
+  ],
+  "conclusions": [
+    "The BSD-3-Clause license of the pinned PhysX SDK commit does not, by association, cover PhysxSchema USD artifacts, because no such artifacts exist in that commit.",
+    "The plan's phrase 'PhysxSchema 106.4' names a version that does not exist. 106.4-physx-5.5.0 is an SDK repository tag; the PhysxSchema USD line declares 25.11.1 in schemas/physx/VERSION.",
+    "No PhysxSchema plugInfo.json or generatedSchema.usda is vendored into this repository.",
+    "Vendoring the main-branch artifacts (embedded schema version 25.11.1) would be license-permissible (BSD-3-Clause) but introduces a schema version that is not tied to the pinned SDK tag. Option B was approved instead, so this is not done."
+  ],
+  "followUp": [
+    "If this repository ever adopts the PhysxSchema 25.11.1 schema line, record it as a new approved plan revision and keep the SDK tag and the embedded schema version as two separate fields; never restate the schema version as 106.4.",
+    "Foreign physx* properties remain unmodelled by this repository by design. Reading them is a runtime concern, not a schema one.",
+    "The managed runtime cannot author a prim's apiSchemas list yet, so generated facades expose Wrap/Has but no Apply. Adding that is tracked separately from this schema work."
+  ],
+  "approvedDecision": {
+    "option": "B",
+    "title": "Do not vendor mismatched PhysxSchema 25.11.1; expand the project-owned schema instead.",
+    "status": "approved",
+    "recordedUtc": "2026-08-19",
+    "consequences": [
+      "No PhysxSchema plugInfo.json, generatedSchema.usda, or derived definition is vendored.",
+      "Foreign physx* opinions are an optional raw input: read when present, ranked below openUsdPhysics:*, and never required for any domain.",
+      "The openUsdPhysics schema plugin covers articulation tendons and mimic joints, particles, PBD materials, fluids and particle cloth, surface deformables, FEM volume deformables, attachments and auto-attachments, collision filters, cooked-data references, vehicles, and character controllers.",
+      "Schema semantics are project-owned and independently authored. No NVIDIA schema content, documentation, or licensing text is copied or paraphrased."
+    ]
+  }
+}

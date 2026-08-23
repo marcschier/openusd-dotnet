@@ -356,9 +356,9 @@ public sealed class WorkflowStructureContractTests
         }
 
         await Assert.That(symbolPublished.Length)
-            .IsEqualTo(10)
+            .IsEqualTo(11)
             .Because(
-                "the current release set has nine managed libraries plus the MCP tool " +
+                "the current 27-package release set has ten managed libraries plus the MCP tool " +
                 "that explicitly emit snupkg files");
         await Assert.That(actual)
             .IsEquivalentTo(expected)
@@ -561,6 +561,117 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(releasePackageComponents)
             .IsEquivalentTo(published)
             .Because("every published package component must be checked for version drift");
+    }
+
+    /// <summary>
+    /// Pins how the release SBOM describes PhysX: what is redistributed, under which licence, and
+    /// what is only ever a build input.
+    /// </summary>
+    /// <remarks>
+    /// The SBOM said the PhysX shim was "built in native CI but not published as a release
+    /// artifact" long after the simulation SDK started being statically linked into published
+    /// runtime packages, which is the kind of stale scope string a downstream licence review reads
+    /// as fact.
+    ///
+    /// The GPU and device modules are the opposite case. The vcpkg port really does download them
+    /// on every physics build, so omitting them would describe a build that never happened, but
+    /// they are packman blobs under NVIDIA proprietary terms and no package contains one. They are
+    /// therefore recorded as non-redistributed inputs, and a CycloneDX <c>license.id</c> is refused
+    /// for them because a LicenseRef- value is not an SPDX identifier.
+    /// </remarks>
+    [Test]
+    public async Task ReleaseSbomDescribesPhysXScopeAndLicensesTruthfully()
+    {
+        string root = FindRepositoryRoot();
+        using JsonDocument sbom = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(root, "eng", "sbom", "openusd-release.cdx.json")));
+
+        // Grouped rather than keyed directly: several native dependencies legitimately appear more
+        // than once because they are pinned per platform.
+        Dictionary<string, JsonElement[]> components = sbom.RootElement
+            .GetProperty("components")
+            .EnumerateArray()
+            .GroupBy(
+                component => component.GetProperty("name").GetString()!,
+                StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+
+        // The root scope is asserted as well as the component scope. Both statements describe the
+        // same redistribution status, and the root one is what an auditor reads first, so a
+        // component that says "statically linked into the published packages" underneath a root
+        // that still says "optional native CI input" is worse than either alone.
+        JsonElement metadataProperties = sbom.RootElement
+            .GetProperty("metadata")
+            .GetProperty("properties");
+        string rootScope = metadataProperties
+            .EnumerateArray()
+            .Where(property => property.GetProperty("name").GetString() == "openusd:scope")
+            .Select(property => property.GetProperty("value").GetString() ?? string.Empty)
+            .Single();
+        await Assert.That(rootScope)
+            .Contains("statically linked into the published", StringComparison.Ordinal)
+            .Because("the release scope has to name the packages PhysX actually ships inside");
+        await Assert.That(rootScope)
+            .DoesNotContain("optional native CI input", StringComparison.Ordinal)
+            .Because("that scope stopped being true when the physics packages started shipping");
+
+        await Assert.That(components).ContainsKey("PhysX");
+        JsonElement physx = components["PhysX"].Single();
+        await Assert.That(ReadSbomProperty(physx, "openusd:release-scope"))
+            .Contains("statically linked into the published", StringComparison.Ordinal)
+            .Because("the simulation SDK is shipped inside the physics runtime packages");
+        await Assert.That(ReadSbomProperty(physx, "openusd:release-scope"))
+            .DoesNotContain("not published", StringComparison.Ordinal)
+            .Because("that scope stopped being true when the physics packages started shipping");
+        await Assert.That(ReadSbomProperty(physx, "openusd:release-rids"))
+            .IsEqualTo("win-x64,linux-x64")
+            .Because("the pinned vcpkg PhysX port supports no other RID this project ships");
+        await Assert.That(
+            physx.GetProperty("licenses")[0].GetProperty("license").GetProperty("id").GetString())
+            .IsEqualTo("BSD-3-Clause");
+
+        foreach (string module in new[] { "PhysXGpu_64", "PhysXDevice64" })
+        {
+            await Assert.That(components).ContainsKey(module);
+            JsonElement gpu = components[module].Single();
+            await Assert.That(ReadSbomProperty(gpu, "openusd:redistributed"))
+                .IsEqualTo("false")
+                .Because($"{module} is an NVIDIA proprietary blob this project may not ship");
+            await Assert.That(ReadSbomProperty(gpu, "openusd:release-scope"))
+                .Contains("never redistributed", StringComparison.Ordinal);
+
+            JsonElement license = gpu.GetProperty("licenses")[0].GetProperty("license");
+            await Assert.That(license.TryGetProperty("id", out _))
+                .IsFalse()
+                .Because("LicenseRef-NvidiaProprietary is not an SPDX identifier");
+            await Assert.That(license.GetProperty("name").GetString())
+                .IsEqualTo("LicenseRef-NvidiaProprietary");
+
+            // A build input is never a release artifact. The two are distinguished by exactly this
+            // property everywhere else in the document.
+            await Assert.That(ReadSbomProperty(gpu, "openusd:release-artifact"))
+                .IsNull()
+                .Because($"{module} must never be recorded as a released component");
+        }
+    }
+
+    private static string? ReadSbomProperty(JsonElement component, string name)
+    {
+        if (!component.TryGetProperty("properties", out JsonElement properties))
+        {
+            return null;
+        }
+        foreach (JsonElement property in properties.EnumerateArray())
+        {
+            if (string.Equals(
+                property.GetProperty("name").GetString(),
+                name,
+                StringComparison.Ordinal))
+            {
+                return property.GetProperty("value").GetString();
+            }
+        }
+        return null;
     }
 
     [Test]
@@ -1132,7 +1243,7 @@ public sealed class WorkflowStructureContractTests
             .Contains("OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'", StringComparison.Ordinal)
             .Because("the macOS render job executes the full package suite under the required-execution gate");
         await Assert.That(macos)
-            .Contains("--minimum-expected-tests 22", StringComparison.Ordinal)
+            .Contains("--minimum-expected-tests 26", StringComparison.Ordinal)
             .Because("the macOS render job runs the full package suite, including Cesium package execution");
         await Assert.That(ReadStep(macos, "Build Cesium native install"))
             .Contains("./eng/build-cesium-native.ps1 -Rid osx-arm64 -SkipSmokeProbe", StringComparison.Ordinal)
@@ -1142,6 +1253,15 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(ReadStep(macos, "Build Cesium shim"))
             .Contains("./eng/build-cesium-shim.ps1 -Rid osx-arm64", StringComparison.Ordinal)
             .Because("the package tests require the runtime shim, not only the Cesium native install");
+        // The pinned vcpkg PhysX port has no arm64-osx build, so the macOS job must not pretend to
+        // produce physics inputs. A step here would fail the job on a platform that can never have
+        // a physics package.
+        await Assert.That(ReadStep(macos, "Build PhysX native install"))
+            .IsEmpty()
+            .Because("the pinned simulation SDK has no macOS build, so no macOS physics input exists");
+        await Assert.That(ReadStep(macos, "Build PhysX shim"))
+            .IsEmpty()
+            .Because("the pinned simulation SDK has no macOS build, so no macOS physics shim exists");
         await Assert.That(macos)
             .Contains("cesium-vcpkg-osx-arm64-${{ hashFiles(", StringComparison.Ordinal)
             .Because("the expensive Cesium vcpkg graph must be cached on the same inputs as package.yml");
@@ -1153,11 +1273,108 @@ public sealed class WorkflowStructureContractTests
             .Contains("OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'", StringComparison.Ordinal)
             .Because("the Linux render job still runs package-test executable gates");
         await Assert.That(linux)
-            .DoesNotContain("--minimum-expected-tests 22", StringComparison.Ordinal)
+            .DoesNotContain("--minimum-expected-tests", StringComparison.Ordinal)
             .Because("Linux render intentionally runs two filtered non-Cesium package gates, not the full suite");
         await Assert.That(ReadStep(linux, "Build Cesium shim"))
             .IsEmpty()
             .Because("the Linux render job must not spend a half-hour building Cesium for filtered non-Cesium gates");
+        await Assert.That(ReadStep(linux, "Build PhysX shim"))
+            .IsEmpty()
+            .Because("the same applies to the simulation SDK: neither filtered Linux gate needs a solver");
+    }
+
+    /// <summary>
+    /// Requires the package and release jobs to build physics inputs only where they can exist,
+    /// and requires Linux to prove the vehicle path the pinned port does not link for it.
+    /// </summary>
+    /// <remarks>
+    /// Two independent facts about the pinned vcpkg PhysX port are pinned here, because both are
+    /// invisible from this repository's sources and both were release blockers.
+    ///
+    /// The port declares <c>(windows &amp; x64 &amp; !mingw &amp; !uwp) | (linux &amp; x64) |
+    /// (linux &amp; arm64)</c>, so an unguarded macOS physics step would fail every package and
+    /// release run on that runner.
+    ///
+    /// The port's CMake config also appends <c>PhysXVehicle2</c> to its aggregate SDK target only
+    /// inside an <c>if(WIN32)</c>, while these sources use <c>physx::vehicle2</c> unconditionally.
+    /// Windows CI therefore proves nothing about the Linux vehicle path, and a package that
+    /// advertises operational vehicles on Linux needs a Linux run to say so.
+    /// </remarks>
+    [Test]
+    public async Task PhysicsWorkflowStepsMatchTheSupportedSimulationPlatforms()
+    {
+        string root = FindRepositoryRoot();
+        string package = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "package.yml"));
+        string release = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "release.yml"));
+
+        foreach ((string workflow, string text) in new[]
+        {
+            ("package.yml", package),
+            ("release.yml", release),
+        })
+        {
+            foreach (string step in new[] { "Build PhysX native install", "Build PhysX shim" })
+            {
+                string body = ReadStep(text, step);
+                await Assert.That(body)
+                    .IsNotEmpty()
+                    .Because($"{workflow} must build the physics inputs it packs");
+                await Assert.That(body)
+                    .Contains("matrix.rid != 'osx-arm64'", StringComparison.Ordinal)
+                    .Because(
+                        $"{workflow} step '{step}' must be skipped on macOS; the pinned vcpkg " +
+                        "PhysX port declares no arm64-osx support");
+            }
+        }
+
+        string vehicleProof = ReadStep(package, "Prove Linux PhysX vehicles");
+        await Assert.That(vehicleProof)
+            .Contains("matrix.rid == 'linux-x64'", StringComparison.Ordinal)
+            .Because("the Linux vehicle proof only means something on Linux");
+        await Assert.That(vehicleProof)
+            .Contains("openusd_physx_vehicle_probe", StringComparison.Ordinal)
+            .Because(
+                "the pinned port links PhysXVehicle2 only on Windows, so Linux needs its own " +
+                "end-to-end vehicle run behind the advertised capability");
+    }
+
+    /// <summary>
+    /// Requires no workflow to build, pack, or publish a PhysX GPU or device module.
+    /// </summary>
+    /// <remarks>
+    /// The GPU and device modules are packman blobs under NVIDIA proprietary terms, not artifacts
+    /// of the BSD-3-Clause PhysX sources, and this project has no redistribution agreement for
+    /// them. The packaging refuses them, and this keeps a workflow from reintroducing them by a
+    /// different route: an upload path, an extra pack scope, or a resurrected CUDA package id.
+    /// </remarks>
+    [Test]
+    public async Task NoWorkflowPublishesProprietaryPhysXGpuModules()
+    {
+        string root = FindRepositoryRoot();
+        string[] workflows =
+        [
+            "package.yml",
+            "release.yml",
+            "render.yml",
+            "native.yml",
+        ];
+
+        foreach (string workflow in workflows)
+        {
+            string text = await File.ReadAllTextAsync(
+                Path.Combine(root, ".github", "workflows", workflow));
+            await Assert.That(text)
+                .DoesNotContain("PhysXGpu", StringComparison.Ordinal)
+                .Because($"{workflow} must not handle the proprietary PhysX GPU module");
+            await Assert.That(text)
+                .DoesNotContain("PhysXDevice", StringComparison.Ordinal)
+                .Because($"{workflow} must not handle the proprietary PhysX device module");
+            await Assert.That(text)
+                .DoesNotContain("OpenUsd.Runtime.Physics.Cuda", StringComparison.Ordinal)
+                .Because($"{workflow} must not reference a withdrawn CUDA package id");
+        }
     }
 
     [Test]

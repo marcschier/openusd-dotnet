@@ -265,21 +265,39 @@ public sealed class NativeAbiVersionTests
     public async Task StatusExportsAreGuardedAndInitializeFailureOutputs()
     {
         string repositoryRoot = FindRepositoryRoot();
-        string header = File.ReadAllText(
-            Path.Combine(
-                repositoryRoot,
-                "native",
-                "openusd_dotnet",
-                "include",
-                "openusd_dotnet.h"));
+        string includeDirectory = Path.Combine(
+            repositoryRoot,
+            "native",
+            "openusd_dotnet",
+            "include");
+        string header = File.ReadAllText(Path.Combine(includeDirectory, "openusd_dotnet.h"));
+
+        // The shim publishes more than one header. The physics extraction entry
+        // point is declared in its own header because it carries its own page
+        // ABI, so reading only the data header would count its definition as
+        // undeclared and turn every future header split into a magic number.
+        string companionHeaders = string.Join(
+            Environment.NewLine,
+            Directory.EnumerateFiles(includeDirectory, "*.h", SearchOption.TopDirectoryOnly)
+                .Where(static path => !string.Equals(
+                    Path.GetFileName(path),
+                    "openusd_dotnet.h",
+                    StringComparison.Ordinal))
+                .Order(StringComparer.Ordinal)
+                .Select(File.ReadAllText));
         string implementation = ReadDataAbiImplementation(repositoryRoot);
 
         MatchCollection declarations = Regex.Matches(
             header,
             @"OPENUSD_DOTNET_API\s+openusd_status\s+(?<name>openusd_\w+)\s*\((?<parameters>.*?)\);",
             RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        MatchCollection companionDeclarations = Regex.Matches(
+            companionHeaders,
+            @"OPENUSD_DOTNET_API\s+openusd_status\s+(?<name>openusd_\w+)\s*\((?<parameters>.*?)\);",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
         HashSet<string> outputBearingExports = declarations
             .Cast<Match>()
+            .Concat(companionDeclarations.Cast<Match>())
             .Where(match => HasOutputParameter(match.Groups["parameters"].Value))
             .Select(match => match.Groups["name"].Value)
             .ToHashSet(StringComparer.Ordinal);
@@ -288,17 +306,31 @@ public sealed class NativeAbiVersionTests
             @"(?m)^openusd_status\s+(?<name>openusd_\w+)\s*\(",
             RegexOptions.CultureInvariant);
 
-        await Assert.That(definitions.Count).IsEqualTo(declarations.Count + 1);
+        await Assert.That(definitions.Count)
+            .IsEqualTo(declarations.Count + companionDeclarations.Count + 1);
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"// ABI_OUTPUT_INITIALIZATION",
                 RegexOptions.CultureInvariant)).IsEqualTo(outputBearingExports.Count);
+        // Every export that takes a stage has to route through the stage guard.
+        // Counting the guard against the definitions that take a stage keeps the
+        // invariant meaningful: a frozen literal only records how many exports
+        // existed on the day it was written, and drifts silently afterwards.
+        int stageExports = definitions
+            .Cast<Match>()
+            .Select((definition, index) => implementation[
+                definition.Index..(index + 1 < definitions.Count
+                    ? definitions[index + 1].Index
+                    : implementation.Length)])
+            .Count(static body => body.Contains(
+                "return GuardStage(stage, error",
+                StringComparison.Ordinal));
         await Assert.That(
             Regex.Count(
                 implementation,
                 @"\breturn GuardStage\(stage, error",
-                RegexOptions.CultureInvariant)).IsEqualTo(292);
+                RegexOptions.CultureInvariant)).IsEqualTo(stageExports);
 
         for (int index = 0; index < definitions.Count; index++)
         {

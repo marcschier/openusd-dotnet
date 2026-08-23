@@ -139,6 +139,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return "nuint", managed_name
     if native_type == "size_t*":
         return "out nuint", managed_name
+    if native_type == "uint64_t":
+        return "ulong", managed_name
     if native_type == "uint64_t*":
         return "out ulong", managed_name
     if native_type == "uint32_t":

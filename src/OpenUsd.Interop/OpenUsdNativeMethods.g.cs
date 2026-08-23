@@ -4272,5 +4272,133 @@ public static unsafe partial class OpenUsdNativeRuntime
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial void ValidationErrorListRelease(
             nint list);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_session_overlay_normalize")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageSessionOverlayNormalize(
+            nint stage,
+            out nint physicsLayer,
+            out nint userLayer,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_session_overlay_remove",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageSessionOverlayRemove(
+            nint stage,
+            string physicsLayerIdentifier,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_session_overlay_detect_contamination",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageSessionOverlayDetectContamination(
+            nint stage,
+            string physicsLayerIdentifier,
+            string userLayerIdentifier,
+            out int hasContamination,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_session_overlay_migrate_contamination",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageSessionOverlayMigrateContamination(
+            nint stage,
+            string userLayerIdentifier,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_physics_bake_describe_layer",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StagePhysicsBakeDescribeLayer(
+            nint stage,
+            string layerIdentifier,
+            out ulong flags,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_physics_bake_begin",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StagePhysicsBakeBegin(
+            nint stage,
+            string layerIdentifier,
+            out ulong transaction,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_physics_bake_rollback",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StagePhysicsBakeRollback(
+            nint stage,
+            string layerIdentifier,
+            ulong transaction,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_physics_bake_commit",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StagePhysicsBakeCommit(
+            nint stage,
+            string layerIdentifier,
+            ulong transaction,
+            uint save,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_physics_bake_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void StagePhysicsBakeRelease(
+            ulong transaction);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_physics_bake_clear_layer",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StagePhysicsBakeClearLayer(
+            nint stage,
+            string layerIdentifier,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_physics_bake_author_page",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StagePhysicsBakeAuthorPage(
+            nint stage,
+            string layerIdentifier,
+            byte* page,
+            nuint pageSize,
+            byte* results,
+            nuint resultsSize,
+            out nuint required,
+            ref NativeErrorBuffer error);
     }
 }

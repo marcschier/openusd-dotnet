@@ -441,6 +441,23 @@ internal static class ViewerCameraNavigationMath
         state.Yaw == ViewerCameraNavigationState.LegacyYaw &&
         state.Pitch == ViewerCameraNavigationState.LegacyPitch;
 
+    /// <summary>Returns the camera's orthonormal basis in stage space.</summary>
+    /// <param name="state">The navigation state to read.</param>
+    /// <param name="right">Receives the camera right direction.</param>
+    /// <param name="up">Receives the camera up direction.</param>
+    /// <param name="backward">Receives the direction the camera looks away from.</param>
+    /// <remarks>
+    /// The basis is what turns a pointer position into a stage-space ray, which is what a gizmo
+    /// drag and an interactive body drag both follow. Exposing the existing derivation keeps those
+    /// features on exactly the same camera the viewport is drawing with, instead of on a second
+    /// reconstruction that could drift from it.
+    /// </remarks>
+    internal static void GetCameraBasis(
+        in ViewerCameraNavigationState state,
+        out Vector3 right,
+        out Vector3 up,
+        out Vector3 backward) => GetBasis(state, out right, out up, out backward);
+
     private static void GetBasis(
         in ViewerCameraNavigationState state,
         out Vector3 right,

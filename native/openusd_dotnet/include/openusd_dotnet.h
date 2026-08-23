@@ -281,6 +281,8 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_INSPECTION_V2 (UINT64_C(1) << 16)
 #define OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2 (UINT64_C(1) << 17)
 #define OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION (UINT64_C(1) << 18)
+#define OPENUSD_CAPABILITY_SESSION_OVERLAY (UINT64_C(1) << 19)
+#define OPENUSD_CAPABILITY_PHYSICS_BAKE (UINT64_C(1) << 20)
 
 typedef struct openusd_vec3f
 {
@@ -3087,6 +3089,188 @@ OPENUSD_DOTNET_API openusd_status openusd_validation_validate_prim(
     openusd_validation_error_view* view,
     openusd_error_buffer* error);
 OPENUSD_DOTNET_API void openusd_validation_error_list_release(openusd_validation_error_list* list);
+
+/* Session overlay: atomic sublayer normalization for simulation results. */
+OPENUSD_DOTNET_API openusd_status openusd_stage_session_overlay_normalize(
+    const openusd_stage* stage,
+    openusd_layer** physics_layer,
+    openusd_layer** user_layer,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_session_overlay_remove(
+    const openusd_stage* stage,
+    const char* physics_layer_identifier,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_session_overlay_detect_contamination(
+    const openusd_stage* stage,
+    const char* physics_layer_identifier,
+    const char* user_layer_identifier,
+    int32_t* has_contamination,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_session_overlay_migrate_contamination(
+    const openusd_stage* stage,
+    const char* user_layer_identifier,
+    openusd_error_buffer* error);
+
+/*
+ * Physics preview and bake: one batched, pointer-free authoring page per chunk.
+ *
+ * The page carries every record for one chunk (transforms and point samples) plus a
+ * single string section holding the prim paths, so authoring an entire chunk costs one
+ * transition instead of one per element. The page is never retained after the call.
+ */
+#define OPENUSD_PHYSICS_BAKE_PAGE_MAGIC UINT32_C(0x4B424850)
+#define OPENUSD_PHYSICS_BAKE_PAGE_VERSION UINT32_C(1)
+#define OPENUSD_PHYSICS_BAKE_RESULT_MAGIC UINT32_C(0x4B425250)
+#define OPENUSD_PHYSICS_BAKE_RESULT_VERSION UINT32_C(1)
+
+/* Page flags. */
+#define OPENUSD_PHYSICS_BAKE_PAGE_TIME_SAMPLE (UINT32_C(1) << 0)
+#define OPENUSD_PHYSICS_BAKE_PAGE_PREFLIGHT_ONLY (UINT32_C(1) << 1)
+#define OPENUSD_PHYSICS_BAKE_PAGE_RESET_XFORM_STACK (UINT32_C(1) << 2)
+#define OPENUSD_PHYSICS_BAKE_PAGE_REJECT_EXISTING_SAMPLE (UINT32_C(1) << 3)
+#define OPENUSD_PHYSICS_BAKE_PAGE_SKIP_EXISTING_SAMPLE (UINT32_C(1) << 4)
+#define OPENUSD_PHYSICS_BAKE_PAGE_FORBID_ROOT_LAYER (UINT32_C(1) << 5)
+#define OPENUSD_PHYSICS_BAKE_PAGE_SIMULATION_METADATA (UINT32_C(1) << 6)
+#define OPENUSD_PHYSICS_BAKE_PAGE_ATOMIC (UINT32_C(1) << 7)
+#define OPENUSD_PHYSICS_BAKE_PAGE_EXTENT (UINT32_C(1) << 8)
+
+/* Record flags. */
+#define OPENUSD_PHYSICS_BAKE_RECORD_VELOCITY (UINT32_C(1) << 0)
+#define OPENUSD_PHYSICS_BAKE_RECORD_TOPOLOGY (UINT32_C(1) << 1)
+#define OPENUSD_PHYSICS_BAKE_RECORD_KINEMATIC (UINT32_C(1) << 2)
+#define OPENUSD_PHYSICS_BAKE_RECORD_SLEEPING (UINT32_C(1) << 3)
+
+/* Record kinds. */
+#define OPENUSD_PHYSICS_BAKE_KIND_TRANSFORM UINT32_C(0)
+#define OPENUSD_PHYSICS_BAKE_KIND_POINTS UINT32_C(1)
+
+/* Per-record result status. */
+#define OPENUSD_PHYSICS_BAKE_STATUS_APPLIED UINT32_C(0)
+#define OPENUSD_PHYSICS_BAKE_STATUS_SKIPPED UINT32_C(1)
+#define OPENUSD_PHYSICS_BAKE_STATUS_PATH_MISSING UINT32_C(2)
+#define OPENUSD_PHYSICS_BAKE_STATUS_NOT_XFORMABLE UINT32_C(3)
+#define OPENUSD_PHYSICS_BAKE_STATUS_NOT_POINT_BASED UINT32_C(4)
+#define OPENUSD_PHYSICS_BAKE_STATUS_INSTANCE_PROXY UINT32_C(5)
+#define OPENUSD_PHYSICS_BAKE_STATUS_IN_PROTOTYPE UINT32_C(6)
+#define OPENUSD_PHYSICS_BAKE_STATUS_SAMPLE_COUNT UINT32_C(7)
+#define OPENUSD_PHYSICS_BAKE_STATUS_EXISTING_SAMPLE UINT32_C(8)
+#define OPENUSD_PHYSICS_BAKE_STATUS_UNSUPPORTED_KIND UINT32_C(9)
+#define OPENUSD_PHYSICS_BAKE_STATUS_AUTHORING_FAILED UINT32_C(10)
+#define OPENUSD_PHYSICS_BAKE_STATUS_INVALID_RECORD UINT32_C(11)
+
+/* Layer description flags reported by openusd_stage_physics_bake_describe_layer. */
+#define OPENUSD_PHYSICS_BAKE_LAYER_FOUND (UINT64_C(1) << 0)
+#define OPENUSD_PHYSICS_BAKE_LAYER_LOCAL (UINT64_C(1) << 1)
+#define OPENUSD_PHYSICS_BAKE_LAYER_ANONYMOUS (UINT64_C(1) << 2)
+#define OPENUSD_PHYSICS_BAKE_LAYER_MUTED (UINT64_C(1) << 3)
+#define OPENUSD_PHYSICS_BAKE_LAYER_EDITABLE (UINT64_C(1) << 4)
+#define OPENUSD_PHYSICS_BAKE_LAYER_SAVEABLE (UINT64_C(1) << 5)
+#define OPENUSD_PHYSICS_BAKE_LAYER_ROOT (UINT64_C(1) << 6)
+#define OPENUSD_PHYSICS_BAKE_LAYER_SESSION (UINT64_C(1) << 7)
+#define OPENUSD_PHYSICS_BAKE_LAYER_FILE_BACKED (UINT64_C(1) << 8)
+#define OPENUSD_PHYSICS_BAKE_LAYER_DIRTY (UINT64_C(1) << 9)
+
+typedef struct openusd_physics_bake_page_header
+{
+    uint32_t struct_size;
+    uint32_t magic;
+    uint32_t version;
+    uint32_t flags;
+    uint32_t record_count;
+    uint32_t record_offset;
+    uint32_t string_offset;
+    uint32_t string_size;
+    uint32_t double_offset;
+    uint32_t double_count;
+    uint32_t float_offset;
+    uint32_t float_count;
+    uint32_t int_offset;
+    uint32_t int_count;
+    uint32_t revision;
+    uint32_t reserved;
+    double time_code;
+} openusd_physics_bake_page_header;
+
+typedef struct openusd_physics_bake_record
+{
+    uint64_t id;
+    uint32_t kind;
+    uint32_t flags;
+    uint32_t path_offset;
+    uint32_t path_length;
+    uint32_t double_offset;
+    uint32_t double_count;
+    uint32_t float_offset;
+    uint32_t float_count;
+    uint32_t int_offset;
+    uint32_t int_count;
+    uint32_t point_count;
+    uint32_t face_count;
+} openusd_physics_bake_record;
+
+typedef struct openusd_physics_bake_result_header
+{
+    uint32_t struct_size;
+    uint32_t magic;
+    uint32_t version;
+    uint32_t record_count;
+    uint32_t applied_count;
+    uint32_t skipped_count;
+    uint32_t rejected_count;
+    uint32_t authored_count;
+} openusd_physics_bake_result_header;
+
+typedef struct openusd_physics_bake_result_record
+{
+    uint64_t id;
+    uint32_t status;
+    uint32_t detail;
+} openusd_physics_bake_result_record;
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_physics_bake_describe_layer(
+    const openusd_stage* stage,
+    const char* layer_identifier,
+    uint64_t* flags,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_physics_bake_begin(
+    const openusd_stage* stage,
+    const char* layer_identifier,
+    uint64_t* transaction,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_physics_bake_rollback(
+    const openusd_stage* stage,
+    const char* layer_identifier,
+    uint64_t transaction,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_physics_bake_commit(
+    const openusd_stage* stage,
+    const char* layer_identifier,
+    uint64_t transaction,
+    uint32_t save,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API void openusd_stage_physics_bake_release(uint64_t transaction);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_physics_bake_clear_layer(
+    const openusd_stage* stage,
+    const char* layer_identifier,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_stage_physics_bake_author_page(
+    const openusd_stage* stage,
+    const char* layer_identifier,
+    const uint8_t* page,
+    size_t page_size,
+    uint8_t* results,
+    size_t results_size,
+    size_t* required,
+    openusd_error_buffer* error);
 
 #ifdef __cplusplus
 }

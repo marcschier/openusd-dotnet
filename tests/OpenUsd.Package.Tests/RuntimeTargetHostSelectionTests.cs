@@ -17,6 +17,8 @@ public sealed class RuntimeTargetHostSelectionTests
         new("OpenUsd.Runtime.Cesium.win-x64", "win-x64", HasResources: false, ExpectedContentItems: 1),
         new("OpenUsd.Runtime.Cesium.linux-x64", "linux-x64", HasResources: false, ExpectedContentItems: 1),
         new("OpenUsd.Runtime.Cesium.osx-arm64", "osx-arm64", HasResources: false, ExpectedContentItems: 1),
+        new("OpenUsd.Runtime.Physics.win-x64", "win-x64", HasResources: false, ExpectedContentItems: 1),
+        new("OpenUsd.Runtime.Physics.linux-x64", "linux-x64", HasResources: false, ExpectedContentItems: 1),
     ];
 
     [Test]

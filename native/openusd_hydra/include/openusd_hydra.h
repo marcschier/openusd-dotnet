@@ -6,6 +6,7 @@
 #include "openusd_dotnet.h"
 #include "openusd_render_camera.h"
 #include "openusd_render_lighting.h"
+#include "openusd_render_physics.h"
 #include "openusd_render_pick.h"
 
 #if defined(_WIN32)
@@ -30,7 +31,7 @@ extern "C" {
 
 typedef struct openusd_storm_renderer openusd_storm_renderer;
 
-#define OPENUSD_STORM_ABI_VERSION 6u
+#define OPENUSD_STORM_ABI_VERSION 8u
 
 OPENUSD_HYDRA_API uint32_t openusd_storm_get_abi_version(void)
     OPENUSD_HYDRA_NOEXCEPT;
@@ -120,6 +121,40 @@ OPENUSD_HYDRA_API openusd_status openusd_storm_pick(
 OPENUSD_HYDRA_API openusd_status openusd_storm_set_selection(
     openusd_storm_renderer* renderer,
     const openusd_storm_selection_update* update,
+    openusd_error_buffer* error);
+
+/// Applies one complete packed batch of externally simulated rigid transform
+/// overrides. The batch replaces every retained override, the stage is never
+/// authored, and no caller pointer is retained after the call returns. Passing
+/// a zero-item batch restores every authored transform.
+OPENUSD_HYDRA_API openusd_status openusd_storm_set_transform_overrides(
+    openusd_storm_renderer* renderer,
+    const openusd_storm_transform_override_update* update,
+    openusd_error_buffer* error);
+
+/// Reports pointer-free applied-state and capacity diagnostics for the last
+/// accepted transform override batch.
+OPENUSD_HYDRA_API openusd_status openusd_storm_get_transform_override_diagnostics(
+    openusd_storm_renderer* renderer,
+    openusd_storm_transform_override_diagnostics* diagnostics,
+    openusd_error_buffer* error);
+
+/// Applies one complete packed batch of externally simulated deformable
+/// geometry. The batch replaces every retained deformation, the stage is never
+/// authored, and no caller pointer is retained after the call returns. Passing
+/// a zero-region batch restores every authored point set. A region whose point
+/// count the rendered prim's element topology cannot accept is refused and
+/// counted rather than drawn.
+OPENUSD_HYDRA_API openusd_status openusd_storm_set_deformation_overrides(
+    openusd_storm_renderer* renderer,
+    const openusd_storm_deformation_override_update* update,
+    openusd_error_buffer* error);
+
+/// Reports pointer-free applied-state and capacity diagnostics for the last
+/// accepted deformation override batch.
+OPENUSD_HYDRA_API openusd_status openusd_storm_get_deformation_override_diagnostics(
+    openusd_storm_renderer* renderer,
+    openusd_storm_deformation_override_diagnostics* diagnostics,
     openusd_error_buffer* error);
 
 OPENUSD_HYDRA_API openusd_status openusd_storm_get_renderer_name(

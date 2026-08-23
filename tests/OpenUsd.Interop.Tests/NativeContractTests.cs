@@ -22,7 +22,7 @@ public sealed class NativeContractTests
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
 
         await Assert.That(abiVersion).IsEqualTo(15U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x7FFFFUL);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x1FFFFFUL);
         await Assert.That(requiredCapabilities & 0xFFFUL).IsEqualTo(0xFFFUL);
         await Assert.That(requiredCapabilities & 0x1000UL).IsEqualTo(0x1000UL);
         await Assert.That(requiredCapabilities & 0x2000UL).IsEqualTo(0x2000UL);
@@ -37,6 +37,12 @@ public sealed class NativeContractTests
 
         // Bounded inspection: allocation-free path preflight before packed traversal.
         await Assert.That(requiredCapabilities & 0x40000UL).IsEqualTo(0x40000UL);
+
+        // Session overlay: the removable strongest-opinion session sublayer.
+        await Assert.That(requiredCapabilities & 0x80000UL).IsEqualTo(0x80000UL);
+
+        // Physics bake: batched preview and transactional bake page authoring.
+        await Assert.That(requiredCapabilities & 0x100000UL).IsEqualTo(0x100000UL);
     }
 
     [Test]

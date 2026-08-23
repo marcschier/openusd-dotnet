@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Two RIDs, not three. The pinned vcpkg PhysX port declares
+    "(windows & x64 & !mingw & !uwp) | (linux & x64) | (linux & arm64)", so there is no
+    arm64-osx build of the simulation SDK to ship. A macOS physics package would either be
+    empty or carry a library that cannot exist, and a consumer would read its absence as a
+    deployment mistake rather than a platform fact. macOS applications keep working without
+    it: the physics runtime reports an unavailable backend and every other package is
+    unaffected.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../OpenUsd.Runtime.Physics.win-x64/OpenUsd.Runtime.Physics.win-x64.csproj" IncludeAssets="all" PrivateAssets="none" />
+    <ProjectReference Include="../OpenUsd.Runtime.Physics.linux-x64/OpenUsd.Runtime.Physics.linux-x64.csproj" IncludeAssets="all" PrivateAssets="none" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackageId>OpenUsd.Runtime.Physics</PackageId>
+    <Description>RID-agnostic OpenUSD PhysX simulation native runtime metapackage for win-x64 and linux-x64. CPU domains only; the pinned simulation SDK has no macOS build and its GPU modules are proprietary NVIDIA binaries this project does not redistribute.</Description>
+    <PackageTags>openusd;usd;physics;physx;simulation;native;runtime;windows;linux;x64</PackageTags>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <!--
+      Package validation compares managed lib/ref assemblies. This package suppresses build output and
+      ships only RID package dependencies, so the opt-out is intentional.
+    -->
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+</Project>

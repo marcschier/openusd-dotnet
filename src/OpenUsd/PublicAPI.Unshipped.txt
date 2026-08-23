@@ -767,6 +767,14 @@ OpenUsd.UsdScalarValue.UsdScalarValue() -> void
 OpenUsd.UsdScalarValue.Vec2fArrayValue.get -> OpenUsd.UsdVec2f[]!
 OpenUsd.UsdScalarValue.Vec3fArrayValue.get -> OpenUsd.UsdVec3f[]!
 OpenUsd.UsdScalarValue.Vec3fValue.get -> OpenUsd.UsdVec3f
+OpenUsd.UsdSessionOverlay
+OpenUsd.UsdSessionOverlay.DetectContamination() -> bool
+OpenUsd.UsdSessionOverlay.Dispose() -> void
+OpenUsd.UsdSessionOverlay.IsDisposed.get -> bool
+OpenUsd.UsdSessionOverlay.MigrateContamination() -> void
+OpenUsd.UsdSessionOverlay.PhysicsLayerIdentifier.get -> string!
+OpenUsd.UsdSessionOverlay.SetEditTargetToUserLayer() -> void
+OpenUsd.UsdSessionOverlay.UserLayerIdentifier.get -> string!
 OpenUsd.UsdStage
 OpenUsd.UsdStage.ChangeSerial.get -> ulong
 OpenUsd.UsdStage.ClearDefaultPrim() -> void
@@ -789,6 +797,7 @@ OpenUsd.UsdStage.GetWorldBounds(double timeCode, OpenUsd.Geom.UsdGeomPurposeMask
 OpenUsd.UsdStage.HasPrim(string! path) -> bool
 OpenUsd.UsdStage.IsLayerMuted(string! layerIdentifier) -> bool
 OpenUsd.UsdStage.MuteLayer(string! layerIdentifier) -> void
+OpenUsd.UsdStage.NormalizeSessionOverlay() -> OpenUsd.UsdSessionOverlay!
 OpenUsd.UsdStage.OverridePrim(string! path) -> OpenUsd.UsdPrim
 OpenUsd.UsdStage.Reload() -> void
 OpenUsd.UsdStage.RemovePrim(string! path) -> void

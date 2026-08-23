@@ -14,17 +14,41 @@ namespace OpenUsd;
 public sealed class UsdStage : IDisposable, IUsdStageBound
 {
     private readonly bool _ownsNative;
+
+    // A borrowed facade is a second object over the same native stage, so overlay state cannot
+    // live on whichever facade happened to create it: the scheduler hands callbacks a borrowed
+    // facade, the overlay is normalized on that one, and the owning facade - the only one that can
+    // be disposed - would never see it. Every facade therefore reads and writes the owner's slot.
+    private readonly UsdStage? _owner;
     private OpenUsdNativeStage? _native;
+    private UsdSessionOverlay? _activeOverlay;
 
     private UsdStage(OpenUsdNativeStage native)
         : this(native, ownsNative: true)
     {
     }
 
-    private UsdStage(OpenUsdNativeStage native, bool ownsNative)
+    private UsdStage(OpenUsdNativeStage native, bool ownsNative, UsdStage? owner = null)
     {
         _native = native;
         _ownsNative = ownsNative;
+        _owner = owner;
+    }
+
+    private UsdSessionOverlay? ActiveOverlay
+    {
+        get => _owner is null ? _activeOverlay : _owner.ActiveOverlay;
+        set
+        {
+            if (_owner is null)
+            {
+                _activeOverlay = value;
+            }
+            else
+            {
+                _owner.ActiveOverlay = value;
+            }
+        }
     }
 
     /// <summary>Opens an existing stage.</summary>
@@ -126,11 +150,42 @@ public sealed class UsdStage : IDisposable, IUsdStageBound
     /// <summary>Gets an owned session-layer view.</summary>
     public UsdLayer GetSessionLayer() => new(Native.GetSessionLayer());
 
+    /// <summary>
+    /// Normalizes the session layer into a simulation overlay topology with a strong
+    /// physics overlay and a weaker user-edit layer.
+    /// </summary>
+    /// <returns>The overlay handle that manages physics-layer lifetime.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if a session overlay is already active on this stage.
+    /// </exception>
+    public UsdSessionOverlay NormalizeSessionOverlay()
+    {
+        if (ActiveOverlay is { IsDisposed: false })
+        {
+            throw new InvalidOperationException(
+                "A session overlay is already active on this stage.");
+        }
+        var overlay = UsdSessionOverlay.Normalize(Native, this);
+        ActiveOverlay = overlay;
+        return overlay;
+    }
+
     /// <summary>Sets the root layer as the current edit target.</summary>
     public void SetEditTargetToRootLayer() => Native.SetEditTargetToRootLayer();
 
-    /// <summary>Sets the session layer as the current edit target.</summary>
-    public void SetEditTargetToSessionLayer() => Native.SetEditTargetToSessionLayer();
+    /// <summary>
+    /// Sets the session layer as the current edit target. While a session overlay is active,
+    /// this redirects to the user-edit layer so physics results always compose above user edits.
+    /// </summary>
+    public void SetEditTargetToSessionLayer()
+    {
+        if (ActiveOverlay is { IsDisposed: false } overlay &&
+            overlay.TryRedirectSessionEditTarget(Native))
+        {
+            return;
+        }
+        Native.SetEditTargetToSessionLayer();
+    }
 
     /// <summary>Sets an owned layer from this stage's local layer stack as the edit target.</summary>
     public void SetEditTarget(UsdLayer layer)
@@ -241,11 +296,30 @@ public sealed class UsdStage : IDisposable, IUsdStageBound
             throw new UsdStageOwnershipException();
         }
 
-        _native?.Dispose();
-        _native = null;
+        try
+        {
+            if (ActiveOverlay is { IsDisposed: false } overlay)
+            {
+                overlay.Dispose();
+            }
+            ActiveOverlay = null;
+        }
+        finally
+        {
+            _native?.Dispose();
+            _native = null;
+        }
     }
 
-    internal UsdStage Borrow() => new(Native, ownsNative: false);
+    internal void ClearActiveOverlay(UsdSessionOverlay overlay)
+    {
+        if (ReferenceEquals(ActiveOverlay, overlay))
+        {
+            ActiveOverlay = null;
+        }
+    }
+
+    internal UsdStage Borrow() => new(Native, ownsNative: false, owner: this);
 
     internal OpenUsdNativeStage Native =>
         _native ?? throw new ObjectDisposedException(nameof(UsdStage));

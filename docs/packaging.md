@@ -14,6 +14,7 @@ synthetic package tests execute the failure and replacement cases. See
 
 **On this page:** [Package resolution](#package-resolution) ·
 [MCP distribution](#mcp-tool-package-and-rid-bundles) ·
+[Physics packages](#physics-packages) ·
 [Package layout](#package-layout) · [Pack](#pack) · [Release SBOM](#release-sbom) ·
 [Publish](#publish) · [Symbols](#symbol-packages-for-nugetorg) ·
 [Core execution](#package-only-execution-gate) ·
@@ -40,23 +41,32 @@ validated together. Neither distribution embeds the separate Viewer application.
 flowchart LR
     app["Consumer references"] --> managed["Managed API"]
     app --> backend["Managed backend"]
+    app --> physics["Managed physics"]
     managed -->|"pair with RID"| core["Core RID package"]
     backend -->|"pair with RID"| imaging["Imaging RID package"]
+    physics -->|"win-x64 and linux-x64 only"| physicsRid["Physics RID package"]
     imaging -->|"exact dependency"| core
+    physicsRid -->|"exact dependency"| core
     core --> coreAssets["Core native + usd resources"]
     imaging --> imagingAssets["Hydra + hdSilk + plugin resources"]
+    physicsRid --> physicsAssets["PhysX solver shim"]
+    userGpu["User-supplied NVIDIA GPU modules"] -.->|"not redistributed"| output["Published app"]
     coreAssets --> resolve["RID and buildTransitive resolution"]
     imagingAssets --> resolve
-    managed --> output["Published app"]
+    physicsAssets --> resolve
+    managed --> output
     backend --> output
+    physics --> output
     resolve --> output
 ```
 
 Data-only consumers pair the managed API with `OpenUsd.Runtime.Core`. Rendering consumers add a
 managed backend and `OpenUsd.Runtime.Imaging`, whose RID-specific dependencies also bring Core.
-The Core and Imaging metapackages depend on the published `win-x64`, `linux-x64`, and `osx-arm64`
-runtime packages, letting NuGet select the native asset group for the consuming app's
-`RuntimeIdentifier`.
+Simulation consumers add `OpenUsd.Physics`, whose RID-specific dependencies also bring Core.
+The Core, Imaging, and Physics metapackages depend on the published runtime packages, letting NuGet
+select the native asset group for the consuming app's `RuntimeIdentifier`. Core, Imaging, and
+Cesium cover `win-x64`, `linux-x64`, and `osx-arm64`; Physics covers `win-x64` and `linux-x64`,
+because the pinned simulation SDK has no macOS build.
 
 RID-less build, run, and publish are supported only when the SDK host RID is one of those three
 RIDs. In that case the buildTransitive targets copy only the matching host resources and native
@@ -66,11 +76,13 @@ libraries into the output. Cross-publishing and unsupported hosts such as `linux
 Projects that need explicit per-RID control can reference the RID packages directly:
 
 - `win-x64`: `OpenUsd.Runtime.Core.win-x64`, `OpenUsd.Runtime.Imaging.win-x64`,
-  and `OpenUsd.Runtime.Cesium.win-x64`.
+  `OpenUsd.Runtime.Cesium.win-x64`, and `OpenUsd.Runtime.Physics.win-x64`.
 - `linux-x64`: `OpenUsd.Runtime.Core.linux-x64`,
-  `OpenUsd.Runtime.Imaging.linux-x64`, and `OpenUsd.Runtime.Cesium.linux-x64`.
+  `OpenUsd.Runtime.Imaging.linux-x64`, `OpenUsd.Runtime.Cesium.linux-x64`, and
+  `OpenUsd.Runtime.Physics.linux-x64`.
 - `osx-arm64`: `OpenUsd.Runtime.Core.osx-arm64`,
-  `OpenUsd.Runtime.Imaging.osx-arm64`, and `OpenUsd.Runtime.Cesium.osx-arm64`.
+  `OpenUsd.Runtime.Imaging.osx-arm64`, and `OpenUsd.Runtime.Cesium.osx-arm64`. There is no
+  `osx-arm64` physics package.
 
 Managed libraries target .NET 8, 9, and 10. Native assets are split into two extensible runtime
 packages for each supported RID:
@@ -85,9 +97,16 @@ packages for each supported RID:
 - `OpenUsd.Runtime.Cesium.<rid>` contains only the optional `openusd_cesium` C ABI shim.
   Consumers opt in by referencing `OpenUsd.Cesium`, which depends on the RID-agnostic
   `OpenUsd.Runtime.Cesium` metapackage.
+- `OpenUsd.Runtime.Physics.<rid>` contains only the optional `openusd_physx` C ABI shim and depends
+  on the exact matching Core package, because the shim links the OpenUSD monolith. It exists for
+  `win-x64` and `linux-x64` only. Consumers opt in by referencing `OpenUsd.Physics`, which depends
+  on the RID-agnostic `OpenUsd.Runtime.Physics` metapackage.
 
-The package set requires project-owned data ABI version 15 and native capabilities `0x7FFFF`.
+The package set requires project-owned data ABI version 15 and native capabilities `0x1FFFFF`.
 Package-only execution prints and verifies both values before exercising stage operations.
+The physics packages additionally require retained physics world ABI version 7 and physics
+extraction page ABI version 1, both recorded in `eng/openusd.lock.json` and embedded in each
+physics package as `build/<package id>.native-abi.json`.
 
 The first package matrix covers `win-x64`, `linux-x64`, and `osx-arm64`. Package projects consume
 immutable native installs from:
@@ -95,10 +114,86 @@ immutable native installs from:
 ```text
 native/install/<rid>
 native/install/shim/<rid>
+native/install/shim/<rid>-cesium
+native/install/shim/<rid>-physx
+native/install/physx/<rid>
 ```
 
 Packing fails with a direct diagnostic when either install or a required library/plugin tree is
 missing. It never creates an empty runtime package.
+
+## Physics packages
+
+Physics ships for `win-x64` and `linux-x64` and for no other RID. The pinned vcpkg PhysX port
+declares:
+
+```text
+(windows & x64 & !mingw & !uwp) | (linux & x64) | (linux & arm64)
+```
+
+There is no `arm64-osx` build of the simulation SDK, so `OpenUsd.Runtime.Physics.osx-arm64` does
+not exist. macOS applications are unaffected in every other respect: the Viewer, Core, Imaging, and
+Cesium packages are unchanged, and a macOS host that references `OpenUsd.Physics` resolves the
+managed library, finds no native solver, and reports an unavailable backend with the
+`OPENUSD_PHYSICS_BACKEND_UNAVAILABLE` diagnostic instead of failing. Physics capability on macOS is
+unavailable, not degraded.
+
+The PhysX SDK is linked statically, including `PhysXVehicle2`, so `openusd_physx` is the whole CPU
+solver and the physics packages have no PhysX runtime dependency beyond it. The pinned port's CMake
+config appends `PhysXVehicle2` to its aggregate SDK target only on Windows, while these sources use
+`physx::vehicle2` unconditionally, so `native/openusd_physx/CMakeLists.txt` locates and links that
+library explicitly everywhere else and fails configure when it is absent. A Linux CI step runs the
+end-to-end vehicle probe, which is the evidence behind the vehicle capability the Linux package
+advertises.
+
+### GPU modules are not redistributed
+
+PhysX GPU acceleration needs two modules that the vcpkg port downloads from NVIDIA rather than
+building from the BSD-3-Clause sources:
+
+```text
+win-x64:   PhysXGpu_64.dll, PhysXDevice64.dll
+linux-x64: libPhysXGpu_64.so
+```
+
+These are packman binaries under NVIDIA proprietary terms. This project has no redistribution
+agreement for them, so **no OpenUsd package contains one**, and there is no
+`OpenUsd.Runtime.Physics.Cuda` package. Packing refuses a physics package whose payload matches
+`PhysX(Gpu|Device)` regardless of anything else, and `eng/sbom/openusd-release.cdx.json` records
+both modules as `LicenseRef-NvidiaProprietary` build inputs with `openusd:redistributed = false`.
+
+GPU domains still work when a user supplies the modules. The solver late-loads them by name from
+the directory it lives in, which is the application root once `runtimes/<rid>/native/**` is
+published, so a licensed user copies their own `PhysXGpu_64.dll` (and `PhysXDevice64.dll` on
+Windows) beside `openusd_physx.dll` there. Nothing else changes. Without them
+`PxCreateCudaContextManager` fails, the runtime records why, and the reported capability set omits
+`Cuda`, so every GPU-only object is skipped with a diagnostic instead of aborting the session.
+
+### The physics shim prefix holds more than it ships
+
+The physics CMake preset configures the whole native project, so
+`native/install/shim/<rid>-physx` also contains a rebuilt copy of `openusd_dotnet`,
+`openusd_hydra`, `openusd_hdsilk`, and `openusd_storm_child`, plus the staged GPU modules. The core
+and imaging duplicates are Core and Imaging payload, and a duplicate at an application root is
+loaded instead of the archive-verified binary rather than ignored beside it. The physics package
+therefore names the single asset it publishes, and packing fails when the packed set is not exactly
+that. Nothing globs that directory.
+
+Each physics package embeds its ABI evidence at `build/<package id>.native-abi.json`, recording the
+package id, the RID, both physics ABI generations read from the native headers and checked against
+`eng/openusd.lock.json`, `cudaModulesIncluded: false`, and the size and SHA-256 of the one native
+asset the archive carries.
+
+Physics packages carry the OpenUSD notices as `THIRD-PARTY-NOTICES.md` and the PhysX notices as
+`THIRD-PARTY-PHYSX.md`. The PhysX notice names what is redistributed under BSD-3-Clause and what is
+not redistributed at all, so no reader can infer that the GPU modules travel under the same terms.
+
+Build the physics inputs for a RID with:
+
+```shell
+./eng/build-physx-native.ps1 -Rid win-x64
+./eng/build-physx-shim.ps1 -Rid win-x64
+```
 
 ## Package layout
 
@@ -188,10 +283,14 @@ Build the locked native inputs first, then pack the runtime projects for the cur
 
 Use `linux-x64` or `osx-arm64` for the platform job that produced that native install. The Linux
 and macOS RID packages are ready to consume the same locked layout, but require native installs
-produced on those platforms. The RID-agnostic metapackages (`OpenUsd.Runtime.Core`, `OpenUsd.Runtime.Imaging`, and
-`OpenUsd.Runtime.Cesium`) are packed with the managed package scope because they contain no native
-files; they depend on the three RID packages so a consumer can keep one unconditional
-`PackageReference`.
+produced on those platforms. The RID-agnostic metapackages (`OpenUsd.Runtime.Core`,
+`OpenUsd.Runtime.Imaging`, `OpenUsd.Runtime.Cesium`, and `OpenUsd.Runtime.Physics`) are packed with
+the managed package scope because they contain no native files; they depend on the RID packages so
+a consumer can keep one unconditional `PackageReference`.
+
+The runtime scope packs `OpenUsd.Runtime.Physics.<rid>` for `win-x64` and `linux-x64` only. The
+macOS runtime job is never asked for a physics package, because none exists rather than because the
+job filters one out.
 
 Package archives include repository documentation such as `README.md`, so their
 byte sizes and SHA-256 digests change with packaged inputs. Inspect the current
@@ -234,11 +333,14 @@ Canonical evidence is generated with the build it describes:
   ABI output, dyld confinement, and signing verification.
 - The Linux and macOS Imaging nupkgs embed their platform validation manifest
   under `build/` as `OpenUsd.Runtime.Imaging.<rid>.native-validation.json`.
+- Every physics nupkg embeds its ABI evidence under `build/` as
+  `<package id>.native-abi.json`, produced by
+  `src/OpenUsd.Runtime.Packaging/Validate-PhysicsNativePackage.ps1` during packing.
 
 ## Release SBOM
 
 The checked release SBOM is `eng/sbom/openusd-release.cdx.json`. It is CycloneDX 1.6 and currently
-contains 112 components. `eng/generate-sbom.py` builds it from repository pins rather than from a
+contains 118 components. `eng/generate-sbom.py` builds it from repository pins rather than from a
 restored machine state: `eng/openusd.install.lock.json`, `eng/cesium.lock.json`,
 `eng/physx.lock.json`, `eng/shaders/toolchain.lock.json`, `Directory.Packages.props`,
 `global.json`, the published package list, and the Viewer publish script
@@ -411,7 +513,7 @@ its working directory, and successful output contains:
 ```text
 PACKAGE_EXECUTION_OK
 ABI=15
-CAPABILITIES=0x7FFFF
+CAPABILITIES=0x1FFFFF
 INPUT_OPENED=true
 CAMERA_STATE_QUERY=true
 ROUNDTRIP_SAVED=true
@@ -596,7 +698,7 @@ native source and header files. Generated `native/build`, `native/install`,
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
 the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 15 and
-capabilities `0x7FFFF`, Storm ABI 6, hdSilk session/page ABI 5/11, and Storm child
+capabilities `0x1FFFFF`, Storm ABI 8, hdSilk session/page ABI 5/11, and Storm child
 ABI 8. Metadata schema 3 records camera-state version 1, Storm-child navigation
 input version 2, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their

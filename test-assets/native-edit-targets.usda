@@ -1,7 +1,7 @@
 #usda 1.0
 (
     subLayers = [
-        @D:/git/marcschier/openusd/native/../test-assets\native-edit-sublayer.usda@
+        @C:/git/marcschier/openusd/native/../test-assets\native-edit-sublayer.usda@
     ]
 )
 

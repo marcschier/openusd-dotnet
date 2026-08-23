@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd\OpenUsd.csproj" />
+    <!--
+      The CPU physics runtime is a hard requirement of this library, so referencing it here means a
+      consumer never has to know the RID package names. The optional CUDA modules are deliberately
+      not referenced: they are a separate opt-in because they are a large NVIDIA-only payload that a
+      CPU-only or macOS consumer must never be forced to download.
+    -->
+    <ProjectReference Include="..\OpenUsd.Runtime.Physics\OpenUsd.Runtime.Physics.csproj" IncludeAssets="all" PrivateAssets="none" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\schemas\openUsdPhysics\resources\plugInfo.json"
+                      LogicalName="OpenUsd.Physics.Schema.plugInfo.json" />
+    <EmbeddedResource Include="..\..\schemas\openUsdPhysics\resources\generatedSchema.usda"
+                      LogicalName="OpenUsd.Physics.Schema.generatedSchema.usda" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Physics</AssemblyName>
+    <RootNamespace>OpenUsd.Physics</RootNamespace>
+    <Description>Optional retained UsdPhysics simulation session contracts for OpenUSD stages.</Description>
+    <PackageTags>openusd;usd;pixar;physics;physx;simulation;nativeaot</PackageTags>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>

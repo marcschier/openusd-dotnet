@@ -189,6 +189,29 @@ internal sealed class ViewerRenderBackendRegistry
             return _active as IViewerFrameCaptureBackend;
         }
     }
+
+    /// <summary>
+    /// Captures the active backend as a physics override target and the generation that names it.
+    /// </summary>
+    /// <remarks>
+    /// The generation changes whenever the active backend does, which is how the render loop knows
+    /// a backend switch or a recovered device needs the latest override batch replayed instead of
+    /// waiting for the next simulated frame.
+    /// </remarks>
+    /// <param name="generation">Receives the identity of the currently active backend.</param>
+    /// <returns>The active target, or <see langword="null"/> when none is active.</returns>
+    internal IViewerPhysicsOverrideTarget? CapturePhysicsOverrideTarget(out long generation)
+    {
+        lock (_gate)
+        {
+            generation = _generation;
+            return _active is not null &&
+                _active.Capabilities.Supports(
+                    RenderBackendCapability.PhysicsTransformOverrides)
+                    ? _active
+                    : null;
+        }
+    }
 }
 
 internal sealed class ViewerRenderBackendFactory : IRenderBackendFactory
@@ -220,7 +243,8 @@ internal sealed class ViewerRenderBackend :
     IViewerSelectionOutlineDiagnosticsSource,
     IViewerFrameDiagnosticsSource,
     IViewerHydraSceneSnapshotSource,
-    IViewerFrameCaptureBackend
+    IViewerFrameCaptureBackend,
+    IViewerPhysicsOverrideTarget
 {
     private readonly object _disposeGate = new();
     private readonly IViewerRenderBackendHost _host;
@@ -259,6 +283,41 @@ internal sealed class ViewerRenderBackend :
 
     public ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
         (_session as IViewerHydraSceneSnapshotSource)?.HydraSceneSnapshot;
+
+    public bool SupportsPhysicsTransformOverrides =>
+        (_session as IViewerPhysicsOverrideTarget)?.SupportsPhysicsTransformOverrides ?? false;
+
+    public int ApplyPhysicsOverrides(
+        in PhysicsRenderOverrideView overrides,
+        PhysicsRenderBindingTable bindings) =>
+        _session is IViewerPhysicsOverrideTarget target
+            ? target.ApplyPhysicsOverrides(in overrides, bindings)
+            : 0;
+
+    // Deformations forward exactly like the rigid batch above. Leaving this out is invisible
+    // rather than fatal, because the interface supplies a zero returning default for backends
+    // that cannot upload geometry, so the whole deformable path silently reported "no regions
+    // applied" while the sessions underneath implemented it.
+    public int ApplyPhysicsDeformations(
+        in PhysicsRenderDeformationView deformations,
+        PhysicsRenderBindingTable bindings) =>
+        _session is IViewerPhysicsOverrideTarget target
+            ? target.ApplyPhysicsDeformations(in deformations, bindings)
+            : 0;
+
+    public bool TryTakeOverrideReport(out ViewerPhysicsOverrideReport report)
+    {
+        if (_session is IViewerPhysicsOverrideTarget target)
+        {
+            return target.TryTakeOverrideReport(out report);
+        }
+
+        report = default;
+        return false;
+    }
+
+    public void ClearPhysicsOverrides() =>
+        (_session as IViewerPhysicsOverrideTarget)?.ClearPhysicsOverrides();
 
     public ValueTask<RenderBackendProbeResult> ProbeAsync(
         CancellationToken cancellationToken = default)
@@ -470,13 +529,15 @@ internal sealed class ViewerRenderBackend :
                 RenderBackendCapability.Multisampling |
                 RenderBackendCapability.Shadows |
                 RenderBackendCapability.DeviceLossDetection |
-                RenderBackendCapability.Picking,
+                RenderBackendCapability.Picking |
+                RenderBackendCapability.PhysicsTransformOverrides,
             RenderBackendKind.D3D12 or RenderBackendKind.Vulkan or RenderBackendKind.Metal =>
                 RenderBackendCapability.Presentation |
                 RenderBackendCapability.Offscreen |
                 RenderBackendCapability.Compute |
                 RenderBackendCapability.DeviceLossDetection |
-                RenderBackendCapability.Picking,
+                RenderBackendCapability.Picking |
+                RenderBackendCapability.PhysicsTransformOverrides,
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
         return new RenderBackendCapabilities(

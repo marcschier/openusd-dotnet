@@ -5,6 +5,7 @@
 
 #include "openusd_hydra.h"
 #include "openusd_render_camera_internal.h"
+#include "openusd_render_physics.h"
 #include "openusd_render_pick.h"
 
 #include <algorithm>
@@ -114,6 +115,112 @@ struct OpenUsdStormChildSelectionPayload
         return status;
     }
 };
+
+struct OpenUsdStormChildTransformOverridePayload
+{
+    openusd_storm_transform_override_update update{};
+    openusd_storm_transform_override_diagnostics diagnostics{};
+    std::vector<openusd_storm_transform_override_item> items;
+    std::vector<char> path_bytes;
+    bool capture_diagnostics = false;
+
+    openusd_status Execute(
+        openusd_storm_renderer* renderer,
+        std::string& error)
+    {
+        update.items = items.empty() ? nullptr : items.data();
+        update.path_bytes = path_bytes.empty() ? nullptr : path_bytes.data();
+        char error_bytes[4096]{};
+        openusd_error_buffer native_error{
+            error_bytes,
+            sizeof(error_bytes),
+            0};
+        openusd_status status = openusd_storm_set_transform_overrides(
+            renderer,
+            &update,
+            &native_error);
+        if (status == OPENUSD_STATUS_OK && capture_diagnostics)
+        {
+            diagnostics.struct_size =
+                static_cast<uint32_t>(sizeof(diagnostics));
+            diagnostics.version =
+                OPENUSD_STORM_TRANSFORM_OVERRIDE_DIAGNOSTICS_VERSION;
+            status = openusd_storm_get_transform_override_diagnostics(
+                renderer,
+                &diagnostics,
+                &native_error);
+        }
+        if (status != OPENUSD_STATUS_OK)
+        {
+            error = error_bytes;
+        }
+        return status;
+    }
+};
+
+inline bool OpenUsdStormChildValidTransformOverrideCapacities(
+    uint32_t item_count,
+    uint32_t path_bytes_size) noexcept
+{
+    return
+        item_count <= OPENUSD_STORM_TRANSFORM_OVERRIDE_MAXIMUM_ITEMS &&
+        path_bytes_size <= OPENUSD_STORM_TRANSFORM_OVERRIDE_MAXIMUM_PATH_BYTES;
+}
+
+struct OpenUsdStormChildDeformationOverridePayload
+{
+    openusd_storm_deformation_override_update update{};
+    openusd_storm_deformation_override_diagnostics diagnostics{};
+    std::vector<openusd_storm_deformation_override_item> items;
+    std::vector<float> points;
+    std::vector<char> path_bytes;
+    bool capture_diagnostics = false;
+
+    openusd_status Execute(
+        openusd_storm_renderer* renderer,
+        std::string& error)
+    {
+        update.items = items.empty() ? nullptr : items.data();
+        update.points = points.empty() ? nullptr : points.data();
+        update.path_bytes = path_bytes.empty() ? nullptr : path_bytes.data();
+        char error_bytes[4096]{};
+        openusd_error_buffer native_error{
+            error_bytes,
+            sizeof(error_bytes),
+            0};
+        openusd_status status = openusd_storm_set_deformation_overrides(
+            renderer,
+            &update,
+            &native_error);
+        if (status == OPENUSD_STATUS_OK && capture_diagnostics)
+        {
+            diagnostics.struct_size =
+                static_cast<uint32_t>(sizeof(diagnostics));
+            diagnostics.version =
+                OPENUSD_STORM_DEFORMATION_OVERRIDE_DIAGNOSTICS_VERSION;
+            status = openusd_storm_get_deformation_override_diagnostics(
+                renderer,
+                &diagnostics,
+                &native_error);
+        }
+        if (status != OPENUSD_STATUS_OK)
+        {
+            error = error_bytes;
+        }
+        return status;
+    }
+};
+
+inline bool OpenUsdStormChildValidDeformationOverrideCapacities(
+    uint32_t item_count,
+    uint32_t point_count,
+    uint32_t path_bytes_size) noexcept
+{
+    return
+        item_count <= OPENUSD_STORM_DEFORMATION_OVERRIDE_MAXIMUM_ITEMS &&
+        point_count <= OPENUSD_STORM_DEFORMATION_OVERRIDE_MAXIMUM_POINTS &&
+        path_bytes_size <= OPENUSD_STORM_DEFORMATION_OVERRIDE_MAXIMUM_PATH_BYTES;
+}
 
 inline bool OpenUsdStormChildValidPickCapacities(
     uint32_t prim_path_capacity,

@@ -51,6 +51,7 @@ public sealed partial class MainWindow : Window, IDisposable
         new(ViewportDimensions.Empty);
     private readonly ViewerCameraNavigationUiAdapter _cameraNavigation;
     private readonly ViewerCameraShortcutRepeatGuard _cameraShortcutRepeat = new();
+    private readonly ViewerPhysicsShortcutRepeatGuard _physicsShortcutRepeat = new();
     private readonly ViewerStormNavigationInputTracker _stormNavigationInput = new();
     private readonly ViewerStormPickInputTracker _stormPickInput = new();
     private readonly DispatcherTimer _stormNavigationTimer;
@@ -253,7 +254,16 @@ public sealed partial class MainWindow : Window, IDisposable
             CameraOrbitDownButton.Click += OnCameraOrbitClick;
             ShortcutsMenuItem.Click += OnShortcutsClick;
             KeyDown += OnWindowKeyDown;
-            KeyUp += OnWindowKeyUp;
+
+            // KeyUp is registered as a routed handler that also sees handled events, because a
+            // focused Button or CheckBox consumes Space - and a release the window never sees is a
+            // movement key that latches forever. The handler is idempotent, so seeing the same
+            // release on both the tunnel and the bubble costs nothing.
+            AddHandler(
+                KeyUpEvent,
+                OnWindowKeyUp,
+                RoutingStrategies.Tunnel | RoutingStrategies.Bubble,
+                handledEventsToo: true);
             Deactivated += OnWindowDeactivated;
             RegisterCameraInputHandlers(this);
             RegisterCameraInputHandlers(ViewportHost);
@@ -263,6 +273,7 @@ public sealed partial class MainWindow : Window, IDisposable
             DragDrop.SetAllowDrop(this, true);
             DragDrop.AddDragOverHandler(this, OnDragOver);
             DragDrop.AddDropHandler(this, OnDrop);
+            InitializePhysicsUi();
             Opened += OnViewerOpened;
         }
         Closing += OnClosing;
@@ -566,6 +577,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         bool firstCameraShortcutPress = _cameraShortcutRepeat.TryPress(e.Key);
+        bool firstPhysicsShortcutPress = _physicsShortcutRepeat.TryPress(e.Key);
         bool control = (e.KeyModifiers & KeyModifiers.Control) != 0;
         bool editing = IsCameraShortcutEditing();
         if (control && e.Key == Key.O)
@@ -616,6 +628,30 @@ public sealed partial class MainWindow : Window, IDisposable
             e.KeyModifiers,
             editing,
             ViewportHost.IsKeyboardFocusWithin);
+        if (cameraShortcut == ViewerCameraShortcut.None &&
+            TryHandlePhysicsControllerKey(e, held: true))
+        {
+            e.Handled = true;
+            return;
+        }
+        if (cameraShortcut == ViewerCameraShortcut.None &&
+            firstCameraShortcutPress &&
+            firstPhysicsShortcutPress &&
+            TryHandlePhysicsShortcut(e))
+        {
+            e.Handled = true;
+            return;
+        }
+        if (cameraShortcut == ViewerCameraShortcut.None &&
+            !firstPhysicsShortcutPress &&
+            IsPhysicsShortcutCandidate(e))
+        {
+            // The key is still physically down and the operating system is repeating it. The
+            // command already ran on the first press, so the repeat is swallowed rather than
+            // stepping, toggling, or unwinding the undo history once more.
+            e.Handled = true;
+            return;
+        }
         if (cameraShortcut != ViewerCameraShortcut.None &&
             !firstCameraShortcutPress)
         {
@@ -675,6 +711,8 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         _ = sender;
         _cameraShortcutRepeat.Release(e.Key);
+        _physicsShortcutRepeat.Release(e.Key);
+        _ = TryHandlePhysicsControllerKey(e, held: false);
     }
 
     private void OnWindowDeactivated(object? sender, EventArgs e)
@@ -682,6 +720,13 @@ public sealed partial class MainWindow : Window, IDisposable
         _ = sender;
         _ = e;
         _cameraShortcutRepeat.Reset();
+        _physicsShortcutRepeat.Reset();
+
+        // A window that loses focus never sees the key release or the pointer release, so a
+        // controller that was walking would keep walking and a body that was being dragged would
+        // keep being pushed for as long as the viewer stayed in the background.
+        ClearPhysicsControllerKeys();
+        CancelPhysicsDrag();
     }
 
     private void RegisterCameraInputHandlers(Interactive target)
@@ -1006,6 +1051,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         _cameraShortcutRepeat.ResetForFocusTransfer();
+        _physicsShortcutRepeat.ResetForFocusTransfer();
         _ = ViewportHost.Focus();
         PointerPointProperties properties = e.GetCurrentPoint(ViewportHost).Properties;
         ViewerCameraPointerGesture gesture = ViewerCameraGestureClassifier.Classify(
@@ -1539,6 +1585,12 @@ public sealed partial class MainWindow : Window, IDisposable
     private void RefreshStormNavigationPolling()
     {
         _cameraShortcutRepeat.ResetForFocusTransfer();
+        _physicsShortcutRepeat.ResetForFocusTransfer();
+
+        // The Storm native child takes keyboard focus away from this window, so no key release will
+        // arrive for anything that was held. Dropping the movement keys here is what stops a
+        // character controller walking on after focus moved into the child surface.
+        ClearPhysicsControllerKeys();
         StopStormNavigationPolling();
         if (_coordinator?.ActiveBackend?.Kind == RenderBackendKind.Storm &&
             ViewportHost.GetActiveStormNavigationSource() is { } source)
@@ -1610,6 +1662,11 @@ public sealed partial class MainWindow : Window, IDisposable
                 if (input.Focused)
                 {
                     _cameraShortcutRepeat.ResetForFocusTransfer();
+                    _physicsShortcutRepeat.ResetForFocusTransfer();
+
+                    // Focus moved into the native child, so the releases for whatever was held
+                    // will never reach this window.
+                    ClearPhysicsControllerKeys();
                 }
                 EndCameraPointerGesture();
             }
@@ -1720,7 +1777,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void OnStageChanged(UsdStageChange change)
     {
-        _ = change;
+        NotifyPhysicsStageChanged(change);
         if (IsAutomatedViewerRun())
         {
             return;
@@ -2259,6 +2316,10 @@ public sealed partial class MainWindow : Window, IDisposable
                 }
                 ManagedRenderFrameResult result =
                     await coordinator.RenderAsync(cancellationToken);
+                await Dispatcher.UIThread.InvokeAsync(
+                    PumpPhysicsRenderFrame,
+                    DispatcherPriority.Render,
+                    cancellationToken);
                 if (iteration == 1)
                 {
                     string frameStatus = result.Frame?.Status.ToString() ?? "none";
@@ -3385,6 +3446,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 RenderLayers();
                 RenderValidation();
                 SetActiveBackendStatus();
+                AttachPhysics(_coordinator);
                 CaptureDiagnostics(
                     _coordinator,
                     frameResult: null,
@@ -3757,8 +3819,10 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async Task StopCurrentDocumentAsync()
     {
+        await DetachPhysicsAsync();
         StopStormNavigationPolling();
         _cameraShortcutRepeat.Reset();
+        _physicsShortcutRepeat.Reset();
         EndCameraPointerGesture();
         if (_coordinator is { } stageChangeCoordinator)
         {
@@ -7996,6 +8060,7 @@ public sealed partial class MainWindow : Window, IDisposable
             _viewerLifetime.Dispose();
             _documentGate.Dispose();
             _settingsStore.Dispose();
+            _physicsBakeLifetime.Dispose();
         }
     }
 

@@ -285,7 +285,9 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI |
     OPENUSD_CAPABILITY_INSPECTION_V2 |
     OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2 |
-    OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION;
+    OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION |
+    OPENUSD_CAPABILITY_SESSION_OVERLAY |
+    OPENUSD_CAPABILITY_PHYSICS_BAKE;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));

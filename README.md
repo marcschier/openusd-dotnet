@@ -13,9 +13,11 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Current distribution:** public source repository and 23 published `0.11.0-alpha` packages,
+> **Current distribution:** public source repository and 27 published `0.11.0-alpha` packages,
 > with pre-1.0 APIs. This set includes the five Cesium package IDs enumerated below, which
-> became public after being withheld from NuGet.org at `0.5.0-alpha`.
+> became public after being withheld from NuGet.org at `0.5.0-alpha`, the `OpenUsd.Mcp.Tool` .NET
+> tool, and the four physics IDs
+> that are new in `0.11.0-alpha`.
 > Package identities and public APIs may still change before 1.0.
 
 ```shell
@@ -29,6 +31,14 @@ RID-specific package IDs remain available when a project wants explicit asset se
 builds and publishes copy the current host's assets only on `win-x64`, `linux-x64`, and
 `osx-arm64`; cross-publishing, CI matrix jobs, and unsupported hosts should set
 `RuntimeIdentifier` explicitly. See [Packaging](docs/packaging.md).
+
+Simulation consumers add `OpenUsd.Physics`, which brings the PhysX solver through
+`OpenUsd.Runtime.Physics` for `win-x64` and `linux-x64`. The pinned simulation SDK has no macOS
+build, so physics is unavailable on `osx-arm64`; a macOS application reports an unavailable physics
+backend and is otherwise unaffected. GPU domains need NVIDIA's proprietary `PhysXGpu` and
+`PhysXDevice` modules, which this project does not redistribute: a licensed user copies them beside
+the published runtime, and without them the runtime reports no CUDA capability and skips every
+GPU-only object with a diagnostic instead of failing.
 
 Release evidence now includes a checked CycloneDX SBOM, nuget.org symbol-package promotion wiring,
 and render gates that run before releases. The details and caveats live in
@@ -124,8 +134,9 @@ See [Architecture](docs/architecture.md) and [Rendering](docs/rendering.md).
 
 ## 📦 Package matrix
 
-All 23 package IDs below are buildable from this repository and published to NuGet.org at
-`0.11.0-alpha`. The five Cesium IDs became public after being withheld at `0.5.0-alpha`.
+All 27 package IDs below are buildable from this repository and published to NuGet.org at
+`0.11.0-alpha`. The five Cesium IDs became public after being withheld at `0.5.0-alpha`; the
+`OpenUsd.Mcp.Tool` .NET tool and the four physics IDs are new in `0.11.0-alpha`.
 
 | Package | TFM | Purpose |
 | --- | --- | --- |
@@ -134,6 +145,7 @@ All 23 package IDs below are buildable from this repository and published to NuG
 | `OpenUsd.Rendering` | 8/9/10 | Renderer-neutral state, capabilities, picking, and failover |
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Hydra/Storm adapter |
 | `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer |
+| `OpenUsd.Physics` | 8/9/10 | Optional retained `UsdPhysics` simulation sessions and baking |
 | `OpenUsd.Rendering.Silk` | 8/9/10 | Hydra-fed managed renderer and backend-neutral RHI |
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Direct3D 12 backend |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Vulkan backend |
@@ -152,6 +164,9 @@ All 23 package IDs below are buildable from this repository and published to NuG
 | `OpenUsd.Runtime.Cesium.win-x64` | 8 carrier | Windows Cesium 3D Tiles native shim |
 | `OpenUsd.Runtime.Cesium.linux-x64` | 8 carrier | Linux Cesium 3D Tiles native shim |
 | `OpenUsd.Runtime.Cesium.osx-arm64` | 8 carrier | macOS Cesium 3D Tiles native shim |
+| `OpenUsd.Runtime.Physics` | 8 carrier | Physics metapackage for `win-x64` and `linux-x64` |
+| `OpenUsd.Runtime.Physics.win-x64` | 8 carrier | Windows PhysX solver shim |
+| `OpenUsd.Runtime.Physics.linux-x64` | 8 carrier | Linux PhysX solver shim |
 
 Runtime projects use `net8.0` as their NuGet asset-carrier TFM; the managed libraries they accompany
 target .NET 8, 9, and 10. Package layout and clean-consumer gates are documented in
@@ -407,7 +422,7 @@ tests and documentation. See [Contributing](CONTRIBUTING.md).
 
 ## Status
 
-OpenUsd is a substantial public `0.11.0-alpha` baseline with 23 packages published to NuGet.org,
+OpenUsd is a substantial public `0.11.0-alpha` baseline with 27 packages published to NuGet.org,
 but it is not a stable release. Data, rendering, Viewer, package, NativeAOT, shader, parity, and
 performance gates exist, and this README states what they do and do not prove. Public API and package
 identities may change before 1.0. Workflow badges above are the authoritative status for the default branch.

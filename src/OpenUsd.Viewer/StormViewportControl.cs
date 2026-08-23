@@ -28,6 +28,16 @@ public sealed class StormViewportControl : OpenGlControlBase
     private readonly object _bindingGate = new();
     private readonly TaskCompletionSource<string> _hostedInitialization =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly ViewerPhysicsOverrideStage _physicsStage = new();
+    private readonly StormPhysicsTransformOverrides _physicsOverrides = new(
+        ViewerPhysicsRenderCapacities.BodyCapacity,
+        ViewerPhysicsRenderCapacities.StormPathBytes);
+    private readonly StormPhysicsDeformationOverrides _physicsDeformations = new(
+        ViewerPhysicsRenderCapacities.DeformableCapacity,
+        ViewerPhysicsRenderCapacities.DeformableVertexCapacity,
+        ViewerPhysicsRenderCapacities.StormPathBytes);
+    private StormPhysicsDeformationDiagnostics _physicsDeformationDiagnostics;
+    private long _physicsOverrideBatches;
     private OpenUsdStormRenderer? _renderer;
     private StageRenderState _renderState = StageRenderState.Default;
     private StageBinding? _configuredBinding;
@@ -122,6 +132,51 @@ public sealed class StormViewportControl : OpenGlControlBase
     }
 
     internal long SoakFrameCount => Interlocked.Read(ref _soakFrameCount);
+
+    internal long PhysicsOverrideBatches => Interlocked.Read(ref _physicsOverrideBatches);
+
+    /// <summary>
+    /// Stages one physics override batch for the OpenGL thread that owns the Storm renderer.
+    /// </summary>
+    /// <param name="overrides">The overrides one render update produced.</param>
+    /// <param name="bindings">The table naming the prim each identity drives.</param>
+    /// <returns>The number of overrides staged.</returns>
+    internal int StagePhysicsOverrides(
+        in PhysicsRenderOverrideView overrides,
+        PhysicsRenderBindingTable bindings)
+    {
+        int staged = _physicsStage.Stage(in overrides, bindings);
+        RequestRenderThreadSafe();
+        return staged;
+    }
+
+    /// <summary>Stages one complete deformable geometry batch for the render thread.</summary>
+    /// <param name="deformations">The geometry one render update produced.</param>
+    /// <returns>The number of regions staged.</returns>
+    internal int StagePhysicsDeformations(in PhysicsRenderDeformationView deformations)
+    {
+        int staged = _physicsStage.StageDeformations(in deformations);
+        RequestRenderThreadSafe();
+        return staged;
+    }
+
+    /// <summary>Gets what Storm reported about the last deformation batch it accepted.</summary>
+    internal StormPhysicsDeformationDiagnostics PhysicsDeformationDiagnostics =>
+        _physicsDeformationDiagnostics;
+
+    /// <summary>Stages an empty batch so Storm restores the authored transforms.</summary>
+    internal void ClearPhysicsOverrides()
+    {
+        _physicsStage.ClearDeformations();
+        _physicsStage.Clear();
+        RequestRenderThreadSafe();
+    }
+
+    /// <summary>Takes the newest report of what the render thread actually resolved.</summary>
+    /// <param name="report">Receives the newest unread report.</param>
+    /// <returns><see langword="true"/> when a report was taken.</returns>
+    internal bool TryTakePhysicsOverrideReport(out ViewerPhysicsOverrideReport report) =>
+        _physicsStage.TryTakeReport(out report);
 
     internal StageRenderState CurrentRenderState => Volatile.Read(ref _renderState);
 
@@ -261,6 +316,8 @@ public sealed class StormViewportControl : OpenGlControlBase
         StageRenderState state = CurrentRenderState;
         try
         {
+            ApplyStagedPhysicsOverrides(_renderer);
+            ApplyStagedPhysicsDeformations(_renderer);
             if (_appliedSelection != state.Selection)
             {
                 _renderer.SetSelection(
@@ -432,6 +489,42 @@ public sealed class StormViewportControl : OpenGlControlBase
         {
             RequestNextFrameRendering();
         }
+    }
+
+    private void ApplyStagedPhysicsOverrides(OpenUsdStormRenderer renderer)
+    {
+        if (!_physicsStage.TryTake(out ViewerPhysicsOverrideBatch batch))
+        {
+            return;
+        }
+
+        using (batch)
+        {
+            PhysicsRenderOverrideView overrides = batch.Overrides;
+            int resolved = _physicsOverrides.Refresh(in overrides, batch.Bindings);
+            _physicsStage.PublishReport(
+                overrides.Revision,
+                resolved,
+                Math.Max(0, overrides.Count - resolved));
+        }
+
+        renderer.SetPhysicsTransformOverrides(_physicsOverrides);
+        Interlocked.Increment(ref _physicsOverrideBatches);
+    }
+
+    private void ApplyStagedPhysicsDeformations(OpenUsdStormRenderer renderer)
+    {
+        if (!_physicsStage.TryTakeDeformations(out PhysicsRenderDeformationView deformations))
+        {
+            return;
+        }
+
+        // One packed batch crosses the boundary per frame. The regions and the
+        // shared point page are resolved onto authored prim paths first, so the
+        // renderer receives one call rather than one call per simulated vertex.
+        _ = _physicsDeformations.Refresh(in deformations, _physicsStage.Bindings);
+        _physicsDeformationDiagnostics =
+            renderer.SetPhysicsDeformationOverrides(_physicsDeformations);
     }
 
     private void EnsureRenderer()

@@ -89,11 +89,13 @@ constants, package validation, and tests must be updated together.
 
 | Boundary | Current contract | Runtime check |
 | --- | ---: | --- |
-| Data shim `openusd_dotnet` | ABI 15, required capabilities `0x7FFFF` | Managed runtime validates both. |
-| Direct Storm `openusd_hydra` | ABI 6 | Managed Storm runtime requires an exact version. |
+| Data shim `openusd_dotnet` | ABI 15, required capabilities `0x1FFFFF` | Managed runtime validates both. |
+| Direct Storm `openusd_hydra` | ABI 8 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 8 | Managed child runtime requires an exact version. |
 | hdSilk session API | ABI 5 | Kept aligned through the matched Imaging runtime. |
 | hdSilk command page | ABI 11 | Every managed page is validated before parsing. |
+| Retained physics `openusd_physx` | ABI 7 | Negotiated exactly, including every record size. |
+| Physics extraction page | ABI 1 | Every managed page is validated before parsing. |
 
 The data capability mask is part of compatibility. A native library with ABI 15 but an older capability
 mask is rejected, as is an older ABI that happens to report newer capability bits.
@@ -104,6 +106,12 @@ not expose a separate managed runtime version query, so exact package alignment 
 
 The Storm child ABI also participates in native filename policy. Linux packages use the ABI-8 SONAME and
 validated symlink chain; Windows and macOS packages validate the corresponding exported contract.
+
+The physics ABI fails closed rather than degrading. The managed mirror asserts its own record sizes,
+compares every one of them against the sizes the runtime reports, and then compares the page magic,
+the page alignment, and every declared limit. Any difference is reported as an unavailable backend
+with a diagnostic instead of being used with reinterpreted memory, so a mismatched pair produces an
+honest capability answer rather than corrupted simulation results.
 
 ## ABI change rules
 
@@ -135,17 +143,34 @@ The current runtime matrix is:
 | `linux-x64` | `OpenUsd.Runtime.Core.linux-x64` | `OpenUsd.Runtime.Imaging.linux-x64` |
 | `osx-arm64` | `OpenUsd.Runtime.Core.osx-arm64` | `OpenUsd.Runtime.Imaging.osx-arm64` |
 
+| RID | Physics package | GPU domains |
+| --- | --- | --- |
+| `win-x64` | `OpenUsd.Runtime.Physics.win-x64` | User-supplied NVIDIA modules |
+| `linux-x64` | `OpenUsd.Runtime.Physics.linux-x64` | User-supplied NVIDIA modules |
+| `osx-arm64` | none | none |
+
 Core contains the OpenUSD runtime, its load-time dependencies, the data shim, and the `usd/**` data
 plugin tree. Imaging adds Hydra, hdSilk, Storm-child assets, renderer plugins, and
-`plugin/usd/**`.
+`plugin/usd/**`. Physics adds the retained PhysX solver shim, which links the OpenUSD monolith and
+statically links the BSD-3-Clause simulation SDK including Vehicle2. No package carries an NVIDIA
+GPU module.
 
-Imaging has an exact NuGet dependency on the matching Core package version. Applications should use the
-same repository version for managed OpenUsd packages and the selected runtime packages. Do not mix
-assets copied from source builds, another package version, another RID, or a system installation.
+Imaging and Physics each have an exact NuGet dependency on the matching Core package version.
+Applications should use the same repository version for managed OpenUsd packages and the selected
+runtime packages. Do not mix assets copied from source builds, another package version, another
+RID, or a system installation.
 
 Select Core for data-only applications. Add Imaging when the application uses Hydra, Storm, hdSilk, or a
-concrete Silk renderer. Concrete managed backends may also carry backend-specific assets, such as a
-validated Metal shader library.
+concrete Silk renderer. Add Physics when the application simulates on `win-x64` or `linux-x64`.
+Concrete managed backends may also carry backend-specific assets, such as a validated Metal shader
+library.
+
+Physics is a platform capability, not a compatibility level. `osx-arm64` has no physics package
+because the pinned vcpkg PhysX port declares no `arm64-osx` support, and a macOS application that
+references `OpenUsd.Physics` reports an unavailable backend rather than failing to start. GPU
+domains behave the same way on every RID: without the user-supplied NVIDIA modules the reported
+capability set omits `Cuda`. Neither absence is a compatibility break; the packages and the managed
+library are complete without them.
 
 ## Build and install identity
 
@@ -171,7 +196,7 @@ When diagnosing or reviewing a deployment, verify:
 2. the publish RID is one of the current runtime RIDs;
 3. all managed and runtime OpenUsd packages use the same version;
 4. Imaging's exact Core dependency resolved without override;
-5. data ABI 15 and capabilities `0x7FFFF` are reported;
+5. data ABI 15 and capabilities `0x1FFFFF` are reported;
 6. any selected rendering path has its matching ABI and plugin assets;
 7. `usd/**` and `plugin/usd/**` retain their directory structure;
 8. no source-build or globally installed library wins native resolution; and

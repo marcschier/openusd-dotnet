@@ -89,6 +89,10 @@ on:
       - 'eng/fetch-cesium-native.ps1'
       - 'eng/build-cesium-native.ps1'
       - 'eng/build-cesium-shim.ps1'
+      - 'eng/physx.lock.json'
+      - 'eng/fetch-physx-native.ps1'
+      - 'eng/build-physx-native.ps1'
+      - 'eng/build-physx-shim.ps1'
       - 'eng/run-native-probe.ps1'
       - 'eng/run-silk-probe.ps1'
       - 'eng/native-install-metadata.ps1'
@@ -96,11 +100,19 @@ on:
       - 'native/CMakePresets.json'
       - 'native/hdSilk/**'
       - 'native/openusd_cesium/**'
+      - 'native/openusd_physx/**'
       - 'src/OpenUsd.Mcp/**'
       - 'src/OpenUsd.Runtime.Packaging/**'
       - 'src/OpenUsd.Runtime.Core*/**'
       - 'src/OpenUsd.Runtime.Imaging*/**'
       - 'src/OpenUsd.Runtime.Cesium*/**'
+      - 'src/OpenUsd.Runtime.Physics*/**'
+      # The managed physics library and the schema resources it embeds are packed and executed by
+      # the physics package gates, so a change to either has to run them. The wildcard above matches
+      # only the runtime packages; without these two, removing an <EmbeddedResource> or editing the
+      # generated schema would skip the only gate that reads them out of a packed assembly.
+      - 'src/OpenUsd.Physics/**'
+      - 'schemas/**'
       - 'tests/OpenUsd.Package.Tests/**'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
@@ -463,6 +475,46 @@ jobs:
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/build-cesium-shim.ps1 -Rid ${{ matrix.rid }}
+      - id: physx-vcpkg-cache
+        if: matrix.rid != 'osx-arm64' && steps.native-ready.outputs.ready == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            native/.cache/vcpkg-*
+            native/build/physx/${{ matrix.rid }}/vcpkg_installed
+          key: >-
+            physx-vcpkg-${{ matrix.rid }}-${{ hashFiles(
+              'eng/physx.lock.json',
+              'eng/fetch-physx-native.ps1',
+              'eng/build-physx-native.ps1',
+              'eng/build-physx-shim.ps1'
+            ) }}
+      # The physics package carries a solver built from source, so the package job builds it here
+      # rather than consuming the native archive. The simulation SDK is compiled statically, and
+      # its GPU modules are proprietary NVIDIA blobs that are staged locally and never packaged.
+      #
+      # macOS is excluded because the pinned vcpkg port declares no arm64-osx support, so there is
+      # no macOS physics package to build inputs for.
+      - name: Build PhysX native install
+        if: matrix.rid != 'osx-arm64' && steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: ./eng/build-physx-native.ps1 -Rid ${{ matrix.rid }}
+      - name: Build PhysX shim
+        if: matrix.rid != 'osx-arm64' && steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: ./eng/build-physx-shim.ps1 -Rid ${{ matrix.rid }}
+      # The pinned port links PhysXVehicle2 into its aggregate SDK target only on Windows, so the
+      # Linux vehicle path is the one that can regress without anyone noticing. This drives a real
+      # four wheeled engine drive vehicle on Linux, which is the proof behind the vehicle
+      # capability the physics package advertises there.
+      - name: Prove Linux PhysX vehicles
+        if: matrix.rid == 'linux-x64' && steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: >
+          ctest
+          --test-dir native/build/shim/linux-x64-physx
+          -R openusd_physx_vehicle_probe
+          --output-on-failure
       - name: Execute managed NativeAOT probe
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -511,7 +563,7 @@ jobs:
           {
             throw "The package test executable was not built at '$testApp'."
           }
-          & $testApp --minimum-expected-tests 22
+          & $testApp --minimum-expected-tests 26
           exit $LASTEXITCODE
       - name: Require Linux ABI-8 SONAME topology and package-only evidence
         if: runner.os == 'Linux' && steps.native-ready.outputs.ready == 'true'

@@ -72,6 +72,8 @@ OpenUsd.Rendering.Storm.OpenUsdStormChildSession.Render(double timeCode, OpenUsd
 OpenUsd.Rendering.Storm.OpenUsdStormChildSession.RendererName.get -> string!
 OpenUsd.Rendering.Storm.OpenUsdStormChildSession.RequestFrame(double timeCode, ulong revision = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), ulong? sceneRevision = null) -> void
 OpenUsd.Rendering.Storm.OpenUsdStormChildSession.Resize(int width, int height, uint dpi) -> void
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.SetPhysicsDeformationOverrides(OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides! deformations) -> OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics
+OpenUsd.Rendering.Storm.OpenUsdStormChildSession.SetPhysicsTransformOverrides(OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides! overrides) -> OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics
 OpenUsd.Rendering.Storm.OpenUsdStormChildSession.SetSelection(OpenUsd.Rendering.SelectionState! selection, System.Numerics.Vector4 color) -> void
 OpenUsd.Rendering.Storm.OpenUsdStormChildSession.SetVisible(bool visible) -> void
 OpenUsd.Rendering.Storm.OpenUsdStormChildSession.SimulateContextLoss() -> void
@@ -166,11 +168,105 @@ OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Dispose() -> void
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Name.get -> string!
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Pick(OpenUsd.Rendering.RenderPickRequest request) -> OpenUsd.Rendering.RenderPickResult
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.Render(int width, int height, uint framebuffer, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState), ulong revision = 0, ulong? sceneRevision = null, bool useSceneLights = false) -> bool
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.SetPhysicsDeformationOverrides(OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides! deformations) -> OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics
+OpenUsd.Rendering.Storm.OpenUsdStormRenderer.SetPhysicsTransformOverrides(OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides! overrides) -> OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics
 OpenUsd.Rendering.Storm.OpenUsdStormRenderer.SetSelection(OpenUsd.Rendering.SelectionState! selection, System.Numerics.Vector4 color) -> void
 OpenUsd.Rendering.Storm.OpenUsdStormRuntime
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.AppliedBatchCount.get -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.AppliedBatchCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.AppliedCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.AppliedCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.Capacity.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.Capacity.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.Deconstruct(out int AppliedCount, out int UnresolvedCount, out int DroppedCount, out int UnsupportedCount, out int MismatchedCount, out int Capacity, out ulong Revision, out ulong AppliedBatchCount, out ulong RejectedBatchCount, out ulong DirtiedPrimCount) -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.Describe() -> string!
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.DirtiedPrimCount.get -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.DirtiedPrimCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.DroppedCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.DroppedCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.Equals(OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics other) -> bool
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.IsComplete.get -> bool
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.MismatchedCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.MismatchedCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.RejectedBatchCount.get -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.RejectedBatchCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.Revision.get -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.Revision.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.StormPhysicsDeformationDiagnostics() -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.StormPhysicsDeformationDiagnostics(int AppliedCount, int UnresolvedCount, int DroppedCount, int UnsupportedCount, int MismatchedCount, int Capacity, ulong Revision, ulong AppliedBatchCount, ulong RejectedBatchCount, ulong DirtiedPrimCount) -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.UnresolvedCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.UnresolvedCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.UnsupportedCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.UnsupportedCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.Capacity.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.Clear(ulong revision = 0) -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.Count.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.Describe() -> string!
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.DroppedRegions.get -> long
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.ObjectIdAt(int index) -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.PathAt(int index) -> string!
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.PathByteCapacity.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.PathByteCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.PointCapacity.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.PointCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.PointsAt(int index) -> System.ReadOnlySpan<float>
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.Refresh(in OpenUsd.Rendering.PhysicsRenderDeformationView deformations, OpenUsd.Rendering.PhysicsRenderBindingTable! bindings) -> int
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.RefreshCount.get -> long
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.Reset() -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.Revision.get -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.StormPhysicsDeformationOverrides(int capacity, int pointCapacity, int pathByteCapacity) -> void
+OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.UnboundRegions.get -> long
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.AppliedBatchCount.get -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.AppliedBatchCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.AppliedCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.AppliedCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.Capacity.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.Capacity.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.Deconstruct(out int AppliedCount, out int UnresolvedCount, out int DroppedCount, out int UnsupportedCount, out int Capacity, out ulong Revision, out ulong AppliedBatchCount, out ulong RejectedBatchCount, out ulong DirtiedPrimCount) -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.Describe() -> string!
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.DirtiedPrimCount.get -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.DirtiedPrimCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.DroppedCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.DroppedCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.Equals(OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics other) -> bool
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.IsComplete.get -> bool
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.RejectedBatchCount.get -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.RejectedBatchCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.Revision.get -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.Revision.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.StormPhysicsOverrideDiagnostics() -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.StormPhysicsOverrideDiagnostics(int AppliedCount, int UnresolvedCount, int DroppedCount, int UnsupportedCount, int Capacity, ulong Revision, ulong AppliedBatchCount, ulong RejectedBatchCount, ulong DirtiedPrimCount) -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.UnresolvedCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.UnresolvedCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.UnsupportedCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.UnsupportedCount.init -> void
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.Capacity.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.Clear(ulong revision = 0) -> void
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.Count.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.Describe() -> string!
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.DroppedOverrides.get -> long
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.PathByteCapacity.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.PathByteCount.get -> int
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.Refresh(in OpenUsd.Rendering.PhysicsRenderOverrideView overrides, OpenUsd.Rendering.PhysicsRenderBindingTable! bindings) -> int
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.RefreshCount.get -> long
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.Reset() -> void
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.Revision.get -> ulong
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.StormPhysicsTransformOverrides(int capacity = 4096, int pathByteCapacity = 1048576) -> void
+OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.UnboundOverrides.get -> long
+const OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.MaximumCapacity = 1024 -> int
+const OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.MaximumPathBytes = 1048576 -> int
+const OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.MaximumPoints = 4194304 -> int
+const OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.MaximumCapacity = 4096 -> int
+const OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.MaximumPathBytes = 1048576 -> int
 override OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.GetHashCode() -> int
 override OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.GetHashCode() -> int
 override OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.GetHashCode() -> int
+override OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.GetHashCode() -> int
+override OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.GetHashCode() -> int
 static OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.operator !=(OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics left, OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics right) -> bool
 static OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.operator ==(OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics left, OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics right) -> bool
 static OpenUsd.Rendering.Storm.OpenUsdStormChildRuntime.AbiVersion.get -> uint
@@ -184,9 +280,21 @@ static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.AbiVersion.get -> uint
 static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.Create(string! pluginPath, OpenUsd.UsdStageRenderSource! source) -> OpenUsd.Rendering.Storm.OpenUsdStormRenderer!
 static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.Create(string! pluginPath, string! stagePath) -> OpenUsd.Rendering.Storm.OpenUsdStormRenderer!
 static OpenUsd.Rendering.Storm.OpenUsdStormRuntime.Headlight.get -> OpenUsd.Rendering.RenderHeadlight
+static OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.Empty.get -> OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics
+static OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.operator !=(OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics left, OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics right) -> bool
+static OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.operator ==(OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics left, OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics right) -> bool
+static OpenUsd.Rendering.Storm.StormPhysicsDeformationOverrides.IsDomainSupported(OpenUsd.Rendering.PhysicsRenderDomain domain) -> bool
+static OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.Empty.get -> OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics
+static OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.operator !=(OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics left, OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics right) -> bool
+static OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.operator ==(OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics left, OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics right) -> bool
+static OpenUsd.Rendering.Storm.StormPhysicsTransformOverrides.IsDomainSupported(OpenUsd.Rendering.PhysicsRenderDomain domain) -> bool
 ~override OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Storm.OpenUsdStormChildDiagnostics.ToString() -> string
 ~override OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Storm.OpenUsdStormFramebufferCapture.ToString() -> string
 ~override OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Storm.OpenUsdStormNavigationInput.ToString() -> string
+~override OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Storm.StormPhysicsDeformationDiagnostics.ToString() -> string
+~override OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.Equals(object obj) -> bool
+~override OpenUsd.Rendering.Storm.StormPhysicsOverrideDiagnostics.ToString() -> string

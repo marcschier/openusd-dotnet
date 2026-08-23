@@ -37,7 +37,7 @@ constexpr GLenum FramebufferComplete = 0x8CD5;
 constexpr GLenum DepthComponent24 = 0x81A6;
 constexpr GLint Rgba8 = 0x8058;
 constexpr int CapabilityUnavailableExitCode = 125;
-static_assert(OPENUSD_STORM_ABI_VERSION == 6);
+static_assert(OPENUSD_STORM_ABI_VERSION == 8);
 
 enum class FramebufferCreationResult
 {
@@ -52,6 +52,17 @@ openusd_render_camera AutomaticCamera()
     camera.struct_size = sizeof(camera);
     camera.mode = OPENUSD_RENDER_CAMERA_MODE_AUTO;
     return camera;
+}
+
+void WriteTranslation(double* transform, double x, double y, double z) noexcept
+{
+    for (int index = 0; index < 16; ++index)
+    {
+        transform[index] = (index % 5) == 0 ? 1.0 : 0.0;
+    }
+    transform[12] = x;
+    transform[13] = y;
+    transform[14] = z;
 }
 
 bool VerifyHeadlightAbi(openusd_error_buffer* error)
@@ -1031,6 +1042,154 @@ int main(int argc, char** argv)
     std::cerr << "Selection clear evidence: baselineHash=" << baseline_hash
               << " clearedHash=" << PixelHash(cleared_pixels)
               << " restored=1\n";
+
+    openusd_storm_transform_override_item override_item{};
+    override_item.object_id = 4242;
+    override_item.path_offset = 0;
+    override_item.path_length = static_cast<uint32_t>(selected_path.size());
+    override_item.instance_index = -1;
+    // The managed batch always asks the renderer to keep the rendered prim's own
+    // scale and shear, so the real-render path must exercise the same flag.
+    override_item.flags = OPENUSD_STORM_TRANSFORM_OVERRIDE_ITEM_PRESERVE_STRETCH;
+    WriteTranslation(override_item.transform, 0.75, 0.25, 0.0);
+    openusd_storm_transform_override_update override_update{};
+    override_update.struct_size = sizeof(override_update);
+    override_update.version = OPENUSD_STORM_TRANSFORM_OVERRIDE_UPDATE_VERSION;
+    override_update.item_count = 1;
+    override_update.flags = OPENUSD_STORM_TRANSFORM_OVERRIDE_UPDATE_REPLACE;
+    override_update.revision = 91;
+    override_update.items = &override_item;
+    override_update.path_bytes = selected_path.data();
+    override_update.path_bytes_size =
+        static_cast<uint32_t>(selected_path.size());
+    if (openusd_storm_set_transform_overrides(
+            renderer,
+            &override_update,
+            &error) != OPENUSD_STATUS_OK)
+    {
+        std::cerr << "Storm packed transform override update failed: "
+                  << errorText.data() << "\n";
+        return 7;
+    }
+    const std::vector<uint8_t> overridden_pixels =
+        Render(renderer, framebuffer.Id(), &error, &status, &automatic);
+    const uint64_t overridden_hash = PixelHash(overridden_pixels);
+    openusd_storm_transform_override_diagnostics override_diagnostics{};
+    override_diagnostics.struct_size = sizeof(override_diagnostics);
+    override_diagnostics.version =
+        OPENUSD_STORM_TRANSFORM_OVERRIDE_DIAGNOSTICS_VERSION;
+    if (status != OPENUSD_STATUS_OK ||
+        overridden_hash == baseline_hash ||
+        openusd_storm_get_transform_override_diagnostics(
+            renderer,
+            &override_diagnostics,
+            &error) != OPENUSD_STATUS_OK ||
+        override_diagnostics.applied_count != 1 ||
+        override_diagnostics.unresolved_count != 0 ||
+        override_diagnostics.dropped_count != 0 ||
+        override_diagnostics.unsupported_count != 0 ||
+        override_diagnostics.revision != 91 ||
+        override_diagnostics.applied_batch_count == 0 ||
+        override_diagnostics.dirtied_prim_count == 0 ||
+        override_diagnostics.capacity !=
+            OPENUSD_STORM_TRANSFORM_OVERRIDE_MAXIMUM_ITEMS)
+    {
+        std::cerr << "Storm transform override did not move the rendered prim: "
+                  << errorText.data() << "\n";
+        return 7;
+    }
+    std::cerr << "Transform override evidence: baselineHash=" << baseline_hash
+              << " overriddenHash=" << overridden_hash
+              << " applied=" << override_diagnostics.applied_count
+              << " revision=" << override_diagnostics.revision
+              << " dirtied=" << override_diagnostics.dirtied_prim_count << "\n";
+
+    // A batch that names a prim the stage does not carry must be diagnosed
+    // instead of failing, and it must not leave a stale override behind.
+    const std::string missing_path = "/World/StormPhysicsMissingPrim";
+    openusd_storm_transform_override_item missing_item = override_item;
+    missing_item.path_length = static_cast<uint32_t>(missing_path.size());
+    override_update.revision = 92;
+    override_update.items = &missing_item;
+    override_update.path_bytes = missing_path.data();
+    override_update.path_bytes_size =
+        static_cast<uint32_t>(missing_path.size());
+    if (openusd_storm_set_transform_overrides(
+            renderer,
+            &override_update,
+            &error) != OPENUSD_STATUS_OK)
+    {
+        std::cerr << "Storm missing-prim transform override was rejected.\n";
+        return 7;
+    }
+    const std::vector<uint8_t> missing_pixels =
+        Render(renderer, framebuffer.Id(), &error, &status, &automatic);
+    override_diagnostics = {};
+    override_diagnostics.struct_size = sizeof(override_diagnostics);
+    override_diagnostics.version =
+        OPENUSD_STORM_TRANSFORM_OVERRIDE_DIAGNOSTICS_VERSION;
+    if (status != OPENUSD_STATUS_OK ||
+        PixelHash(missing_pixels) != baseline_hash ||
+        missing_pixels != selection_baseline ||
+        openusd_storm_get_transform_override_diagnostics(
+            renderer,
+            &override_diagnostics,
+            &error) != OPENUSD_STATUS_OK ||
+        override_diagnostics.applied_count != 0 ||
+        override_diagnostics.unresolved_count != 1 ||
+        override_diagnostics.revision != 92)
+    {
+        std::cerr << "Storm missing-prim override was not diagnosed cleanly.\n";
+        return 7;
+    }
+
+    override_update.revision = 93;
+    override_update.item_count = 0;
+    override_update.items = nullptr;
+    override_update.path_bytes = nullptr;
+    override_update.path_bytes_size = 0;
+    if (openusd_storm_set_transform_overrides(
+            renderer,
+            &override_update,
+            &error) != OPENUSD_STATUS_OK)
+    {
+        std::cerr << "Storm transform override clear failed.\n";
+        return 7;
+    }
+    const std::vector<uint8_t> restored_pixels =
+        Render(renderer, framebuffer.Id(), &error, &status, &automatic);
+    if (status != OPENUSD_STATUS_OK ||
+        PixelHash(restored_pixels) != baseline_hash ||
+        restored_pixels != selection_baseline)
+    {
+        std::cerr << "Clearing transform overrides did not restore the stage.\n";
+        return 7;
+    }
+    std::cerr << "Transform override clear evidence: baselineHash="
+              << baseline_hash
+              << " restoredHash=" << PixelHash(restored_pixels)
+              << " restored=1\n";
+
+    openusd_storm_transform_override_update bad_override = override_update;
+    bad_override.version = OPENUSD_STORM_TRANSFORM_OVERRIDE_UPDATE_VERSION + 1;
+    openusd_storm_transform_override_diagnostics bad_diagnostics{};
+    bad_diagnostics.struct_size = 1;
+    bad_diagnostics.version =
+        OPENUSD_STORM_TRANSFORM_OVERRIDE_DIAGNOSTICS_VERSION;
+    if (openusd_storm_set_transform_overrides(
+            renderer,
+            &bad_override,
+            &error) != OPENUSD_STATUS_INVALID_ARGUMENT ||
+        openusd_storm_set_transform_overrides(renderer, nullptr, &error) !=
+            OPENUSD_STATUS_INVALID_ARGUMENT ||
+        openusd_storm_get_transform_override_diagnostics(
+            renderer,
+            &bad_diagnostics,
+            &error) != OPENUSD_STATUS_INVALID_ARGUMENT)
+    {
+        std::cerr << "Storm transform override struct guards are missing.\n";
+        return 7;
+    }
 
     openusd_status wrongThreadRenderStatus = OPENUSD_STATUS_OK;
     openusd_status wrongThreadDestroyStatus = OPENUSD_STATUS_OK;

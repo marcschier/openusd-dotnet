@@ -43,7 +43,7 @@ public sealed class StormPickingSourceContractTests
             "tests",
             "storm_wgl_shared_stage_probe.cpp"));
 
-        await Assert.That(hydraHeader).Contains("OPENUSD_STORM_ABI_VERSION 6u");
+        await Assert.That(hydraHeader).Contains("OPENUSD_STORM_ABI_VERSION 8u");
         await Assert.That(hydraHeader).Contains("openusd_storm_get_abi_version");
         await Assert.That(hydraHeader).Contains("openusd_storm_get_headlight");
         await Assert.That(hydraHeader).Contains("openusd_storm_render_v2");

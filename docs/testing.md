@@ -302,6 +302,98 @@ Per-prim isolation is asserted as a skip rather than a throw: a record that fail
 be omitted from the page and counted by the rejected-mesh counter while every valid sibling still
 serializes. This is what stops one malformed prim in a production asset from blanking a frame.
 
+## Physics package gates
+
+Eight gates in `tests/OpenUsd.Package.Tests/RuntimePackageTests.cs` cover the physics packages, and
+they are deliberately split between the seven that run everywhere and the one that needs a native
+install.
+
+`WindowsPhysicsPackageCarriesOnlyTheSolverShim`, `LinuxPhysicsPackageCarriesOnlyTheSolverShim`,
+`NoPublishedPackageCarriesProprietaryPhysXGpuModules`,
+`PhysXNoticeSeparatesRedistributedFromProprietaryModules`,
+`MacOsHasNoPhysicsPackageBecauseTheSimulationSdkHasNoMacOsBuild`, and
+`MissingPhysicsShimFailsPackClearly`, and `PhysicsManagedPackageCarriesEmbeddedSchemaResources` pack
+against a synthetic install and need no native build. The last of those reads the packed managed
+assembly's manifest resources for all three target frameworks, so a `plugInfo.json` or
+`generatedSchema.usda` that stopped being embedded fails on any host, with no native tree.
+The synthetic physics prefix deliberately contains a duplicate `openusd_dotnet`, `openusd_hydra`,
+`openusd_hdsilk`, and `openusd_storm_child`, because the physics CMake preset genuinely leaves them
+there, and it stages the NVIDIA `PhysXGpu`/`PhysXDevice` modules for the same reason. A package that
+swept up the first kind would publish it at a consumer's application root, where it is loaded
+instead of the archive-verified binary; one that swept up the second would redistribute proprietary
+binaries this project has no licence for. The layout assertions require the package to contain
+exactly one native asset and none of those names.
+
+`PhysicsPackageExecutesRetainedSimulationFromCleanFeed` is the execution gate. It packs the managed
+and runtime packages, publishes a NativeAOT consumer from a feed containing only those archives,
+simulates a stage with a scene, a static collider, and two rigid bodies, and requires bodies to have
+moved. It also extracts the codeless `openUsdPhysics` schema plugin from the packaged assembly and
+registers it, which is what proves the embedded resources are usable rather than merely present: a
+package that shipped an unreadable plugin would still restore and still compile. The gate
+additionally requires that a
+package-only deployment resolves no GPU module and reports no CUDA capability, so an absent GPU
+payload can never be reported as a present capability. On `osx-arm64` it reports an unavailable host
+capability rather than a missing prerequisite, because no macOS physics package exists to run.
+
+Four contract suites keep those gates honest. `PhysicsAbiLockContractTests` in
+`tests/OpenUsd.Physics.Tests` ties the world and extraction ABI generations to
+`eng/openusd.lock.json`, the native headers, the managed mirrors, the packaging validator, and the
+package suite's own constants. In `tests/OpenUsd.Native.Tests`,
+`NativeShimPrefixContractTests` requires the physics shim to install into its own `<rid>-physx`
+prefix, requires the packaging to name its asset rather than glob that prefix, requires
+`PhysXVehicle2` to be located and linked explicitly wherever the pinned port does not, and requires
+the physics presets to exist for two RIDs with Vulkan off;
+`WorkflowStructureContractTests` requires the physics workflow steps to be skipped on macOS, Linux
+to run the end-to-end vehicle probe, no workflow to touch a GPU module or a CUDA package id, and the
+release SBOM to describe PhysX scope and licences truthfully, at the root scope as well as on the
+component; and `NativeManagedTestStagingContractTests` requires the native managed test runner to
+scan both install layouts, to derive `OPENUSD_REQUIRE_NATIVE_PHYSICS` from that scan, and to stage
+the optional CUDA modules beside the runtime on every platform. All of these run on an ordinary
+push, which the package suite does not.
+
+Vehicle support on Linux has its own CI proof. The pinned port's CMake config appends
+`PhysXVehicle2` to its aggregate SDK target only on Windows, so a Windows-only run proves nothing
+about Linux vehicles. The Linux package job runs `openusd_physx_vehicle_probe`, which drives a real
+four wheeled engine drive vehicle and requires it to accelerate, shift, steer, and brake.
+
+## Storm physics transform override probe
+
+`native/openusd_hydra/tests/physics_override_contract_probe.cpp` is the CTest that pins the Storm
+physics transform override overlay. It `static_assert`s the three packed ABI struct sizes from
+`native/include/openusd_render_physics.h` (152/48/64 bytes) so a managed mirror can never drift
+silently, then drives `OpenUsdPhysicsOverrideSceneIndex` over an `HdRetainedSceneIndex`.
+
+The behavioural cases are the ones that matter for a physics-driven frame: an empty overlay must
+return the authored xform untouched; an applied batch must replace only the overridden prim's matrix
+and set `resetXformStack`, leaving unrelated prims authored; exactly the overridden prim must be
+dirtied and only for the xform locator; clearing the overrides must restore the authored transform
+and re-dirty the prim, which is how reset and stop return the stage to its authored render state
+without authoring USD; removing a prim from the input scene must drop its retained override; and
+rejected batches must be accounted separately from applied ones.
+
+The last case runs 2000 batch replacements on the calling thread against a concurrent reader calling
+`GetPrim`, because Hydra reads prims from sync worker threads while the render thread swaps batches.
+A reader that observed a `resetXformStack` override without the matching translation would mean a
+torn table, and the probe fails on it.
+
+The probe also pins the scale and shear preservation the managed batch relies on. An authored prim
+built as `shear * rotation * translation` is overridden with a rotation-only pose carrying the
+preserve-stretch flag: the composed Gram matrix must equal the authored one, so no authored scale or
+shear was lost; the composed basis must differ from the authored one, so the authored rotation really
+was replaced; and the composed translation must be the simulated one. Re-composing the authored
+rotation must reproduce the authored basis exactly. A singular authored basis must stay finite with
+its collapsed axis still collapsed, a non-finite authored basis must fall back to the unstretched
+simulated pose, and clearing must restore the authored sheared transform.
+
+`native/openusd_hydra/tests/storm_wgl_shared_stage_probe.cpp` closes the loop against a real Storm
+render. It runs in both the legacy emulation and scene-index configurations and prints
+`Transform override evidence:` and `Transform override clear evidence:` lines. Applying a batch to
+the picked prim must change the framebuffer hash and report `applied=1` with the submitted revision;
+naming a prim the stage does not carry must succeed with `unresolved_count == 1` and leave the
+baseline pixels untouched; and clearing the batch must reproduce the baseline framebuffer byte for
+byte, which is the end-to-end proof that overrides never author the stage. Version and struct-size
+guards on both entry points are asserted to return `OPENUSD_STATUS_INVALID_ARGUMENT`.
+
 ## Storm-to-hdSilk parity comparison
 
 `ParityImageComparer` in `OpenUsd.Rendering` is the renderer-neutral core of the parity

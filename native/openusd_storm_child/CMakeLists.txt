@@ -40,9 +40,12 @@ target_link_libraries(
     PRIVATE openusd_hydra openusd_dotnet)
 if(WIN32)
     target_link_libraries(openusd_storm_child PRIVATE opengl32 gdi32 user32)
+    # The command Guard catches C++ exceptions at the C ABI boundary, so the target needs the
+    # standard C++ unwind model. MSVC only enables it with /EHsc, and unlike every other target
+    # here this one links no OpenUSD import target that would supply it.
     target_compile_options(
         openusd_storm_child
-        PRIVATE /W4 /WX /permissive-)
+        PRIVATE /W4 /WX /permissive- /EHsc)
 elseif(UNIX AND NOT APPLE)
     set_target_properties(
         openusd_storm_child

@@ -52,7 +52,10 @@ public enum RenderBackendCapability
     DeviceLossDetection = 32,
 
     /// <summary>Renderer-neutral one-pixel scene picking.</summary>
-    Picking = 64
+    Picking = 64,
+
+    /// <summary>Renderer-neutral physics transform overrides applied without authoring USD.</summary>
+    PhysicsTransformOverrides = 128
 }
 
 /// <summary>

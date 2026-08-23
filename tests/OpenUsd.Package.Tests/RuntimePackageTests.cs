@@ -3,6 +3,8 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -41,11 +43,27 @@ public sealed class RuntimePackageTests
     private static readonly ulong PreviousDataCapabilities =
         RequiredDataCapabilities & ~HighestSetBit(RequiredDataCapabilities);
 
-    private const int RequiredStormAbiVersion = 6;
+    private const int RequiredStormAbiVersion = 8;
     private const int RequiredSilkSessionAbiVersion = 5;
     private const int RequiredSilkPageAbiVersion = 11;
     private const int RequiredStormChildAbiVersion = 8;
     private const int RequiredStormChildNavigationInputVersion = 2;
+
+    // Kept in step with eng/openusd.lock.json by
+    // OpenUsd.Physics.Tests.PhysicsAbiLockContractTests, which runs on an ordinary push. This
+    // suite needs a built native install, so a constant only checked here would drift for a
+    // whole wave before anything noticed.
+    private const int RequiredPhysicsAbiVersion = 7;
+    private const int RequiredPhysicsExtractAbiVersion = 1;
+
+    private static readonly string[] ExpectedPhysicsRidPackages =
+    [
+        "OpenUsd.Runtime.Physics.win-x64",
+        "OpenUsd.Runtime.Physics.linux-x64",
+    ];
+
+    /// <summary>The RIDs the pinned vcpkg PhysX port actually builds for.</summary>
+    private static readonly string[] SupportedPhysicsRids = ["win-x64", "linux-x64"];
 
     private static ulong HighestSetBit(ulong value) =>
         value == 0 ? 0 : 1UL << (63 - System.Numerics.BitOperations.LeadingZeroCount(value));
@@ -118,26 +136,45 @@ public sealed class RuntimePackageTests
     public async Task RuntimePackageProjectsCoverSupportedMatrix()
     {
         string repositoryRoot = FindRepositoryRoot();
-        string[] metapackages =
-        [
-            "OpenUsd.Runtime.Core",
-            "OpenUsd.Runtime.Imaging",
-            "OpenUsd.Runtime.Cesium",
-        ];
-        string[] ridPackages =
-        [
-            "OpenUsd.Runtime.Core.win-x64",
-            "OpenUsd.Runtime.Imaging.win-x64",
-            "OpenUsd.Runtime.Cesium.win-x64",
-            "OpenUsd.Runtime.Core.linux-x64",
-            "OpenUsd.Runtime.Imaging.linux-x64",
-            "OpenUsd.Runtime.Cesium.linux-x64",
-            "OpenUsd.Runtime.Core.osx-arm64",
-            "OpenUsd.Runtime.Imaging.osx-arm64",
-            "OpenUsd.Runtime.Cesium.osx-arm64",
-        ];
+        // Stated as a map rather than derived from an id prefix, so a new family can never be
+        // folded into an existing metapackage by name resemblance alone.
+        Dictionary<string, string[]> metapackages = new(StringComparer.Ordinal)
+        {
+            ["OpenUsd.Runtime.Core"] =
+            [
+                "OpenUsd.Runtime.Core.win-x64",
+                "OpenUsd.Runtime.Core.linux-x64",
+                "OpenUsd.Runtime.Core.osx-arm64",
+            ],
+            ["OpenUsd.Runtime.Imaging"] =
+            [
+                "OpenUsd.Runtime.Imaging.win-x64",
+                "OpenUsd.Runtime.Imaging.linux-x64",
+                "OpenUsd.Runtime.Imaging.osx-arm64",
+            ],
+            ["OpenUsd.Runtime.Cesium"] =
+            [
+                "OpenUsd.Runtime.Cesium.win-x64",
+                "OpenUsd.Runtime.Cesium.linux-x64",
+                "OpenUsd.Runtime.Cesium.osx-arm64",
+            ],
+            // Two RIDs, not three. The pinned vcpkg PhysX port declares
+            // "(windows & x64 & !mingw & !uwp) | (linux & x64) | (linux & arm64)", so there is no
+            // arm64-osx simulation SDK to package. macOS is absent by platform fact rather than
+            // by omission, and no empty placeholder stands in for it.
+            ["OpenUsd.Runtime.Physics"] =
+            [
+                "OpenUsd.Runtime.Physics.win-x64",
+                "OpenUsd.Runtime.Physics.linux-x64",
+            ],
+        };
+        string[] ridPackages = [.. metapackages.Values.SelectMany(ids => ids)];
 
-        foreach (string packageId in metapackages.Concat(ridPackages))
+        await Assert.That(AllRuntimePackageIds().Order(StringComparer.Ordinal).ToArray())
+            .IsEquivalentTo(
+                metapackages.Keys.Concat(ridPackages).Order(StringComparer.Ordinal).ToArray());
+
+        foreach (string packageId in metapackages.Keys.Concat(ridPackages))
         {
             string projectPath = Path.Combine(repositoryRoot, "src", packageId, $"{packageId}.csproj");
             await Assert.That(File.Exists(projectPath)).IsTrue();
@@ -169,10 +206,7 @@ public sealed class RuntimePackageTests
                     .Select(element => Path.GetFileNameWithoutExtension(
                         element.Attribute("Include")?.Value)!)
                     .ToArray();
-                await Assert.That(dependencies).IsEquivalentTo(
-                    ridPackages
-                        .Where(id => id.StartsWith(packageId + ".", StringComparison.Ordinal))
-                        .ToArray());
+                await Assert.That(dependencies).IsEquivalentTo(metapackages[packageId]);
             }
         }
     }
@@ -221,6 +255,10 @@ public sealed class RuntimePackageTests
                 repositoryRoot,
                 "OpenUsd.Runtime.Cesium",
                 packageRoot);
+            PackedPackage physicsPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Physics",
+                packageRoot);
 
             await AssertPackageDependenciesAsync(
                 corePackage.Path,
@@ -238,6 +276,16 @@ public sealed class RuntimePackageTests
                 AllRuntimePackageIds()
                     .Where(id => id.StartsWith("OpenUsd.Runtime.Cesium.", StringComparison.Ordinal))
                     .ToArray());
+            // Exactly the two RIDs the pinned simulation SDK builds for, and nothing else. An
+            // extra entry here would mean a consumer restoring a package that cannot exist.
+            await AssertPackageDependenciesAsync(
+                physicsPackage.Path,
+                physicsPackage.Version,
+                [
+                    "OpenUsd.Runtime.Physics.win-x64",
+                    "OpenUsd.Runtime.Physics.linux-x64",
+                ],
+                exact: true);
         }
         finally
         {
@@ -728,6 +776,410 @@ public sealed class RuntimePackageTests
                 "win-x64",
                 "openusd_cesium.dll");
             await AssertPackageDoesNotContainAsync(corePackage.Path, "openusd_cesium");
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Requires the physics package to carry the solver alone.
+    /// </summary>
+    /// <remarks>
+    /// Two independent failures are asserted here, and they fail for different reasons. The physics
+    /// shim prefix holds a duplicate of every core and imaging shim, and publishing one of those at
+    /// an application root replaces the archive-verified binary rather than sitting beside it.
+    ///
+    /// The same prefix also holds the PhysXGpu and PhysXDevice modules. Those are packman blobs
+    /// carrying NVIDIA proprietary terms rather than the BSD-3-Clause PhysX source, and this
+    /// project has no agreement to redistribute them, so publishing one is a licensing defect and
+    /// not merely a layout defect. The synthetic prefix stages both kinds of file deliberately, so
+    /// this test would see either mistake rather than passing over an empty directory.
+    /// </remarks>
+    [Test]
+    public async Task WindowsPhysicsPackageCarriesOnlyTheSolverShim()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+
+        try
+        {
+            (string installRoot, string shimRoot, string vulkanRuntimeLibrary) =
+                CreateSyntheticWindowsInstall(workRoot);
+            (string physicsShimRoot, string physXInstallRoot) =
+                CreateSyntheticPhysicsInstall(workRoot, "win-x64");
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+
+            PackedPackage corePackage = await PackAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Core.win-x64",
+                installRoot,
+                shimRoot,
+                vulkanRuntimeLibrary,
+                packageRoot);
+            PackedPackage physicsPackage = await PackAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Physics.win-x64",
+                installRoot,
+                shimRoot,
+                vulkanRuntimeLibrary,
+                packageRoot,
+                physicsShimRoot: physicsShimRoot,
+                physXInstallRoot: physXInstallRoot);
+
+            await AssertPackageEntriesAsync(
+                physicsPackage.Path,
+                [
+                    "THIRD-PARTY-NOTICES.md",
+                    "THIRD-PARTY-PHYSX.md",
+                    "build/OpenUsd.Runtime.Physics.win-x64.native-abi.json",
+                    "buildTransitive/OpenUsd.Runtime.Physics.win-x64.targets",
+                    "runtimes/win-x64/native/openusd_physx.dll",
+                ]);
+            await AssertPackageEntryMatchesFileAsync(
+                physicsPackage.Path,
+                "runtimes/win-x64/native/openusd_physx.dll",
+                Path.Combine(physicsShimRoot, "bin", "openusd_physx.dll"));
+            await AssertSingleNativePackageEntryAsync(
+                physicsPackage.Path,
+                "win-x64",
+                "openusd_physx.dll");
+            foreach (string masked in new[]
+            {
+                "openusd_dotnet.dll",
+                "openusd_hydra.dll",
+                "openusd_hdsilk.dll",
+                "openusd_storm_child.dll",
+            })
+            {
+                await AssertPackageDoesNotContainAsync(physicsPackage.Path, masked);
+            }
+
+            await AssertNoProprietaryPhysXModulesAsync(physicsPackage.Path);
+            await AssertPhysicsAbiEvidenceAsync(physicsPackage.Path, "win-x64");
+            await AssertPackageDoesNotContainAsync(corePackage.Path, "openusd_physx");
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Requires the Linux physics package to carry the solver alone, with no GPU module.
+    /// </summary>
+    /// <remarks>
+    /// Packed on whatever host runs this suite, because a nupkg is a zip of staged files and needs
+    /// no Linux runner to assemble. The Linux prefix is the one that stages a bare
+    /// <c>libPhysXGpu_64.so</c> with no device module beside it, so it is the case where a
+    /// count-based rule would have been satisfied by the wrong file.
+    /// </remarks>
+    [Test]
+    public async Task LinuxPhysicsPackageCarriesOnlyTheSolverShim()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+
+        try
+        {
+            (string installRoot, string shimRoot) = CreateSyntheticUnixInstall(workRoot, "linux-x64");
+            (string physicsShimRoot, string physXInstallRoot) =
+                CreateSyntheticPhysicsInstall(workRoot, "linux-x64");
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+
+            PackedPackage physicsPackage = await PackAsync(
+                repositoryRoot,
+                "OpenUsd.Runtime.Physics.linux-x64",
+                installRoot,
+                shimRoot,
+                string.Empty,
+                packageRoot,
+                physicsShimRoot: physicsShimRoot,
+                physXInstallRoot: physXInstallRoot);
+
+            await AssertPackageEntriesAsync(
+                physicsPackage.Path,
+                [
+                    "THIRD-PARTY-NOTICES.md",
+                    "THIRD-PARTY-PHYSX.md",
+                    "build/OpenUsd.Runtime.Physics.linux-x64.native-abi.json",
+                    "buildTransitive/OpenUsd.Runtime.Physics.linux-x64.targets",
+                    "runtimes/linux-x64/native/libopenusd_physx.so",
+                ]);
+            await AssertSingleNativePackageEntryAsync(
+                physicsPackage.Path,
+                "linux-x64",
+                "libopenusd_physx.so");
+            await AssertNoProprietaryPhysXModulesAsync(physicsPackage.Path);
+            await AssertPhysicsAbiEvidenceAsync(physicsPackage.Path, "linux-x64");
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Requires no published package, project, or pack scope to carry an NVIDIA GPU module.
+    /// </summary>
+    /// <remarks>
+    /// The PhysXGpu and PhysXDevice modules are packman blobs the vcpkg port downloads under NVIDIA
+    /// proprietary terms; they are not built from the BSD-3-Clause PhysX sources this project
+    /// statically links, and there is no redistribution agreement covering them. They were briefly
+    /// published as <c>OpenUsd.Runtime.Physics.Cuda*</c> packages, which is exactly the mistake
+    /// that cannot be made twice: a package pushed to nuget.org can be unlisted but never
+    /// withdrawn.
+    ///
+    /// This is a source-level gate on purpose. The pack-time guard only sees packages that are
+    /// actually packed, so it cannot catch a resurrected project or package id that a release run
+    /// would then produce for the first time.
+    /// </remarks>
+    [Test]
+    public async Task NoPublishedPackageCarriesProprietaryPhysXGpuModules()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+
+        await Assert.That(AllRuntimePackageIds()
+            .Any(id => id.Contains("Cuda", StringComparison.OrdinalIgnoreCase))).IsFalse();
+
+        string[] projectDirectories =
+        [
+            .. Directory
+                .EnumerateDirectories(Path.Combine(repositoryRoot, "src"))
+                .Select(Path.GetFileName)
+                .Select(name => name!)
+                .Where(name => name.Contains("Cuda", StringComparison.OrdinalIgnoreCase)),
+        ];
+        await Assert.That(projectDirectories)
+            .IsEmpty()
+            .Because("a CUDA runtime project would be packed by a future release scope");
+
+        string packer = await File.ReadAllTextAsync(
+            Path.Combine(repositoryRoot, "eng", "pack-packages.ps1"));
+        // Matched on the quoted-id form the published and scope lists use, so the file may still
+        // explain in prose why no CUDA package exists.
+        MatchCollection packedIds = Regex.Matches(
+            packer,
+            @"'(?<id>OpenUsd[^']*)'",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(5));
+        await Assert.That(packedIds.Count)
+            .IsGreaterThan(20)
+            .Because("the published list must still be readable for this check to mean anything");
+        await Assert.That(packedIds
+            .Select(match => match.Groups["id"].Value)
+            .Where(id => id.Contains("Cuda", StringComparison.OrdinalIgnoreCase))
+            .ToArray())
+            .IsEmpty()
+            .Because("no pack scope may name a CUDA package id");
+
+        string targets = await File.ReadAllTextAsync(Path.Combine(
+            repositoryRoot,
+            "src",
+            "OpenUsd.Runtime.Packaging",
+            "OpenUsd.Runtime.Packaging.targets"));
+        foreach (string module in new[] { "PhysXGpu", "PhysXDevice" })
+        {
+            await Assert.That(targets)
+                .DoesNotContain($"{module}_64", StringComparison.Ordinal)
+                .Because($"no packaging item may reference the proprietary {module} module");
+        }
+
+        // The validator refuses one by name even if a future edit widened the expected asset list.
+        string validator = await File.ReadAllTextAsync(Path.Combine(
+            repositoryRoot,
+            "src",
+            "OpenUsd.Runtime.Packaging",
+            "Validate-PhysicsNativePackage.ps1"));
+        await Assert.That(validator)
+            .Contains("^(lib)?PhysX(Gpu|Device)", StringComparison.Ordinal)
+            .Because("packing must refuse a proprietary module independently of the name list");
+    }
+
+    /// <summary>
+    /// Requires the PhysX notice to separate what is redistributed from what is not.
+    /// </summary>
+    /// <remarks>
+    /// A notice that named only BSD-3-Clause would tell a reader that everything PhysX ships is
+    /// permissively licensed. The static SDK linked into the shim is; the GPU modules are not, and
+    /// the difference is the whole reason no package contains them.
+    /// </remarks>
+    [Test]
+    public async Task PhysXNoticeSeparatesRedistributedFromProprietaryModules()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string script = await File.ReadAllTextAsync(
+            Path.Combine(repositoryRoot, "eng", "build-physx-native.ps1"));
+
+        await Assert.That(script).Contains("## Redistributed here");
+        await Assert.That(script).Contains("## Not redistributed");
+        await Assert.That(script).Contains("gpuModuleLicense");
+
+        using JsonDocument physxLock = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(repositoryRoot, "eng", "physx.lock.json")));
+        JsonElement physx = physxLock.RootElement.GetProperty("physx");
+
+        await Assert.That(physx.GetProperty("license").GetString()).IsEqualTo("BSD-3-Clause");
+        await Assert.That(physx.GetProperty("gpuModuleLicense").GetString())
+            .IsEqualTo("LicenseRef-NvidiaProprietary");
+        await Assert.That(physx.GetProperty("gpuModuleScope").GetString())
+            .Contains("never redistributed");
+        await Assert.That(
+            physx.GetProperty("supportedRids").EnumerateArray()
+                .Select(rid => rid.GetString()!)
+                .ToArray())
+            .IsEquivalentTo(SupportedPhysicsRids);
+    }
+
+    /// <summary>
+    /// Requires macOS to have no physics package at all rather than an empty placeholder.
+    /// </summary>
+    /// <remarks>
+    /// The pinned vcpkg PhysX port declares
+    /// <c>(windows &amp; x64 &amp; !mingw &amp; !uwp) | (linux &amp; x64) | (linux &amp; arm64)</c>.
+    /// There is no arm64-osx simulation SDK, so an <c>OpenUsd.Runtime.Physics.osx-arm64</c> package
+    /// could only ever be empty, and a consumer would read its emptiness as a broken deployment
+    /// instead of a platform fact. Advertising an unbuildable package is worse than advertising
+    /// none, so the project, the package id, the preset, and every pack expectation are absent
+    /// together.
+    /// </remarks>
+    [Test]
+    public async Task MacOsHasNoPhysicsPackageBecauseTheSimulationSdkHasNoMacOsBuild()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+
+        await Assert.That(Directory.Exists(Path.Combine(
+            repositoryRoot,
+            "src",
+            "OpenUsd.Runtime.Physics.osx-arm64"))).IsFalse();
+        await Assert.That(AllRuntimePackageIds()).DoesNotContain("OpenUsd.Runtime.Physics.osx-arm64");
+
+        string packer = await File.ReadAllTextAsync(
+            Path.Combine(repositoryRoot, "eng", "pack-packages.ps1"));
+        await Assert.That(packer).DoesNotContain("OpenUsd.Runtime.Physics.osx-arm64");
+
+        XDocument metapackage = XDocument.Load(Path.Combine(
+            repositoryRoot,
+            "src",
+            "OpenUsd.Runtime.Physics",
+            "OpenUsd.Runtime.Physics.csproj"));
+        string[] ridPackages =
+        [
+            .. metapackage
+                .Descendants("ProjectReference")
+                .Select(element => Path.GetFileNameWithoutExtension(
+                    element.Attribute("Include")?.Value)!),
+        ];
+        await Assert.That(ridPackages).IsEquivalentTo(ExpectedPhysicsRidPackages);
+
+        // The build scripts refuse the RID rather than failing deep inside vcpkg or cmake.
+        foreach (string script in new[] { "build-physx-native.ps1", "build-physx-shim.ps1" })
+        {
+            string text = await File.ReadAllTextAsync(
+                Path.Combine(repositoryRoot, "eng", script));
+            await Assert.That(text)
+                .Contains("[ValidateSet('win-x64', 'linux-x64')]", StringComparison.Ordinal)
+                .Because($"{script} must refuse an unsupported RID at the parameter boundary");
+        }
+    }
+
+    [Test]
+    public async Task MissingPhysicsShimFailsPackClearly()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            (string installRoot, string shimRoot, string vulkanRuntimeLibrary) =
+                CreateSyntheticWindowsInstall(workRoot);
+            (string physicsShimRoot, string physXInstallRoot) =
+                CreateSyntheticPhysicsInstall(workRoot, "win-x64");
+            File.Delete(Path.Combine(physicsShimRoot, "bin", "openusd_physx.dll"));
+            string projectPath = Path.Combine(
+                repositoryRoot,
+                "src",
+                "OpenUsd.Runtime.Physics.win-x64",
+                "OpenUsd.Runtime.Physics.win-x64.csproj");
+            CommandResult result = await RunDotnetAsync(
+                repositoryRoot,
+                [
+                    "pack",
+                    projectPath,
+                    "-c",
+                    "Release",
+                    "--nologo",
+                    $"-p:OpenUsdInstallRoot={installRoot}",
+                    $"-p:OpenUsdShimInstallRoot={shimRoot}",
+                    $"-p:OpenUsdPhysicsShimInstallRoot={physicsShimRoot}",
+                    $"-p:OpenUsdPhysXInstallRoot={physXInstallRoot}",
+                    $"-p:OpenUsdVulkanRuntimeLibrary={vulkanRuntimeLibrary}",
+                    $"-p:PackageOutputPath={Path.Combine(workRoot, "packages")}",
+                ]);
+
+            await Assert.That(result.ExitCode).IsNotEqualTo(0);
+            await Assert.That(result.Output).Contains("The OpenUsd physics shim is missing");
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task PhysicsManagedPackageCarriesEmbeddedSchemaResources()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+
+        try
+        {
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+            PackedPackage physicsPackage = await PackManagedPackageAsync(
+                repositoryRoot,
+                "OpenUsd.Physics",
+                packageRoot);
+
+            // The metapackage dependency is what makes a bare OpenUsd.Physics reference resolve a
+            // solver. No CUDA package may appear: none is published, because the GPU modules are
+            // NVIDIA proprietary blobs this project does not redistribute.
+            await AssertPackageDependenciesAsync(
+                physicsPackage.Path,
+                physicsPackage.Version,
+                ["OpenUsd.Runtime.Physics", "OpenUsd"]);
+            await AssertPackageDoesNotContainAsync(physicsPackage.Path, "Cuda");
+            await AssertNoProprietaryPhysXModulesAsync(physicsPackage.Path);
+
+            using ZipArchive package = ZipFile.OpenRead(physicsPackage.Path);
+            foreach (string targetFramework in new[] { "net8.0", "net9.0", "net10.0" })
+            {
+                ZipArchiveEntry entry = package.Entries.Single(candidate =>
+                    string.Equals(
+                        candidate.FullName,
+                        $"lib/{targetFramework}/OpenUsd.Physics.dll",
+                        StringComparison.Ordinal));
+
+                using Stream content = entry.Open();
+                using var buffer = new MemoryStream();
+                await content.CopyToAsync(buffer);
+                buffer.Position = 0;
+
+                using var assembly = new PEReader(buffer);
+                MetadataReader metadata = assembly.GetMetadataReader();
+                string[] resources =
+                [
+                    .. metadata.ManifestResources
+                        .Select(handle => metadata.GetString(
+                            metadata.GetManifestResource(handle).Name))
+                        .Order(StringComparer.Ordinal),
+                ];
+
+                await Assert.That(resources).Contains("OpenUsd.Physics.Schema.plugInfo.json");
+                await Assert.That(resources).Contains("OpenUsd.Physics.Schema.generatedSchema.usda");
+            }
         }
         finally
         {
@@ -1622,6 +2074,7 @@ public sealed class RuntimePackageTests
                 "OpenUsd.Rendering.Silk",
                 "OpenUsd.Rendering.Silk.D3D12",
                 "OpenUsd.Rendering.Silk.Vulkan",
+                "OpenUsd.Physics",
             ];
             foreach (string packageId in packageIds)
             {
@@ -2476,6 +2929,185 @@ public sealed class RuntimePackageTests
             await Assert.That(result.Output).Contains("SHIM_PRESENT=true");
             await Assert.That(result.Output).Contains("CWD_IS_PUBLISH=true");
             await AssertNoSourcePathLeakageAsync(result.Output, repositoryRoot);
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Drives the retained physics runtime from packages alone, on a clean feed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nothing else proves the physics packages work. The layout tests pack against a synthetic
+    /// install, so they can only assert which names appear; the managed suites use the repository's
+    /// staged native tree, which no consumer has. This publishes a real application from a feed that
+    /// contains only the packed archives, simulates a stage through it, and requires bodies to have
+    /// moved -- so a package that resolves, restores, and then finds no solver fails here rather
+    /// than in a consumer's application.
+    /// </para>
+    /// <para>
+    /// The consumer is published NativeAOT and self-contained, matching every other package
+    /// execution gate here. Trim and AOT analysis are errors in that publish, so a package whose
+    /// trimming metadata went missing fails the publish rather than surviving to a run that faults
+    /// on a member the trimmer removed.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task PhysicsPackageExecutesRetainedSimulationFromCleanFeed()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        if (!TryGetExecutionInputs(
+            repositoryRoot,
+            out NativeExecutionInputs inputs,
+            out string reason))
+        {
+            HandleMissingExecutionPrerequisites(
+                nameof(PhysicsPackageExecutesRetainedSimulationFromCleanFeed),
+                reason);
+            return;
+        }
+
+        ExecutionPlatform platform = inputs.Platform;
+        if (platform.Rid == "osx-arm64")
+        {
+            // Not a missing prerequisite: the pinned vcpkg PhysX port declares no arm64-osx
+            // support, so no macOS physics package exists to execute. Reported through the
+            // structural-capability path so that OPENUSD_PACKAGE_EXECUTION_REQUIRED, which is set
+            // on the macOS render job, cannot demand a run of something that cannot be built.
+            HandleUnavailableHostCapability(
+                nameof(PhysicsPackageExecutesRetainedSimulationFromCleanFeed),
+                "PhysX simulation SDK",
+                "the pinned vcpkg PhysX port supports win-x64 and linux-x64 only, so macOS has " +
+                "no physics package to execute");
+            return;
+        }
+
+        string physicsLibrary = GetPhysicsLibraryName(platform);
+        string shimNativeDirectory = platform.Rid == "win-x64" ? "bin" : "lib";
+        string installedPhysicsPath = Path.Combine(
+            inputs.PhysicsShimRoot,
+            shimNativeDirectory,
+            physicsLibrary);
+        if (!File.Exists(installedPhysicsPath))
+        {
+            HandleMissingExecutionPrerequisites(
+                nameof(PhysicsPackageExecutesRetainedSimulationFromCleanFeed),
+                $"The physics shim is missing at '{installedPhysicsPath}'. " +
+                $"Run eng/build-physx-native.ps1 -Rid {platform.Rid} and " +
+                $"eng/build-physx-shim.ps1 -Rid {platform.Rid}.");
+            return;
+        }
+
+        string workRoot = Path.Combine(repositoryRoot, "artifacts", "pp");
+        if (Directory.Exists(workRoot))
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+        Directory.CreateDirectory(workRoot);
+        try
+        {
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+            foreach (string packageId in new[]
+            {
+                "OpenUsd.Interop",
+                "OpenUsd",
+                "OpenUsd.Physics",
+                "OpenUsd.Runtime.Core",
+                "OpenUsd.Runtime.Physics",
+            })
+            {
+                await PackManagedPackageAsync(repositoryRoot, packageId, packageRoot);
+            }
+
+            PackedPackage coreRuntimePackage = await PackAsync(
+                repositoryRoot,
+                $"OpenUsd.Runtime.Core.{platform.Rid}",
+                inputs.InstallRoot,
+                inputs.ShimRoot,
+                inputs.VulkanRuntimeLibrary,
+                packageRoot);
+            PackedPackage physicsRuntimePackage = await PackAsync(
+                repositoryRoot,
+                $"OpenUsd.Runtime.Physics.{platform.Rid}",
+                inputs.InstallRoot,
+                inputs.ShimRoot,
+                inputs.VulkanRuntimeLibrary,
+                packageRoot,
+                physicsShimRoot: inputs.PhysicsShimRoot,
+                physXInstallRoot: inputs.PhysXInstallRoot);
+            await Assert.That(physicsRuntimePackage.Version).IsEqualTo(coreRuntimePackage.Version);
+            await AssertPackageEntryMatchesFileAsync(
+                physicsRuntimePackage.Path,
+                $"runtimes/{platform.Rid}/native/{physicsLibrary}",
+                installedPhysicsPath);
+            await AssertPhysicsAbiEvidenceAsync(
+                physicsRuntimePackage.Path,
+                platform.Rid);
+            await AssertNoProprietaryPhysXModulesAsync(physicsRuntimePackage.Path);
+            await CreateStubRuntimePackagesAsync(
+                workRoot,
+                packageRoot,
+                physicsRuntimePackage.Version,
+                [.. GetPhysicsConsumerPackageGraph(platform)
+                    .Where(id => id.StartsWith("OpenUsd.Runtime.", StringComparison.Ordinal))
+                    .Where(id => id != "OpenUsd.Runtime.Core")
+                    .Where(id => id != "OpenUsd.Runtime.Physics")
+                    .Where(id => id != $"OpenUsd.Runtime.Core.{platform.Rid}")
+                    .Where(id => id != $"OpenUsd.Runtime.Physics.{platform.Rid}")]);
+
+            ExecutionConsumer consumer = await PublishPhysicsConsumerAsync(
+                workRoot,
+                packageRoot,
+                physicsRuntimePackage.Version,
+                platform);
+            AssertPackageOnlyGraph(
+                consumer.AssetsPath,
+                GetPhysicsConsumerPackageGraph(platform));
+
+            // Referencing the managed physics library must never resolve a proprietary NVIDIA
+            // payload, because no package publishes one.
+            string assets = await File.ReadAllTextAsync(consumer.AssetsPath);
+            await Assert.That(assets).DoesNotContain("Cuda");
+
+            await Assert.That(File.Exists(Path.Combine(consumer.PublishRoot, physicsLibrary))).IsTrue();
+            await AssertFileHashesEqualAsync(
+                installedPhysicsPath,
+                Path.Combine(consumer.PublishRoot, physicsLibrary));
+            await WritePhysicsConsumerStageAsync(consumer.PublishRoot);
+
+            CommandResult result = await RunExecutableAsync(
+                GetExecutablePath(consumer.PublishRoot, "Consumer"),
+                consumer.PublishRoot,
+                [],
+                GetCoreRuntimeEnvironment(platform, consumer.PublishRoot));
+
+            Console.WriteLine(result.Output.Trim());
+            await Assert.That(result.ExitCode).IsEqualTo(0).Because(result.Output);
+            await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_TRANSPORT_OK");
+            await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_SOLVER_PRESENT=true");
+            await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_SCHEMA_EXTRACTED=true");
+            await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_RIGID_BODIES=true");
+            // A package-only deployment resolves no GPU module, because no package publishes one,
+            // so it must claim no GPU capability either.
+            await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_CUDA_MODULE_PRESENT=false");
+            await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_CUDA_CAPABILITY=false");
+
+            // Only the consumer's own lines are checked for leakage. The simulation SDK prints its
+            // own build path from a __FILE__ literal when the optional GPU module is absent, which
+            // is exactly the expected CPU-only case here and is baked into a third-party binary
+            // rather than produced by anything this repository controls.
+            await AssertNoSourcePathLeakageAsync(
+                string.Join(
+                    Environment.NewLine,
+                    result.Output
+                        .Split('\n')
+                        .Select(line => line.TrimEnd('\r'))
+                        .Where(line => line.StartsWith("PACKAGE_PHYSICS_", StringComparison.Ordinal))),
+                repositoryRoot);
         }
         finally
         {
@@ -3568,6 +4200,8 @@ public sealed class RuntimePackageTests
         string vulkanRuntimeLibrary,
         string packageRoot,
         string? cesiumShimRoot = null,
+        string? physicsShimRoot = null,
+        string? physXInstallRoot = null,
         bool skipLinuxElfValidation = false,
         bool skipMacOsMachOValidation = false)
     {
@@ -3583,6 +4217,8 @@ public sealed class RuntimePackageTests
                 $"-p:OpenUsdInstallRoot={installRoot}",
                 $"-p:OpenUsdShimInstallRoot={shimRoot}",
                 $"-p:OpenUsdCesiumShimInstallRoot={cesiumShimRoot ?? shimRoot}",
+                $"-p:OpenUsdPhysicsShimInstallRoot={physicsShimRoot ?? shimRoot}",
+                $"-p:OpenUsdPhysXInstallRoot={physXInstallRoot ?? installRoot}",
                 $"-p:OpenUsdVulkanRuntimeLibrary={vulkanRuntimeLibrary}",
                 $"-p:OpenUsdSkipLinuxElfValidation={skipLinuxElfValidation.ToString().ToLowerInvariant()}",
                 $"-p:OpenUsdSkipMacOsMachOValidation={skipMacOsMachOValidation.ToString().ToLowerInvariant()}",
@@ -4086,7 +4722,9 @@ public sealed class RuntimePackageTests
     private static async Task AssertPackageDependenciesAsync(
         string packagePath,
         string expectedVersion,
-        IReadOnlyCollection<string> expectedPackageIds)
+        IReadOnlyCollection<string> expectedPackageIds,
+        bool exact = false,
+        bool pinned = false)
     {
         using ZipArchive package = ZipFile.OpenRead(packagePath);
         ZipArchiveEntry nuspecEntry = package.Entries.Single(
@@ -4094,18 +4732,138 @@ public sealed class RuntimePackageTests
         using Stream nuspecStream = nuspecEntry.Open();
         XDocument nuspec = XDocument.Load(nuspecStream);
         XNamespace ns = nuspec.Root!.Name.Namespace;
+        // A multi-targeted package writes one dependency group per framework, so the same id
+        // legitimately appears more than once. Distinct versions for one id would be a real
+        // problem, so they are collapsed rather than ignored: two different pins would leave two
+        // entries and fail the comparison below.
         Dictionary<string, string> dependencies = nuspec
             .Descendants(ns + "dependency")
-            .ToDictionary(
+            .GroupBy(
                 element => element.Attribute("id")?.Value ?? string.Empty,
-                element => element.Attribute("version")?.Value ?? string.Empty,
+                StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => string.Join(
+                    "|",
+                    group
+                        .Select(element => element.Attribute("version")?.Value ?? string.Empty)
+                        .Distinct(StringComparer.Ordinal)
+                        .Order(StringComparer.Ordinal)),
                 StringComparer.Ordinal);
 
         foreach (string packageId in expectedPackageIds)
         {
             await Assert.That(dependencies).ContainsKey(packageId);
-            await Assert.That(dependencies[packageId]).IsEqualTo(expectedVersion);
+            // A pinned dependency is written as a single-version range. Accepting either spelling
+            // keeps this usable for the metapackages, which take the floating form.
+            await Assert.That(dependencies[packageId].Trim('[', ']')).IsEqualTo(expectedVersion);
         }
+
+        if (exact)
+        {
+            await Assert.That(dependencies.Keys.Order(StringComparer.Ordinal).ToArray())
+                .IsEquivalentTo(expectedPackageIds.Order(StringComparer.Ordinal).ToArray());
+        }
+
+        if (pinned)
+        {
+            foreach (string packageId in expectedPackageIds)
+            {
+                await Assert.That(dependencies[packageId]).IsEqualTo($"[{expectedVersion}]");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads the ABI evidence a physics package embeds and requires it to describe that package.
+    /// </summary>
+    /// <remarks>
+    /// The evidence exists so a consumer can tell which ABI generation a package carries without
+    /// loading it. Evidence that is present but describes something else is worse than no evidence,
+    /// so the package id, the RID, the kind, and the hash of every native asset are all compared
+    /// against the archive that actually shipped.
+    /// </remarks>
+    private static async Task AssertPhysicsAbiEvidenceAsync(
+        string packagePath,
+        string rid)
+    {
+        string packageId = ReadPackageId(packagePath);
+        using ZipArchive package = ZipFile.OpenRead(packagePath);
+        ZipArchiveEntry evidenceEntry = package.Entries.Single(entry =>
+            string.Equals(
+                entry.FullName,
+                $"build/{packageId}.native-abi.json",
+                StringComparison.Ordinal));
+        using Stream evidenceStream = evidenceEntry.Open();
+        using JsonDocument evidence = await JsonDocument.ParseAsync(evidenceStream);
+        JsonElement root = evidence.RootElement;
+
+        await Assert.That(root.GetProperty("packageId").GetString()).IsEqualTo(packageId);
+        await Assert.That(root.GetProperty("rid").GetString()).IsEqualTo(rid);
+        await Assert.That(root.GetProperty("kind").GetString()).IsEqualTo("Physics");
+        await Assert.That(root.GetProperty("physicsWorldAbiVersion").GetInt32())
+            .IsEqualTo(RequiredPhysicsAbiVersion);
+        await Assert.That(root.GetProperty("physicsExtractAbiVersion").GetInt32())
+            .IsEqualTo(RequiredPhysicsExtractAbiVersion);
+        // Recorded rather than inferred from an absence: no OpenUsd package carries a GPU module.
+        await Assert.That(root.GetProperty("cudaModulesIncluded").GetBoolean()).IsFalse();
+
+        JsonElement[] assets = [.. root.GetProperty("assets").EnumerateArray()];
+        string[] nativeEntries =
+        [
+            .. package.Entries
+                .Where(entry => entry.FullName.StartsWith(
+                    $"runtimes/{rid}/native/",
+                    StringComparison.Ordinal))
+                .Select(entry => entry.FullName)
+                .Order(StringComparer.Ordinal),
+        ];
+        await Assert.That(assets.Length).IsEqualTo(nativeEntries.Length);
+
+        foreach (JsonElement asset in assets)
+        {
+            string name = asset.GetProperty("name").GetString()!;
+            ZipArchiveEntry entry = package.Entries.Single(candidate =>
+                string.Equals(
+                    candidate.FullName,
+                    $"runtimes/{rid}/native/{name}",
+                    StringComparison.Ordinal));
+            await Assert.That(entry.Length).IsEqualTo(asset.GetProperty("size").GetInt64());
+
+            using Stream content = entry.Open();
+            string hash = Convert.ToHexString(await SHA256.HashDataAsync(content));
+            await Assert.That(hash).IsEqualTo(asset.GetProperty("sha256").GetString());
+        }
+    }
+
+    /// <summary>
+    /// Requires a packed archive to contain no NVIDIA PhysX GPU or device module, under any name.
+    /// </summary>
+    /// <remarks>
+    /// Matched on the entry name rather than on a fixed path, because the licensing problem is the
+    /// bytes being in the archive at all; where they sit inside it makes no difference to a
+    /// redistribution claim this project cannot make.
+    /// </remarks>
+    private static async Task AssertNoProprietaryPhysXModulesAsync(string packagePath)
+    {
+        using ZipArchive package = ZipFile.OpenRead(packagePath);
+        string[] proprietary =
+        [
+            .. package.Entries
+                .Select(entry => entry.FullName)
+                .Where(name => Regex.IsMatch(
+                    Path.GetFileName(name),
+                    @"^(lib)?PhysX(Gpu|Device)",
+                    RegexOptions.IgnoreCase,
+                    TimeSpan.FromSeconds(5))),
+        ];
+
+        await Assert.That(proprietary)
+            .IsEmpty()
+            .Because(
+                "the PhysX GPU and device modules are NVIDIA proprietary packman blobs, not " +
+                "artifacts of the BSD-3-Clause sources this project links, and no OpenUsd package " +
+                "may redistribute one: " + string.Join(", ", proprietary));
     }
 
     private static async Task AssertImagingDependsOnCoreAsync(
@@ -4514,6 +5272,273 @@ public sealed class RuntimePackageTests
             publishRoot,
             Path.Combine(consumerRoot, "obj", "project.assets.json"));
     }
+
+    /// <summary>
+    /// Publishes a consumer that drives the retained physics transport from packages alone.
+    /// </summary>
+    /// <remarks>
+    /// The consumer authors its own stage rather than reading a repository asset, because a test
+    /// asset is not part of any package and would prove nothing about what a consumer receives. It
+    /// also extracts the codeless <c>openUsdPhysics</c> schema plugin from the managed assembly,
+    /// which is the only way to observe that the schema resources survived packing at all: they are
+    /// embedded resources, so a package that dropped them would still restore and still compile.
+    /// </remarks>
+    private static async Task<ExecutionConsumer> PublishPhysicsConsumerAsync(
+        string workRoot,
+        string packageRoot,
+        string packageVersion,
+        ExecutionPlatform platform)
+    {
+        string consumerRoot = Path.Combine(workRoot, $"physics-consumer-{platform.Rid}");
+        string publishRoot = Path.Combine(consumerRoot, "publish");
+        string projectPath = Path.Combine(consumerRoot, "Consumer.csproj");
+        Directory.CreateDirectory(consumerRoot);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "Directory.Build.props"),
+            "<Project />");
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "Directory.Packages.props"),
+            """
+            <Project>
+              <PropertyGroup>
+                <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+              </PropertyGroup>
+            </Project>
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "NuGet.config"),
+            $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="isolated-openusd-feed" value="{packageRoot}" />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+              <packageSourceMapping>
+                <packageSource key="isolated-openusd-feed">
+                  <package pattern="OpenUsd*" />
+                </packageSource>
+                <packageSource key="nuget.org">
+                  <package pattern="Microsoft.*" />
+                  <package pattern="runtime.*" />
+                </packageSource>
+              </packageSourceMapping>
+            </configuration>
+            """);
+        await File.WriteAllTextAsync(
+            projectPath,
+            $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <RuntimeIdentifier>{platform.Rid}</RuntimeIdentifier>
+                <PublishAot>true</PublishAot>
+                <SelfContained>true</SelfContained>
+                <InvariantGlobalization>true</InvariantGlobalization>
+                <Nullable>enable</Nullable>
+                <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                <TrimmerSingleWarn>false</TrimmerSingleWarn>
+                <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="OpenUsd.Physics" Version="{packageVersion}" />
+              </ItemGroup>
+            </Project>
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "Program.cs"),
+            """
+            using System;
+            using System.IO;
+            using System.Threading.Tasks;
+            using OpenUsd;
+            using OpenUsd.Physics;
+            using OpenUsd.Physics.Extraction;
+            using OpenUsd.Physics.Schema;
+
+            namespace PackagePhysicsExecutionConsumer;
+
+            internal static class Program
+            {
+                public static async Task<int> Main()
+                {
+                    string schemaRoot = Path.Combine(AppContext.BaseDirectory, "physics-schema");
+                    string schemaResources = OpenUsdPhysicsSchemaResources.ExtractPluginTo(schemaRoot);
+                    bool schemaExtracted =
+                        File.Exists(Path.Combine(schemaResources, "plugInfo.json")) &&
+                        File.Exists(Path.Combine(schemaResources, "generatedSchema.usda"));
+
+                    string stagePath = Path.Combine(AppContext.BaseDirectory, "physics-package.usda");
+
+                    await using var scheduler = UsdStageScheduler.Open(stagePath);
+                    await using UsdPhysicsTransport transport =
+                        await UsdPhysicsTransport.CreateAsync(scheduler);
+
+                    // Extract, attach, then build. A transport built with nothing attached carries
+                    // authored timeline metadata only and simulates no authored body, which would
+                    // let this gate pass while proving the package can do nothing.
+                    UsdPhysicsExtractionPage page =
+                        await UsdPhysicsStageExtractor.ExtractAsync(scheduler);
+                    await transport.AttachExtractionAsync(page);
+                    await transport.BuildAsync();
+
+                    UsdPhysicsCapabilities capabilities = transport.Capabilities;
+                    bool rigidBodies = capabilities.Supports(UsdPhysicsCapability.RigidBodies);
+                    bool cuda = capabilities.Supports(UsdPhysicsCapability.Cuda);
+
+                    await transport.StepAsync(8);
+
+                    int bodies = 0;
+                    ulong stepIndex = 0;
+                    if (transport.TryAcquireLatestFrame(out UsdPhysicsFrameLease lease))
+                    {
+                        using (lease)
+                        {
+                            bodies = lease.Frame.BodyCount;
+                            stepIndex = lease.Frame.StepIndex;
+                        }
+                    }
+
+                    bool solverPresent = File.Exists(Path.Combine(
+                        AppContext.BaseDirectory,
+                        "__PHYSICS_LIBRARY__"));
+                    bool cudaModulePresent = File.Exists(Path.Combine(
+                        AppContext.BaseDirectory,
+                        "__CUDA_MODULE__"));
+
+                    Console.WriteLine("PACKAGE_PHYSICS_TRANSPORT_OK");
+                    Console.WriteLine($"PACKAGE_PHYSICS_SOLVER_PRESENT={Lower(solverPresent)}");
+                    Console.WriteLine($"PACKAGE_PHYSICS_CUDA_MODULE_PRESENT={Lower(cudaModulePresent)}");
+                    Console.WriteLine($"PACKAGE_PHYSICS_SCHEMA_EXTRACTED={Lower(schemaExtracted)}");
+                    Console.WriteLine($"PACKAGE_PHYSICS_RIGID_BODIES={Lower(rigidBodies)}");
+                    Console.WriteLine($"PACKAGE_PHYSICS_CUDA_CAPABILITY={Lower(cuda)}");
+                    Console.WriteLine($"PACKAGE_PHYSICS_BODY_COUNT={bodies}");
+                    Console.WriteLine($"PACKAGE_PHYSICS_STEP_INDEX={stepIndex}");
+                    Console.WriteLine(
+                        $"PACKAGE_PHYSICS_DIAGNOSTICS={transport.Diagnostics.Entries.Count}");
+
+                    // The GPU capability is only ever claimed when the module that implements it was
+                    // actually published. Absent modules must report an absent capability rather
+                    // than a capability that fails on first use.
+                    bool cudaHonest = !cuda || cudaModulePresent;
+                    return solverPresent && schemaExtracted && rigidBodies && bodies >= 2 &&
+                        stepIndex > 0 && cudaHonest ? 0 : 1;
+                }
+
+                private static string Lower(bool value) => value ? "true" : "false";
+            }
+            """
+                .Replace("__PHYSICS_LIBRARY__", GetPhysicsLibraryName(platform), StringComparison.Ordinal)
+                .Replace(
+                    "__CUDA_MODULE__",
+                    platform.Rid == "win-x64" ? "PhysXGpu_64.dll" : "libPhysXGpu_64.so",
+                    StringComparison.Ordinal));
+
+        string globalPackagesRoot = Path.Combine(workRoot, "physics-global-packages");
+        CommandResult result = await RunDotnetAsync(
+            consumerRoot,
+            [
+                "publish",
+                "Consumer.csproj",
+                "-c",
+                "Release",
+                "-r",
+                platform.Rid,
+                "--nologo",
+                "--configfile",
+                "NuGet.config",
+                "-o",
+                publishRoot,
+            ],
+            globalPackagesRoot);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(result.Output);
+        }
+
+        return new ExecutionConsumer(
+            projectPath,
+            publishRoot,
+            Path.Combine(consumerRoot, "obj", "project.assets.json"));
+    }
+
+    /// <summary>
+    /// Writes the physics stage the published consumer simulates.
+    /// </summary>
+    /// <remarks>
+    /// The stage is authored beside the published application rather than inside the consumer's
+    /// source, because a stage with nothing simulable on it lets the smoke pass while proving
+    /// nothing. It carries a scene, a static collider, and two rigid bodies, so a run that produces
+    /// no bodies is a failure rather than an empty success.
+    /// </remarks>
+    private static async Task WritePhysicsConsumerStageAsync(string publishRoot) =>
+        await File.WriteAllTextAsync(
+            Path.Combine(publishRoot, "physics-package.usda"),
+            """
+            #usda 1.0
+            (
+                metersPerUnit = 1
+                kilogramsPerUnit = 1
+                upAxis = "Y"
+                timeCodesPerSecond = 24
+                startTimeCode = 0
+                endTimeCode = 24
+            )
+
+            def PhysicsScene "Scene"
+            {
+                vector3f physics:gravityDirection = (0, -1, 0)
+                float physics:gravityMagnitude = 9.81
+            }
+
+            def Xform "Ground"
+            {
+                def Cube "Slab" (
+                    prepend apiSchemas = ["PhysicsCollisionAPI"]
+                )
+                {
+                    double size = 10
+                    double3 xformOp:scale = (1, 0.05, 1)
+                    uniform token[] xformOpOrder = ["xformOp:scale"]
+                }
+            }
+
+            def Xform "FallingBox" (
+                prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+            )
+            {
+                double3 xformOp:translate = (0, 4, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                float physics:mass = 4
+                rel physics:simulationOwner = </Scene>
+
+                def Cube "Shape" (
+                    prepend apiSchemas = ["PhysicsCollisionAPI"]
+                )
+                {
+                    double size = 1
+                }
+            }
+
+            def Xform "FallingSphere" (
+                prepend apiSchemas = ["PhysicsRigidBodyAPI"]
+            )
+            {
+                double3 xformOp:translate = (2, 6, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                rel physics:simulationOwner = </Scene>
+
+                def Sphere "Shape" (
+                    prepend apiSchemas = ["PhysicsCollisionAPI"]
+                )
+                {
+                    double radius = 0.5
+                }
+            }
+            """);
 
     private static async Task<ExecutionConsumer> PublishExecutionConsumerAsync(
         string workRoot,
@@ -6011,6 +7036,39 @@ public sealed class RuntimePackageTests
         "OpenUsd.Runtime.Cesium.win-x64",
         "OpenUsd.Runtime.Cesium.linux-x64",
         "OpenUsd.Runtime.Cesium.osx-arm64",
+        "OpenUsd.Runtime.Physics",
+        "OpenUsd.Runtime.Physics.win-x64",
+        "OpenUsd.Runtime.Physics.linux-x64",
+    ];
+
+    /// <summary>
+    /// The graph a physics consumer restores: the managed API, the physics metapackage and its two
+    /// RID packages, and the host RID Core package because the physics shim links the OpenUSD
+    /// monolith.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Core appears once, under the host RID, and neither the Core metapackage nor another RID's
+    /// Core package appears at all. Nothing references the Core metapackage: <c>OpenUsd</c> depends
+    /// only on <c>OpenUsd.Interop</c>, and each physics RID package depends on the Core package of
+    /// its own RID. The other RID's physics package is a dependency-free restore stub in this
+    /// fixture, so it pulls no Core payload for a platform this host cannot execute anyway.
+    /// </para>
+    /// <para>
+    /// No CUDA package appears here, and none exists. The PhysX GPU and device modules are NVIDIA
+    /// proprietary packman blobs that this project does not redistribute, so a licensed user places
+    /// them beside the deployed runtime instead of restoring them.
+    /// </para>
+    /// </remarks>
+    private static string[] GetPhysicsConsumerPackageGraph(ExecutionPlatform platform) =>
+    [
+        "OpenUsd.Interop",
+        "OpenUsd",
+        "OpenUsd.Physics",
+        $"OpenUsd.Runtime.Core.{platform.Rid}",
+        "OpenUsd.Runtime.Physics",
+        "OpenUsd.Runtime.Physics.win-x64",
+        "OpenUsd.Runtime.Physics.linux-x64",
     ];
 
 
@@ -6076,6 +7134,15 @@ public sealed class RuntimePackageTests
         "win-x64" => "openusd_cesium.dll",
         "linux-x64" => "libopenusd_cesium.so",
         "osx-arm64" => "libopenusd_cesium.dylib",
+        _ => throw new ArgumentOutOfRangeException(nameof(platform), platform.Rid, null),
+    };
+
+    private static string GetPhysicsLibraryName(ExecutionPlatform platform) => platform.Rid switch
+    {
+        "win-x64" => "openusd_physx.dll",
+        "linux-x64" => "libopenusd_physx.so",
+        // No osx-arm64 case: the pinned vcpkg PhysX port has no arm64-osx build, so a name here
+        // would describe a library that cannot exist.
         _ => throw new ArgumentOutOfRangeException(nameof(platform), platform.Rid, null),
     };
 
@@ -6565,6 +7632,72 @@ public sealed class RuntimePackageTests
         return (installRoot, shimRoot, vulkanRuntimeLibrary);
     }
 
+    /// <summary>
+    /// Reproduces the physics shim prefix as the physics CMake preset actually leaves it.
+    /// </summary>
+    /// <remarks>
+    /// The duplicated core and imaging shims and the staged GPU modules are the point of this
+    /// helper, not incidental detail. The physics preset configures the whole native project, so
+    /// its install prefix genuinely contains a second <c>openusd_dotnet</c>, <c>openusd_hydra</c>,
+    /// <c>openusd_hdsilk</c> and <c>openusd_storm_child</c>, and the vcpkg port stages the NVIDIA
+    /// GPU modules there for local runs. A physics package that swept up the former would mask the
+    /// archive-verified binary at a consumer's application root; one that swept up the latter would
+    /// redistribute proprietary binaries this project has no licence for. Staging both here is what
+    /// makes the layout assertions able to see either happen.
+    /// </remarks>
+    private static (string PhysicsShimRoot, string PhysXInstallRoot) CreateSyntheticPhysicsInstall(
+        string workRoot,
+        string rid)
+    {
+        string physicsShimRoot = Path.Combine(
+            workRoot,
+            "native",
+            "install",
+            "shim",
+            $"{rid}-physx");
+        string physXInstallRoot = Path.Combine(workRoot, "native", "install", "physx", rid);
+        string nativeDirectory = rid == "win-x64" ? "bin" : "lib";
+        string prefix = rid == "win-x64" ? string.Empty : "lib";
+        string extension = rid == "win-x64" ? ".dll" : ".so";
+
+        WriteTestFile(
+            Path.Combine(physicsShimRoot, nativeDirectory, $"{prefix}openusd_physx{extension}"),
+            $"synthetic {rid} physics shim ABI v{RequiredPhysicsAbiVersion}");
+        foreach (string masked in new[]
+        {
+            "openusd_dotnet",
+            "openusd_hydra",
+            "openusd_hdsilk",
+            "openusd_storm_child",
+        })
+        {
+            WriteTestFile(
+                Path.Combine(physicsShimRoot, nativeDirectory, $"{prefix}{masked}{extension}"),
+                $"stale duplicate of {masked} left by the physics preset");
+        }
+
+        if (rid == "win-x64")
+        {
+            WriteTestFile(
+                Path.Combine(physicsShimRoot, nativeDirectory, "PhysXGpu_64.dll"),
+                "synthetic NVIDIA proprietary GPU module");
+            WriteTestFile(
+                Path.Combine(physicsShimRoot, nativeDirectory, "PhysXDevice64.dll"),
+                "synthetic NVIDIA proprietary device module");
+        }
+        else
+        {
+            WriteTestFile(
+                Path.Combine(physicsShimRoot, nativeDirectory, "libPhysXGpu_64.so"),
+                "synthetic NVIDIA proprietary GPU module");
+        }
+
+        WriteTestFile(
+            Path.Combine(physXInstallRoot, "THIRD-PARTY-PHYSX.md"),
+            "Synthetic PhysX notices.");
+        return (physicsShimRoot, physXInstallRoot);
+    }
+
     private static (string InstallRoot, string ShimRoot) CreateSyntheticUnixInstall(
         string workRoot,
         string rid)
@@ -6688,6 +7821,18 @@ public sealed class RuntimePackageTests
             "install",
             "shim",
             platform.Rid + "-cesium");
+        string physicsShimRoot = Path.Combine(
+            repositoryRoot,
+            "native",
+            "install",
+            "shim",
+            platform.Rid + "-physx");
+        string physXInstallRoot = Path.Combine(
+            repositoryRoot,
+            "native",
+            "install",
+            "physx",
+            platform.Rid);
         string nativeInstallRoot = Path.Combine(repositoryRoot, "native", "install");
         string[] vulkanRuntimeLibraries = platform.Rid == "win-x64" &&
             Directory.Exists(nativeInstallRoot)
@@ -6721,6 +7866,8 @@ public sealed class RuntimePackageTests
             installRoot,
             shimRoot,
             cesiumShimRoot,
+            physicsShimRoot,
+            physXInstallRoot,
             vulkanRuntimeLibraries.SingleOrDefault() ?? string.Empty);
         reason = string.Empty;
         return true;
@@ -7071,5 +8218,7 @@ public sealed class RuntimePackageTests
         string InstallRoot,
         string ShimRoot,
         string CesiumShimRoot,
+        string PhysicsShimRoot,
+        string PhysXInstallRoot,
         string VulkanRuntimeLibrary);
 }

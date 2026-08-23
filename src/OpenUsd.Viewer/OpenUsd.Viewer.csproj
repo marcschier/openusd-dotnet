@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenUsd\OpenUsd.csproj" />
+    <ProjectReference Include="..\OpenUsd.Physics\OpenUsd.Physics.csproj" />
     <ProjectReference Include="..\OpenUsd.Rendering\OpenUsd.Rendering.csproj" />
     <ProjectReference Include="..\OpenUsd.Rendering.Storm\OpenUsd.Rendering.Storm.csproj" />
     <ProjectReference Include="..\OpenUsd.Rendering.Silk.D3D12\OpenUsd.Rendering.Silk.D3D12.csproj" />

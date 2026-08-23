@@ -2,6 +2,7 @@
 
 #include "openusd_hydra.h"
 #include "context_support.h"
+#include "openusd_physics_override_scene_index.h"
 #include "openusd_render_camera_internal.h"
 #include "openusd_render_pick_internal.h"
 #include "openusd_renderer_stage_bridge.h"
@@ -46,6 +47,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #if defined(_WIN32)
 #include <Windows.h>
@@ -64,6 +66,7 @@ struct openusd_storm_renderer
     openusd_stage* stage_core = nullptr;
     UsdStageRefPtr stage;
     std::unique_ptr<UsdImagingGLEngine> engine;
+    OpenUsdPhysicsOverrideSceneIndexRefPtr physics_overrides;
     std::thread::id owner;
     uintptr_t context_identity = 0;
     std::string name;
@@ -645,7 +648,15 @@ openusd_status InitializeStormRenderer(
 
     UsdImagingGLEngine::Parameters parameters;
     parameters.rendererPluginId = stormRendererId;
-    auto engine = std::make_unique<UsdImagingGLEngine>(parameters);
+    OpenUsdPhysicsOverrideSceneIndexRefPtr physicsOverrides;
+    std::unique_ptr<UsdImagingGLEngine> engine;
+    {
+        // The override scene index is installed into exactly the Hydra graph
+        // this engine builds, in both scene-index and emulated legacy modes.
+        const OpenUsdPhysicsOverrideSceneIndexRegistrar::Capture capture;
+        engine = std::make_unique<UsdImagingGLEngine>(parameters);
+        physicsOverrides = capture.Take();
+    }
     engine->SetEnablePresentation(true);
     if (!engine->GetGPUEnabled())
     {
@@ -667,6 +678,7 @@ openusd_status InitializeStormRenderer(
         name += " / " + hgi;
     }
     context->renderer->engine = std::move(engine);
+    context->renderer->physics_overrides = physicsOverrides;
     context->renderer->owner = std::this_thread::get_id();
     context->renderer->context_identity = contextIdentity;
     context->renderer->name = std::move(name);
@@ -1506,6 +1518,381 @@ openusd_status openusd_storm_set_selection(
             }
             return OPENUSD_STATUS_OK;
         });
+    });
+}
+
+openusd_status openusd_storm_set_transform_overrides(
+    openusd_storm_renderer* renderer,
+    const openusd_storm_transform_override_update* update,
+    openusd_error_buffer* error)
+{
+    if (update == nullptr ||
+        update->struct_size != sizeof(openusd_storm_transform_override_update) ||
+        update->version != OPENUSD_STORM_TRANSFORM_OVERRIDE_UPDATE_VERSION ||
+        (update->flags & ~OPENUSD_STORM_TRANSFORM_OVERRIDE_UPDATE_REPLACE) != 0 ||
+        update->reserved != 0 ||
+        update->item_count > OPENUSD_STORM_TRANSFORM_OVERRIDE_MAXIMUM_ITEMS ||
+        update->path_bytes_size > OPENUSD_STORM_TRANSFORM_OVERRIDE_MAXIMUM_PATH_BYTES ||
+        (update->item_count != 0 && update->items == nullptr) ||
+        (update->path_bytes_size != 0 && update->path_bytes == nullptr))
+    {
+        WriteError(error, "The packed Storm transform override update is invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+
+    std::vector<OpenUsdPhysicsOverrideEntry> entries;
+    entries.reserve(update->item_count);
+    uint32_t unsupported = 0;
+    for (uint32_t index = 0; index < update->item_count; ++index)
+    {
+        const openusd_storm_transform_override_item& item = update->items[index];
+        constexpr uint32_t kValidItemFlags =
+            OPENUSD_STORM_TRANSFORM_OVERRIDE_ITEM_SNAPPED |
+            OPENUSD_STORM_TRANSFORM_OVERRIDE_ITEM_PRESERVE_STRETCH;
+        if ((item.flags & ~kValidItemFlags) != 0 ||
+            item.path_length == 0 ||
+            item.path_offset > update->path_bytes_size ||
+            item.path_length > update->path_bytes_size - item.path_offset)
+        {
+            WriteError(error, "A packed Storm transform override item is invalid.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        for (double component : item.transform)
+        {
+            if (!std::isfinite(component))
+            {
+                WriteError(
+                    error,
+                    "Storm transform override matrices must be finite.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+        }
+        const std::string path_text(
+            update->path_bytes + item.path_offset,
+            item.path_length);
+        if (path_text.find('\0') != std::string::npos)
+        {
+            WriteError(
+                error,
+                "Storm transform override paths cannot contain NUL bytes.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const SdfPath path(path_text);
+        if (!path.IsAbsolutePath() || !path.IsPrimPath() ||
+            path == SdfPath::AbsoluteRootPath())
+        {
+            WriteError(
+                error,
+                "Storm transform override paths must be absolute prim paths.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        if (item.instance_index >= 0)
+        {
+            // Point instancer members are diagnosed rather than rejected so a
+            // mixed batch still renders every supported rigid body.
+            ++unsupported;
+            continue;
+        }
+        OpenUsdPhysicsOverrideEntry entry;
+        entry.path = path;
+        entry.object_id = item.object_id;
+        entry.preserve_stretch =
+            (item.flags &
+             OPENUSD_STORM_TRANSFORM_OVERRIDE_ITEM_PRESERVE_STRETCH) != 0;
+        std::memcpy(
+            entry.transform.GetArray(),
+            item.transform,
+            sizeof(item.transform));
+        entries.push_back(std::move(entry));
+    }
+
+    const openusd_status validation = ValidateStormOwner(renderer, error);
+    if (validation != OPENUSD_STATUS_OK)
+    {
+        return validation;
+    }
+    if (!renderer->physics_overrides)
+    {
+        WriteError(
+            error,
+            "This Storm renderer did not install a transform override scene index.");
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
+    return Guard(error, [&]()
+    {
+        return WithStageAccess(renderer->stage_core, error, [&](openusd_stage_access*)
+        {
+            TfErrorMark mark;
+            uint32_t unresolved = 0;
+            std::vector<OpenUsdPhysicsOverrideEntry> resolved;
+            resolved.reserve(entries.size());
+            for (OpenUsdPhysicsOverrideEntry& entry : entries)
+            {
+                if (renderer->stage &&
+                    !renderer->stage->GetPrimAtPath(entry.path))
+                {
+                    ++unresolved;
+                    continue;
+                }
+                resolved.push_back(std::move(entry));
+            }
+            renderer->physics_overrides->ApplyBatch(
+                resolved,
+                update->revision,
+                unresolved,
+                0,
+                unsupported);
+            if (!mark.IsClean())
+            {
+                renderer->physics_overrides->RecordRejectedBatch();
+                WriteError(error, ConsumeErrors(mark));
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+openusd_status openusd_storm_get_transform_override_diagnostics(
+    openusd_storm_renderer* renderer,
+    openusd_storm_transform_override_diagnostics* diagnostics,
+    openusd_error_buffer* error)
+{
+    if (diagnostics == nullptr ||
+        diagnostics->struct_size !=
+            sizeof(openusd_storm_transform_override_diagnostics) ||
+        diagnostics->version !=
+            OPENUSD_STORM_TRANSFORM_OVERRIDE_DIAGNOSTICS_VERSION)
+    {
+        WriteError(
+            error,
+            "The Storm transform override diagnostics struct is invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    const openusd_status validation = ValidateStormOwner(renderer, error);
+    if (validation != OPENUSD_STATUS_OK)
+    {
+        return validation;
+    }
+    return Guard(error, [&]()
+    {
+        const uint32_t struct_size = diagnostics->struct_size;
+        const uint32_t version = diagnostics->version;
+        *diagnostics = openusd_storm_transform_override_diagnostics{};
+        diagnostics->struct_size = struct_size;
+        diagnostics->version = version;
+        diagnostics->capacity = OPENUSD_STORM_TRANSFORM_OVERRIDE_MAXIMUM_ITEMS;
+        if (renderer->physics_overrides)
+        {
+            const OpenUsdPhysicsOverrideCounters counters =
+                renderer->physics_overrides->GetCounters();
+            diagnostics->applied_count = counters.applied_count;
+            diagnostics->unresolved_count = counters.unresolved_count;
+            diagnostics->revision = counters.revision;
+            diagnostics->applied_batch_count = counters.applied_batch_count;
+            diagnostics->rejected_batch_count = counters.rejected_batch_count;
+            diagnostics->dirtied_prim_count = counters.dirtied_prim_count;
+            diagnostics->dropped_count = counters.dropped_count;
+            diagnostics->unsupported_count = counters.unsupported_count;
+        }
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_storm_set_deformation_overrides(
+    openusd_storm_renderer* renderer,
+    const openusd_storm_deformation_override_update* update,
+    openusd_error_buffer* error)
+{
+    if (update == nullptr ||
+        update->struct_size != sizeof(openusd_storm_deformation_override_update) ||
+        update->version != OPENUSD_STORM_DEFORMATION_OVERRIDE_UPDATE_VERSION ||
+        (update->flags & ~OPENUSD_STORM_DEFORMATION_OVERRIDE_UPDATE_REPLACE) != 0 ||
+        (update->flags & OPENUSD_STORM_DEFORMATION_OVERRIDE_UPDATE_REPLACE) == 0 ||
+        update->item_count > OPENUSD_STORM_DEFORMATION_OVERRIDE_MAXIMUM_ITEMS ||
+        update->point_count > OPENUSD_STORM_DEFORMATION_OVERRIDE_MAXIMUM_POINTS ||
+        update->path_bytes_size > OPENUSD_STORM_DEFORMATION_OVERRIDE_MAXIMUM_PATH_BYTES ||
+        (update->item_count != 0 && update->items == nullptr) ||
+        (update->point_count != 0 && update->points == nullptr) ||
+        (update->path_bytes_size != 0 && update->path_bytes == nullptr))
+    {
+        WriteError(error, "The packed Storm deformation override update is invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+
+    /* Every region is checked against the page it addresses before a single
+     * float is read, so a malformed batch is refused before it can index
+     * anything. */
+    std::vector<OpenUsdPhysicsDeformationEntry> entries;
+    entries.reserve(update->item_count);
+    uint32_t unsupported = 0;
+    for (uint32_t index = 0; index < update->item_count; ++index)
+    {
+        const openusd_storm_deformation_override_item& item = update->items[index];
+        if (item.path_length == 0 ||
+            item.path_offset > update->path_bytes_size ||
+            item.path_length > update->path_bytes_size - item.path_offset ||
+            item.point_count == 0 ||
+            item.point_offset > update->point_count ||
+            item.point_count > update->point_count - item.point_offset ||
+            (item.flags & ~OPENUSD_STORM_DEFORMATION_OVERRIDE_ITEM_SNAPPED) != 0)
+        {
+            WriteError(error, "A packed Storm deformation override region is invalid.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const std::string path_text(
+            update->path_bytes + item.path_offset,
+            item.path_length);
+        if (path_text.find('\0') != std::string::npos)
+        {
+            WriteError(
+                error,
+                "Storm deformation override paths cannot contain NUL bytes.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const SdfPath path(path_text);
+        if (!path.IsAbsolutePath() || !path.IsPrimPath() ||
+            path == SdfPath::AbsoluteRootPath())
+        {
+            WriteError(
+                error,
+                "Storm deformation override paths must be absolute prim paths.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        if (item.instance_index >= 0)
+        {
+            // Point instancer members share one prototype, so replacing its
+            // points would deform every instance. That is diagnosed rather than
+            // rejected so a mixed batch still draws every supported region.
+            ++unsupported;
+            continue;
+        }
+
+        OpenUsdPhysicsDeformationEntry entry;
+        entry.path = path;
+        entry.object_id = item.object_id;
+        entry.topology_revision = item.topology_revision;
+        entry.points.resize(item.point_count);
+        for (uint32_t point = 0; point < item.point_count; ++point)
+        {
+            const float* source =
+                update->points + (static_cast<size_t>(item.point_offset + point) * 3u);
+            if (!std::isfinite(source[0]) || !std::isfinite(source[1]) ||
+                !std::isfinite(source[2]))
+            {
+                WriteError(
+                    error,
+                    "Storm deformation override points must be finite.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            entry.points[point] = GfVec3f(source[0], source[1], source[2]);
+        }
+        entries.push_back(std::move(entry));
+    }
+
+    const openusd_status validation = ValidateStormOwner(renderer, error);
+    if (validation != OPENUSD_STATUS_OK)
+    {
+        return validation;
+    }
+    if (!renderer->physics_overrides)
+    {
+        WriteError(
+            error,
+            "This Storm renderer did not install a physics override scene index.");
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
+    return Guard(error, [&]()
+    {
+        return WithStageAccess(renderer->stage_core, error, [&](openusd_stage_access*)
+        {
+            TfErrorMark mark;
+            uint32_t unresolved = 0;
+            uint32_t mismatched = 0;
+            std::vector<OpenUsdPhysicsDeformationEntry> resolved;
+            resolved.reserve(entries.size());
+            for (OpenUsdPhysicsDeformationEntry& entry : entries)
+            {
+                if (renderer->stage && !renderer->stage->GetPrimAtPath(entry.path))
+                {
+                    ++unresolved;
+                    continue;
+                }
+                // A region only draws when the rendered prim already has that
+                // many vertices. Anything else would hand the prim's own indices
+                // vertices they never addressed, so it is refused and counted
+                // rather than drawn.
+                const size_t rendered =
+                    renderer->physics_overrides->GetRenderedPointCount(entry.path);
+                if (rendered != entry.points.size())
+                {
+                    ++mismatched;
+                    continue;
+                }
+                resolved.push_back(std::move(entry));
+            }
+            renderer->physics_overrides->ApplyDeformationBatch(
+                resolved,
+                update->revision,
+                unresolved,
+                0,
+                unsupported,
+                mismatched);
+            if (!mark.IsClean())
+            {
+                renderer->physics_overrides->RecordRejectedDeformationBatch();
+                WriteError(error, ConsumeErrors(mark));
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}
+
+openusd_status openusd_storm_get_deformation_override_diagnostics(
+    openusd_storm_renderer* renderer,
+    openusd_storm_deformation_override_diagnostics* diagnostics,
+    openusd_error_buffer* error)
+{
+    if (diagnostics == nullptr ||
+        diagnostics->struct_size !=
+            sizeof(openusd_storm_deformation_override_diagnostics) ||
+        diagnostics->version !=
+            OPENUSD_STORM_DEFORMATION_OVERRIDE_DIAGNOSTICS_VERSION)
+    {
+        WriteError(
+            error,
+            "The Storm deformation override diagnostics struct is invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    const openusd_status validation = ValidateStormOwner(renderer, error);
+    if (validation != OPENUSD_STATUS_OK)
+    {
+        return validation;
+    }
+    return Guard(error, [&]()
+    {
+        const uint32_t struct_size = diagnostics->struct_size;
+        const uint32_t version = diagnostics->version;
+        *diagnostics = openusd_storm_deformation_override_diagnostics{};
+        diagnostics->struct_size = struct_size;
+        diagnostics->version = version;
+        diagnostics->capacity = OPENUSD_STORM_DEFORMATION_OVERRIDE_MAXIMUM_ITEMS;
+        if (renderer->physics_overrides)
+        {
+            const OpenUsdPhysicsDeformationCounters counters =
+                renderer->physics_overrides->GetDeformationCounters();
+            diagnostics->applied_count = counters.applied_count;
+            diagnostics->unresolved_count = counters.unresolved_count;
+            diagnostics->revision = counters.revision;
+            diagnostics->applied_batch_count = counters.applied_batch_count;
+            diagnostics->rejected_batch_count = counters.rejected_batch_count;
+            diagnostics->dirtied_prim_count = counters.dirtied_prim_count;
+            diagnostics->dropped_count = counters.dropped_count;
+            diagnostics->unsupported_count = counters.unsupported_count;
+            diagnostics->mismatched_count = counters.mismatched_count;
+        }
+        return OPENUSD_STATUS_OK;
     });
 }
 

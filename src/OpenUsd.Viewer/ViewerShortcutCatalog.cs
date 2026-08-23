@@ -111,8 +111,78 @@ internal static class ViewerShortcutCatalog
             "Lowers the camera 5 degrees while the viewport has focus."),
     ];
 
+    /// <summary>Physics transport bindings, in the order the dialog presents them.</summary>
+    internal static IReadOnlyList<ViewerShortcut> Physics { get; } =
+    [
+        new(
+            ViewerShortcutKind.Keyboard,
+            "K",
+            "Play or pause physics",
+            "Starts or stops pacing the interactive simulation. The fixed simulation step " +
+            "never changes; only how often the world is asked to advance does."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "J",
+            "Stop physics",
+            "Returns the simulation to the authored start and restores the authored " +
+            "transforms in the viewport."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "N",
+            "Step one physics frame",
+            "Advances exactly one fixed simulation step while playback is paused."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "B",
+            "Bake physics",
+            "Opens the bake dialog, which writes simulated poses into a file-backed layer."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "Q",
+            "No gizmo",
+            "Turns every viewport gizmo off so a drag navigates the camera again."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "G",
+            "Move gizmo",
+            "Drags the selection along an axis or across the view plane, snapping when snapping " +
+            "is on."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "E",
+            "Rotate gizmo",
+            "Rotates the selection about an axis or about the view direction."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "R",
+            "Scale gizmo",
+            "Scales the selection uniformly about the gizmo pivot."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "H",
+            "Drag body",
+            "Drags a simulated body with a damped spring, so it still collides on the way and " +
+            "keeps the velocity it had when it was released."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "X",
+            "Toggle snapping",
+            "Quantizes gizmo drags to the configured translation, rotation, and scale increments."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "Z",
+            "Undo physics edit",
+            "Restores exactly what the newest physics property edit replaced, including the " +
+            "absence of an authored opinion."),
+        new(
+            ViewerShortcutKind.Keyboard,
+            "Y",
+            "Redo physics edit",
+            "Re-applies the newest undone physics property edit."),
+    ];
+
     /// <summary>Every binding the dialog lists.</summary>
-    internal static IReadOnlyList<ViewerShortcut> All => Camera;
+    internal static IReadOnlyList<ViewerShortcut> All { get; } = [.. Camera, .. Physics];
 
     /// <summary>
     /// Returns the key a keyboard entry is bound to, so tests can drive it
@@ -135,6 +205,18 @@ internal static class ViewerShortcutCatalog
             "Right Arrow" => Key.Right,
             "Up Arrow" => Key.Up,
             "Down Arrow" => Key.Down,
+            "K" => Key.K,
+            "J" => Key.J,
+            "N" => Key.N,
+            "B" => Key.B,
+            "Q" => Key.Q,
+            "G" => Key.G,
+            "E" => Key.E,
+            "R" => Key.R,
+            "H" => Key.H,
+            "X" => Key.X,
+            "Z" => Key.Z,
+            "Y" => Key.Y,
             _ => null,
         };
     }

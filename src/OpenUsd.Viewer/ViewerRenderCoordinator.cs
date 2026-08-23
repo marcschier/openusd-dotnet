@@ -80,6 +80,12 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
     internal ViewerHydraSceneSnapshot? HydraSceneSnapshot =>
         _backendRegistry.CaptureHydraSceneSnapshot();
 
+    /// <summary>Captures the active backend as a physics override target.</summary>
+    /// <param name="generation">Receives the identity of the currently active backend.</param>
+    /// <returns>The active target, or <see langword="null"/> when none is active.</returns>
+    internal IViewerPhysicsOverrideTarget? CapturePhysicsOverrideTarget(out long generation) =>
+        _backendRegistry.CapturePhysicsOverrideTarget(out generation);
+
     internal int GetCandidateSelectionCount(RenderBackendKind kind) =>
         _manager.GetCandidateSelectionCount(kind);
 

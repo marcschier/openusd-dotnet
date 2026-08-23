@@ -301,6 +301,51 @@ public sealed class OpenUsdStormChildSession : IDisposable
         }
     }
 
+    /// <summary>
+    /// Queues one batched externally simulated rigid transform override update on the render
+    /// thread.
+    /// </summary>
+    /// <param name="overrides">The packed batch to apply.</param>
+    /// <returns>What Storm did with the batch.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="overrides"/> is null.</exception>
+    /// <remarks>
+    /// The batch replaces every retained override, so an emptied batch restores the authored
+    /// transforms. Nothing is authored back into USD and the child copies the packed batch
+    /// synchronously, so it retains no managed memory after the call returns.
+    /// </remarks>
+    public StormPhysicsOverrideDiagnostics SetPhysicsTransformOverrides(
+        StormPhysicsTransformOverrides overrides)
+    {
+        ArgumentNullException.ThrowIfNull(overrides);
+        lock (_gate)
+        {
+            return OpenUsdStormChildRuntime.SetTransformOverrides(
+                GetHandleLocked(),
+                overrides);
+        }
+    }
+
+    /// <summary>Applies one complete batch of externally simulated deformable geometry.</summary>
+    /// <param name="deformations">The packed batch one render update produced.</param>
+    /// <returns>What the child renderer did with the batch.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="deformations"/> is null.</exception>
+    /// <remarks>
+    /// The batch replaces every retained deformation, so an emptied batch restores the authored
+    /// points. Nothing is authored back into USD, and the child copies the packed batch
+    /// synchronously, so it retains no managed memory after the call returns.
+    /// </remarks>
+    public StormPhysicsDeformationDiagnostics SetPhysicsDeformationOverrides(
+        StormPhysicsDeformationOverrides deformations)
+    {
+        ArgumentNullException.ThrowIfNull(deformations);
+        lock (_gate)
+        {
+            return OpenUsdStormChildRuntime.SetDeformationOverrides(
+                GetHandleLocked(),
+                deformations);
+        }
+    }
+
     /// <summary>Resizes the child and updates its effective DPI.</summary>
     public void Resize(int width, int height, uint dpi)
     {
@@ -686,6 +731,20 @@ public static unsafe partial class OpenUsdStormChildRuntime
             handle,
             selection,
             color);
+
+    internal static StormPhysicsOverrideDiagnostics SetTransformOverrides(
+        nint handle,
+        StormPhysicsTransformOverrides overrides) =>
+        StormPhysicsOverrideInterop.Apply<NativeTransformOverrideCall>(
+            handle,
+            overrides);
+
+    internal static StormPhysicsDeformationDiagnostics SetDeformationOverrides(
+        nint handle,
+        StormPhysicsDeformationOverrides deformations) =>
+        StormPhysicsOverrideInterop.ApplyDeformations<NativeDeformationOverrideCall>(
+            handle,
+            deformations);
 
     internal static void Resize(nint handle, int width, int height, uint dpi) =>
         InvokeStatus((ref NativeErrorBuffer error) =>
@@ -1138,6 +1197,95 @@ public static unsafe partial class OpenUsdStormChildRuntime
         }
     }
 
+    private readonly struct NativeTransformOverrideCall :
+        StormPhysicsOverrideInterop.IStormTransformOverrideCall
+    {
+        public static OpenUsdNativeStatus Invoke(
+            nint child,
+            ReadOnlySpan<StormPhysicsOverrideInterop.NativeTransformOverrideItem> items,
+            ReadOnlySpan<byte> pathBytes,
+            ulong revision,
+            ref StormPhysicsOverrideInterop.NativeTransformOverrideDiagnostics diagnostics,
+            Span<byte> errorBytes,
+            out nuint errorRequired)
+        {
+            fixed (StormPhysicsOverrideInterop.NativeTransformOverrideItem* itemPointer =
+                items)
+            fixed (byte* pathPointer = pathBytes)
+            fixed (byte* errorPointer = errorBytes)
+            {
+                var update = new StormPhysicsOverrideInterop.NativeTransformOverrideUpdate
+                {
+                    StructSize = checked((uint)Unsafe.SizeOf<
+                        StormPhysicsOverrideInterop.NativeTransformOverrideUpdate>()),
+                    Version = StormPhysicsOverrideInterop.UpdateVersion,
+                    ItemCount = checked((uint)items.Length),
+                    Flags = StormPhysicsOverrideInterop.UpdateReplace,
+                    Revision = revision,
+                    Items = itemPointer,
+                    PathBytes = pathPointer,
+                    PathBytesSize = checked((uint)pathBytes.Length),
+                };
+                var error = new NativeErrorBuffer(
+                    errorPointer,
+                    (nuint)errorBytes.Length);
+                OpenUsdNativeStatus status = NativeMethods.SetTransformOverrides(
+                    child,
+                    in update,
+                    ref diagnostics,
+                    ref error);
+                errorRequired = error.Required;
+                return status;
+            }
+        }
+    }
+
+    private readonly struct NativeDeformationOverrideCall :
+        StormPhysicsOverrideInterop.IStormDeformationOverrideCall
+    {
+        public static OpenUsdNativeStatus Invoke(
+            nint child,
+            ReadOnlySpan<StormPhysicsOverrideInterop.NativeDeformationOverrideItem> items,
+            ReadOnlySpan<float> points,
+            ReadOnlySpan<byte> pathBytes,
+            ulong revision,
+            ref StormPhysicsOverrideInterop.NativeDeformationOverrideDiagnostics diagnostics,
+            Span<byte> errorBytes,
+            out nuint errorRequired)
+        {
+            fixed (StormPhysicsOverrideInterop.NativeDeformationOverrideItem* itemPointer = items)
+            fixed (float* pointPointer = points)
+            fixed (byte* pathPointer = pathBytes)
+            fixed (byte* errorPointer = errorBytes)
+            {
+                var update = new StormPhysicsOverrideInterop.NativeDeformationOverrideUpdate
+                {
+                    StructSize = checked((uint)Unsafe.SizeOf<
+                        StormPhysicsOverrideInterop.NativeDeformationOverrideUpdate>()),
+                    Version = StormPhysicsOverrideInterop.DeformationUpdateVersion,
+                    ItemCount = checked((uint)items.Length),
+                    Flags = StormPhysicsOverrideInterop.DeformationUpdateReplace,
+                    Revision = revision,
+                    Items = itemPointer,
+                    Points = pointPointer,
+                    PathBytes = pathPointer,
+                    PointCount = checked((uint)(points.Length / 3)),
+                    PathBytesSize = checked((uint)pathBytes.Length),
+                };
+                var error = new NativeErrorBuffer(
+                    errorPointer,
+                    (nuint)errorBytes.Length);
+                OpenUsdNativeStatus status = NativeMethods.SetDeformationOverrides(
+                    child,
+                    in update,
+                    ref diagnostics,
+                    ref error);
+                errorRequired = error.Required;
+                return status;
+            }
+        }
+    }
+
     private readonly struct NativeNavigationInputCall : INavigationInputCall
     {
         public static OpenUsdNativeStatus Invoke(
@@ -1427,6 +1575,26 @@ public static unsafe partial class OpenUsdStormChildRuntime
         internal static partial OpenUsdNativeStatus SetSelection(
             nint child,
             in StormPickingInterop.NativeSelectionUpdate update,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            LibraryName,
+            EntryPoint = "openusd_storm_child_set_transform_overrides")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SetTransformOverrides(
+            nint child,
+            in StormPhysicsOverrideInterop.NativeTransformOverrideUpdate update,
+            ref StormPhysicsOverrideInterop.NativeTransformOverrideDiagnostics diagnostics,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            LibraryName,
+            EntryPoint = "openusd_storm_child_set_deformation_overrides")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus SetDeformationOverrides(
+            nint child,
+            in StormPhysicsOverrideInterop.NativeDeformationOverrideUpdate update,
+            ref StormPhysicsOverrideInterop.NativeDeformationOverrideDiagnostics diagnostics,
             ref NativeErrorBuffer error);
 
         [LibraryImport(LibraryName, EntryPoint = "openusd_storm_child_resize")]

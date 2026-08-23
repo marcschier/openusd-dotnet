@@ -10,6 +10,7 @@
   <Folder Name="/src/">
     <Project Path="src/OpenUsd.Interop/OpenUsd.Interop.csproj" />
     <Project Path="src/OpenUsd.Mcp/OpenUsd.Mcp.csproj" />
+    <Project Path="src/OpenUsd.Physics/OpenUsd.Physics.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core/OpenUsd.Runtime.Core.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.linux-x64/OpenUsd.Runtime.Core.linux-x64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.osx-arm64/OpenUsd.Runtime.Core.osx-arm64.csproj" />
@@ -22,6 +23,9 @@
     <Project Path="src/OpenUsd.Runtime.Imaging.linux-x64/OpenUsd.Runtime.Imaging.linux-x64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Imaging.osx-arm64/OpenUsd.Runtime.Imaging.osx-arm64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Imaging.win-x64/OpenUsd.Runtime.Imaging.win-x64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Physics/OpenUsd.Runtime.Physics.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Physics.linux-x64/OpenUsd.Runtime.Physics.linux-x64.csproj" />
+    <Project Path="src/OpenUsd.Runtime.Physics.win-x64/OpenUsd.Runtime.Physics.win-x64.csproj" />
     <Project Path="src/OpenUsd.Rendering.Silk.D3D12/OpenUsd.Rendering.Silk.D3D12.csproj" />
     <Project Path="src/OpenUsd.Rendering.Silk.Metal/OpenUsd.Rendering.Silk.Metal.csproj" />
     <Project Path="src/OpenUsd.Rendering.Silk.Vulkan/OpenUsd.Rendering.Silk.Vulkan.csproj" />
@@ -44,6 +48,7 @@
     <Project Path="tests/OpenUsd.NativeCoverage.Tests/OpenUsd.NativeCoverage.Tests.csproj" />
     <Project Path="tests/OpenUsd.NativeProbe/OpenUsd.NativeProbe.csproj" />
     <Project Path="tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj" />
+    <Project Path="tests/OpenUsd.Physics.Tests/OpenUsd.Physics.Tests.csproj" />
     <Project Path="tests/OpenUsd.Performance.Tests/OpenUsd.Performance.Tests.csproj" />
     <Project Path="tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj" />
     <Project Path="tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj" />

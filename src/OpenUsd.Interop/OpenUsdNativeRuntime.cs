@@ -4415,6 +4415,228 @@ public static unsafe partial class OpenUsdNativeRuntime
         NativeMethods.LayerRelease(layer);
     }
 
+    internal static (OpenUsdNativeLayer PhysicsLayer, OpenUsdNativeLayer UserLayer)
+        SessionOverlayNormalize(OpenUsdNativeStage stage)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StageSessionOverlayNormalize(
+                lease.Handle,
+                out nint physicsLayer,
+                out nint userLayer,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return (new OpenUsdNativeLayer(physicsLayer), new OpenUsdNativeLayer(userLayer));
+        }
+    }
+
+    internal static void SessionOverlayRemove(
+        OpenUsdNativeStage stage, string physicsLayerIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(physicsLayerIdentifier);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StageSessionOverlayRemove(
+                lease.Handle,
+                physicsLayerIdentifier,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    internal static bool SessionOverlayDetectContamination(
+        OpenUsdNativeStage stage, string physicsLayerIdentifier, string userLayerIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(physicsLayerIdentifier);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userLayerIdentifier);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StageSessionOverlayDetectContamination(
+                lease.Handle,
+                physicsLayerIdentifier,
+                userLayerIdentifier,
+                out int hasContamination,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return hasContamination != 0;
+        }
+    }
+
+    internal static void SessionOverlayMigrateContamination(
+        OpenUsdNativeStage stage, string userLayerIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userLayerIdentifier);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StageSessionOverlayMigrateContamination(
+                lease.Handle,
+                userLayerIdentifier,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    internal static ulong PhysicsBakeDescribeLayer(
+        OpenUsdNativeStage stage, string layerIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(layerIdentifier);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StagePhysicsBakeDescribeLayer(
+                lease.Handle,
+                layerIdentifier,
+                out ulong flags,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return flags;
+        }
+    }
+
+    internal static ulong PhysicsBakeBegin(OpenUsdNativeStage stage, string layerIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(layerIdentifier);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StagePhysicsBakeBegin(
+                lease.Handle,
+                layerIdentifier,
+                out ulong transaction,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return transaction;
+        }
+    }
+
+    internal static void PhysicsBakeRollback(
+        OpenUsdNativeStage stage, string layerIdentifier, ulong transaction)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(layerIdentifier);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StagePhysicsBakeRollback(
+                lease.Handle,
+                layerIdentifier,
+                transaction,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    internal static void PhysicsBakeCommit(
+        OpenUsdNativeStage stage, string layerIdentifier, ulong transaction, bool save)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(layerIdentifier);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StagePhysicsBakeCommit(
+                lease.Handle,
+                layerIdentifier,
+                transaction,
+                save ? 1u : 0u,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    internal static void PhysicsBakeRelease(ulong transaction)
+    {
+        NativeMethods.StagePhysicsBakeRelease(transaction);
+    }
+
+    internal static void PhysicsBakeClearLayer(OpenUsdNativeStage stage, string layerIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(layerIdentifier);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StagePhysicsBakeClearLayer(
+                lease.Handle,
+                layerIdentifier,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
+    /// <summary>
+    /// Authors a complete physics page and reports the per-record outcome without throwing
+    /// for record level rejections, which the caller resolves into diagnostics.
+    /// </summary>
+    internal static OpenUsdNativeStatus PhysicsBakeAuthorPage(
+        OpenUsdNativeStage stage,
+        string layerIdentifier,
+        ReadOnlySpan<byte> page,
+        Span<byte> results,
+        out nuint required,
+        out string? message)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(layerIdentifier);
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        fixed (byte* pagePointer = page)
+        fixed (byte* resultPointer = results)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StagePhysicsBakeAuthorPage(
+                lease.Handle,
+                layerIdentifier,
+                pagePointer,
+                (nuint)page.Length,
+                resultPointer,
+                (nuint)results.Length,
+                out required,
+                ref error);
+            message = null;
+            if (status != OpenUsdNativeStatus.Ok)
+            {
+                int terminator = errorBytes.IndexOf((byte)0);
+                int length = terminator >= 0 ? terminator : errorBytes.Length;
+                if (length > 0)
+                {
+                    message = Encoding.UTF8.GetString(errorBytes[..length]);
+                }
+            }
+
+            return status;
+        }
+    }
+
     private static void InvokeStageAction(nint stage, NativeHandleAction action)
     {
         Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];

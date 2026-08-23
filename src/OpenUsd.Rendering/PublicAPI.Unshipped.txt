@@ -9,7 +9,6 @@ OpenUsd.Rendering.CameraState.CameraState(System.Numerics.Matrix4x4 view, System
 OpenUsd.Rendering.CameraState.ClipPlanes.get -> System.Collections.Generic.IReadOnlyList<System.Numerics.Vector4>!
 OpenUsd.Rendering.CameraState.Deconstruct(out System.Numerics.Matrix4x4 view, out System.Numerics.Matrix4x4 projection) -> void
 OpenUsd.Rendering.CameraState.Equals(OpenUsd.Rendering.CameraState other) -> bool
-const OpenUsd.Rendering.CameraState.MaxClipPlanes = 8 -> int
 OpenUsd.Rendering.CameraState.Mode.get -> OpenUsd.Rendering.CameraMode
 OpenUsd.Rendering.CameraState.Projection.get -> System.Numerics.Matrix4x4
 OpenUsd.Rendering.CameraState.View.get -> System.Numerics.Matrix4x4
@@ -120,6 +119,245 @@ OpenUsd.Rendering.ManagedRenderFrameResult.Equals(OpenUsd.Rendering.ManagedRende
 OpenUsd.Rendering.ManagedRenderFrameResult.Failure.get -> OpenUsd.Rendering.RenderBackendManagerFailureKind
 OpenUsd.Rendering.ManagedRenderFrameResult.Frame.get -> OpenUsd.Rendering.RenderFrameResult?
 OpenUsd.Rendering.ManagedRenderFrameResult.IsSuccess.get -> bool
+OpenUsd.Rendering.PhysicsRenderBinding
+OpenUsd.Rendering.PhysicsRenderBinding.Deconstruct(out string! PrimPath, out int InstanceIndex) -> void
+OpenUsd.Rendering.PhysicsRenderBinding.Equals(OpenUsd.Rendering.PhysicsRenderBinding other) -> bool
+OpenUsd.Rendering.PhysicsRenderBinding.InstanceIndex.get -> int
+OpenUsd.Rendering.PhysicsRenderBinding.InstanceIndex.init -> void
+OpenUsd.Rendering.PhysicsRenderBinding.PhysicsRenderBinding() -> void
+OpenUsd.Rendering.PhysicsRenderBinding.PhysicsRenderBinding(string! PrimPath, int InstanceIndex) -> void
+OpenUsd.Rendering.PhysicsRenderBinding.PrimPath.get -> string!
+OpenUsd.Rendering.PhysicsRenderBinding.PrimPath.init -> void
+OpenUsd.Rendering.PhysicsRenderBindingTable
+OpenUsd.Rendering.PhysicsRenderBindingTable.Capacity.get -> int
+OpenUsd.Rendering.PhysicsRenderBindingTable.Clear() -> void
+OpenUsd.Rendering.PhysicsRenderBindingTable.Count.get -> int
+OpenUsd.Rendering.PhysicsRenderBindingTable.PhysicsRenderBindingTable(int capacity) -> void
+OpenUsd.Rendering.PhysicsRenderBindingTable.RefusedBindings.get -> long
+OpenUsd.Rendering.PhysicsRenderBindingTable.Revision.get -> ulong
+OpenUsd.Rendering.PhysicsRenderBindingTable.TryBind(OpenUsd.Rendering.PhysicsRenderObjectId id, string! primPath, int instanceIndex = 0) -> bool
+OpenUsd.Rendering.PhysicsRenderBindingTable.TryResolve(OpenUsd.Rendering.PhysicsRenderObjectId id, out OpenUsd.Rendering.PhysicsRenderBinding binding) -> bool
+OpenUsd.Rendering.PhysicsRenderBindingTable.Unbind(OpenUsd.Rendering.PhysicsRenderObjectId id) -> bool
+OpenUsd.Rendering.PhysicsRenderBodyState
+OpenUsd.Rendering.PhysicsRenderBodyState.Deconstruct(out OpenUsd.Rendering.PhysicsRenderObjectId Id, out OpenUsd.UsdVec3d Position, out OpenUsd.Rendering.PhysicsRenderOrientation Orientation, out bool IsSleeping, out bool IsKinematic) -> void
+OpenUsd.Rendering.PhysicsRenderBodyState.Equals(OpenUsd.Rendering.PhysicsRenderBodyState other) -> bool
+OpenUsd.Rendering.PhysicsRenderBodyState.Id.get -> OpenUsd.Rendering.PhysicsRenderObjectId
+OpenUsd.Rendering.PhysicsRenderBodyState.Id.init -> void
+OpenUsd.Rendering.PhysicsRenderBodyState.IsKinematic.get -> bool
+OpenUsd.Rendering.PhysicsRenderBodyState.IsKinematic.init -> void
+OpenUsd.Rendering.PhysicsRenderBodyState.IsSleeping.get -> bool
+OpenUsd.Rendering.PhysicsRenderBodyState.IsSleeping.init -> void
+OpenUsd.Rendering.PhysicsRenderBodyState.Orientation.get -> OpenUsd.Rendering.PhysicsRenderOrientation
+OpenUsd.Rendering.PhysicsRenderBodyState.Orientation.init -> void
+OpenUsd.Rendering.PhysicsRenderBodyState.PhysicsRenderBodyState() -> void
+OpenUsd.Rendering.PhysicsRenderBodyState.PhysicsRenderBodyState(OpenUsd.Rendering.PhysicsRenderObjectId Id, OpenUsd.UsdVec3d Position, OpenUsd.Rendering.PhysicsRenderOrientation Orientation, bool IsSleeping, bool IsKinematic) -> void
+OpenUsd.Rendering.PhysicsRenderBodyState.Position.get -> OpenUsd.UsdVec3d
+OpenUsd.Rendering.PhysicsRenderBodyState.Position.init -> void
+OpenUsd.Rendering.PhysicsRenderCapacities
+OpenUsd.Rendering.PhysicsRenderCapacities.BodyCapacity.get -> int
+OpenUsd.Rendering.PhysicsRenderCapacities.Contains(OpenUsd.Rendering.PhysicsRenderCapacities other) -> bool
+OpenUsd.Rendering.PhysicsRenderCapacities.DeformableCapacity.get -> int
+OpenUsd.Rendering.PhysicsRenderCapacities.DeformableVertexCapacity.get -> int
+OpenUsd.Rendering.PhysicsRenderCapacities.Equals(OpenUsd.Rendering.PhysicsRenderCapacities other) -> bool
+OpenUsd.Rendering.PhysicsRenderCapacities.PhysicsRenderCapacities() -> void
+OpenUsd.Rendering.PhysicsRenderCapacities.PhysicsRenderCapacities(int bodyCapacity, int deformableCapacity = 0, int deformableVertexCapacity = 0) -> void
+OpenUsd.Rendering.PhysicsRenderChannel
+OpenUsd.Rendering.PhysicsRenderChannel.Abandon(OpenUsd.Rendering.PhysicsRenderSnapshot! snapshot) -> void
+OpenUsd.Rendering.PhysicsRenderChannel.BufferCount.get -> int
+OpenUsd.Rendering.PhysicsRenderChannel.Capacities.get -> OpenUsd.Rendering.PhysicsRenderCapacities
+OpenUsd.Rendering.PhysicsRenderChannel.DroppedPublications.get -> long
+OpenUsd.Rendering.PhysicsRenderChannel.HasSnapshot.get -> bool
+OpenUsd.Rendering.PhysicsRenderChannel.Invalidate() -> void
+OpenUsd.Rendering.PhysicsRenderChannel.PhysicsRenderChannel(OpenUsd.Rendering.PhysicsRenderCapacities capacities, int bufferCount = 3) -> void
+OpenUsd.Rendering.PhysicsRenderChannel.Publish(OpenUsd.Rendering.PhysicsRenderSnapshot! snapshot) -> ulong
+OpenUsd.Rendering.PhysicsRenderChannel.RefusedWrites.get -> long
+OpenUsd.Rendering.PhysicsRenderChannel.Revision.get -> ulong
+OpenUsd.Rendering.PhysicsRenderChannel.TruncatedReads.get -> long
+OpenUsd.Rendering.PhysicsRenderChannel.TryBeginWrite() -> OpenUsd.Rendering.PhysicsRenderSnapshot?
+OpenUsd.Rendering.PhysicsRenderChannel.TryCopyLatest(OpenUsd.Rendering.PhysicsRenderSnapshot! destination) -> bool
+OpenUsd.Rendering.PhysicsRenderDeformableRegion
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.Deconstruct(out OpenUsd.Rendering.PhysicsRenderObjectId Id, out OpenUsd.Rendering.PhysicsRenderDomain Domain, out int VertexOffset, out int VertexCount, out ulong TopologyRevision) -> void
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.Domain.get -> OpenUsd.Rendering.PhysicsRenderDomain
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.Domain.init -> void
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.Equals(OpenUsd.Rendering.PhysicsRenderDeformableRegion other) -> bool
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.Id.get -> OpenUsd.Rendering.PhysicsRenderObjectId
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.Id.init -> void
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.PhysicsRenderDeformableRegion() -> void
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.PhysicsRenderDeformableRegion(OpenUsd.Rendering.PhysicsRenderObjectId Id, OpenUsd.Rendering.PhysicsRenderDomain Domain, int VertexOffset, int VertexCount, ulong TopologyRevision) -> void
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.TopologyRevision.get -> ulong
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.TopologyRevision.init -> void
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.VertexCount.get -> int
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.VertexCount.init -> void
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.VertexOffset.get -> int
+OpenUsd.Rendering.PhysicsRenderDeformableRegion.VertexOffset.init -> void
+OpenUsd.Rendering.PhysicsRenderDeformationView
+OpenUsd.Rendering.PhysicsRenderDeformationView.Count.get -> int
+OpenUsd.Rendering.PhysicsRenderDeformationView.Equals(OpenUsd.Rendering.PhysicsRenderDeformationView other) -> bool
+OpenUsd.Rendering.PhysicsRenderDeformationView.GetVertices(OpenUsd.Rendering.PhysicsRenderDeformableRegion region) -> System.ReadOnlySpan<float>
+OpenUsd.Rendering.PhysicsRenderDeformationView.IsEmpty.get -> bool
+OpenUsd.Rendering.PhysicsRenderDeformationView.PhysicsRenderDeformationView() -> void
+OpenUsd.Rendering.PhysicsRenderDeformationView.PhysicsRenderDeformationView(System.ReadOnlyMemory<OpenUsd.Rendering.PhysicsRenderDeformableRegion> regions, System.ReadOnlyMemory<float> vertices, ulong revision) -> void
+OpenUsd.Rendering.PhysicsRenderDeformationView.Regions.get -> System.ReadOnlySpan<OpenUsd.Rendering.PhysicsRenderDeformableRegion>
+OpenUsd.Rendering.PhysicsRenderDeformationView.Revision.get -> ulong
+OpenUsd.Rendering.PhysicsRenderDeformationView.Vertices.get -> System.ReadOnlySpan<float>
+OpenUsd.Rendering.PhysicsRenderDiagnosticCodes
+OpenUsd.Rendering.PhysicsRenderDomain
+OpenUsd.Rendering.PhysicsRenderDomain.Articulation = 1 -> OpenUsd.Rendering.PhysicsRenderDomain
+OpenUsd.Rendering.PhysicsRenderDomain.Cloth = 5 -> OpenUsd.Rendering.PhysicsRenderDomain
+OpenUsd.Rendering.PhysicsRenderDomain.Controller = 2 -> OpenUsd.Rendering.PhysicsRenderDomain
+OpenUsd.Rendering.PhysicsRenderDomain.Deformable = 6 -> OpenUsd.Rendering.PhysicsRenderDomain
+OpenUsd.Rendering.PhysicsRenderDomain.Particles = 4 -> OpenUsd.Rendering.PhysicsRenderDomain
+OpenUsd.Rendering.PhysicsRenderDomain.RigidBody = 0 -> OpenUsd.Rendering.PhysicsRenderDomain
+OpenUsd.Rendering.PhysicsRenderDomain.Vehicle = 3 -> OpenUsd.Rendering.PhysicsRenderDomain
+OpenUsd.Rendering.PhysicsRenderDomainReport
+OpenUsd.Rendering.PhysicsRenderDomainReport.Capacity.get -> int
+OpenUsd.Rendering.PhysicsRenderDomainReport.Capacity.init -> void
+OpenUsd.Rendering.PhysicsRenderDomainReport.Count.get -> int
+OpenUsd.Rendering.PhysicsRenderDomainReport.Count.init -> void
+OpenUsd.Rendering.PhysicsRenderDomainReport.Deconstruct(out OpenUsd.Rendering.PhysicsRenderDomain Domain, out OpenUsd.Rendering.PhysicsRenderDomainStatus Status, out int Count, out int Capacity, out int DroppedCount) -> void
+OpenUsd.Rendering.PhysicsRenderDomainReport.Domain.get -> OpenUsd.Rendering.PhysicsRenderDomain
+OpenUsd.Rendering.PhysicsRenderDomainReport.Domain.init -> void
+OpenUsd.Rendering.PhysicsRenderDomainReport.DroppedCount.get -> int
+OpenUsd.Rendering.PhysicsRenderDomainReport.DroppedCount.init -> void
+OpenUsd.Rendering.PhysicsRenderDomainReport.Equals(OpenUsd.Rendering.PhysicsRenderDomainReport other) -> bool
+OpenUsd.Rendering.PhysicsRenderDomainReport.IsRenderable.get -> bool
+OpenUsd.Rendering.PhysicsRenderDomainReport.PhysicsRenderDomainReport() -> void
+OpenUsd.Rendering.PhysicsRenderDomainReport.PhysicsRenderDomainReport(OpenUsd.Rendering.PhysicsRenderDomain Domain, OpenUsd.Rendering.PhysicsRenderDomainStatus Status, int Count, int Capacity, int DroppedCount) -> void
+OpenUsd.Rendering.PhysicsRenderDomainReport.Status.get -> OpenUsd.Rendering.PhysicsRenderDomainStatus
+OpenUsd.Rendering.PhysicsRenderDomainReport.Status.init -> void
+OpenUsd.Rendering.PhysicsRenderDomainReport.ToDiagnostic() -> OpenUsd.Rendering.RenderDiagnostic?
+OpenUsd.Rendering.PhysicsRenderDomainStatus
+OpenUsd.Rendering.PhysicsRenderDomainStatus.Supported = 2 -> OpenUsd.Rendering.PhysicsRenderDomainStatus
+OpenUsd.Rendering.PhysicsRenderDomainStatus.Truncated = 3 -> OpenUsd.Rendering.PhysicsRenderDomainStatus
+OpenUsd.Rendering.PhysicsRenderDomainStatus.Unavailable = 0 -> OpenUsd.Rendering.PhysicsRenderDomainStatus
+OpenUsd.Rendering.PhysicsRenderDomainStatus.Unsupported = 1 -> OpenUsd.Rendering.PhysicsRenderDomainStatus
+OpenUsd.Rendering.PhysicsRenderInterpolator
+OpenUsd.Rendering.PhysicsRenderInterpolator.Capacities.get -> OpenUsd.Rendering.PhysicsRenderCapacities
+OpenUsd.Rendering.PhysicsRenderInterpolator.Deformations.get -> OpenUsd.Rendering.PhysicsRenderDeformationView
+OpenUsd.Rendering.PhysicsRenderInterpolator.Discontinuities.get -> long
+OpenUsd.Rendering.PhysicsRenderInterpolator.DroppedOverrides.get -> long
+OpenUsd.Rendering.PhysicsRenderInterpolator.GetDeformableVertices(OpenUsd.Rendering.PhysicsRenderDeformableRegion region) -> System.ReadOnlySpan<float>
+OpenUsd.Rendering.PhysicsRenderInterpolator.GetDeformables() -> System.ReadOnlySpan<OpenUsd.Rendering.PhysicsRenderDeformableRegion>
+OpenUsd.Rendering.PhysicsRenderInterpolator.GetDomain(OpenUsd.Rendering.PhysicsRenderDomain domain) -> OpenUsd.Rendering.PhysicsRenderDomainReport
+OpenUsd.Rendering.PhysicsRenderInterpolator.HasSnapshot.get -> bool
+OpenUsd.Rendering.PhysicsRenderInterpolator.IngestedSnapshots.get -> long
+OpenUsd.Rendering.PhysicsRenderInterpolator.InterpolatedEntities.get -> long
+OpenUsd.Rendering.PhysicsRenderInterpolator.LatestSimulationSeconds.get -> double
+OpenUsd.Rendering.PhysicsRenderInterpolator.LatestTimeCode.get -> double
+OpenUsd.Rendering.PhysicsRenderInterpolator.Overrides.get -> OpenUsd.Rendering.PhysicsRenderOverrideView
+OpenUsd.Rendering.PhysicsRenderInterpolator.PhysicsRenderInterpolator(OpenUsd.Rendering.PhysicsRenderCapacities capacities) -> void
+OpenUsd.Rendering.PhysicsRenderInterpolator.Reset() -> void
+OpenUsd.Rendering.PhysicsRenderInterpolator.SnappedEntities.get -> long
+OpenUsd.Rendering.PhysicsRenderInterpolator.TryIngest(OpenUsd.Rendering.PhysicsRenderChannel! channel) -> bool
+OpenUsd.Rendering.PhysicsRenderInterpolator.Update(double renderSeconds) -> OpenUsd.Rendering.PhysicsRenderUpdateResult
+OpenUsd.Rendering.PhysicsRenderObjectId
+OpenUsd.Rendering.PhysicsRenderObjectId.Equals(OpenUsd.Rendering.PhysicsRenderObjectId other) -> bool
+OpenUsd.Rendering.PhysicsRenderObjectId.InstanceIndex.get -> int
+OpenUsd.Rendering.PhysicsRenderObjectId.IsNone.get -> bool
+OpenUsd.Rendering.PhysicsRenderObjectId.Kind.get -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectId.PhysicsRenderObjectId() -> void
+OpenUsd.Rendering.PhysicsRenderObjectId.PhysicsRenderObjectId(ulong value, OpenUsd.Rendering.PhysicsRenderObjectKind kind = OpenUsd.Rendering.PhysicsRenderObjectKind.Unknown, int instanceIndex = 0) -> void
+OpenUsd.Rendering.PhysicsRenderObjectId.Value.get -> ulong
+OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.Articulation = 6 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.ArticulationLink = 7 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.Collider = 4 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.Controller = 8 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.Deformable = 11 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.Joint = 5 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.ParticleSystem = 10 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.RigidBody = 2 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.Scene = 1 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.StaticBody = 3 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.Unknown = 0 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderObjectKind.Vehicle = 9 -> OpenUsd.Rendering.PhysicsRenderObjectKind
+OpenUsd.Rendering.PhysicsRenderOrientation
+OpenUsd.Rendering.PhysicsRenderOrientation.Canonical() -> OpenUsd.Rendering.PhysicsRenderOrientation
+OpenUsd.Rendering.PhysicsRenderOrientation.Deconstruct(out double X, out double Y, out double Z, out double W) -> void
+OpenUsd.Rendering.PhysicsRenderOrientation.Dot(OpenUsd.Rendering.PhysicsRenderOrientation other) -> double
+OpenUsd.Rendering.PhysicsRenderOrientation.Equals(OpenUsd.Rendering.PhysicsRenderOrientation other) -> bool
+OpenUsd.Rendering.PhysicsRenderOrientation.IsFinite.get -> bool
+OpenUsd.Rendering.PhysicsRenderOrientation.Normalized() -> OpenUsd.Rendering.PhysicsRenderOrientation
+OpenUsd.Rendering.PhysicsRenderOrientation.PhysicsRenderOrientation() -> void
+OpenUsd.Rendering.PhysicsRenderOrientation.PhysicsRenderOrientation(double X, double Y, double Z, double W) -> void
+OpenUsd.Rendering.PhysicsRenderOrientation.W.get -> double
+OpenUsd.Rendering.PhysicsRenderOrientation.W.init -> void
+OpenUsd.Rendering.PhysicsRenderOrientation.X.get -> double
+OpenUsd.Rendering.PhysicsRenderOrientation.X.init -> void
+OpenUsd.Rendering.PhysicsRenderOrientation.Y.get -> double
+OpenUsd.Rendering.PhysicsRenderOrientation.Y.init -> void
+OpenUsd.Rendering.PhysicsRenderOrientation.Z.get -> double
+OpenUsd.Rendering.PhysicsRenderOrientation.Z.init -> void
+OpenUsd.Rendering.PhysicsRenderOverrideView
+OpenUsd.Rendering.PhysicsRenderOverrideView.Count.get -> int
+OpenUsd.Rendering.PhysicsRenderOverrideView.Equals(OpenUsd.Rendering.PhysicsRenderOverrideView other) -> bool
+OpenUsd.Rendering.PhysicsRenderOverrideView.IsEmpty.get -> bool
+OpenUsd.Rendering.PhysicsRenderOverrideView.Items.get -> System.ReadOnlySpan<OpenUsd.Rendering.PhysicsRenderTransformOverride>
+OpenUsd.Rendering.PhysicsRenderOverrideView.PhysicsRenderOverrideView() -> void
+OpenUsd.Rendering.PhysicsRenderOverrideView.PhysicsRenderOverrideView(System.ReadOnlyMemory<OpenUsd.Rendering.PhysicsRenderTransformOverride> items, ulong revision) -> void
+OpenUsd.Rendering.PhysicsRenderOverrideView.Revision.get -> ulong
+OpenUsd.Rendering.PhysicsRenderSnapshot
+OpenUsd.Rendering.PhysicsRenderSnapshot.BeginWrite(ulong stepIndex, ulong identityRevision, double simulationSeconds, double timeCode, double fixedStepSeconds) -> void
+OpenUsd.Rendering.PhysicsRenderSnapshot.Bodies.get -> System.ReadOnlySpan<OpenUsd.Rendering.PhysicsRenderBodyState>
+OpenUsd.Rendering.PhysicsRenderSnapshot.BodyCount.get -> int
+OpenUsd.Rendering.PhysicsRenderSnapshot.Capacities.get -> OpenUsd.Rendering.PhysicsRenderCapacities
+OpenUsd.Rendering.PhysicsRenderSnapshot.Clear() -> void
+OpenUsd.Rendering.PhysicsRenderSnapshot.CopyTo(OpenUsd.Rendering.PhysicsRenderSnapshot! destination) -> void
+OpenUsd.Rendering.PhysicsRenderSnapshot.DeformableCount.get -> int
+OpenUsd.Rendering.PhysicsRenderSnapshot.DeformableVertexCount.get -> int
+OpenUsd.Rendering.PhysicsRenderSnapshot.DeformableVertices.get -> System.ReadOnlySpan<float>
+OpenUsd.Rendering.PhysicsRenderSnapshot.Deformables.get -> System.ReadOnlySpan<OpenUsd.Rendering.PhysicsRenderDeformableRegion>
+OpenUsd.Rendering.PhysicsRenderSnapshot.EndWrite() -> void
+OpenUsd.Rendering.PhysicsRenderSnapshot.FixedStepSeconds.get -> double
+OpenUsd.Rendering.PhysicsRenderSnapshot.GetDeformableVertices(OpenUsd.Rendering.PhysicsRenderDeformableRegion region) -> System.ReadOnlySpan<float>
+OpenUsd.Rendering.PhysicsRenderSnapshot.GetDomain(OpenUsd.Rendering.PhysicsRenderDomain domain) -> OpenUsd.Rendering.PhysicsRenderDomainReport
+OpenUsd.Rendering.PhysicsRenderSnapshot.HasOverflow.get -> bool
+OpenUsd.Rendering.PhysicsRenderSnapshot.IdentityRevision.get -> ulong
+OpenUsd.Rendering.PhysicsRenderSnapshot.IsComplete.get -> bool
+OpenUsd.Rendering.PhysicsRenderSnapshot.PhysicsRenderSnapshot(OpenUsd.Rendering.PhysicsRenderCapacities capacities) -> void
+OpenUsd.Rendering.PhysicsRenderSnapshot.Revision.get -> ulong
+OpenUsd.Rendering.PhysicsRenderSnapshot.SetDomainStatus(OpenUsd.Rendering.PhysicsRenderDomain domain, OpenUsd.Rendering.PhysicsRenderDomainStatus status) -> void
+OpenUsd.Rendering.PhysicsRenderSnapshot.SimulationSeconds.get -> double
+OpenUsd.Rendering.PhysicsRenderSnapshot.StepIndex.get -> ulong
+OpenUsd.Rendering.PhysicsRenderSnapshot.TimeCode.get -> double
+OpenUsd.Rendering.PhysicsRenderSnapshot.TryAddBody(in OpenUsd.Rendering.PhysicsRenderBodyState body) -> bool
+OpenUsd.Rendering.PhysicsRenderSnapshot.TryAddDeformable(OpenUsd.Rendering.PhysicsRenderObjectId id, OpenUsd.Rendering.PhysicsRenderDomain domain, System.ReadOnlySpan<float> vertices, ulong topologyRevision) -> bool
+OpenUsd.Rendering.PhysicsRenderTransformOverride
+OpenUsd.Rendering.PhysicsRenderTransformOverride.Deconstruct(out OpenUsd.Rendering.PhysicsRenderObjectId Id, out OpenUsd.UsdVec3d Position, out OpenUsd.Rendering.PhysicsRenderOrientation Orientation, out bool Snapped) -> void
+OpenUsd.Rendering.PhysicsRenderTransformOverride.Equals(OpenUsd.Rendering.PhysicsRenderTransformOverride other) -> bool
+OpenUsd.Rendering.PhysicsRenderTransformOverride.Id.get -> OpenUsd.Rendering.PhysicsRenderObjectId
+OpenUsd.Rendering.PhysicsRenderTransformOverride.Id.init -> void
+OpenUsd.Rendering.PhysicsRenderTransformOverride.Orientation.get -> OpenUsd.Rendering.PhysicsRenderOrientation
+OpenUsd.Rendering.PhysicsRenderTransformOverride.Orientation.init -> void
+OpenUsd.Rendering.PhysicsRenderTransformOverride.PhysicsRenderTransformOverride() -> void
+OpenUsd.Rendering.PhysicsRenderTransformOverride.PhysicsRenderTransformOverride(OpenUsd.Rendering.PhysicsRenderObjectId Id, OpenUsd.UsdVec3d Position, OpenUsd.Rendering.PhysicsRenderOrientation Orientation, bool Snapped) -> void
+OpenUsd.Rendering.PhysicsRenderTransformOverride.Position.get -> OpenUsd.UsdVec3d
+OpenUsd.Rendering.PhysicsRenderTransformOverride.Position.init -> void
+OpenUsd.Rendering.PhysicsRenderTransformOverride.Snapped.get -> bool
+OpenUsd.Rendering.PhysicsRenderTransformOverride.Snapped.init -> void
+OpenUsd.Rendering.PhysicsRenderTransforms
+OpenUsd.Rendering.PhysicsRenderUpdateResult
+OpenUsd.Rendering.PhysicsRenderUpdateResult.Alpha.get -> double
+OpenUsd.Rendering.PhysicsRenderUpdateResult.Alpha.init -> void
+OpenUsd.Rendering.PhysicsRenderUpdateResult.Count.get -> int
+OpenUsd.Rendering.PhysicsRenderUpdateResult.Deconstruct(out OpenUsd.Rendering.PhysicsRenderUpdateStatus Status, out double Alpha, out int InterpolatedCount, out int SnappedCount, out int DroppedCount, out ulong Revision) -> void
+OpenUsd.Rendering.PhysicsRenderUpdateResult.DroppedCount.get -> int
+OpenUsd.Rendering.PhysicsRenderUpdateResult.DroppedCount.init -> void
+OpenUsd.Rendering.PhysicsRenderUpdateResult.Equals(OpenUsd.Rendering.PhysicsRenderUpdateResult other) -> bool
+OpenUsd.Rendering.PhysicsRenderUpdateResult.InterpolatedCount.get -> int
+OpenUsd.Rendering.PhysicsRenderUpdateResult.InterpolatedCount.init -> void
+OpenUsd.Rendering.PhysicsRenderUpdateResult.PhysicsRenderUpdateResult() -> void
+OpenUsd.Rendering.PhysicsRenderUpdateResult.PhysicsRenderUpdateResult(OpenUsd.Rendering.PhysicsRenderUpdateStatus Status, double Alpha, int InterpolatedCount, int SnappedCount, int DroppedCount, ulong Revision) -> void
+OpenUsd.Rendering.PhysicsRenderUpdateResult.Revision.get -> ulong
+OpenUsd.Rendering.PhysicsRenderUpdateResult.Revision.init -> void
+OpenUsd.Rendering.PhysicsRenderUpdateResult.SnappedCount.get -> int
+OpenUsd.Rendering.PhysicsRenderUpdateResult.SnappedCount.init -> void
+OpenUsd.Rendering.PhysicsRenderUpdateResult.Status.get -> OpenUsd.Rendering.PhysicsRenderUpdateStatus
+OpenUsd.Rendering.PhysicsRenderUpdateResult.Status.init -> void
+OpenUsd.Rendering.PhysicsRenderUpdateStatus
+OpenUsd.Rendering.PhysicsRenderUpdateStatus.Empty = 0 -> OpenUsd.Rendering.PhysicsRenderUpdateStatus
+OpenUsd.Rendering.PhysicsRenderUpdateStatus.Interpolated = 2 -> OpenUsd.Rendering.PhysicsRenderUpdateStatus
+OpenUsd.Rendering.PhysicsRenderUpdateStatus.Snapped = 1 -> OpenUsd.Rendering.PhysicsRenderUpdateStatus
 OpenUsd.Rendering.RenderBackendCapabilities
 OpenUsd.Rendering.RenderBackendCapabilities.Equals(OpenUsd.Rendering.RenderBackendCapabilities other) -> bool
 OpenUsd.Rendering.RenderBackendCapabilities.Features.get -> OpenUsd.Rendering.RenderBackendCapability
@@ -134,6 +372,7 @@ OpenUsd.Rendering.RenderBackendCapability.DeviceLossDetection = 32 -> OpenUsd.Re
 OpenUsd.Rendering.RenderBackendCapability.Multisampling = 8 -> OpenUsd.Rendering.RenderBackendCapability
 OpenUsd.Rendering.RenderBackendCapability.None = 0 -> OpenUsd.Rendering.RenderBackendCapability
 OpenUsd.Rendering.RenderBackendCapability.Offscreen = 2 -> OpenUsd.Rendering.RenderBackendCapability
+OpenUsd.Rendering.RenderBackendCapability.PhysicsTransformOverrides = 128 -> OpenUsd.Rendering.RenderBackendCapability
 OpenUsd.Rendering.RenderBackendCapability.Picking = 64 -> OpenUsd.Rendering.RenderBackendCapability
 OpenUsd.Rendering.RenderBackendCapability.Presentation = 1 -> OpenUsd.Rendering.RenderBackendCapability
 OpenUsd.Rendering.RenderBackendCapability.Shadows = 16 -> OpenUsd.Rendering.RenderBackendCapability
@@ -257,6 +496,11 @@ OpenUsd.Rendering.RenderBackendSelectionResult.Equals(OpenUsd.Rendering.RenderBa
 OpenUsd.Rendering.RenderBackendSelectionResult.Failure.get -> OpenUsd.Rendering.RenderBackendSelectionFailureKind
 OpenUsd.Rendering.RenderBackendSelectionResult.IsSuccess.get -> bool
 OpenUsd.Rendering.RenderBackendSelectionResult.Mode.get -> OpenUsd.Rendering.RenderBackendSelectionMode
+OpenUsd.Rendering.RenderComplexity
+OpenUsd.Rendering.RenderComplexity.High = 2 -> OpenUsd.Rendering.RenderComplexity
+OpenUsd.Rendering.RenderComplexity.Low = 0 -> OpenUsd.Rendering.RenderComplexity
+OpenUsd.Rendering.RenderComplexity.Medium = 1 -> OpenUsd.Rendering.RenderComplexity
+OpenUsd.Rendering.RenderComplexity.VeryHigh = 3 -> OpenUsd.Rendering.RenderComplexity
 OpenUsd.Rendering.RenderDeviceLossKind
 OpenUsd.Rendering.RenderDeviceLossKind.DriverFailure = 4 -> OpenUsd.Rendering.RenderDeviceLossKind
 OpenUsd.Rendering.RenderDeviceLossKind.Hung = 3 -> OpenUsd.Rendering.RenderDeviceLossKind
@@ -290,24 +534,6 @@ OpenUsd.Rendering.RenderDrawMode.Points = 3 -> OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderDrawMode.SmoothShaded = 0 -> OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderDrawMode.Wireframe = 2 -> OpenUsd.Rendering.RenderDrawMode
 OpenUsd.Rendering.RenderDrawMode.WireframeOnSurface = 5 -> OpenUsd.Rendering.RenderDrawMode
-OpenUsd.Rendering.RenderHeadlight
-OpenUsd.Rendering.RenderHeadlight.Ambient.get -> float
-OpenUsd.Rendering.RenderHeadlight.Ambient.init -> void
-OpenUsd.Rendering.RenderHeadlight.Color.get -> System.Numerics.Vector3
-OpenUsd.Rendering.RenderHeadlight.Color.init -> void
-OpenUsd.Rendering.RenderHeadlight.Deconstruct(out System.Numerics.Vector3 Direction, out float Intensity, out System.Numerics.Vector3 Color, out float Ambient) -> void
-OpenUsd.Rendering.RenderHeadlight.Direction.get -> System.Numerics.Vector3
-OpenUsd.Rendering.RenderHeadlight.Direction.init -> void
-OpenUsd.Rendering.RenderHeadlight.Equals(OpenUsd.Rendering.RenderHeadlight other) -> bool
-OpenUsd.Rendering.RenderHeadlight.Intensity.get -> float
-OpenUsd.Rendering.RenderHeadlight.Intensity.init -> void
-OpenUsd.Rendering.RenderHeadlight.RenderHeadlight() -> void
-OpenUsd.Rendering.RenderHeadlight.RenderHeadlight(System.Numerics.Vector3 Direction, float Intensity, System.Numerics.Vector3 Color, float Ambient) -> void
-override OpenUsd.Rendering.RenderHeadlight.GetHashCode() -> int
-static OpenUsd.Rendering.RenderHeadlight.operator !=(OpenUsd.Rendering.RenderHeadlight left, OpenUsd.Rendering.RenderHeadlight right) -> bool
-static OpenUsd.Rendering.RenderHeadlight.operator ==(OpenUsd.Rendering.RenderHeadlight left, OpenUsd.Rendering.RenderHeadlight right) -> bool
-~override OpenUsd.Rendering.RenderHeadlight.Equals(object obj) -> bool
-~override OpenUsd.Rendering.RenderHeadlight.ToString() -> string
 OpenUsd.Rendering.RenderFrameResult
 OpenUsd.Rendering.RenderFrameResult.<Clone>$() -> OpenUsd.Rendering.RenderFrameResult!
 OpenUsd.Rendering.RenderFrameResult.DeviceLoss.get -> OpenUsd.Rendering.RenderDeviceLossKind
@@ -329,6 +555,19 @@ OpenUsd.Rendering.RenderFrameStatus.DeviceLost = 2 -> OpenUsd.Rendering.RenderFr
 OpenUsd.Rendering.RenderFrameStatus.Failed = 3 -> OpenUsd.Rendering.RenderFrameStatus
 OpenUsd.Rendering.RenderFrameStatus.Rendered = 0 -> OpenUsd.Rendering.RenderFrameStatus
 OpenUsd.Rendering.RenderFrameStatus.Skipped = 1 -> OpenUsd.Rendering.RenderFrameStatus
+OpenUsd.Rendering.RenderHeadlight
+OpenUsd.Rendering.RenderHeadlight.Ambient.get -> float
+OpenUsd.Rendering.RenderHeadlight.Ambient.init -> void
+OpenUsd.Rendering.RenderHeadlight.Color.get -> System.Numerics.Vector3
+OpenUsd.Rendering.RenderHeadlight.Color.init -> void
+OpenUsd.Rendering.RenderHeadlight.Deconstruct(out System.Numerics.Vector3 Direction, out float Intensity, out System.Numerics.Vector3 Color, out float Ambient) -> void
+OpenUsd.Rendering.RenderHeadlight.Direction.get -> System.Numerics.Vector3
+OpenUsd.Rendering.RenderHeadlight.Direction.init -> void
+OpenUsd.Rendering.RenderHeadlight.Equals(OpenUsd.Rendering.RenderHeadlight other) -> bool
+OpenUsd.Rendering.RenderHeadlight.Intensity.get -> float
+OpenUsd.Rendering.RenderHeadlight.Intensity.init -> void
+OpenUsd.Rendering.RenderHeadlight.RenderHeadlight() -> void
+OpenUsd.Rendering.RenderHeadlight.RenderHeadlight(System.Numerics.Vector3 Direction, float Intensity, System.Numerics.Vector3 Color, float Ambient) -> void
 OpenUsd.Rendering.RenderPickOptions
 OpenUsd.Rendering.RenderPickOptions.CullBackFaces = 1 -> OpenUsd.Rendering.RenderPickOptions
 OpenUsd.Rendering.RenderPickOptions.None = 0 -> OpenUsd.Rendering.RenderPickOptions
@@ -339,8 +578,8 @@ OpenUsd.Rendering.RenderPickRequest.Height.get -> int
 OpenUsd.Rendering.RenderPickRequest.InferStaleReasons(ulong stateRevision, ulong? sceneRevision) -> OpenUsd.Rendering.RenderPickStaleReason
 OpenUsd.Rendering.RenderPickRequest.IsStale(ulong stateRevision, ulong? sceneRevision) -> bool
 OpenUsd.Rendering.RenderPickRequest.RenderPickRequest() -> void
-OpenUsd.Rendering.RenderPickRequest.RenderPickRequest(int x, int y, int width, int height, OpenUsd.Rendering.ViewportDimensions viewport, ulong requestedStateRevision, ulong? requestedSceneRevision = null, OpenUsd.Rendering.RenderPickTarget target = OpenUsd.Rendering.RenderPickTarget.Primitive, OpenUsd.Rendering.RenderPickOptions flags = OpenUsd.Rendering.RenderPickOptions.None) -> void
 OpenUsd.Rendering.RenderPickRequest.RenderPickRequest(int x, int y, OpenUsd.Rendering.ViewportDimensions viewport, ulong requestedStateRevision, ulong? requestedSceneRevision = null, OpenUsd.Rendering.RenderPickTarget target = OpenUsd.Rendering.RenderPickTarget.Primitive, OpenUsd.Rendering.RenderPickOptions flags = OpenUsd.Rendering.RenderPickOptions.None) -> void
+OpenUsd.Rendering.RenderPickRequest.RenderPickRequest(int x, int y, int width, int height, OpenUsd.Rendering.ViewportDimensions viewport, ulong requestedStateRevision, ulong? requestedSceneRevision = null, OpenUsd.Rendering.RenderPickTarget target = OpenUsd.Rendering.RenderPickTarget.Primitive, OpenUsd.Rendering.RenderPickOptions flags = OpenUsd.Rendering.RenderPickOptions.None) -> void
 OpenUsd.Rendering.RenderPickRequest.RequestedSceneRevision.get -> ulong?
 OpenUsd.Rendering.RenderPickRequest.RequestedStateRevision.get -> ulong
 OpenUsd.Rendering.RenderPickRequest.Target.get -> OpenUsd.Rendering.RenderPickTarget
@@ -398,11 +637,6 @@ OpenUsd.Rendering.RenderPurpose.Guide = 8 -> OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderPurpose.None = 0 -> OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderPurpose.Proxy = 2 -> OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderPurpose.Render = 4 -> OpenUsd.Rendering.RenderPurpose
-OpenUsd.Rendering.RenderComplexity
-OpenUsd.Rendering.RenderComplexity.High = 2 -> OpenUsd.Rendering.RenderComplexity
-OpenUsd.Rendering.RenderComplexity.Low = 0 -> OpenUsd.Rendering.RenderComplexity
-OpenUsd.Rendering.RenderComplexity.Medium = 1 -> OpenUsd.Rendering.RenderComplexity
-OpenUsd.Rendering.RenderComplexity.VeryHigh = 3 -> OpenUsd.Rendering.RenderComplexity
 OpenUsd.Rendering.RenderSettings
 OpenUsd.Rendering.RenderSettings.BackfaceCulling.get -> bool
 OpenUsd.Rendering.RenderSettings.ClearColor.get -> System.Numerics.Vector4
@@ -481,6 +715,17 @@ OpenUsd.Rendering.ViewportDimensions.Height.get -> int
 OpenUsd.Rendering.ViewportDimensions.ViewportDimensions() -> void
 OpenUsd.Rendering.ViewportDimensions.ViewportDimensions(int width, int height) -> void
 OpenUsd.Rendering.ViewportDimensions.Width.get -> int
+const OpenUsd.Rendering.CameraState.MaxClipPlanes = 8 -> int
+const OpenUsd.Rendering.PhysicsRenderChannel.MinimumBufferCount = 3 -> int
+const OpenUsd.Rendering.PhysicsRenderDiagnosticCodes.DiscontinuitySnapped = "physics.render.discontinuity.snapped" -> string!
+const OpenUsd.Rendering.PhysicsRenderDiagnosticCodes.DomainTruncated = "physics.render.domain.truncated" -> string!
+const OpenUsd.Rendering.PhysicsRenderDiagnosticCodes.DomainUnavailable = "physics.render.domain.unavailable" -> string!
+const OpenUsd.Rendering.PhysicsRenderDiagnosticCodes.DomainUnsupported = "physics.render.domain.unsupported" -> string!
+const OpenUsd.Rendering.PhysicsRenderDiagnosticCodes.OverrideCapacityExceeded = "physics.render.override.capacity" -> string!
+const OpenUsd.Rendering.PhysicsRenderDiagnosticCodes.OverrideUnresolved = "physics.render.override.unresolved" -> string!
+const OpenUsd.Rendering.PhysicsRenderDiagnosticCodes.PublicationDropped = "physics.render.publication.dropped" -> string!
+const OpenUsd.Rendering.PhysicsRenderDiagnosticCodes.SnapshotTruncated = "physics.render.snapshot.truncated" -> string!
+const OpenUsd.Rendering.PhysicsRenderTransforms.ElementCount = 16 -> int
 override OpenUsd.Rendering.CameraState.GetHashCode() -> int
 override OpenUsd.Rendering.CompositionExternalImage.GetHashCode() -> int
 override OpenUsd.Rendering.CompositionExternalSemaphore.GetHashCode() -> int
@@ -489,6 +734,18 @@ override OpenUsd.Rendering.CompositionPresenterProbeResult.GetHashCode() -> int
 override OpenUsd.Rendering.ManagedRenderFrameResult.Equals(object? obj) -> bool
 override OpenUsd.Rendering.ManagedRenderFrameResult.GetHashCode() -> int
 override OpenUsd.Rendering.ManagedRenderFrameResult.ToString() -> string!
+override OpenUsd.Rendering.PhysicsRenderBinding.GetHashCode() -> int
+override OpenUsd.Rendering.PhysicsRenderBodyState.GetHashCode() -> int
+override OpenUsd.Rendering.PhysicsRenderCapacities.GetHashCode() -> int
+override OpenUsd.Rendering.PhysicsRenderDeformableRegion.GetHashCode() -> int
+override OpenUsd.Rendering.PhysicsRenderDeformationView.GetHashCode() -> int
+override OpenUsd.Rendering.PhysicsRenderDomainReport.GetHashCode() -> int
+override OpenUsd.Rendering.PhysicsRenderObjectId.GetHashCode() -> int
+override OpenUsd.Rendering.PhysicsRenderObjectId.ToString() -> string!
+override OpenUsd.Rendering.PhysicsRenderOrientation.GetHashCode() -> int
+override OpenUsd.Rendering.PhysicsRenderOverrideView.GetHashCode() -> int
+override OpenUsd.Rendering.PhysicsRenderTransformOverride.GetHashCode() -> int
+override OpenUsd.Rendering.PhysicsRenderUpdateResult.GetHashCode() -> int
 override OpenUsd.Rendering.RenderBackendCapabilities.GetHashCode() -> int
 override OpenUsd.Rendering.RenderBackendDiagnostic.Equals(object? obj) -> bool
 override OpenUsd.Rendering.RenderBackendDiagnostic.GetHashCode() -> int
@@ -519,6 +776,7 @@ override OpenUsd.Rendering.RenderFrameResult.Equals(object? obj) -> bool
 override OpenUsd.Rendering.RenderFrameResult.GetHashCode() -> int
 override OpenUsd.Rendering.RenderFrameResult.ToString() -> string!
 override OpenUsd.Rendering.RenderFrameStatistics.GetHashCode() -> int
+override OpenUsd.Rendering.RenderHeadlight.GetHashCode() -> int
 override OpenUsd.Rendering.RenderPickRequest.GetHashCode() -> int
 override OpenUsd.Rendering.RenderPickResult.GetHashCode() -> int
 override OpenUsd.Rendering.RenderSettings.GetHashCode() -> int
@@ -536,11 +794,11 @@ override OpenUsd.Rendering.StageTime.GetHashCode() -> int
 override OpenUsd.Rendering.ViewportDimensions.GetHashCode() -> int
 static OpenUsd.Rendering.CameraState.Default.get -> OpenUsd.Rendering.CameraState
 static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath) -> OpenUsd.Rendering.CameraState
-static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, double timeCode) -> OpenUsd.Rendering.CameraState
-static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, double timeCode, int width, int height) -> OpenUsd.Rendering.CameraState
-static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, double timeCode, OpenUsd.Rendering.ViewportDimensions viewport) -> OpenUsd.Rendering.CameraState
-static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, int width, int height) -> OpenUsd.Rendering.CameraState
 static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, OpenUsd.Rendering.ViewportDimensions viewport) -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, double timeCode) -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, double timeCode, OpenUsd.Rendering.ViewportDimensions viewport) -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, double timeCode, int width, int height) -> OpenUsd.Rendering.CameraState
+static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, int width, int height) -> OpenUsd.Rendering.CameraState
 static OpenUsd.Rendering.CameraState.operator !=(OpenUsd.Rendering.CameraState left, OpenUsd.Rendering.CameraState right) -> bool
 static OpenUsd.Rendering.CameraState.operator ==(OpenUsd.Rendering.CameraState left, OpenUsd.Rendering.CameraState right) -> bool
 static OpenUsd.Rendering.CompositionExternalImage.operator !=(OpenUsd.Rendering.CompositionExternalImage left, OpenUsd.Rendering.CompositionExternalImage right) -> bool
@@ -554,11 +812,41 @@ static OpenUsd.Rendering.CompositionFrameSynchronization.KeyedMutex(uint acquire
 static OpenUsd.Rendering.CompositionFrameSynchronization.Semaphores(long waitSemaphoreId, long signalSemaphoreId) -> OpenUsd.Rendering.CompositionFrameSynchronization!
 static OpenUsd.Rendering.CompositionFrameSynchronization.TimelineSemaphores(long waitSemaphoreId, ulong waitValue, long signalSemaphoreId, ulong signalValue) -> OpenUsd.Rendering.CompositionFrameSynchronization!
 static OpenUsd.Rendering.CompositionPresenterProbeResult.Available(string! status = "GPU composition available") -> OpenUsd.Rendering.CompositionPresenterProbeResult
+static OpenUsd.Rendering.CompositionPresenterProbeResult.Unavailable(string! status) -> OpenUsd.Rendering.CompositionPresenterProbeResult
 static OpenUsd.Rendering.CompositionPresenterProbeResult.operator !=(OpenUsd.Rendering.CompositionPresenterProbeResult left, OpenUsd.Rendering.CompositionPresenterProbeResult right) -> bool
 static OpenUsd.Rendering.CompositionPresenterProbeResult.operator ==(OpenUsd.Rendering.CompositionPresenterProbeResult left, OpenUsd.Rendering.CompositionPresenterProbeResult right) -> bool
-static OpenUsd.Rendering.CompositionPresenterProbeResult.Unavailable(string! status) -> OpenUsd.Rendering.CompositionPresenterProbeResult
 static OpenUsd.Rendering.ManagedRenderFrameResult.operator !=(OpenUsd.Rendering.ManagedRenderFrameResult? left, OpenUsd.Rendering.ManagedRenderFrameResult? right) -> bool
 static OpenUsd.Rendering.ManagedRenderFrameResult.operator ==(OpenUsd.Rendering.ManagedRenderFrameResult? left, OpenUsd.Rendering.ManagedRenderFrameResult? right) -> bool
+static OpenUsd.Rendering.PhysicsRenderBinding.operator !=(OpenUsd.Rendering.PhysicsRenderBinding left, OpenUsd.Rendering.PhysicsRenderBinding right) -> bool
+static OpenUsd.Rendering.PhysicsRenderBinding.operator ==(OpenUsd.Rendering.PhysicsRenderBinding left, OpenUsd.Rendering.PhysicsRenderBinding right) -> bool
+static OpenUsd.Rendering.PhysicsRenderBodyState.operator !=(OpenUsd.Rendering.PhysicsRenderBodyState left, OpenUsd.Rendering.PhysicsRenderBodyState right) -> bool
+static OpenUsd.Rendering.PhysicsRenderBodyState.operator ==(OpenUsd.Rendering.PhysicsRenderBodyState left, OpenUsd.Rendering.PhysicsRenderBodyState right) -> bool
+static OpenUsd.Rendering.PhysicsRenderCapacities.operator !=(OpenUsd.Rendering.PhysicsRenderCapacities left, OpenUsd.Rendering.PhysicsRenderCapacities right) -> bool
+static OpenUsd.Rendering.PhysicsRenderCapacities.operator ==(OpenUsd.Rendering.PhysicsRenderCapacities left, OpenUsd.Rendering.PhysicsRenderCapacities right) -> bool
+static OpenUsd.Rendering.PhysicsRenderDeformableRegion.operator !=(OpenUsd.Rendering.PhysicsRenderDeformableRegion left, OpenUsd.Rendering.PhysicsRenderDeformableRegion right) -> bool
+static OpenUsd.Rendering.PhysicsRenderDeformableRegion.operator ==(OpenUsd.Rendering.PhysicsRenderDeformableRegion left, OpenUsd.Rendering.PhysicsRenderDeformableRegion right) -> bool
+static OpenUsd.Rendering.PhysicsRenderDeformationView.Empty.get -> OpenUsd.Rendering.PhysicsRenderDeformationView
+static OpenUsd.Rendering.PhysicsRenderDeformationView.operator !=(OpenUsd.Rendering.PhysicsRenderDeformationView left, OpenUsd.Rendering.PhysicsRenderDeformationView right) -> bool
+static OpenUsd.Rendering.PhysicsRenderDeformationView.operator ==(OpenUsd.Rendering.PhysicsRenderDeformationView left, OpenUsd.Rendering.PhysicsRenderDeformationView right) -> bool
+static OpenUsd.Rendering.PhysicsRenderDomainReport.Unsupported(OpenUsd.Rendering.PhysicsRenderDomain domain) -> OpenUsd.Rendering.PhysicsRenderDomainReport
+static OpenUsd.Rendering.PhysicsRenderDomainReport.operator !=(OpenUsd.Rendering.PhysicsRenderDomainReport left, OpenUsd.Rendering.PhysicsRenderDomainReport right) -> bool
+static OpenUsd.Rendering.PhysicsRenderDomainReport.operator ==(OpenUsd.Rendering.PhysicsRenderDomainReport left, OpenUsd.Rendering.PhysicsRenderDomainReport right) -> bool
+static OpenUsd.Rendering.PhysicsRenderObjectId.None.get -> OpenUsd.Rendering.PhysicsRenderObjectId
+static OpenUsd.Rendering.PhysicsRenderObjectId.operator !=(OpenUsd.Rendering.PhysicsRenderObjectId left, OpenUsd.Rendering.PhysicsRenderObjectId right) -> bool
+static OpenUsd.Rendering.PhysicsRenderObjectId.operator ==(OpenUsd.Rendering.PhysicsRenderObjectId left, OpenUsd.Rendering.PhysicsRenderObjectId right) -> bool
+static OpenUsd.Rendering.PhysicsRenderOrientation.Identity.get -> OpenUsd.Rendering.PhysicsRenderOrientation
+static OpenUsd.Rendering.PhysicsRenderOrientation.Slerp(OpenUsd.Rendering.PhysicsRenderOrientation from, OpenUsd.Rendering.PhysicsRenderOrientation to, double alpha) -> OpenUsd.Rendering.PhysicsRenderOrientation
+static OpenUsd.Rendering.PhysicsRenderOrientation.operator !=(OpenUsd.Rendering.PhysicsRenderOrientation left, OpenUsd.Rendering.PhysicsRenderOrientation right) -> bool
+static OpenUsd.Rendering.PhysicsRenderOrientation.operator ==(OpenUsd.Rendering.PhysicsRenderOrientation left, OpenUsd.Rendering.PhysicsRenderOrientation right) -> bool
+static OpenUsd.Rendering.PhysicsRenderOverrideView.Empty.get -> OpenUsd.Rendering.PhysicsRenderOverrideView
+static OpenUsd.Rendering.PhysicsRenderOverrideView.operator !=(OpenUsd.Rendering.PhysicsRenderOverrideView left, OpenUsd.Rendering.PhysicsRenderOverrideView right) -> bool
+static OpenUsd.Rendering.PhysicsRenderOverrideView.operator ==(OpenUsd.Rendering.PhysicsRenderOverrideView left, OpenUsd.Rendering.PhysicsRenderOverrideView right) -> bool
+static OpenUsd.Rendering.PhysicsRenderTransformOverride.operator !=(OpenUsd.Rendering.PhysicsRenderTransformOverride left, OpenUsd.Rendering.PhysicsRenderTransformOverride right) -> bool
+static OpenUsd.Rendering.PhysicsRenderTransformOverride.operator ==(OpenUsd.Rendering.PhysicsRenderTransformOverride left, OpenUsd.Rendering.PhysicsRenderTransformOverride right) -> bool
+static OpenUsd.Rendering.PhysicsRenderTransforms.Compose(OpenUsd.UsdVec3d position, OpenUsd.Rendering.PhysicsRenderOrientation orientation, System.ReadOnlySpan<double> authored, System.Span<double> destination) -> void
+static OpenUsd.Rendering.PhysicsRenderTransforms.Compose(in OpenUsd.Rendering.PhysicsRenderTransformOverride value, System.ReadOnlySpan<double> authored, System.Span<double> destination) -> void
+static OpenUsd.Rendering.PhysicsRenderUpdateResult.operator !=(OpenUsd.Rendering.PhysicsRenderUpdateResult left, OpenUsd.Rendering.PhysicsRenderUpdateResult right) -> bool
+static OpenUsd.Rendering.PhysicsRenderUpdateResult.operator ==(OpenUsd.Rendering.PhysicsRenderUpdateResult left, OpenUsd.Rendering.PhysicsRenderUpdateResult right) -> bool
 static OpenUsd.Rendering.RenderBackendCapabilities.None.get -> OpenUsd.Rendering.RenderBackendCapabilities
 static OpenUsd.Rendering.RenderBackendCapabilities.operator !=(OpenUsd.Rendering.RenderBackendCapabilities left, OpenUsd.Rendering.RenderBackendCapabilities right) -> bool
 static OpenUsd.Rendering.RenderBackendCapabilities.operator ==(OpenUsd.Rendering.RenderBackendCapabilities left, OpenUsd.Rendering.RenderBackendCapabilities right) -> bool
@@ -570,15 +858,15 @@ static OpenUsd.Rendering.RenderBackendDiagnostics.operator ==(OpenUsd.Rendering.
 static OpenUsd.Rendering.RenderBackendIdentity.operator !=(OpenUsd.Rendering.RenderBackendIdentity? left, OpenUsd.Rendering.RenderBackendIdentity? right) -> bool
 static OpenUsd.Rendering.RenderBackendIdentity.operator ==(OpenUsd.Rendering.RenderBackendIdentity? left, OpenUsd.Rendering.RenderBackendIdentity? right) -> bool
 static OpenUsd.Rendering.RenderBackendInitializationResult.Failed(OpenUsd.Rendering.RenderBackendInitializationFailureKind failure, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderBackendInitializationResult!
+static OpenUsd.Rendering.RenderBackendInitializationResult.Success(OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderBackendInitializationResult!
 static OpenUsd.Rendering.RenderBackendInitializationResult.operator !=(OpenUsd.Rendering.RenderBackendInitializationResult? left, OpenUsd.Rendering.RenderBackendInitializationResult? right) -> bool
 static OpenUsd.Rendering.RenderBackendInitializationResult.operator ==(OpenUsd.Rendering.RenderBackendInitializationResult? left, OpenUsd.Rendering.RenderBackendInitializationResult? right) -> bool
-static OpenUsd.Rendering.RenderBackendInitializationResult.Success(OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderBackendInitializationResult!
 static OpenUsd.Rendering.RenderBackendManagerResult.operator !=(OpenUsd.Rendering.RenderBackendManagerResult? left, OpenUsd.Rendering.RenderBackendManagerResult? right) -> bool
 static OpenUsd.Rendering.RenderBackendManagerResult.operator ==(OpenUsd.Rendering.RenderBackendManagerResult? left, OpenUsd.Rendering.RenderBackendManagerResult? right) -> bool
 static OpenUsd.Rendering.RenderBackendProbeResult.Available(OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderBackendProbeResult!
+static OpenUsd.Rendering.RenderBackendProbeResult.Unavailable(OpenUsd.Rendering.RenderBackendProbeFailureKind failure, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderBackendProbeResult!
 static OpenUsd.Rendering.RenderBackendProbeResult.operator !=(OpenUsd.Rendering.RenderBackendProbeResult? left, OpenUsd.Rendering.RenderBackendProbeResult? right) -> bool
 static OpenUsd.Rendering.RenderBackendProbeResult.operator ==(OpenUsd.Rendering.RenderBackendProbeResult? left, OpenUsd.Rendering.RenderBackendProbeResult? right) -> bool
-static OpenUsd.Rendering.RenderBackendProbeResult.Unavailable(OpenUsd.Rendering.RenderBackendProbeFailureKind failure, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderBackendProbeResult!
 static OpenUsd.Rendering.RenderBackendSelectionPolicy.Select(OpenUsd.Rendering.RenderBackendSelectionRequest request, System.Collections.Generic.IEnumerable<OpenUsd.Rendering.RenderBackendKind>! availableBackends, System.Collections.Generic.IEnumerable<OpenUsd.Rendering.RenderBackendKind>? failedInitializations = null) -> OpenUsd.Rendering.RenderBackendSelectionResult!
 static OpenUsd.Rendering.RenderBackendSelectionRequest.operator !=(OpenUsd.Rendering.RenderBackendSelectionRequest left, OpenUsd.Rendering.RenderBackendSelectionRequest right) -> bool
 static OpenUsd.Rendering.RenderBackendSelectionRequest.operator ==(OpenUsd.Rendering.RenderBackendSelectionRequest left, OpenUsd.Rendering.RenderBackendSelectionRequest right) -> bool
@@ -589,22 +877,25 @@ static OpenUsd.Rendering.RenderDiagnosticsState.operator !=(OpenUsd.Rendering.Re
 static OpenUsd.Rendering.RenderDiagnosticsState.operator ==(OpenUsd.Rendering.RenderDiagnosticsState? left, OpenUsd.Rendering.RenderDiagnosticsState? right) -> bool
 static OpenUsd.Rendering.RenderFrameResult.Failed(ulong stateRevision, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderFrameResult!
 static OpenUsd.Rendering.RenderFrameResult.LostDevice(ulong stateRevision, OpenUsd.Rendering.RenderDeviceLossKind deviceLoss, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderFrameResult!
-static OpenUsd.Rendering.RenderFrameResult.operator !=(OpenUsd.Rendering.RenderFrameResult? left, OpenUsd.Rendering.RenderFrameResult? right) -> bool
-static OpenUsd.Rendering.RenderFrameResult.operator ==(OpenUsd.Rendering.RenderFrameResult? left, OpenUsd.Rendering.RenderFrameResult? right) -> bool
 static OpenUsd.Rendering.RenderFrameResult.Rendered(ulong stateRevision, OpenUsd.Rendering.RenderFrameStatistics statistics, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderFrameResult!
 static OpenUsd.Rendering.RenderFrameResult.Skipped(ulong stateRevision, OpenUsd.Rendering.RenderBackendDiagnostics? diagnostics = null) -> OpenUsd.Rendering.RenderFrameResult!
+static OpenUsd.Rendering.RenderFrameResult.operator !=(OpenUsd.Rendering.RenderFrameResult? left, OpenUsd.Rendering.RenderFrameResult? right) -> bool
+static OpenUsd.Rendering.RenderFrameResult.operator ==(OpenUsd.Rendering.RenderFrameResult? left, OpenUsd.Rendering.RenderFrameResult? right) -> bool
 static OpenUsd.Rendering.RenderFrameStatistics.Empty.get -> OpenUsd.Rendering.RenderFrameStatistics
 static OpenUsd.Rendering.RenderFrameStatistics.operator !=(OpenUsd.Rendering.RenderFrameStatistics left, OpenUsd.Rendering.RenderFrameStatistics right) -> bool
 static OpenUsd.Rendering.RenderFrameStatistics.operator ==(OpenUsd.Rendering.RenderFrameStatistics left, OpenUsd.Rendering.RenderFrameStatistics right) -> bool
+static OpenUsd.Rendering.RenderHeadlight.Deterministic.get -> OpenUsd.Rendering.RenderHeadlight
+static OpenUsd.Rendering.RenderHeadlight.operator !=(OpenUsd.Rendering.RenderHeadlight left, OpenUsd.Rendering.RenderHeadlight right) -> bool
+static OpenUsd.Rendering.RenderHeadlight.operator ==(OpenUsd.Rendering.RenderHeadlight left, OpenUsd.Rendering.RenderHeadlight right) -> bool
 static OpenUsd.Rendering.RenderPickRequest.operator !=(OpenUsd.Rendering.RenderPickRequest left, OpenUsd.Rendering.RenderPickRequest right) -> bool
 static OpenUsd.Rendering.RenderPickRequest.operator ==(OpenUsd.Rendering.RenderPickRequest left, OpenUsd.Rendering.RenderPickRequest right) -> bool
 static OpenUsd.Rendering.RenderPickResult.Hit(in OpenUsd.Rendering.RenderPickRequest request, ulong stateRevision, ulong? sceneRevision, in OpenUsd.Rendering.SelectionItem item, System.Numerics.Vector3? worldPosition = null, System.Numerics.Vector3? worldNormal = null, float? normalizedDepth = null, OpenUsd.Rendering.RenderBackendKind? backendKind = null, uint? backendToken = null) -> OpenUsd.Rendering.RenderPickResult
 static OpenUsd.Rendering.RenderPickResult.Miss(in OpenUsd.Rendering.RenderPickRequest request, ulong stateRevision, ulong? sceneRevision) -> OpenUsd.Rendering.RenderPickResult
-static OpenUsd.Rendering.RenderPickResult.operator !=(OpenUsd.Rendering.RenderPickResult left, OpenUsd.Rendering.RenderPickResult right) -> bool
-static OpenUsd.Rendering.RenderPickResult.operator ==(OpenUsd.Rendering.RenderPickResult left, OpenUsd.Rendering.RenderPickResult right) -> bool
 static OpenUsd.Rendering.RenderPickResult.Stale(in OpenUsd.Rendering.RenderPickRequest request, ulong stateRevision, ulong? sceneRevision) -> OpenUsd.Rendering.RenderPickResult
 static OpenUsd.Rendering.RenderPickResult.Stale(in OpenUsd.Rendering.RenderPickRequest request, ulong stateRevision, ulong? sceneRevision, OpenUsd.Rendering.RenderPickStaleReason staleReasons) -> OpenUsd.Rendering.RenderPickResult
 static OpenUsd.Rendering.RenderPickResult.Unsupported(in OpenUsd.Rendering.RenderPickRequest request, ulong stateRevision, ulong? sceneRevision) -> OpenUsd.Rendering.RenderPickResult
+static OpenUsd.Rendering.RenderPickResult.operator !=(OpenUsd.Rendering.RenderPickResult left, OpenUsd.Rendering.RenderPickResult right) -> bool
+static OpenUsd.Rendering.RenderPickResult.operator ==(OpenUsd.Rendering.RenderPickResult left, OpenUsd.Rendering.RenderPickResult right) -> bool
 static OpenUsd.Rendering.RenderSettings.Default.get -> OpenUsd.Rendering.RenderSettings
 static OpenUsd.Rendering.RenderSettings.operator !=(OpenUsd.Rendering.RenderSettings left, OpenUsd.Rendering.RenderSettings right) -> bool
 static OpenUsd.Rendering.RenderSettings.operator ==(OpenUsd.Rendering.RenderSettings left, OpenUsd.Rendering.RenderSettings right) -> bool
@@ -639,12 +930,35 @@ static OpenUsd.Rendering.ViewportDimensions.operator ==(OpenUsd.Rendering.Viewpo
 ~override OpenUsd.Rendering.CompositionFrameRenderResult.ToString() -> string
 ~override OpenUsd.Rendering.CompositionPresenterProbeResult.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.CompositionPresenterProbeResult.ToString() -> string
+~override OpenUsd.Rendering.PhysicsRenderBinding.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderBinding.ToString() -> string
+~override OpenUsd.Rendering.PhysicsRenderBodyState.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderBodyState.ToString() -> string
+~override OpenUsd.Rendering.PhysicsRenderCapacities.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderCapacities.ToString() -> string
+~override OpenUsd.Rendering.PhysicsRenderDeformableRegion.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderDeformableRegion.ToString() -> string
+~override OpenUsd.Rendering.PhysicsRenderDeformationView.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderDeformationView.ToString() -> string
+~override OpenUsd.Rendering.PhysicsRenderDomainReport.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderDomainReport.ToString() -> string
+~override OpenUsd.Rendering.PhysicsRenderObjectId.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderOrientation.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderOrientation.ToString() -> string
+~override OpenUsd.Rendering.PhysicsRenderOverrideView.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderOverrideView.ToString() -> string
+~override OpenUsd.Rendering.PhysicsRenderTransformOverride.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderTransformOverride.ToString() -> string
+~override OpenUsd.Rendering.PhysicsRenderUpdateResult.Equals(object obj) -> bool
+~override OpenUsd.Rendering.PhysicsRenderUpdateResult.ToString() -> string
 ~override OpenUsd.Rendering.RenderBackendCapabilities.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.RenderBackendCapabilities.ToString() -> string
 ~override OpenUsd.Rendering.RenderBackendSelectionRequest.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.RenderBackendSelectionRequest.ToString() -> string
 ~override OpenUsd.Rendering.RenderFrameStatistics.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.RenderFrameStatistics.ToString() -> string
+~override OpenUsd.Rendering.RenderHeadlight.Equals(object obj) -> bool
+~override OpenUsd.Rendering.RenderHeadlight.ToString() -> string
 ~override OpenUsd.Rendering.RenderPickRequest.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.RenderPickRequest.ToString() -> string
 ~override OpenUsd.Rendering.RenderPickResult.Equals(object obj) -> bool
@@ -659,4 +973,3 @@ static OpenUsd.Rendering.ViewportDimensions.operator ==(OpenUsd.Rendering.Viewpo
 ~override OpenUsd.Rendering.StageTime.ToString() -> string
 ~override OpenUsd.Rendering.ViewportDimensions.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.ViewportDimensions.ToString() -> string
-static OpenUsd.Rendering.RenderHeadlight.Deterministic.get -> OpenUsd.Rendering.RenderHeadlight

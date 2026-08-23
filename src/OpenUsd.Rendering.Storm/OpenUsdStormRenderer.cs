@@ -136,6 +136,50 @@ public sealed class OpenUsdStormRenderer : IDisposable
     }
 
     /// <summary>
+    /// Applies one batched externally simulated rigid transform override update.
+    /// </summary>
+    /// <param name="overrides">The packed batch to apply.</param>
+    /// <returns>What Storm did with the batch.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="overrides"/> is null.</exception>
+    /// <remarks>
+    /// The batch replaces every retained override, so an emptied batch restores the authored
+    /// transforms. Nothing is authored back into USD and Storm retains no managed memory after
+    /// the call returns.
+    /// </remarks>
+    public StormPhysicsOverrideDiagnostics SetPhysicsTransformOverrides(
+        StormPhysicsTransformOverrides overrides)
+    {
+        ArgumentNullException.ThrowIfNull(overrides);
+        lock (_gate)
+        {
+            ThrowIfWrongThread();
+            ObjectDisposedException.ThrowIf(_handle == 0, this);
+            return OpenUsdStormRuntime.SetTransformOverrides(_handle, overrides);
+        }
+    }
+
+    /// <summary>Applies one complete batch of externally simulated deformable geometry.</summary>
+    /// <param name="deformations">The packed batch one render update produced.</param>
+    /// <returns>What Storm did with the batch.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="deformations"/> is null.</exception>
+    /// <remarks>
+    /// The batch replaces every retained deformation, so an emptied batch restores the authored
+    /// points. Nothing is authored back into USD: the simulated points live only in the Hydra
+    /// scene index graph, and Storm retains no managed memory after the call returns.
+    /// </remarks>
+    public StormPhysicsDeformationDiagnostics SetPhysicsDeformationOverrides(
+        StormPhysicsDeformationOverrides deformations)
+    {
+        ArgumentNullException.ThrowIfNull(deformations);
+        lock (_gate)
+        {
+            ThrowIfWrongThread();
+            ObjectDisposedException.ThrowIf(_handle == 0, this);
+            return OpenUsdStormRuntime.SetDeformationOverrides(_handle, deformations);
+        }
+    }
+
+    /// <summary>
     /// Destroys the renderer while its creation OpenGL context is current.
     /// </summary>
     public void Dispose()

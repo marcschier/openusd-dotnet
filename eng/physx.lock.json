@@ -7,7 +7,18 @@
     "license": "BSD-3-Clause",
     "vcpkgPackage": "physx",
     "vcpkgConfigPackage": "unofficial-omniverse-physx-sdk",
-    "vcpkgTarget": "unofficial::omniverse-physx-sdk::sdk"
+    "vcpkgTarget": "unofficial::omniverse-physx-sdk::sdk",
+    "releaseScope": "statically linked into the published OpenUsd.Runtime.Physics.<rid> packages",
+    "supportedRids": [
+      "win-x64",
+      "linux-x64"
+    ],
+    "gpuModules": [
+      "PhysXGpu_64",
+      "PhysXDevice64"
+    ],
+    "gpuModuleLicense": "LicenseRef-NvidiaProprietary",
+    "gpuModuleScope": "downloaded by the vcpkg port as a build and local runtime input; never redistributed in any OpenUsd package"
   },
   "vcpkg": {
     "repository": "https://github.com/microsoft/vcpkg.git",
@@ -15,7 +26,7 @@
     "manifestMode": true,
     "windowsTriplet": "x64-windows-static-md",
     "linuxTriplet": "x64-linux",
-    "macosTriplet": "arm64-osx"
+    "portSupports": "(windows & x64 & !mingw & !uwp) | (linux & x64) | (linux & arm64)"
   },
   "profile": {
     "name": "physx-quarantined",
@@ -30,7 +41,8 @@
     "disabled": [
       "PhysX samples",
       "PhysX snippets",
-      "shared libraries"
+      "shared libraries",
+      "GPU module redistribution"
     ]
   },
   "directVcpkgDependencies": [

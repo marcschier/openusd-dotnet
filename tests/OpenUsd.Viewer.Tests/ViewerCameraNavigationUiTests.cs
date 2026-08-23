@@ -689,7 +689,7 @@ public sealed class ViewerCameraNavigationUiTests
         await Assert.That(markup).Contains("x:Name=\"CameraStatus\"");
         await Assert.That(markup).Contains("AutomationProperties.Name=\"Frame selected prim\"");
         await Assert.That(markup).Contains("x:Name=\"ViewerToolbarGrid\"");
-        await Assert.That(markup).Contains("RowDefinitions=\"Auto,Auto\"");
+        await Assert.That(markup).Contains("RowDefinitions=\"Auto,Auto,Auto\"");
         await Assert.That(markup).Contains("Grid.ColumnSpan=\"5\"");
         await Assert.That(markup).Contains("TextTrimming=\"CharacterEllipsis\"");
         await Assert.That(markup).Contains("RowDefinitions=\"32,32\"");
@@ -698,7 +698,13 @@ public sealed class ViewerCameraNavigationUiTests
         await Assert.That(markup).Contains("<Setter Property=\"FontSize\" Value=\"18\" />");
         await Assert.That(window).Contains("RegisterCameraInputHandlers(this);");
         await Assert.That(window).Contains("RegisterCameraInputHandlers(ViewportHost);");
-        await Assert.That(window).Contains("KeyUp += OnWindowKeyUp;");
+
+        // KeyUp is a routed registration rather than a CLR subscription, because a focused Button
+        // or CheckBox consumes Space and the window must still see the release - both to free the
+        // camera repeat guard and to stop a held physics movement key.
+        await Assert.That(window).Contains("KeyUpEvent,");
+        await Assert.That(window).Contains("OnWindowKeyUp,");
+        await Assert.That(window).Contains("handledEventsToo: true);");
         await Assert.That(window).Contains("_cameraShortcutRepeat.TryPress(e.Key)");
         await Assert.That(window).Contains("ViewportHost.IsKeyboardFocusWithin");
         await Assert.That(window).Contains("OrbitCamera(command);");

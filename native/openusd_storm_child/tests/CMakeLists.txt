@@ -24,9 +24,12 @@ target_link_libraries(
         openusd_dotnet)
 if(WIN32)
     target_link_libraries(openusd_storm_child_probe PRIVATE user32)
+    # The probe streams diagnostics through <ostream>, whose templates need the standard C++
+    # unwind model. MSVC only enables it with /EHsc and this target links no OpenUSD import
+    # target that would supply it.
     target_compile_options(
         openusd_storm_child_probe
-        PRIVATE /W4 /WX /permissive-)
+        PRIVATE /W4 /WX /permissive- /EHsc)
 elseif(UNIX AND NOT APPLE)
     if(NOT TARGET X11::Xtst)
         message(FATAL_ERROR "The Linux Storm child probe requires the XTest development library.")

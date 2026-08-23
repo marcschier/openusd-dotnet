@@ -20,12 +20,18 @@
 extern "C" {
 #endif
 
+/* Status values are additive only. Existing values never change meaning. */
 typedef enum openusd_physx_status
 {
     OPENUSD_PHYSX_STATUS_OK = 0,
     OPENUSD_PHYSX_STATUS_INVALID_ARGUMENT = 1,
     OPENUSD_PHYSX_STATUS_BUFFER_TOO_SMALL = 2,
-    OPENUSD_PHYSX_STATUS_NATIVE_ERROR = 3
+    OPENUSD_PHYSX_STATUS_NATIVE_ERROR = 3,
+    OPENUSD_PHYSX_STATUS_VERSION_MISMATCH = 4,
+    OPENUSD_PHYSX_STATUS_INVALID_PAGE = 5,
+    OPENUSD_PHYSX_STATUS_INVALID_STATE = 6,
+    OPENUSD_PHYSX_STATUS_UNSUPPORTED = 7,
+    OPENUSD_PHYSX_STATUS_CAPACITY_EXCEEDED = 8
 } openusd_physx_status;
 
 typedef struct openusd_physx_error_buffer

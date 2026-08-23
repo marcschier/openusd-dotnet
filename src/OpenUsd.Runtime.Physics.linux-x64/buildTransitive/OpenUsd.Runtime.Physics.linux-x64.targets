@@ -1,0 +1,44 @@
+<Project>
+
+  <PropertyGroup>
+    <_OURid>$(NETCoreSdkPortableRuntimeIdentifier)</_OURid>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('Windows'))">Windows</_OUOs>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('Linux'))">Linux</_OUOs>
+    <_OUOs Condition="$([MSBuild]::IsOSPlatform('OSX'))">OSX</_OUOs>
+    <_OUArch Condition="'$(_OURid)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_OUArch>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'Windows' and '$(_OUArch)' == 'X64'">win-x64</_OURid>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'Linux' and '$(_OUArch)' == 'X64'">linux-x64</_OURid>
+    <_OURid Condition="'$(_OURid)' == '' and '$(_OUOs)' == 'OSX' and '$(_OUArch)' == 'Arm64'">osx-arm64</_OURid>
+    <_OUHostOk Condition="'$(_OURid)' == 'win-x64'">true</_OUHostOk>
+    <_OUHostOk Condition="'$(_OURid)' == 'linux-x64'">true</_OUHostOk>
+    <_OUHostOk Condition="'$(_OURid)' == 'osx-arm64'">true</_OUHostOk>
+  </PropertyGroup>
+
+  <Target
+    Name="ValidateOpenUsdRidlessHostRuntime"
+    BeforeTargets="ResolveReferences"
+    Condition="'$(RuntimeIdentifier)' == '' and '$(_OUHostOk)' != 'true'">
+    <Error
+      Text="OpenUSD RID-less builds need host win-x64, linux-x64, or osx-arm64. Set RuntimeIdentifier explicitly." />
+  </Target>
+  <!--
+    A RID-less build resolves no runtime asset group, so the matching host payload is copied by hand
+    exactly as every other OpenUSD runtime package does. The native library is linked flat at the
+    application root because that is where the physics runtime loads its optional CUDA module from:
+    the directory the solver itself lives in.
+  -->
+  <PropertyGroup>
+    <_OUPhxLnxNative>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../runtimes/linux-x64/native'))</_OUPhxLnxNative>
+    <_OUPhxLnxRidless Condition="'$(RuntimeIdentifier)' == '' and '$(_OURid)' == 'linux-x64'">true</_OUPhxLnxRidless>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_OUPhxLnxRidless)' == 'true'">
+    <Content Include="$(_OUPhxLnxNative)/**/*">
+      <Link>%(Filename)%(Extension)</Link>
+      <Pack>false</Pack>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

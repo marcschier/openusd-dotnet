@@ -1,6 +1,9 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "openusd_physx.h"
+#include "openusd_physx_runtime.h"
+#include "openusd_physx_support.h"
+#include "openusd_physx_translate.h"
 
 #include <PxPhysicsAPI.h>
 #include <cooking/PxCooking.h>
@@ -38,15 +41,11 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <exception>
-#include <memory>
-#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -55,142 +54,9 @@ namespace
 using namespace physx;
 PXR_NAMESPACE_USING_DIRECTIVE
 
-PxFilterFlags StageFilterShader(
-    PxFilterObjectAttributes attributes0,
-    PxFilterData filter_data0,
-    PxFilterObjectAttributes attributes1,
-    PxFilterData filter_data1,
-    PxPairFlags& pair_flags,
-    const void* constant_block,
-    PxU32 constant_block_size)
-{
-    static_cast<void>(attributes0);
-    static_cast<void>(attributes1);
-    static_cast<void>(constant_block);
-    static_cast<void>(constant_block_size);
-    if (((filter_data0.word0 & filter_data1.word1) == 0) ||
-        ((filter_data1.word0 & filter_data0.word1) == 0))
-    {
-        return PxFilterFlag::eSUPPRESS;
-    }
-    pair_flags = PxPairFlag::eCONTACT_DEFAULT;
-    return PxFilterFlags();
-}
-
-class ErrorCallback final : public PxErrorCallback
-{
-public:
-    void reportError(PxErrorCode::Enum code, const char* message, const char* file, int line) override
-    {
-        static_cast<void>(code);
-        static_cast<void>(file);
-        static_cast<void>(line);
-        last_message = message == nullptr ? std::string() : std::string(message);
-    }
-
-    std::string last_message;
-};
-
-PxDefaultAllocator g_allocator;
-ErrorCallback g_error_callback;
-std::mutex g_physx_mutex;
-
-void WriteError(openusd_physx_error_buffer* error, std::string_view message) noexcept
-{
-    if (error == nullptr)
-    {
-        return;
-    }
-    error->required = message.size() + 1;
-    if (error->data == nullptr || error->capacity == 0)
-    {
-        return;
-    }
-    const size_t count = std::min(message.size(), error->capacity - 1);
-    std::memcpy(error->data, message.data(), count);
-    error->data[count] = '\0';
-}
-
-void ResetError(openusd_physx_error_buffer* error) noexcept
-{
-    if (error == nullptr)
-    {
-        return;
-    }
-    error->required = 0;
-    if (error->data != nullptr && error->capacity != 0)
-    {
-        error->data[0] = '\0';
-    }
-}
-
-template <typename TAction>
-openusd_physx_status Guard(openusd_physx_error_buffer* error, TAction&& action) noexcept
-{
-    try
-    {
-        ResetError(error);
-        g_error_callback.last_message.clear();
-        return action();
-    }
-    catch (const std::exception& exception)
-    {
-        WriteError(error, exception.what());
-        return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
-    }
-    catch (...)
-    {
-        WriteError(error, "Unknown PhysX exception.");
-        return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
-    }
-}
-
-openusd_physx_status CopyString(
-    const std::string& value,
-    char* buffer,
-    size_t capacity,
-    size_t* required) noexcept
-{
-    if (required == nullptr)
-    {
-        return OPENUSD_PHYSX_STATUS_INVALID_ARGUMENT;
-    }
-    *required = value.size() + 1;
-    if (buffer == nullptr || capacity < *required)
-    {
-        return OPENUSD_PHYSX_STATUS_BUFFER_TOO_SMALL;
-    }
-    std::memcpy(buffer, value.c_str(), *required);
-    return OPENUSD_PHYSX_STATUS_OK;
-}
-
-PxVec3 ToPx(openusd_physx_vec3f value) noexcept
-{
-    return PxVec3(value.x, value.y, value.z);
-}
-
-PxQuat ToPx(openusd_physx_quatf value) noexcept
-{
-    return PxQuat(value.x, value.y, value.z, value.w);
-}
-
-bool IsFinite(openusd_physx_vec3f value) noexcept
-{
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-}
-
-bool IsFinite(openusd_physx_quatf value) noexcept
-{
-    return std::isfinite(value.x) && std::isfinite(value.y) &&
-        std::isfinite(value.z) && std::isfinite(value.w);
-}
-
-bool IsValidMaterial(float static_friction, float dynamic_friction, float restitution) noexcept
-{
-    return std::isfinite(static_friction) && static_friction >= 0.0F &&
-        std::isfinite(dynamic_friction) && dynamic_friction >= 0.0F &&
-        std::isfinite(restitution) && restitution >= 0.0F && restitution <= 1.0F;
-}
+using openusd_physx_support::Guard;
+using openusd_physx_support::IsFinite;
+using openusd_physx_support::WriteError;
 
 struct StageBodyBinding
 {
@@ -222,6 +88,8 @@ struct StageResources
 
     void Release() noexcept
     {
+        // Releasing shared factory objects is serialized with creation.
+        const openusd_physx_runtime::FactoryLock factory_lock;
         for (PxJoint* joint : joints)
         {
             joint->release();
@@ -419,12 +287,7 @@ PxConvexMesh* CookConvexMesh(
     const PxCookingParams& cooking_params,
     const std::vector<PxVec3>& vertices)
 {
-    PxConvexMeshDesc desc;
-    desc.points.count = static_cast<PxU32>(vertices.size());
-    desc.points.stride = sizeof(PxVec3);
-    desc.points.data = vertices.data();
-    desc.flags = PxConvexFlag::eCOMPUTE_CONVEX;
-    return PxCreateConvexMesh(cooking_params, desc, physics.getPhysicsInsertionCallback());
+    return openusd_physx_translate::CookConvexMesh(physics, cooking_params, vertices.data(), vertices.size());
 }
 
 PxTriangleMesh* CookTriangleMesh(
@@ -433,39 +296,31 @@ PxTriangleMesh* CookTriangleMesh(
     const std::vector<PxVec3>& vertices,
     const std::vector<uint32_t>& triangles)
 {
-    PxTriangleMeshDesc desc;
-    desc.points.count = static_cast<PxU32>(vertices.size());
-    desc.points.stride = sizeof(PxVec3);
-    desc.points.data = vertices.data();
-    desc.triangles.count = static_cast<PxU32>(triangles.size() / 3);
-    desc.triangles.stride = 3 * sizeof(uint32_t);
-    desc.triangles.data = triangles.data();
-    return PxCreateTriangleMesh(cooking_params, desc, physics.getPhysicsInsertionCallback());
+    return openusd_physx_translate::CookTriangleMesh(
+        physics,
+        cooking_params,
+        vertices.data(),
+        vertices.size(),
+        triangles.data(),
+        triangles.size());
 }
 
 void ReleaseStageSimulation(
     PxScene* scene,
     PxDefaultCpuDispatcher* dispatcher,
-    PxPhysics* physics,
-    PxFoundation* foundation,
     StageResources& resources) noexcept
 {
     resources.Release();
     if (scene != nullptr)
     {
+        // The scene belongs to the shared physics factory, the dispatcher does
+        // not, so only the scene release is serialized.
+        const openusd_physx_runtime::FactoryLock factory_lock;
         scene->release();
     }
     if (dispatcher != nullptr)
     {
         dispatcher->release();
-    }
-    if (physics != nullptr)
-    {
-        physics->release();
-    }
-    if (foundation != nullptr)
-    {
-        foundation->release();
     }
 }
 
@@ -478,6 +333,8 @@ PxRigidActor* CreateActorForCollider(
     bool dynamic,
     StageResources& resources)
 {
+    // Materials, cooked meshes, and actors all come from the shared factory.
+    const openusd_physx_runtime::FactoryLock factory_lock;
     PxMaterial* px_material = physics.createMaterial(
         material.static_friction,
         material.dynamic_friction,
@@ -718,6 +575,8 @@ PxJoint* CreateStageJoint(
     const PxTransform frame1 = JointFrame(
         GetVec3f(joint.GetLocalPos1Attr(), GfVec3f(0.0F)),
         GetQuatf(joint.GetLocalRot1Attr(), GfQuatf(1.0F)));
+    // Joint creation goes through the shared physics factory.
+    const openusd_physx_runtime::FactoryLock factory_lock;
 
     if (prim.IsA<UsdPhysicsFixedJoint>())
     {
@@ -824,7 +683,6 @@ openusd_physx_status SimulateStage(
     uint32_t step_count,
     openusd_physx_error_buffer* error)
 {
-    std::lock_guard<std::mutex> lock(g_physx_mutex);
     if (stage_path == nullptr || stage_path[0] == '\0' || !std::isfinite(time_step) || time_step <= 0.0F)
     {
         WriteError(error, "A stage path and positive finite time step are required.");
@@ -851,34 +709,36 @@ openusd_physx_status SimulateStage(
         }
     }
 
-    PxFoundation* foundation = PxCreateFoundation(PX_PHYSICS_VERSION, g_allocator, g_error_callback);
-    if (foundation == nullptr)
+    openusd_physx_runtime::Reference runtime;
+    std::string reason;
+    if (!runtime.Acquire(reason))
     {
-        WriteError(error, "PxCreateFoundation failed.");
+        WriteError(error, reason);
         return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
     }
-    PxPhysics* physics = PxCreatePhysics(PX_PHYSICS_VERSION, *foundation, PxTolerancesScale());
-    if (physics == nullptr)
-    {
-        foundation->release();
-        WriteError(error, "PxCreatePhysics failed.");
-        return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
-    }
-    const PxCookingParams cooking_params{PxTolerancesScale()};
+    PxPhysics* physics = &openusd_physx_runtime::Physics();
+    const PxCookingParams cooking_params = openusd_physx_runtime::CookingParams();
     PxDefaultCpuDispatcher* dispatcher = PxDefaultCpuDispatcherCreate(2);
+    if (dispatcher == nullptr)
+    {
+        WriteError(error, "PxDefaultCpuDispatcherCreate failed.");
+        return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
+    }
     PxSceneDesc scene_desc(physics->getTolerancesScale());
     scene_desc.gravity = PxVec3(
         gravity_direction[0] * gravity_magnitude,
         gravity_direction[1] * gravity_magnitude,
         gravity_direction[2] * gravity_magnitude);
     scene_desc.cpuDispatcher = dispatcher;
-    scene_desc.filterShader = StageFilterShader;
-    PxScene* scene = physics->createScene(scene_desc);
+    scene_desc.filterShader = openusd_physx_translate::WorldFilterShader;
+    PxScene* scene = nullptr;
+    {
+        const openusd_physx_runtime::FactoryLock factory_lock;
+        scene = physics->createScene(scene_desc);
+    }
     if (scene == nullptr)
     {
         dispatcher->release();
-        physics->release();
-        foundation->release();
         WriteError(error, "PxPhysics::createScene failed.");
         return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
     }
@@ -908,10 +768,15 @@ openusd_physx_status SimulateStage(
         PxRigidActor* actor = nullptr;
         if (!dynamic && prim.IsA<UsdGeomPlane>())
         {
+            const openusd_physx_runtime::FactoryLock factory_lock;
             PxMaterial* px_material = physics->createMaterial(
                 material.static_friction,
                 material.dynamic_friction,
                 material.restitution);
+            if (px_material == nullptr)
+            {
+                continue;
+            }
             actor = PxCreatePlane(*physics, PxPlane(0.0F, 1.0F, 0.0F, -pose.p.y), *px_material);
             px_material->release();
         }
@@ -962,249 +827,26 @@ openusd_physx_status SimulateStage(
         if (!operation || !operation.Set(PoseToMatrix(binding.actor->getGlobalPose())))
         {
             WriteError(error, "Could not write a simulated transform back to the stage.");
-            ReleaseStageSimulation(scene, dispatcher, physics, foundation, resources);
+            ReleaseStageSimulation(scene, dispatcher, resources);
             return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
         }
     }
     if (!mark.IsClean())
     {
         WriteError(error, "OpenUSD reported an error while writing simulated transforms.");
-        ReleaseStageSimulation(scene, dispatcher, physics, foundation, resources);
+        ReleaseStageSimulation(scene, dispatcher, resources);
         return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
     }
     if (!stage->GetRootLayer()->Save())
     {
         WriteError(error, "Could not save simulated stage transforms.");
-        ReleaseStageSimulation(scene, dispatcher, physics, foundation, resources);
+        ReleaseStageSimulation(scene, dispatcher, resources);
         return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
     }
 
-    ReleaseStageSimulation(scene, dispatcher, physics, foundation, resources);
+    ReleaseStageSimulation(scene, dispatcher, resources);
     return OPENUSD_PHYSX_STATUS_OK;
 }
-}
-
-struct openusd_physx_scene
-{
-    PxFoundation* foundation = nullptr;
-    PxPhysics* physics = nullptr;
-    PxDefaultCpuDispatcher* dispatcher = nullptr;
-    PxScene* scene = nullptr;
-    std::vector<PxRigidDynamic*> dynamics;
-};
-
-openusd_physx_status openusd_physx_get_version(
-    char* buffer,
-    size_t capacity,
-    size_t* required,
-    openusd_physx_error_buffer* error)
-{
-    return Guard(error, [&]() -> openusd_physx_status
-    {
-        char version[64]{};
-        std::snprintf(
-            version,
-            sizeof(version),
-            "%u.%u.%u",
-            PX_PHYSICS_VERSION_MAJOR,
-            PX_PHYSICS_VERSION_MINOR,
-            PX_PHYSICS_VERSION_BUGFIX);
-        return CopyString(version, buffer, capacity, required);
-    });
-}
-
-openusd_physx_status openusd_physx_scene_create(
-    openusd_physx_vec3f gravity,
-    openusd_physx_scene** scene,
-    openusd_physx_error_buffer* error)
-{
-    return Guard(error, [&]() -> openusd_physx_status
-    {
-        std::lock_guard<std::mutex> lock(g_physx_mutex);
-        if (scene == nullptr || !IsFinite(gravity))
-        {
-            WriteError(error, "A scene output and finite gravity vector are required.");
-            return OPENUSD_PHYSX_STATUS_INVALID_ARGUMENT;
-        }
-        *scene = nullptr;
-        auto result = std::make_unique<openusd_physx_scene>();
-        result->foundation = PxCreateFoundation(PX_PHYSICS_VERSION, g_allocator, g_error_callback);
-        if (result->foundation == nullptr)
-        {
-            WriteError(error, "PxCreateFoundation failed.");
-            return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
-        }
-        result->physics = PxCreatePhysics(PX_PHYSICS_VERSION, *result->foundation, PxTolerancesScale());
-        if (result->physics == nullptr)
-        {
-            WriteError(error, "PxCreatePhysics failed.");
-            return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
-        }
-        PxSceneDesc scene_desc(result->physics->getTolerancesScale());
-        scene_desc.gravity = ToPx(gravity);
-        result->dispatcher = PxDefaultCpuDispatcherCreate(2);
-        scene_desc.cpuDispatcher = result->dispatcher;
-        scene_desc.filterShader = PxDefaultSimulationFilterShader;
-        result->scene = result->physics->createScene(scene_desc);
-        if (result->scene == nullptr)
-        {
-            WriteError(error, "PxPhysics::createScene failed.");
-            return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
-        }
-        *scene = result.release();
-        return OPENUSD_PHYSX_STATUS_OK;
-    });
-}
-
-void openusd_physx_scene_release(openusd_physx_scene* scene)
-{
-    if (scene == nullptr)
-    {
-        return;
-    }
-    if (scene->scene != nullptr)
-    {
-        scene->scene->release();
-    }
-    if (scene->dispatcher != nullptr)
-    {
-        scene->dispatcher->release();
-    }
-    if (scene->physics != nullptr)
-    {
-        scene->physics->release();
-    }
-    if (scene->foundation != nullptr)
-    {
-        scene->foundation->release();
-    }
-    delete scene;
-}
-
-openusd_physx_status openusd_physx_scene_add_static_plane(
-    openusd_physx_scene* scene,
-    float y,
-    float static_friction,
-    float dynamic_friction,
-    float restitution,
-    openusd_physx_error_buffer* error)
-{
-    return Guard(error, [&]() -> openusd_physx_status
-    {
-        if (scene == nullptr || scene->physics == nullptr || scene->scene == nullptr || !std::isfinite(y) ||
-            !IsValidMaterial(static_friction, dynamic_friction, restitution))
-        {
-            WriteError(error, "A valid scene, plane height, and material are required.");
-            return OPENUSD_PHYSX_STATUS_INVALID_ARGUMENT;
-        }
-        PxMaterial* material = scene->physics->createMaterial(static_friction, dynamic_friction, restitution);
-        PxRigidStatic* plane = PxCreatePlane(*scene->physics, PxPlane(0.0F, 1.0F, 0.0F, -y), *material);
-        material->release();
-        if (plane == nullptr)
-        {
-            WriteError(error, "PxCreatePlane failed.");
-            return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
-        }
-        scene->scene->addActor(*plane);
-        return OPENUSD_PHYSX_STATUS_OK;
-    });
-}
-
-openusd_physx_status openusd_physx_scene_add_dynamic_box(
-    openusd_physx_scene* scene,
-    openusd_physx_vec3f position,
-    openusd_physx_quatf rotation,
-    openusd_physx_vec3f half_extents,
-    openusd_physx_vec3f linear_velocity,
-    openusd_physx_vec3f angular_velocity,
-    float density,
-    float static_friction,
-    float dynamic_friction,
-    float restitution,
-    openusd_physx_error_buffer* error)
-{
-    return Guard(error, [&]() -> openusd_physx_status
-    {
-        if (scene == nullptr || scene->physics == nullptr || scene->scene == nullptr || !IsFinite(position) ||
-            !IsFinite(rotation) || !IsFinite(half_extents) || !IsFinite(linear_velocity) ||
-            !IsFinite(angular_velocity) || half_extents.x <= 0.0F || half_extents.y <= 0.0F ||
-            half_extents.z <= 0.0F || !std::isfinite(density) || density <= 0.0F ||
-            !IsValidMaterial(static_friction, dynamic_friction, restitution))
-        {
-            WriteError(error, "A valid scene, box, velocities, density, and material are required.");
-            return OPENUSD_PHYSX_STATUS_INVALID_ARGUMENT;
-        }
-        PxMaterial* material = scene->physics->createMaterial(static_friction, dynamic_friction, restitution);
-        const PxTransform transform(ToPx(position), ToPx(rotation).getNormalized());
-        PxRigidDynamic* body = PxCreateDynamic(
-            *scene->physics,
-            transform,
-            PxBoxGeometry(ToPx(half_extents)),
-            *material,
-            density);
-        material->release();
-        if (body == nullptr)
-        {
-            WriteError(error, "PxCreateDynamic failed.");
-            return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
-        }
-        body->setLinearVelocity(ToPx(linear_velocity));
-        body->setAngularVelocity(ToPx(angular_velocity));
-        scene->scene->addActor(*body);
-        scene->dynamics.push_back(body);
-        return OPENUSD_PHYSX_STATUS_OK;
-    });
-}
-
-openusd_physx_status openusd_physx_scene_step(
-    openusd_physx_scene* scene,
-    float time_step,
-    uint32_t step_count,
-    openusd_physx_error_buffer* error)
-{
-    return Guard(error, [&]() -> openusd_physx_status
-    {
-        if (scene == nullptr || scene->scene == nullptr || !std::isfinite(time_step) || time_step <= 0.0F)
-        {
-            WriteError(error, "A valid scene and positive finite time step are required.");
-            return OPENUSD_PHYSX_STATUS_INVALID_ARGUMENT;
-        }
-        for (uint32_t step = 0; step < step_count; ++step)
-        {
-            scene->scene->simulate(time_step);
-            scene->scene->fetchResults(true);
-        }
-        return OPENUSD_PHYSX_STATUS_OK;
-    });
-}
-
-openusd_physx_status openusd_physx_scene_get_dynamic_transforms(
-    const openusd_physx_scene* scene,
-    openusd_physx_transform* transforms,
-    size_t capacity,
-    size_t* count,
-    openusd_physx_error_buffer* error)
-{
-    return Guard(error, [&]() -> openusd_physx_status
-    {
-        if (scene == nullptr || count == nullptr || (capacity > 0 && transforms == nullptr))
-        {
-            WriteError(error, "A valid scene and transform output are required.");
-            return OPENUSD_PHYSX_STATUS_INVALID_ARGUMENT;
-        }
-        *count = scene->dynamics.size();
-        if (capacity < scene->dynamics.size())
-        {
-            return OPENUSD_PHYSX_STATUS_BUFFER_TOO_SMALL;
-        }
-        for (size_t index = 0; index < scene->dynamics.size(); ++index)
-        {
-            const PxTransform pose = scene->dynamics[index]->getGlobalPose();
-            transforms[index].position = {pose.p.x, pose.p.y, pose.p.z};
-            transforms[index].rotation = {pose.q.x, pose.q.y, pose.q.z, pose.q.w};
-        }
-        return OPENUSD_PHYSX_STATUS_OK;
-    });
 }
 
 openusd_physx_status openusd_physx_stage_simulate_file(

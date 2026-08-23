@@ -1,0 +1,104 @@
+<Window
+    x:Class="OpenUsd.Viewer.PhysicsBakeWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenUsd.Viewer"
+    AutomationProperties.Name="Bake physics simulation"
+    Title="Bake Physics Simulation"
+    Width="620"
+    Height="420"
+    MinWidth="480"
+    MinHeight="360"
+    WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="16">
+    <TextBlock
+        DockPanel.Dock="Top"
+        Text="Baking writes simulated poses into a file-backed layer as authored time samples. The session overlay and the simulation itself are left untouched."
+        TextWrapping="Wrap"
+        Opacity="0.75"
+        Margin="0,0,0,12" />
+    <StackPanel
+        DockPanel.Dock="Bottom"
+        Orientation="Horizontal"
+        HorizontalAlignment="Right"
+        Spacing="8"
+        Margin="0,12,0,0">
+      <TextBlock
+          x:Name="BakeValidationText"
+          AutomationProperties.Name="Bake request validation"
+          VerticalAlignment="Center"
+          TextWrapping="Wrap"
+          MaxWidth="320"
+          Opacity="0.85" />
+      <Button
+          x:Name="BakeCancelButton"
+          AutomationProperties.Name="Cancel bake"
+          Content="Cancel"
+          IsCancel="True"
+          MinWidth="88" />
+      <Button
+          x:Name="BakeConfirmButton"
+          AutomationProperties.Name="Start bake"
+          Content="Bake"
+          IsDefault="True"
+          MinWidth="88" />
+    </StackPanel>
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="140,*,Auto"
+          RowSpacing="10" ColumnSpacing="8">
+      <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Destination layer" />
+      <TextBox
+          x:Name="BakeDestinationInput"
+          Grid.Row="0"
+          Grid.Column="1"
+          AutomationProperties.Name="Bake destination layer path"
+          ToolTip.Tip="A .usd, .usda, or .usdc file the bake writes its time samples into." />
+      <Button
+          x:Name="BakeBrowseButton"
+          Grid.Row="0"
+          Grid.Column="2"
+          AutomationProperties.Name="Choose bake destination layer"
+          Content="Browse..." />
+      <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Start time code" />
+      <TextBox
+          x:Name="BakeStartInput"
+          Grid.Row="1"
+          Grid.Column="1"
+          AutomationProperties.Name="Bake start time code"
+          ToolTip.Tip="The first authored time code to bake, in invariant notation." />
+      <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="End time code" />
+      <TextBox
+          x:Name="BakeEndInput"
+          Grid.Row="2"
+          Grid.Column="1"
+          AutomationProperties.Name="Bake end time code"
+          ToolTip.Tip="The last authored time code to bake, in invariant notation." />
+      <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="Stride" />
+      <TextBox
+          x:Name="BakeStrideInput"
+          Grid.Row="3"
+          Grid.Column="1"
+          AutomationProperties.Name="Bake sample stride"
+          ToolTip.Tip="The authored time-code distance between baked samples." />
+      <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="Policy" />
+      <ComboBox
+          x:Name="BakePolicySelector"
+          Grid.Row="4"
+          Grid.Column="1"
+          HorizontalAlignment="Stretch"
+          AutomationProperties.Name="Bake conflict policy"
+          SelectedIndex="0"
+          ToolTip.Tip="What the bake does when the destination layer already has samples.">
+        <ComboBoxItem Content="Refuse the bake if samples already exist" Tag="Reject" />
+        <ComboBoxItem Content="Overwrite existing authored samples" Tag="Overwrite" />
+        <ComboBoxItem Content="Keep existing authored samples" Tag="Skip" />
+      </ComboBox>
+      <CheckBox
+          x:Name="BakeSaveCheckBox"
+          Grid.Row="5"
+          Grid.Column="1"
+          AutomationProperties.Name="Save destination layer after baking"
+          Content="Save the destination layer when the bake commits"
+          IsChecked="True" />
+    </Grid>
+  </DockPanel>
+</Window>

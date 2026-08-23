@@ -14,6 +14,7 @@ on:
       - 'eng/physx.lock.json'
       - 'eng/fetch-physx-native.ps1'
       - 'eng/build-physx-native.ps1'
+      - 'eng/build-physx-shim.ps1'
       - 'eng/build-vulkan-sdk.ps1'
       - 'eng/check-linux-native-prerequisites.ps1'
       - 'eng/native-install-metadata.ps1'
@@ -34,6 +35,7 @@ on:
       - 'eng/physx.lock.json'
       - 'eng/fetch-physx-native.ps1'
       - 'eng/build-physx-native.ps1'
+      - 'eng/build-physx-shim.ps1'
       - 'eng/build-vulkan-sdk.ps1'
       - 'eng/check-linux-native-prerequisites.ps1'
       - 'eng/native-install-metadata.ps1'
@@ -244,21 +246,16 @@ jobs:
       - name: Build and test optional PhysX shim
         if: runner.os == 'Windows'
         shell: pwsh
+        # The install prefix lives in eng/build-physx-shim.ps1 rather than here.
+        # The physics preset configures the whole native project, so installing it
+        # over native/install/shim/win-x64 would replace archive-verified core,
+        # Hydra, hdSilk and Storm child binaries at exactly the paths packaging
+        # reads. Stating that prefix in one place is what keeps this job and the
+        # packaging agreeing about it.
         run: |
-          $env:OPENUSD_ROOT = (Resolve-Path native/install/win-x64).Path
           $env:VULKAN_SDK = (Resolve-Path native/install/vulkan-sdk-1.4.321.0).Path
           ./eng/build-physx-native.ps1 -Rid win-x64
-          Push-Location native
-          try
-          {
-              cmake --preset win-x64-physx
-              cmake --build --preset win-x64-physx --parallel
-          }
-          finally
-          {
-              Pop-Location
-          }
-          cmake --install native/build/shim/win-x64-physx --prefix native/install/shim/win-x64-physx
+          ./eng/build-physx-shim.ps1 -Rid win-x64
           ctest --test-dir native/build/shim/win-x64-physx -C Release --output-on-failure
       - name: Run PhysX shim managed coverage tests
         if: runner.os == 'Windows'

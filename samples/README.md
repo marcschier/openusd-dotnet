@@ -39,6 +39,18 @@ packages are `OpenUsd.Runtime.Imaging.win-x64`, `OpenUsd.Runtime.Imaging.linux-x
 and get `OpenUsd.Runtime.Cesium`, or explicitly pin `OpenUsd.Runtime.Cesium.win-x64`,
 `OpenUsd.Runtime.Cesium.linux-x64`, or `OpenUsd.Runtime.Cesium.osx-arm64`.
 
+Simulation consumers reference `OpenUsd.Physics` and get `OpenUsd.Runtime.Physics`, or explicitly
+pin `OpenUsd.Runtime.Physics.win-x64` or `OpenUsd.Runtime.Physics.linux-x64`. There is no macOS
+physics package: the pinned vcpkg PhysX port declares no `arm64-osx` support, so a macOS
+application resolves the managed library, finds no solver, and reports an unavailable physics
+backend while everything else keeps working.
+
+GPU physics domains need NVIDIA's `PhysXGpu` and `PhysXDevice` modules. Those are proprietary
+binaries this project does not redistribute, so no package contains them. A user with the
+appropriate NVIDIA licence copies their own modules beside the published `openusd_physx` library;
+without them the runtime reports no CUDA capability and skips every GPU-only object with a
+diagnostic.
+
 Managed builds do not require native binaries. Executing stage operations does.
 
 ## Commands from the repository root

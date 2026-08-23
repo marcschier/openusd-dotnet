@@ -70,6 +70,7 @@ $published = @(
     'OpenUsd.Rendering.Silk.Vulkan'
     'OpenUsd.Rendering.Storm'
     'OpenUsd.Cesium'
+    'OpenUsd.Physics'
     'OpenUsd.Viewer'
     'OpenUsd.Mcp.Tool'
     'OpenUsd.Runtime.Core'
@@ -84,6 +85,17 @@ $published = @(
     'OpenUsd.Runtime.Cesium.win-x64'
     'OpenUsd.Runtime.Cesium.linux-x64'
     'OpenUsd.Runtime.Cesium.osx-arm64'
+    # CPU physics ships for the two RIDs the pinned vcpkg PhysX port actually supports. There
+    # is no arm64-osx build of the simulation SDK, so no macOS physics package exists rather
+    # than one that ships empty.
+    #
+    # No CUDA package is published. The GPU and device modules are packman blobs carrying
+    # NVIDIA proprietary terms, not the BSD-3-Clause PhysX source, and this project has no
+    # redistribution agreement for them. They stay a local build and runtime input that a
+    # licensed user supplies beside the solver.
+    'OpenUsd.Runtime.Physics'
+    'OpenUsd.Runtime.Physics.win-x64'
+    'OpenUsd.Runtime.Physics.linux-x64'
 )
 
 # Deferred from the published set. A package pushed to nuget.org can be
@@ -168,7 +180,8 @@ switch ($Scope)
                 -not $_.StartsWith('OpenUsd.Runtime.', [StringComparison]::Ordinal) -or
                 $_ -eq 'OpenUsd.Runtime.Core' -or
                 $_ -eq 'OpenUsd.Runtime.Imaging' -or
-                $_ -eq 'OpenUsd.Runtime.Cesium')
+                $_ -eq 'OpenUsd.Runtime.Cesium' -or
+                $_ -eq 'OpenUsd.Runtime.Physics')
         }
     }
     'metal'
@@ -186,6 +199,14 @@ switch ($Scope)
             "OpenUsd.Runtime.Core.$Rid",
             "OpenUsd.Runtime.Imaging.$Rid",
             "OpenUsd.Runtime.Cesium.$Rid")
+
+        # Physics exists only where the pinned simulation SDK builds. Enumerating the RIDs here
+        # rather than filtering a failure later keeps the macOS runtime job from being asked for
+        # a package that has no project and never will.
+        if ($Rid -in @('win-x64', 'linux-x64'))
+        {
+            $published += "OpenUsd.Runtime.Physics.$Rid"
+        }
     }
     'tool'
     {

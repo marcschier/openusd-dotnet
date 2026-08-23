@@ -116,11 +116,13 @@ Typical messages name the managed and native ABI values or report missing requir
 
 The current contracts are:
 
-- data ABI 15 with required capabilities `0x7FFFF`;
-- direct Storm ABI 6;
+- data ABI 15 with required capabilities `0x1FFFFF`;
+- direct Storm ABI 8;
 - Storm child ABI 8;
-- hdSilk session ABI 5; and
-- hdSilk command-page ABI 11.
+- hdSilk session ABI 5;
+- hdSilk command-page ABI 11;
+- retained physics world ABI 7; and
+- physics extraction page ABI 1.
 
 Do not work around a mismatch by suppressing initialization or editing a constant. Remove mixed native
 assets, align all managed and runtime package versions, and rebuild or republish.
@@ -129,6 +131,37 @@ For source builds, inspect `native/install/<rid>/.openusd-install-metadata.json`
 lock file, or installed binaries changed after metadata was written, rebuild the native install.
 
 See [Versioning and compatibility](versioning-compatibility.md) for the coordinated change process.
+
+## Physics packages
+
+`UsdPhysicsTransport` and `UsdPhysicsSession` report an unavailable backend instead of throwing when
+the native solver is missing, so a physics failure usually looks like an empty capability set rather
+than a loader error. Read `Diagnostics` first: the code is
+`OPENUSD_PHYSICS_BACKEND_UNAVAILABLE` when `openusd_physx` could not be loaded at all, and
+`OPENUSD_PHYSICS_ABI_MISMATCH` when it loaded but disagrees with the managed mirror.
+
+| Symptom | Cause | Action |
+| --- | --- | --- |
+| `OPENUSD_PHYSICS_BACKEND_UNAVAILABLE` | No physics runtime for the publish RID | Reference `OpenUsd.Physics` |
+| `OPENUSD_PHYSICS_BACKEND_UNAVAILABLE`, macOS | No macOS PhysX build exists | Expected; physics is unavailable there |
+| `OPENUSD_PHYSICS_ABI_MISMATCH` | Managed and native from different builds | Align every `OpenUsd*` version |
+| No `Cuda` capability | The NVIDIA GPU modules are absent | Supply your own licensed modules |
+| A core shim loads from a stale build | A duplicate reached the app root | Physics ships only `openusd_physx` |
+
+Physics is unavailable on `osx-arm64` by platform, not by defect: the pinned vcpkg PhysX port
+declares `(windows & x64 & !mingw & !uwp) | (linux & x64) | (linux & arm64)`, so no macOS solver
+exists and no macOS physics package is published. Everything else in a macOS application is
+unaffected.
+
+No OpenUsd package contains `PhysXGpu_64` or `PhysXDevice64`. They are NVIDIA proprietary binaries
+this project has no agreement to redistribute. To enable GPU domains, place your own licensed
+copies in the same directory as the published `openusd_physx` library — the application root, where
+`runtimes/<rid>/native/**` is copied. The solver late-loads them by name from there; a directory on
+`PATH` or `LD_LIBRARY_PATH` does not work.
+
+Compare `build/<package id>.native-abi.json` inside the physics nupkg with the managed mirror when
+diagnosing a mismatch: it records both physics ABI generations and the hash of every native asset
+the archive carries.
 
 ## Plugin discovery
 

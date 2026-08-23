@@ -28,7 +28,7 @@ public sealed class ViewerShortcutCatalogTests
         List<string> unbound = [];
         int checkedCount = 0;
 
-        foreach (ViewerShortcut shortcut in ViewerShortcutCatalog.All)
+        foreach (ViewerShortcut shortcut in ViewerShortcutCatalog.Camera)
         {
             if (shortcut.Kind != ViewerShortcutKind.Keyboard)
             {
@@ -136,6 +136,80 @@ public sealed class ViewerShortcutCatalogTests
                     ViewerCameraGestureClassifier.Classify(KeyModifiers.None, button!.Value))
                 .IsEqualTo(ViewerCameraPointerGesture.None)
                 .Because("dragging without Alt must not move the camera");
+        }
+    }
+
+    [Test]
+    public async Task EveryPhysicsShortcutResolvesToARealPhysicsCommand()
+    {
+        List<string> unbound = [];
+        int checkedCount = 0;
+
+        foreach (ViewerShortcut shortcut in ViewerShortcutCatalog.Physics)
+        {
+            Key? key = ViewerShortcutCatalog.TryResolveKey(shortcut);
+            if (key is null)
+            {
+                unbound.Add($"{shortcut.Gesture} (unrecognised key)");
+                continue;
+            }
+
+            checkedCount++;
+            if (ViewerPhysicsShortcutPolicy.Classify(
+                    key.Value,
+                    KeyModifiers.None,
+                    isEditing: false) == ViewerPhysicsShortcut.None)
+            {
+                unbound.Add($"{shortcut.Gesture} -> {shortcut.Action}");
+            }
+        }
+
+        await Assert.That(checkedCount).IsGreaterThanOrEqualTo(4);
+        await Assert.That(unbound)
+            .IsEmpty()
+            .Because(
+                "the shortcuts dialog advertises these keys, but the physics shortcut " +
+                "policy does not act on them: " + string.Join(", ", unbound));
+    }
+
+    [Test]
+    public async Task PhysicsShortcutsNeverFireWhileTypingOrWithModifiers()
+    {
+        foreach (ViewerShortcut shortcut in ViewerShortcutCatalog.Physics)
+        {
+            Key key = ViewerShortcutCatalog.TryResolveKey(shortcut)!.Value;
+
+            // Typing a prim name that happens to contain one of these letters must not start,
+            // stop, or bake a simulation.
+            await Assert.That(ViewerPhysicsShortcutPolicy.Classify(
+                    key,
+                    KeyModifiers.None,
+                    isEditing: true))
+                .IsEqualTo(ViewerPhysicsShortcut.None);
+            await Assert.That(ViewerPhysicsShortcutPolicy.Classify(
+                    key,
+                    KeyModifiers.Control,
+                    isEditing: false))
+                .IsEqualTo(ViewerPhysicsShortcut.None);
+        }
+    }
+
+    [Test]
+    public async Task PhysicsShortcutsDoNotCollideWithCameraShortcuts()
+    {
+        foreach (ViewerShortcut shortcut in ViewerShortcutCatalog.Physics)
+        {
+            Key key = ViewerShortcutCatalog.TryResolveKey(shortcut)!.Value;
+
+            // Physics playback has to coexist with camera navigation: a key that did both would
+            // move the camera every time the user stepped the simulation.
+            await Assert.That(ViewerCameraShortcutPolicy.Classify(
+                    key,
+                    KeyModifiers.None,
+                    isEditing: false,
+                    isViewportFocused: true))
+                .IsEqualTo(ViewerCameraShortcut.None)
+                .Because($"{shortcut.Gesture} is a physics binding");
         }
     }
 
