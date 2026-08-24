@@ -1,7 +1,9 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenUsd.Rendering;
 namespace OpenUsd.Mcp;
 
 /// <summary>Creates scheduler-backed OpenUSD workspace sessions.</summary>
@@ -24,6 +26,13 @@ public sealed class OpenUsdWorkspaceSessionBackendFactory : IWorkspaceSessionBac
                     using UsdLayer root = stage.GetRootLayer();
                     root.AddSublayer(sourceIdentifier);
                     stage.SetEditTarget(root);
+                    if (!stage.GetLayerStackIdentifiers().Any(
+                            identifier => LayerIdentifierEquals(
+                                identifier,
+                                sourceIdentifier)))
+                    {
+                        throw new WorkspaceSourceCompositionException();
+                    }
                     stage.Save();
                 },
                 UsdStageInvalidationKind.Composition,
@@ -35,6 +44,28 @@ public sealed class OpenUsdWorkspaceSessionBackendFactory : IWorkspaceSessionBac
             await scheduler.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+
+    }
+
+    private static bool LayerIdentifierEquals(string left, string right)
+    {
+        StringComparison comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        return string.Equals(
+            left.Replace('\\', '/'),
+            right.Replace('\\', '/'),
+            comparison);
+    }
+}
+
+internal sealed class WorkspaceSourceCompositionException : Exception
+{
+    internal WorkspaceSourceCompositionException()
+        : base(
+            "The source layer could not be composed. Verify its USDA syntax and plugin " +
+            "availability.")
+    {
     }
 }
 
@@ -154,8 +185,13 @@ internal sealed class OpenUsdWorkspaceSessionBackend : IWorkspaceSessionBackend
                 {
                     File.Copy(checkpointPath, temporaryPath, overwrite: true);
                     File.Move(temporaryPath, _context.OverlayPath, overwrite: true);
-                    stage.Reload();
                     using UsdLayer root = stage.GetRootLayer();
+                    if (!root.Reload(force: true))
+                    {
+                        throw new InvalidDataException(
+                            "The restored overlay could not be reloaded.");
+                    }
+                    stage.Reload();
                     stage.SetEditTarget(root);
                     return stage.ChangeSerial;
                 }
@@ -192,6 +228,69 @@ internal sealed class OpenUsdWorkspaceSessionBackend : IWorkspaceSessionBackend
                     statistics.MaximumDepth);
             },
             cancellationToken);
+
+    public async ValueTask<IReadOnlyList<CameraState>> CreatePreviewCamerasAsync(
+        string? cameraPath,
+        bool orbit,
+        int width,
+        int height,
+        IReadOnlyList<double> timeCodes,
+        CancellationToken cancellationToken) =>
+        await _scheduler.InvokeAsync(
+            stage =>
+            {
+                if (cameraPath is not null)
+                {
+                    return timeCodes
+                        .Select(timeCode => CameraState.FromStageCamera(
+                            stage,
+                            cameraPath,
+                            timeCode,
+                            width,
+                            height))
+                        .ToArray();
+                }
+
+                if (!orbit)
+                {
+                    return Enumerable.Repeat(CameraState.Default, timeCodes.Count)
+                        .ToArray();
+                }
+
+                const float verticalFieldOfView = MathF.PI / 4f;
+                float aspectRatio = (float)width / height;
+                var cameras = new CameraState[timeCodes.Count];
+                for (int index = 0; index < cameras.Length; index++)
+                {
+                    UsdBounds3d bounds = stage.GetWorldBounds(timeCodes[index]);
+                    if (!BoundsCameraFraming.TryCreate(
+                            bounds,
+                            verticalFieldOfView,
+                            aspectRatio,
+                            out BoundsCameraFraming framing))
+                    {
+                        cameras[index] = CameraState.Default;
+                        continue;
+                    }
+
+                    float angle = (2f * MathF.PI * index) / cameras.Length;
+                    Vector3 orbitDirection = Vector3.Normalize(new Vector3(
+                        MathF.Sin(angle) * framing.Distance,
+                        framing.Distance * 0.25f,
+                        MathF.Cos(angle) * framing.Distance));
+                    Vector3 position = framing.Target + (orbitDirection * framing.Distance);
+                    cameras[index] = new CameraState(
+                        Matrix4x4.CreateLookAt(position, framing.Target, Vector3.UnitY),
+                        Matrix4x4.CreatePerspectiveFieldOfView(
+                            verticalFieldOfView,
+                            aspectRatio,
+                            framing.NearPlane,
+                            framing.FarPlane));
+                }
+
+                return cameras;
+            },
+            cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<UsdStageRenderSource> AcquireRenderSourceAsync(
         CancellationToken cancellationToken = default)
@@ -348,6 +447,83 @@ internal sealed class OpenUsdWorkspaceSessionBackend : IWorkspaceSessionBackend
                 else
                 {
                     prim.SetDouble(setDouble.AttributeName, setDouble.Value);
+                }
+
+                break;
+            case SetBoolWorkspaceEdit setBool:
+                prim = stage.GetPrim(setBool.PrimPath);
+                if (setBool.TimeCode is double boolTimeCode)
+                {
+                    prim.SetBool(setBool.AttributeName, setBool.Value, boolTimeCode);
+                }
+                else
+                {
+                    prim.SetBool(setBool.AttributeName, setBool.Value);
+                }
+
+                break;
+            case SetInt64WorkspaceEdit setInt64:
+                prim = stage.GetPrim(setInt64.PrimPath);
+                if (setInt64.TimeCode is double int64TimeCode)
+                {
+                    prim.SetInt64(setInt64.AttributeName, setInt64.Value, int64TimeCode);
+                }
+                else
+                {
+                    prim.SetInt64(setInt64.AttributeName, setInt64.Value);
+                }
+
+                break;
+            case SetStringWorkspaceEdit setString:
+                prim = stage.GetPrim(setString.PrimPath);
+                if (setString.TimeCode is double stringTimeCode)
+                {
+                    prim.SetString(setString.AttributeName, setString.Value, stringTimeCode);
+                }
+                else
+                {
+                    prim.SetString(setString.AttributeName, setString.Value);
+                }
+
+                break;
+            case SetTokenWorkspaceEdit setToken:
+                prim = stage.GetPrim(setToken.PrimPath);
+                if (setToken.TimeCode is double tokenTimeCode)
+                {
+                    prim.SetToken(setToken.AttributeName, setToken.Value, tokenTimeCode);
+                }
+                else
+                {
+                    prim.SetToken(setToken.AttributeName, setToken.Value);
+                }
+
+                break;
+            case SetFloat3WorkspaceEdit setFloat3:
+                prim = stage.GetPrim(setFloat3.PrimPath);
+                var vector = new UsdVec3f(setFloat3.X, setFloat3.Y, setFloat3.Z);
+                if (setFloat3.TimeCode is double float3TimeCode)
+                {
+                    prim.SetVec3f(setFloat3.AttributeName, vector, float3TimeCode);
+                }
+                else
+                {
+                    prim.SetVec3f(setFloat3.AttributeName, vector);
+                }
+
+                break;
+            case SetColor3fWorkspaceEdit setColor3f:
+                prim = stage.GetPrim(setColor3f.PrimPath);
+                var color = new UsdVec3f(
+                    setColor3f.Red,
+                    setColor3f.Green,
+                    setColor3f.Blue);
+                if (setColor3f.TimeCode is double colorTimeCode)
+                {
+                    prim.SetColor3f(setColor3f.AttributeName, color, colorTimeCode);
+                }
+                else
+                {
+                    prim.SetColor3f(setColor3f.AttributeName, color);
                 }
 
                 break;

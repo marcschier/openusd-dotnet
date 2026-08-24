@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using OpenUsd.Rendering;
+
 namespace OpenUsd.Mcp;
 
 /// <summary>
@@ -502,6 +504,38 @@ public sealed class McpSessionWorkspace : IAsyncDisposable, IPreviewRenderSource
             ActiveSession active = await GetCurrentAsync(revision, cancellationToken)
                 .ConfigureAwait(false);
             return await active.Backend.InspectSceneAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Creates preview cameras at an optimistic revision.</summary>
+    public async ValueTask<IReadOnlyList<CameraState>> CreatePreviewCamerasAsync(
+        WorkspaceSessionRevision revision,
+        string? cameraPath,
+        bool orbit,
+        int width,
+        int height,
+        IReadOnlyList<double> timeCodes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(revision);
+        ArgumentNullException.ThrowIfNull(timeCodes);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ActiveSession active = await GetCurrentAsync(revision, cancellationToken)
+                .ConfigureAwait(false);
+            return await active.Backend.CreatePreviewCamerasAsync(
+                    cameraPath,
+                    orbit,
+                    width,
+                    height,
+                    timeCodes,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
         finally

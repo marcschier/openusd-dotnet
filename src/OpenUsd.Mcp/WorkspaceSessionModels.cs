@@ -124,7 +124,7 @@ public sealed record WorkspaceSceneStatistics(
     long FaceCount,
     int RootPrimCount,
     int LeafPrimCount,
-    int MaximumDepth);
+    int MaximumDepth) : IUsdDetachedResult;
 
 /// <summary>Contains session state captured with a scheduler-owned final stage export.</summary>
 public sealed record WorkspaceFinalStageResult(

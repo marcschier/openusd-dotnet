@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using OpenUsd.Rendering;
+
 namespace OpenUsd.Mcp;
 
 /// <summary>Contains canonical paths used to initialize a native session backend.</summary>
@@ -51,6 +53,15 @@ public interface IWorkspaceSessionBackend : IAsyncDisposable, IPreviewRenderSour
 
     /// <summary>Computes detached bounded scene statistics on the stage scheduler.</summary>
     ValueTask<WorkspaceSceneStatistics> InspectSceneAsync(CancellationToken cancellationToken);
+
+    /// <summary>Creates renderer-neutral preview cameras on the stage scheduler.</summary>
+    ValueTask<IReadOnlyList<CameraState>> CreatePreviewCamerasAsync(
+        string? cameraPath,
+        bool orbit,
+        int width,
+        int height,
+        IReadOnlyList<double> timeCodes,
+        CancellationToken cancellationToken);
 
     /// <summary>Atomically persists the session manifest and journal.</summary>
     ValueTask PersistAsync(

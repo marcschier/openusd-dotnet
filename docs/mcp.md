@@ -151,6 +151,14 @@ runtime by rename. Metadata, preflight, copy, or validation failure leaves the p
 place and creates no staging directory; a replacement failure rolls its backup back into place.
 Package tests execute these failure and replacement paths against synthetic installs.
 
+The staged `plugin/usd` directory is a merge of all three required trees:
+`<native>/lib/usd`, `<native>/plugin/usd`, and `<shim>/plugin/usd`. Omitting `lib/usd` can make
+`open_scene` appear to start while schema-backed source layers fail composition. On Windows the
+runner also co-locates `usd_ms.dll` and the shim DLLs in the staged `bin` directory because loading
+the shim by absolute path does not make a split `lib` directory reliable for transitive DLL
+resolution. Do not manually assemble a runtime by copying only `bin` and `plugin/usd`; use
+`eng/run-mcp.ps1` or `eng/publish-mcp-bundle.ps1`.
+
 The host reserves **stdout exclusively for MCP JSON-RPC**. Microsoft.Extensions.Logging is
 configured so every console log level, including trace, goes to **stderr**. Do not merge the
 two streams or wrap the command with a tool that writes banners to stdout.
@@ -176,8 +184,10 @@ artifacts/<rid>/OpenUsd.Mcp.<rid>.manifest.json
 ```
 
 The layout contains `OpenUsd.Mcp`, its managed Core/Rendering/hdSilk backend assemblies,
-native `bin` and `lib` assets, and `plugin/usd/**`. It deliberately excludes
-`OpenUsd.Viewer.App`, Viewer UI dependencies, samples, tests, and Cesium packaging.
+native `bin` and `lib` assets, and the merged Core/Imaging/hdSilk `plugin/usd/**` tree.
+Windows bundles duplicate native DLLs from `lib` into `bin` for reliable transitive loading.
+It deliberately excludes `OpenUsd.Viewer.App`, Viewer UI dependencies, samples, tests, and
+Cesium packaging.
 Configure a separate Viewer executable only when `present_scene` is required.
 
 Publishing performs the same metadata and native/plugin preflight before creating output or
@@ -532,7 +542,8 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
   `stale_session`, `stale_revision`, `invalid_argument`, `quota_exceeded`, or
   `native_failure`.
 - **`apply_edits`:** requires the exact revision and 1-128 typed edits. It creates a
-  recovery checkpoint and atomically commits the overlay. Errors are `invalid_argument`,
+  recovery checkpoint and atomically commits prim, scalar, string/token, float3, and color3f
+  opinions to the overlay. Errors are `invalid_argument`,
   `no_session`, `stale_session`, `stale_revision`, `quota_exceeded`, or `native_failure`.
 - **`checkpoint_scene`:** requires the exact revision. It creates one immutable overlay
   checkpoint without changing coordinates. Errors are `invalid_argument`, `no_session`,
@@ -542,6 +553,7 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
   Errors are `invalid_argument`, `no_session`, `stale_session`, `stale_revision`,
   `quota_exceeded`, or `native_failure`.
 - **`render_preview`:** requires the exact revision, 1-4096 dimensions, and 1-16 views.
+  It accepts an optional authored camera path; otherwise turntables orbit the scene bounds.
   It emits at most 16 PNG descriptors/blocks. Errors are `invalid_argument`, `no_session`,
   `stale_session`, `stale_revision`, `quota_exceeded`, or `render_failure`.
 - **`analyze_scene`:** requires the exact revision and bounded finite observations. It
@@ -618,6 +630,24 @@ Edits are atomic and limited to 128:
         "timeCode":0
       },
       {
+        "kind":"set_float3",
+        "primPath":"/World/Look",
+        "attributeName":"xformOp:scale",
+        "vectorValue":[1.0,1.25,1.0]
+      },
+      {
+        "kind":"set_color3f",
+        "primPath":"/World/Look",
+        "attributeName":"primvars:displayColor",
+        "vectorValue":[0.2,0.55,0.9]
+      },
+      {
+        "kind":"set_token",
+        "primPath":"/World/Look",
+        "attributeName":"purpose",
+        "stringValue":"render"
+      },
+      {
         "kind":"clear_overlay_attribute",
         "primPath":"/World/Look",
         "attributeName":"custom:exposure"
@@ -628,8 +658,11 @@ Edits are atomic and limited to 128:
 ```
 
 Prim paths are absolute USD prim paths. Type/property components use USD identifier syntax.
-`value` and optional `timeCode` must be finite. The result includes the recovery
-`checkpointId`, committed `operationCount`, and successor revision.
+Supported attribute kinds are `set_double` (`value`), `set_bool` (`boolValue`), `set_int64`
+(`int64Value`), `set_string` and `set_token` (`stringValue`), and `set_float3` and
+`set_color3f` (`vectorValue`, exactly three finite components). Text values contain at most
+4096 non-control characters. Numeric values and optional `timeCode` must be finite. The result
+includes the recovery `checkpointId`, committed `operationCount`, and successor revision.
 
 ### `checkpoint_scene` and `rollback_scene`
 
@@ -661,6 +694,7 @@ immutable.
     "kind": "contact_sheet",
     "width": 1024,
     "height": 1024,
+    "cameraPath": "/World/ShotCamera",
     "views": [
       {"name":"start","timeCode":0},
       {"name":"middle","timeCode":12},
@@ -672,8 +706,9 @@ immutable.
 
 Modes are `still` (exactly one view and one PNG), `contact_sheet` (1-16 views tiled into
 one PNG), and `turntable` (one PNG per view, at most 16). View names are bounded to 128
-characters and sanitized only for artifact IDs; finite time codes are rendered with the current
-automatic camera.
+characters and sanitized only for artifact IDs. When `cameraPath` is supplied, each finite
+`timeCode` samples that `UsdGeomCamera`. Without `cameraPath`, still/contact-sheet captures use
+automatic framing and turntable views are distributed around a bounds-framed orbit in list order.
 
 Default quotas are 4096x4096, 16 views, 64 MiB generated bytes per capture, a capture queue
 capacity of 8, 128 process-local artifact resources, and 64 MiB total artifact-store bytes.

@@ -408,6 +408,20 @@ try
         Copy-DirectoryContents $layout.Source $layout.Target
     }
 
+    if ($Rid -eq 'win-x64')
+    {
+        foreach ($source in @(
+            (Join-Path $nativeRoot 'lib'),
+            (Join-Path $shimRoot 'lib')))
+        {
+            if (Test-Path -LiteralPath $source -PathType Container)
+            {
+                Get-ChildItem -LiteralPath $source -File -Filter '*.dll' |
+                    Copy-Item -Destination $binRoot -Force
+            }
+        }
+    }
+
     foreach ($pluginSource in @(
         (Join-Path $nativeRoot 'lib/usd'),
         (Join-Path $nativeRoot 'plugin/usd'),

@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using OpenUsd.Rendering;
+
 namespace OpenUsd.Mcp.Tests;
 
 internal sealed class WorkspaceTestFiles : IDisposable
@@ -98,6 +100,8 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend
 
     internal WorkspaceSessionManifest? LastManifest { get; private set; }
 
+    internal WorkspaceEditBatch? LastBatch { get; private set; }
+
     internal int PersistFailuresRemaining { get; set; }
 
     internal Exception? ExportError { get; set; }
@@ -123,6 +127,7 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend
     {
         cancellationToken.ThrowIfCancellationRequested();
         Events.Add("apply");
+        LastBatch = batch;
         return ApplyError is null
             ? ValueTask.FromResult(++StageRevision)
             : ValueTask.FromException<ulong>(ApplyError);
@@ -214,6 +219,20 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend
                 1,
                 1,
                 0));
+    }
+
+    public ValueTask<IReadOnlyList<CameraState>> CreatePreviewCamerasAsync(
+        string? cameraPath,
+        bool orbit,
+        int width,
+        int height,
+        IReadOnlyList<double> timeCodes,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Events.Add("create-preview-cameras");
+        return ValueTask.FromResult<IReadOnlyList<CameraState>>(
+            Enumerable.Repeat(CameraState.Default, timeCodes.Count).ToArray());
     }
 
     public ValueTask PersistAsync(

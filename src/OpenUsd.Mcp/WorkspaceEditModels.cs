@@ -14,6 +14,24 @@ public enum WorkspaceEditKind
     /// <summary>Authors a double attribute.</summary>
     SetDouble,
 
+    /// <summary>Authors a Boolean attribute.</summary>
+    SetBool,
+
+    /// <summary>Authors a signed 64-bit integer attribute.</summary>
+    SetInt64,
+
+    /// <summary>Authors a string attribute.</summary>
+    SetString,
+
+    /// <summary>Authors a token attribute.</summary>
+    SetToken,
+
+    /// <summary>Authors a float3 vector attribute.</summary>
+    SetFloat3,
+
+    /// <summary>Authors a color3f attribute.</summary>
+    SetColor3f,
+
     /// <summary>Clears only the attribute value opinion authored in the session overlay.</summary>
     ClearOverlayAttribute,
 
@@ -22,6 +40,212 @@ public enum WorkspaceEditKind
 
     /// <summary>Legacy proposal operation that clears only the overlay-authored opinion.</summary>
     ClearAttribute
+}
+
+/// <summary>Authors a Boolean attribute in the session overlay.</summary>
+public sealed record SetBoolWorkspaceEdit : WorkspaceEditOperation
+{
+    /// <summary>Initializes a Boolean-attribute edit.</summary>
+    public SetBoolWorkspaceEdit(
+        string primPath,
+        string attributeName,
+        bool value,
+        double? timeCode = null)
+        : base(WorkspaceEditKind.SetBool, primPath)
+    {
+        AttributeName = attributeName;
+        Value = value;
+        TimeCode = timeCode;
+    }
+
+    /// <summary>Gets the attribute name.</summary>
+    public string AttributeName { get; }
+
+    /// <summary>Gets the authored value.</summary>
+    public bool Value { get; }
+
+    /// <summary>Gets the optional numeric time code.</summary>
+    public double? TimeCode { get; }
+
+    internal override void Validate() =>
+        ValidateAttribute(AttributeName, TimeCode);
+}
+
+/// <summary>Authors a signed 64-bit integer attribute in the session overlay.</summary>
+public sealed record SetInt64WorkspaceEdit : WorkspaceEditOperation
+{
+    /// <summary>Initializes an integer-attribute edit.</summary>
+    public SetInt64WorkspaceEdit(
+        string primPath,
+        string attributeName,
+        long value,
+        double? timeCode = null)
+        : base(WorkspaceEditKind.SetInt64, primPath)
+    {
+        AttributeName = attributeName;
+        Value = value;
+        TimeCode = timeCode;
+    }
+
+    /// <summary>Gets the attribute name.</summary>
+    public string AttributeName { get; }
+
+    /// <summary>Gets the authored value.</summary>
+    public long Value { get; }
+
+    /// <summary>Gets the optional numeric time code.</summary>
+    public double? TimeCode { get; }
+
+    internal override void Validate() =>
+        ValidateAttribute(AttributeName, TimeCode);
+}
+
+/// <summary>Authors a string attribute in the session overlay.</summary>
+public sealed record SetStringWorkspaceEdit : WorkspaceEditOperation
+{
+    /// <summary>Initializes a string-attribute edit.</summary>
+    public SetStringWorkspaceEdit(
+        string primPath,
+        string attributeName,
+        string value,
+        double? timeCode = null)
+        : base(WorkspaceEditKind.SetString, primPath)
+    {
+        AttributeName = attributeName;
+        Value = value;
+        TimeCode = timeCode;
+    }
+
+    /// <summary>Gets the attribute name.</summary>
+    public string AttributeName { get; }
+
+    /// <summary>Gets the authored value.</summary>
+    public string Value { get; }
+
+    /// <summary>Gets the optional numeric time code.</summary>
+    public double? TimeCode { get; }
+
+    internal override void Validate()
+    {
+        ValidateAttribute(AttributeName, TimeCode);
+        WorkspaceEditValidation.ValidateTextValue(Value, nameof(Value));
+    }
+}
+
+/// <summary>Authors a token attribute in the session overlay.</summary>
+public sealed record SetTokenWorkspaceEdit : WorkspaceEditOperation
+{
+    /// <summary>Initializes a token-attribute edit.</summary>
+    public SetTokenWorkspaceEdit(
+        string primPath,
+        string attributeName,
+        string value,
+        double? timeCode = null)
+        : base(WorkspaceEditKind.SetToken, primPath)
+    {
+        AttributeName = attributeName;
+        Value = value;
+        TimeCode = timeCode;
+    }
+
+    /// <summary>Gets the attribute name.</summary>
+    public string AttributeName { get; }
+
+    /// <summary>Gets the authored value.</summary>
+    public string Value { get; }
+
+    /// <summary>Gets the optional numeric time code.</summary>
+    public double? TimeCode { get; }
+
+    internal override void Validate()
+    {
+        ValidateAttribute(AttributeName, TimeCode);
+        WorkspaceEditValidation.ValidateTextValue(Value, nameof(Value));
+    }
+}
+
+/// <summary>Authors a float3 vector attribute in the session overlay.</summary>
+public sealed record SetFloat3WorkspaceEdit : WorkspaceEditOperation
+{
+    /// <summary>Initializes a float3-attribute edit.</summary>
+    public SetFloat3WorkspaceEdit(
+        string primPath,
+        string attributeName,
+        float x,
+        float y,
+        float z,
+        double? timeCode = null)
+        : base(WorkspaceEditKind.SetFloat3, primPath)
+    {
+        AttributeName = attributeName;
+        X = x;
+        Y = y;
+        Z = z;
+        TimeCode = timeCode;
+    }
+
+    /// <summary>Gets the attribute name.</summary>
+    public string AttributeName { get; }
+
+    /// <summary>Gets the authored X component.</summary>
+    public float X { get; }
+
+    /// <summary>Gets the authored Y component.</summary>
+    public float Y { get; }
+
+    /// <summary>Gets the authored Z component.</summary>
+    public float Z { get; }
+
+    /// <summary>Gets the optional numeric time code.</summary>
+    public double? TimeCode { get; }
+
+    internal override void Validate()
+    {
+        ValidateAttribute(AttributeName, TimeCode);
+        WorkspaceEditValidation.ValidateFloat3(X, Y, Z);
+    }
+}
+
+/// <summary>Authors a color3f attribute in the session overlay.</summary>
+public sealed record SetColor3fWorkspaceEdit : WorkspaceEditOperation
+{
+    /// <summary>Initializes a color3f-attribute edit.</summary>
+    public SetColor3fWorkspaceEdit(
+        string primPath,
+        string attributeName,
+        float red,
+        float green,
+        float blue,
+        double? timeCode = null)
+        : base(WorkspaceEditKind.SetColor3f, primPath)
+    {
+        AttributeName = attributeName;
+        Red = red;
+        Green = green;
+        Blue = blue;
+        TimeCode = timeCode;
+    }
+
+    /// <summary>Gets the attribute name.</summary>
+    public string AttributeName { get; }
+
+    /// <summary>Gets the authored red component.</summary>
+    public float Red { get; }
+
+    /// <summary>Gets the authored green component.</summary>
+    public float Green { get; }
+
+    /// <summary>Gets the authored blue component.</summary>
+    public float Blue { get; }
+
+    /// <summary>Gets the optional numeric time code.</summary>
+    public double? TimeCode { get; }
+
+    internal override void Validate()
+    {
+        ValidateAttribute(AttributeName, TimeCode);
+        WorkspaceEditValidation.ValidateFloat3(Red, Green, Blue);
+    }
 }
 
 /// <summary>Base class for closed, typed workspace edit operations.</summary>
@@ -42,6 +266,18 @@ public abstract record WorkspaceEditOperation
     internal virtual void Validate()
     {
         WorkspaceEditValidation.ValidatePrimPath(PrimPath, nameof(PrimPath));
+    }
+
+    private protected void ValidateAttribute(string attributeName, double? timeCode)
+    {
+        WorkspaceEditValidation.ValidatePrimPath(PrimPath, nameof(PrimPath));
+        WorkspaceEditValidation.ValidatePropertyName(attributeName, nameof(attributeName));
+        if (timeCode is double value && !double.IsFinite(value))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeCode),
+                "The time code must be finite.");
+        }
     }
 }
 
@@ -242,6 +478,28 @@ internal static class WorkspaceEditValidation
         foreach (string component in name.Split(':'))
         {
             ValidateIdentifier(component, parameterName);
+        }
+    }
+
+    internal static void ValidateTextValue(string value, string parameterName)
+    {
+        ArgumentNullException.ThrowIfNull(value, parameterName);
+        if (value.Length > OpenUsdMcpLimits.MaximumTextLength ||
+            value.Any(char.IsControl))
+        {
+            throw new ArgumentException(
+                $"Attribute text must contain at most {OpenUsdMcpLimits.MaximumTextLength} non-control characters.",
+                parameterName);
+        }
+    }
+
+    internal static void ValidateFloat3(float x, float y, float z)
+    {
+        if (!float.IsFinite(x) || !float.IsFinite(y) || !float.IsFinite(z))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(x),
+                "Float3 components must be finite.");
         }
     }
 

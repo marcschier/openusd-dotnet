@@ -39,10 +39,10 @@ internal sealed class OpenSceneRequest
     [Required]
     [MaxLength(OpenUsdMcpLimits.MaximumPathLength)]
     [Description(
-        "Relative USD file path under the configured read-only source root, for example \"assets/robot.usda\". " +
-        "Supported extensions: .usd, .usda, .usdc, and .usdz. " +
-        "Absolute paths, traversal outside the root, control characters, and paths longer than 1024 " +
-        "characters are rejected.")]
+        "Relative USD file path under the configured read-only source root, for example " +
+        "\"assets/robot.usda\". Supported extensions: .usd, .usda, .usdc, and .usdz. " +
+        "Absolute paths, traversal outside the root, control characters, and paths longer " +
+        "than 1024 characters are rejected.")]
     public required string SourcePath { get; init; }
 }
 
@@ -52,21 +52,21 @@ internal sealed class SceneRevisionRequest
     [Required]
     [MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
     [Description(
-        "Exact active session identifier returned by open_scene; 1-128 non-control characters. " +
-        "A different identifier produces stale_session.")]
+        "Exact active session identifier returned by open_scene; 1-128 non-control " +
+        "characters. A different identifier produces stale_session.")]
     public required string SessionId { get; init; }
 
     [JsonPropertyName("generation")]
     [Range(0, long.MaxValue)]
     [Description(
-        "Exact non-negative transactional generation returned by the preceding scene-mutating result. " +
-        "An older or newer value produces stale_revision.")]
+        "Exact non-negative transactional generation returned by the preceding " +
+        "scene-mutating result. An older or newer value produces stale_revision.")]
     public long Generation { get; init; }
 
     [JsonPropertyName("stageRevision")]
     [Description(
-        "Exact unsigned native stage revision returned by the preceding result. " +
-        "A mismatched value produces stale_revision.")]
+        "Exact unsigned native stage revision returned by the preceding result. A mismatched " +
+        "value produces stale_revision.")]
     public ulong StageRevision { get; init; }
 }
 
@@ -88,8 +88,8 @@ internal sealed class RollbackSceneRequest : SceneRevisionRequestBase
     [Required]
     [MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
     [Description(
-        "Existing checkpoint identifier returned by checkpoint_scene or apply_edits; " +
-        "1-128 non-control characters.")]
+        "Existing checkpoint identifier returned by checkpoint_scene or apply_edits; 1-128 " +
+        "non-control characters.")]
     public required string CheckpointId { get; init; }
 }
 
@@ -100,31 +100,40 @@ internal sealed class RenderPreviewRequest : SceneRevisionRequestBase
     [MaxLength(32)]
     [AllowedValues("still", "contact_sheet", "turntable")]
     [Description(
-        "Capture mode. still requires exactly one view; contact_sheet combines all views into one image; " +
-        "turntable emits one image per view.")]
+        "Capture mode. still requires exactly one view; contact_sheet combines all views " +
+        "into one image; turntable emits one image per view.")]
     public required string Kind { get; init; }
 
     [JsonPropertyName("width")]
     [Range(1, 4096)]
     [DefaultValue(1024)]
     [Description(
-        "Output width in pixels, inclusive range 1-4096. Contact-sheet width is divided among its view columns.")]
+        "Output width in pixels, inclusive range 1-4096. Contact-sheet width is divided " +
+        "among its view columns.")]
     public int Width { get; init; } = 1024;
 
     [JsonPropertyName("height")]
     [Range(1, 4096)]
     [DefaultValue(1024)]
     [Description(
-        "Output height in pixels, inclusive range 1-4096. Contact-sheet height is divided among its view rows.")]
+        "Output height in pixels, inclusive range 1-4096. Contact-sheet height is divided " +
+        "among its view rows.")]
     public int Height { get; init; } = 1024;
+
+    [JsonPropertyName("cameraPath")]
+    [MaxLength(OpenUsdMcpLimits.MaximumPathLength)]
+    [Description(
+        "Optional absolute UsdGeomCamera prim path. When omitted, still and contact-sheet " +
+        "captures use automatic framing while turntable captures orbit the scene bounds.")]
+    public string? CameraPath { get; init; }
 
     [JsonPropertyName("views")]
     [Required]
     [MinLength(1)]
     [MaxLength(OpenUsdMcpLimits.MaximumViewCount)]
     [Description(
-        "List of 1-16 automatic-camera views. still requires one item; contact_sheet and turntable preserve " +
-        "list order.")]
+        "List of 1-16 ordered views. still requires one item; timeCode samples an authored " +
+        "camera or scene bounds.")]
     public required IReadOnlyList<CaptureViewDto> Views { get; init; }
 }
 
@@ -133,8 +142,8 @@ internal sealed class AnalyzeSceneRequest : SceneRevisionRequestBase
     [JsonPropertyName("observations")]
     [Required]
     [Description(
-        "Detached, bounded technical observations used by deterministic analyzers. " +
-        "These are metrics only; USDA text, source code, and native handles are not accepted.")]
+        "Detached, bounded technical observations used by deterministic analyzers. These are " +
+        "metrics only; USDA text, source code, and native handles are not accepted.")]
     public required AnalysisObservationsDto Observations { get; init; }
 }
 
@@ -145,8 +154,9 @@ internal sealed class ApplyProposalsRequest : SceneRevisionRequestBase
     [MinLength(1)]
     [MaxLength(OpenUsdMcpLimits.MaximumProposalCount)]
     [Description(
-        "List of 1-128 distinct proposal IDs from the latest analyze_scene result. Every selected proposal " +
-        "must be overlay_applicable and match the current generation and stage revision.")]
+        "List of 1-128 distinct proposal IDs from the latest analyze_scene result. Every " +
+        "selected proposal must be overlay_applicable and match the current generation and " +
+        "stage revision.")]
     public required IReadOnlyList<string> ProposalIds { get; init; }
 }
 
@@ -162,8 +172,8 @@ internal sealed class PresentSceneRequest : SceneRevisionRequestBase
     [JsonPropertyName("cameraPath")]
     [MaxLength(OpenUsdMcpLimits.MaximumPathLength)]
     [Description(
-        "Optional absolute USD camera prim path such as \"/World/Camera\". This is a prim path, never a " +
-        "filesystem path, and must contain valid USD identifiers.")]
+        "Optional absolute USD camera prim path such as \"/World/Camera\". This is a prim " +
+        "path, never a filesystem path, and must contain valid USD identifiers.")]
     public string? CameraPath { get; init; }
 }
 
@@ -173,21 +183,21 @@ internal abstract class SceneRevisionRequestBase
     [Required]
     [MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
     [Description(
-        "Exact active session identifier returned by open_scene; 1-128 non-control characters. " +
-        "A different identifier produces stale_session.")]
+        "Exact active session identifier returned by open_scene; 1-128 non-control " +
+        "characters. A different identifier produces stale_session.")]
     public required string SessionId { get; init; }
 
     [JsonPropertyName("generation")]
     [Range(0, long.MaxValue)]
     [Description(
-        "Exact non-negative transactional generation returned by the preceding scene-mutating result. " +
-        "An older or newer value produces stale_revision.")]
+        "Exact non-negative transactional generation returned by the preceding " +
+        "scene-mutating result. An older or newer value produces stale_revision.")]
     public long Generation { get; init; }
 
     [JsonPropertyName("stageRevision")]
     [Description(
-        "Exact unsigned native stage revision returned by the preceding result. " +
-        "A mismatched value produces stale_revision.")]
+        "Exact unsigned native stage revision returned by the preceding result. A mismatched " +
+        "value produces stale_revision.")]
     public ulong StageRevision { get; init; }
 
     internal SceneRevisionRequest ToRevisionRequest() =>
@@ -208,11 +218,16 @@ internal sealed class WorkspaceEditDto
         "define_prim",
         "set_active",
         "set_double",
+        "set_bool",
+        "set_int64",
+        "set_string",
+        "set_token",
+        "set_float3",
+        "set_color3f",
         "clear_overlay_attribute")]
     [Description(
-        "Typed edit discriminator. Required companion fields: define_prim may use typeName; set_active " +
-        "requires active; set_double requires attributeName and value and may use timeCode; " +
-        "clear_overlay_attribute requires attributeName.")]
+        "Typed edit discriminator. Attribute edits require attributeName and their matching " +
+        "typed value field; scalar and vector edits may use timeCode.")]
     public required string Kind { get; init; }
 
     [JsonPropertyName("primPath")]
@@ -224,31 +239,48 @@ internal sealed class WorkspaceEditDto
     [JsonPropertyName("typeName")]
     [MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
     [Description(
-        "Optional USD type identifier for define_prim, for example \"Xform\" or \"Mesh\". Omit for other " +
-        "kinds. Maximum 128 characters and valid USD identifier syntax.")]
+        "Optional USD type identifier for define_prim, for example \"Xform\" or \"Mesh\". " +
+        "Omit for other kinds. Maximum 128 characters and valid USD identifier syntax.")]
     public string? TypeName { get; init; }
 
     [JsonPropertyName("active")]
     [Description(
-        "Required only for set_active. true authors activation; false authors deactivation in the " +
-        "overlay. Omit for other kinds.")]
+        "Required only for set_active. true authors activation; false authors deactivation " +
+        "in the overlay. Omit for other kinds.")]
     public bool? Active { get; init; }
 
     [JsonPropertyName("attributeName")]
     [MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
-    [Description(
-        "Required for set_double and clear_overlay_attribute. USD property name such as " +
-        "\"xformOp:translateX\"; maximum 128 characters. Omit for other kinds.")]
+    [Description("Required for attribute edits. USD property name such as \"xformOp:scale\"; maximum 128 characters.")]
     public string? AttributeName { get; init; }
 
     [JsonPropertyName("value")]
     [Description(
-        "Required finite numeric value for set_double. NaN and infinities are rejected. Omit for other kinds.")]
+        "Required finite numeric value for set_double. NaN and infinities are rejected. Omit " +
+        "for other kinds.")]
     public double? Value { get; init; }
 
+    [JsonPropertyName("boolValue")]
+    [Description("Required for set_bool.")]
+    public bool? BoolValue { get; init; }
+
+    [JsonPropertyName("int64Value")]
+    [Description("Required for set_int64.")]
+    public long? Int64Value { get; init; }
+
+    [JsonPropertyName("stringValue")]
+    [MaxLength(OpenUsdMcpLimits.MaximumTextLength)]
+    [Description("Required for set_string and set_token; contains at most 4096 non-control characters.")]
+    public string? StringValue { get; init; }
+
+    [JsonPropertyName("vectorValue")]
+    [MinLength(3)]
+    [MaxLength(3)]
+    [Description("Required for set_float3 and set_color3f; exactly three finite components.")]
+    public IReadOnlyList<double>? VectorValue { get; init; }
+
     [JsonPropertyName("timeCode")]
-    [Description(
-        "Optional finite time code for set_double. Omit to author the default value; omit for other kinds.")]
+    [Description("Optional finite time code for typed attribute edits. Omit to author the default value.")]
     public double? TimeCode { get; init; }
 }
 
@@ -394,26 +426,29 @@ internal sealed class AnalysisObservationsDto
     [JsonPropertyName("validationIssues")]
     [MaxLength(OpenUsdMcpLimits.MaximumIssueCount)]
     [Description(
-        "Zero to 128 validation messages, each at most 4096 non-control characters. " +
-        "Supply concise findings only; USDA text and source code are rejected by contract.")]
+        "Zero to 128 validation messages, each at most 4096 non-control characters. Supply " +
+        "concise findings only; USDA text and source code are rejected by contract.")]
     public IReadOnlyList<string> ValidationIssues { get; init; } = [];
 }
 
 internal sealed record McpSessionDto(
     [property: JsonPropertyName("sessionId")]
     [property: Description(
-        "Opaque identifier for the one active session; pass unchanged to every revision-bound tool.")]
+        "Opaque identifier for the one active session; pass unchanged to every " +
+        "revision-bound tool.")]
     string SessionId,
     [property: JsonPropertyName("generation")]
     [property: Description(
-        "Current transactional generation; pass unchanged until a mutating tool returns a successor value.")]
+        "Current transactional generation; pass unchanged until a mutating tool returns a " +
+        "successor value.")]
     long Generation,
     [property: JsonPropertyName("stageRevision")]
     [property: Description("Current native stage revision; pass unchanged until a tool returns a successor value.")]
     ulong StageRevision,
     [property: JsonPropertyName("sourcePath")]
     [property: Description(
-        "Original source path relative to the configured source root; never an unrestricted absolute path.")]
+        "Original source path relative to the configured source root; never an unrestricted " +
+        "absolute path.")]
     string SourcePath,
     [property: JsonPropertyName("createdAt")]
     [property: Description("UTC timestamp at which this session was created.")]
@@ -452,7 +487,8 @@ internal sealed record McpSceneInspectionDto(
     string? LatestJournalKind,
     [property: JsonPropertyName("defaultPrimPath")]
     [property: Description(
-        "Absolute USD path of the stage default prim, or an empty string when no default prim is authored.")]
+        "Absolute USD path of the stage default prim, or an empty string when no default " +
+        "prim is authored.")]
     string DefaultPrimPath,
     [property: JsonPropertyName("primCount")]
     [property: Description("Non-negative composed prim count.")]
@@ -565,8 +601,8 @@ internal sealed record McpArtifactDto(
     string Sha256,
     [property: JsonPropertyName("inline")]
     [property: Description(
-        "True when the artifact is eligible for an inline image content block; " +
-        "false means clients should read the URI.")]
+        "True when the artifact is eligible for an inline image content block; false means " +
+        "clients should read the URI.")]
     bool Inline);
 
 internal sealed record McpCaptureResultDto(
@@ -594,8 +630,8 @@ internal sealed record McpCaptureResultDto(
     [property: JsonPropertyName("artifacts")]
     [property: MaxLength(OpenUsdMcpLimits.MaximumArtifactCount)]
     [property: Description(
-        "Ordered immutable PNG descriptors; at most 16. " +
-        "Tool content includes at most 16 corresponding image or resource-link blocks.")]
+        "Ordered immutable PNG descriptors; at most 16. Tool content includes at most 16 " +
+        "corresponding image or resource-link blocks.")]
     IReadOnlyList<McpArtifactDto> Artifacts,
     [property: JsonIgnore] IReadOnlyList<ArtifactResourceDescriptor> ArtifactResources)
     : IOpenUsdMcpOutput, IOpenUsdMcpArtifactOutput
@@ -610,7 +646,8 @@ internal sealed record McpProposalDto(
     string Id,
     [property: JsonPropertyName("category")]
     [property: Description(
-        "Analyzer category: camera, lighting, rendersettings, performance, composition, or validation.")]
+        "Analyzer category: camera, lighting, rendersettings, performance, composition, or " +
+        "validation.")]
     string Category,
     [property: JsonPropertyName("code")]
     [property: Description("Stable machine-readable finding code.")]
@@ -620,8 +657,8 @@ internal sealed record McpProposalDto(
     string Title,
     [property: JsonPropertyName("applicability")]
     [property: Description(
-        "overlay_applicable, flatten_only, or diagnostic_only. Only overlay_applicable IDs may be passed " +
-        "to apply_proposals.")]
+        "overlay_applicable, flatten_only, or diagnostic_only. Only overlay_applicable IDs " +
+        "may be passed to apply_proposals.")]
     string Applicability,
     [property: JsonPropertyName("risk")]
     [property: Description("Estimated change risk: low, medium, or high.")]
@@ -685,8 +722,8 @@ internal sealed record McpFinalizationResultDto(
     ulong StageRevision,
     [property: JsonPropertyName("partial")]
     [property: Description(
-        "True when one or more requested finalization artifacts failed while the bounded report set " +
-        "was still produced.")]
+        "True when one or more requested finalization artifacts failed while the bounded " +
+        "report set was still produced.")]
     bool Partial,
     [property: JsonPropertyName("finalStageCreated")]
     [property: Description("True when the flattened final stage was exported successfully.")]
@@ -729,15 +766,16 @@ internal sealed record McpPresentationResultDto(
 internal sealed record McpToolErrorEnvelope(
     [property: JsonPropertyName("error")]
     [property: Description(
-        "Deterministic tool-execution error. Tool errors set isError=true and do not satisfy the " +
-        "success output schema.")]
+        "Deterministic tool-execution error. Tool errors set isError=true and do not satisfy " +
+        "the success output schema.")]
     McpToolErrorDto Error);
 
 internal sealed record McpToolErrorDto(
     [property: JsonPropertyName("code")]
     [property: Description(
-        "Stable code: invalid_argument, path_denied, no_session, stale_session, stale_revision, " +
-        "proposal_stale, quota_exceeded, native_failure, render_failure, or launch_failure.")]
+        "Stable code: invalid_argument, path_denied, no_session, stale_session, " +
+        "stale_revision, proposal_stale, quota_exceeded, native_failure, render_failure, or " +
+        "launch_failure.")]
     string Code,
     [property: JsonPropertyName("message")]
     [property: Description("Bounded corrective message safe to expose to the client.")]

@@ -80,6 +80,41 @@ public sealed class OpenUsdMcpToolsTests
     }
 
     [Test]
+    public async Task NativeFailuresProvideActionableSafeDiagnostics()
+    {
+        (Exception Exception, string Expected)[] cases =
+        [
+            (
+                new DllNotFoundException("C:\\private\\usd_ms.dll"),
+                "required native library could not be loaded"),
+            (
+                new BadImageFormatException("wrong architecture"),
+                "wrong architecture or format"),
+            (
+                new EntryPointNotFoundException("missing export"),
+                "native runtime ABI is incompatible"),
+        ];
+
+        foreach ((Exception exception, string expected) in cases)
+        {
+            var service = new FakeOpenUsdMcpService
+            {
+                GetSceneException = exception,
+            };
+            var tools = new OpenUsdMcpTools(service, new OpenUsdMcpProtocolOptions());
+
+            CallToolResult result = await tools.GetSceneAsync(Revision, default);
+
+            string message = result.StructuredContent!.Value
+                .GetProperty("error")
+                .GetProperty("message")
+                .GetString()!;
+            await Assert.That(message).Contains(expected);
+            await Assert.That(message).DoesNotContain("C:\\private");
+        }
+    }
+
+    [Test]
     public async Task UsesInlineImageOnlyWithinCapAndLinksLargerArtifacts()
     {
         byte[] small = [1, 2, 3];
@@ -277,6 +312,28 @@ public sealed class OpenUsdMcpToolsTests
             await Assert.That(tool.ProtocolTool.OutputSchema).IsNotNull();
             await AssertPropertyDescriptionsAsync(tool.ProtocolTool.InputSchema);
             await AssertPropertyDescriptionsAsync(tool.ProtocolTool.OutputSchema!.Value);
+        }
+
+        string renderSchema = tools
+            .Single(static tool => tool.Name == "render_preview")
+            .ProtocolTool
+            .InputSchema
+            .GetRawText();
+        string editSchema = tools
+            .Single(static tool => tool.Name == "apply_edits")
+            .ProtocolTool
+            .InputSchema
+            .GetRawText();
+        await Assert.That(renderSchema).Contains("\"cameraPath\"");
+        foreach (string propertyName in new[]
+                 {
+                     "boolValue",
+                     "int64Value",
+                     "stringValue",
+                     "vectorValue",
+                 })
+        {
+            await Assert.That(editSchema).Contains($"\"{propertyName}\"");
         }
 
         CallToolResult call = await client.CallToolAsync(

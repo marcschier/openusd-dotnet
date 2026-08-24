@@ -87,6 +87,32 @@ public sealed class NativeMcpIntegrationTests
     }
 
     [Test]
+    public async Task NativeSessionRejectsAnUncomposableSourceLayer()
+    {
+        _ = RequireNativeLayout(requireImaging: false);
+        using var files = new WorkspaceTestFiles();
+        await File.WriteAllTextAsync(
+            files.SourcePath,
+            "#usda 1.0\ndef Xform \"Broken\" { double value = (1, 2) }");
+        await using var workspace = new McpSessionWorkspace(
+            new McpSessionWorkspaceOptions(files.SourceRoot, files.OutputRoot));
+
+        try
+        {
+            WorkspaceSourceCompositionException exception = await Assert.That(
+                    async () => await workspace.StartAsync("scene.usda"))
+                .Throws<WorkspaceSourceCompositionException>() ??
+                throw new InvalidOperationException("Expected invalid source rejection.");
+            await Assert.That(exception.Message).Contains(
+                "source layer could not be composed");
+        }
+        catch (Exception exception) when (IsUnavailableNativeRuntime(exception))
+        {
+            Skip.Test($"OpenUSD Core native runtime is unavailable: {exception.Message}");
+        }
+    }
+
+    [Test]
     public async Task NativeRetainedPreviewProducesDecodablePng()
     {
         NativeLayout layout = RequireNativeLayout(requireImaging: true);
@@ -147,6 +173,67 @@ public sealed class NativeMcpIntegrationTests
         }
 
         await workspace.CloseAsync(Revision(session));
+    }
+
+    [Test]
+    public async Task NativePreviewCamerasUseAuthoredCameraAndDistinctOrbitViews()
+    {
+        _ = RequireNativeLayout(requireImaging: false);
+        using var files = new WorkspaceTestFiles();
+        await File.WriteAllTextAsync(
+            files.SourcePath,
+            """
+            #usda 1.0
+            def Xform "World"
+            {
+                def Cube "Subject"
+                {
+                    double size = 2
+                }
+                def Camera "ShotCamera"
+                {
+                    float focalLength = 35
+                    double3 xformOp:translate = (0, 1, 6)
+                    uniform token[] xformOpOrder = ["xformOp:translate"]
+                }
+            }
+            """);
+        await using var workspace = new McpSessionWorkspace(
+            new McpSessionWorkspaceOptions(files.SourceRoot, files.OutputRoot));
+        WorkspaceSessionInfo session;
+        try
+        {
+            session = await workspace.StartAsync("scene.usda");
+        }
+        catch (Exception exception) when (IsUnavailableNativeRuntime(exception))
+        {
+            Skip.Test($"OpenUSD Core native runtime is unavailable: {exception.Message}");
+            throw;
+        }
+
+        IReadOnlyList<OpenUsd.Rendering.CameraState> authored =
+            await workspace.CreatePreviewCamerasAsync(
+                Revision(session),
+                "/World/ShotCamera",
+                orbit: false,
+                640,
+                480,
+                [0],
+                default);
+        IReadOnlyList<OpenUsd.Rendering.CameraState> orbit =
+            await workspace.CreatePreviewCamerasAsync(
+                Revision(session),
+                cameraPath: null,
+                orbit: true,
+                640,
+                480,
+                [0, 0, 0, 0],
+                default);
+
+        await Assert.That(authored.Single().Mode)
+            .IsEqualTo(OpenUsd.Rendering.CameraMode.Matrices);
+        await Assert.That(orbit.Select(static camera => camera.View).Distinct().Count())
+            .IsEqualTo(4);
     }
 
     private static NativeLayout RequireNativeLayout(bool requireImaging)

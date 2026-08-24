@@ -1,0 +1,979 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+def Camera "MonkeyChaseCamera"
+{
+float focalLength = 28
+
+float horizontalAperture = 20.955
+
+float verticalAperture = 15.2908
+
+double2 clippingRange = (0.1, 1000)
+
+double3 xformOp:translate = (1.1, 2.45, 1.55)
+float3 xformOp:rotateXYZ = (-5, 0, 0)
+
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+}
+
+    def Xform "City"
+{
+def Cube "Road"
+{
+double size = 2
+
+double3 xformOp:translate = (0, -0.18, -12)
+
+float3 xformOp:scale = (4.5, 0.1, 26)
+
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+
+rel material:binding = </World/Looks/Asphalt>
+}
+
+        def Cube "LeftSidewalk"
+{
+double size = 2
+
+double3 xformOp:translate = (-5.5, 0, -12)
+
+float3 xformOp:scale = (1, 0.2, 26)
+
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+
+rel material:binding = </World/Looks/Concrete>
+}
+
+        def Cube "RightSidewalk"
+{
+double size = 2
+
+double3 xformOp:translate = (5.5, 0, -12)
+
+float3 xformOp:scale = (1, 0.2, 26)
+
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+
+rel material:binding = </World/Looks/Concrete>
+}
+
+        def Xform "LaneMarks"
+{
+def Cube "Mark01"
+{
+double size = 2
+double3 xformOp:translate = (0, -0.055, 4)
+float3 xformOp:scale = (0.08, 0.015, 1.3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+            def Cube "Mark02"
+{
+double size = 2
+double3 xformOp:translate = (0, -0.055, -1)
+float3 xformOp:scale = (0.08, 0.015, 1.3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+            def Cube "Mark03"
+{
+double size = 2
+double3 xformOp:translate = (0, -0.055, -6)
+float3 xformOp:scale = (0.08, 0.015, 1.3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+            def Cube "Mark04"
+{
+double size = 2
+double3 xformOp:translate = (0, -0.055, -11)
+float3 xformOp:scale = (0.08, 0.015, 1.3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+            def Cube "Mark05"
+{
+double size = 2
+double3 xformOp:translate = (0, -0.055, -16)
+float3 xformOp:scale = (0.08, 0.015, 1.3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+            def Cube "Mark06"
+{
+double size = 2
+double3 xformOp:translate = (0, -0.055, -21)
+float3 xformOp:scale = (0.08, 0.015, 1.3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+}
+
+        def Xform "Crosswalk"
+{
+def Cube "Stripe01"
+{
+double size = 2
+double3 xformOp:translate = (-3.4, -0.04, -12)
+float3 xformOp:scale = (0.45, 0.02, 1.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+            def Cube "Stripe02"
+{
+double size = 2
+double3 xformOp:translate = (-2.25, -0.04, -12)
+float3 xformOp:scale = (0.45, 0.02, 1.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+            def Cube "Stripe03"
+{
+double size = 2
+double3 xformOp:translate = (-1.1, -0.04, -12)
+float3 xformOp:scale = (0.45, 0.02, 1.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+            def Cube "Stripe04"
+{
+double size = 2
+double3 xformOp:translate = (1.1, -0.04, -12)
+float3 xformOp:scale = (0.45, 0.02, 1.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+            def Cube "Stripe05"
+{
+double size = 2
+double3 xformOp:translate = (2.25, -0.04, -12)
+float3 xformOp:scale = (0.45, 0.02, 1.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+            def Cube "Stripe06"
+{
+double size = 2
+double3 xformOp:translate = (3.4, -0.04, -12)
+float3 xformOp:scale = (0.45, 0.02, 1.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/RoadPaint>
+}
+}
+
+        def Xform "BuildingsLeft"
+{
+def Cube "BlueTower"
+{
+double size = 2
+double3 xformOp:translate = (-8, 4, 0)
+float3 xformOp:scale = (2, 4, 3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/BuildingBlue>
+}
+            def Cube "CoralApartments"
+{
+double size = 2
+double3 xformOp:translate = (-8.5, 3, -8)
+float3 xformOp:scale = (2.5, 3, 3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/BuildingCoral>
+}
+            def Cube "CreamOffice"
+{
+double size = 2
+double3 xformOp:translate = (-8, 5.5, -17)
+float3 xformOp:scale = (2, 5.5, 3.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/BuildingCream>
+}
+            def Cube "MintBlock"
+{
+double size = 2
+double3 xformOp:translate = (-8.5, 3.6, -27)
+float3 xformOp:scale = (2.5, 3.6, 4)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/BuildingMint>
+}
+}
+
+        def Xform "BuildingsRight"
+{
+def Cube "GoldHotel"
+{
+double size = 2
+double3 xformOp:translate = (8.5, 3.5, 1)
+float3 xformOp:scale = (2.5, 3.5, 3.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/BuildingGold>
+}
+            def Cube "PurpleLofts"
+{
+double size = 2
+double3 xformOp:translate = (8, 5, -8)
+float3 xformOp:scale = (2, 5, 3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/BuildingPurple>
+}
+            def Cube "TealTower"
+{
+double size = 2
+double3 xformOp:translate = (8.5, 4, -17)
+float3 xformOp:scale = (2.5, 4, 3.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/BuildingTeal>
+}
+            def Cube "BrickBlock"
+{
+double size = 2
+double3 xformOp:translate = (8, 3, -27)
+float3 xformOp:scale = (2, 3, 4)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/BuildingBrick>
+}
+}
+
+        def Xform "Windows"
+{
+def Cube "LeftWindows01"
+{
+double size = 2
+double3 xformOp:translate = (-5.98, 4.5, 1)
+float3 xformOp:scale = (0.03, 0.35, 1.7)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/WindowGlow>
+}
+            def Cube "LeftWindows02"
+{
+double size = 2
+double3 xformOp:translate = (-5.98, 6, -0.5)
+float3 xformOp:scale = (0.03, 0.35, 1.2)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/WindowGlow>
+}
+            def Cube "LeftWindows03"
+{
+double size = 2
+double3 xformOp:translate = (-5.98, 2.5, -8)
+float3 xformOp:scale = (0.03, 0.35, 1.7)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/WindowCool>
+}
+            def Cube "RightWindows01"
+{
+double size = 2
+double3 xformOp:translate = (5.98, 3.5, 1)
+float3 xformOp:scale = (0.03, 0.35, 1.8)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/WindowCool>
+}
+            def Cube "RightWindows02"
+{
+double size = 2
+double3 xformOp:translate = (5.98, 5.2, -8)
+float3 xformOp:scale = (0.03, 0.35, 1.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/WindowGlow>
+}
+            def Cube "RightWindows03"
+{
+double size = 2
+double3 xformOp:translate = (5.98, 2.8, -17)
+float3 xformOp:scale = (0.03, 0.35, 1.8)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/WindowCool>
+}
+}
+
+        def Xform "StreetTrees"
+{
+def Cylinder "LeftTrunk"
+{
+double radius = 0.18
+double height = 2
+double3 xformOp:translate = (-5.2, 1.1, -4)
+uniform token[] xformOpOrder = ["xformOp:translate"]
+rel material:binding = </World/Looks/TreeTrunk>
+}
+            def Sphere "LeftCrown"
+{
+double radius = 1.15
+double3 xformOp:translate = (-5.2, 2.6, -4)
+float3 xformOp:scale = (0.8, 1.1, 0.8)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/LeafGreen>
+}
+            def Cylinder "RightTrunk"
+{
+double radius = 0.18
+double height = 2
+double3 xformOp:translate = (5.2, 1.1, -14)
+uniform token[] xformOpOrder = ["xformOp:translate"]
+rel material:binding = </World/Looks/TreeTrunk>
+}
+            def Sphere "RightCrown"
+{
+double radius = 1.15
+double3 xformOp:translate = (5.2, 2.6, -14)
+float3 xformOp:scale = (0.8, 1.1, 0.8)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/LeafGreen>
+}
+}
+}
+
+    def Xform "Chase"
+{
+def Xform "CuteMonkey"
+{
+double3 xformOp:translate = (1.1, 0, 2.5)
+
+float3 xformOp:rotateXYZ = (0, -12, 0)
+
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+
+            def Sphere "Body"
+{
+double radius = 0.75
+double3 xformOp:translate = (0, 1.35, 0)
+float3 xformOp:scale = (0.75, 1.2, 0.65)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/MonkeyFur>
+}
+            def Sphere "Belly"
+{
+double radius = 0.58
+double3 xformOp:translate = (0, 1.25, -0.47)
+float3 xformOp:scale = (0.72, 0.95, 0.18)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/MonkeyFace>
+}
+            def Sphere "Head"
+{
+double radius = 0.72
+double3 xformOp:translate = (0, 2.35, -0.08)
+float3 xformOp:scale = (0.95, 1, 0.9)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/MonkeyFur>
+}
+            def Sphere "LeftEar"
+{
+double radius = 0.38
+double3 xformOp:translate = (-0.62, 2.42, -0.08)
+float3 xformOp:scale = (0.35, 0.8, 0.8)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/MonkeyEar>
+}
+            def Sphere "RightEar"
+{
+double radius = 0.38
+double3 xformOp:translate = (0.62, 2.42, -0.08)
+float3 xformOp:scale = (0.35, 0.8, 0.8)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/MonkeyEar>
+}
+            def Sphere "Muzzle"
+{
+double radius = 0.5
+double3 xformOp:translate = (0, 2.18, -0.6)
+float3 xformOp:scale = (0.9, 0.65, 0.45)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/MonkeyFace>
+}
+            def Sphere "LeftEyeWhite"
+{
+double radius = 0.18
+double3 xformOp:translate = (-0.24, 2.48, -0.66)
+float3 xformOp:scale = (0.85, 1.15, 0.35)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/EyeWhite>
+}
+            def Sphere "RightEyeWhite"
+{
+double radius = 0.18
+double3 xformOp:translate = (0.24, 2.48, -0.66)
+float3 xformOp:scale = (0.85, 1.15, 0.35)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/EyeWhite>
+}
+            def Sphere "LeftPupil"
+{
+double radius = 0.09
+double3 xformOp:translate = (-0.24, 2.47, -0.735)
+float3 xformOp:scale = (0.8, 1, 0.3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/EyeDark>
+}
+            def Sphere "RightPupil"
+{
+double radius = 0.09
+double3 xformOp:translate = (0.24, 2.47, -0.735)
+float3 xformOp:scale = (0.8, 1, 0.3)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/EyeDark>
+}
+            def Sphere "Nose"
+{
+double radius = 0.11
+double3 xformOp:translate = (0, 2.22, -0.83)
+float3 xformOp:scale = (1.1, 0.7, 0.45)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/NosePink>
+}
+            def Cube "Smile"
+{
+double size = 2
+double3 xformOp:translate = (0, 2.04, -0.805)
+float3 xformOp:scale = (0.22, 0.025, 0.025)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/SmileDark>
+}
+
+            def Capsule "LeftArm"
+{
+double radius = 0.18
+double height = 1.15
+double3 xformOp:translate = (-0.65, 1.45, -0.15)
+float3 xformOp:rotateXYZ = (35, 0, -48)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+rel material:binding = </World/Looks/MonkeyFur>
+}
+            def Capsule "RightArm"
+{
+double radius = 0.18
+double height = 1.15
+double3 xformOp:translate = (0.63, 1.55, 0.05)
+float3 xformOp:rotateXYZ = (-40, 0, 52)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+rel material:binding = </World/Looks/MonkeyFur>
+}
+            def Capsule "LeftLeg"
+{
+double radius = 0.21
+double height = 1.2
+double3 xformOp:translate = (-0.35, 0.58, 0.12)
+float3 xformOp:rotateXYZ = (42, 0, -18)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+rel material:binding = </World/Looks/MonkeyFur>
+}
+            def Capsule "RightLeg"
+{
+double radius = 0.21
+double height = 1.2
+double3 xformOp:translate = (0.38, 0.58, -0.12)
+float3 xformOp:rotateXYZ = (-48, 0, 20)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+rel material:binding = </World/Looks/MonkeyFur>
+}
+            def Torus "TailCurl"
+{
+double majorRadius = 0.58
+
+double minorRadius = 0.12
+
+double3 xformOp:translate = (0.65, 1.18, 0.48)
+
+float3 xformOp:rotateXYZ = (90, 15, 0)
+
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+
+rel material:binding = </World/Looks/MonkeyFur>
+}
+}
+
+        def Xform "RedGetawayCar"
+{
+double3 xformOp:translate = (-0.4, 0, -5.4)
+
+float3 xformOp:rotateXYZ = (0, 2, 0)
+
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+
+            def Cube "Body"
+{
+double size = 2
+double3 xformOp:translate = (0, 0.62, 0)
+float3 xformOp:scale = (1.45, 0.42, 2.25)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/CarRed>
+}
+            def Cube "Cabin"
+{
+double size = 2
+double3 xformOp:translate = (0, 1.2, -0.15)
+float3 xformOp:scale = (1.12, 0.48, 1.18)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/CarRedDark>
+}
+            def Cube "RearWindow"
+{
+double size = 2
+double3 xformOp:translate = (0, 1.25, 1.04)
+float3 xformOp:scale = (0.92, 0.31, 0.035)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/CarGlass>
+}
+            def Cube "LeftTailLight"
+{
+double size = 2
+double3 xformOp:translate = (-0.82, 0.72, 2.255)
+float3 xformOp:scale = (0.3, 0.16, 0.03)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/TailLight>
+}
+            def Cube "RightTailLight"
+{
+double size = 2
+double3 xformOp:translate = (0.82, 0.72, 2.255)
+float3 xformOp:scale = (0.3, 0.16, 0.03)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/TailLight>
+}
+            def Cube "Plate"
+{
+double size = 2
+double3 xformOp:translate = (0, 0.46, 2.29)
+float3 xformOp:scale = (0.42, 0.16, 0.02)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/PlateYellow>
+}
+            def Cylinder "LeftRearWheel"
+{
+double radius = 0.42
+double height = 0.28
+uniform token axis = "X"
+double3 xformOp:translate = (-1.48, 0.42, 1.25)
+uniform token[] xformOpOrder = ["xformOp:translate"]
+rel material:binding = </World/Looks/Tire>
+}
+            def Cylinder "RightRearWheel"
+{
+double radius = 0.42
+double height = 0.28
+uniform token axis = "X"
+double3 xformOp:translate = (1.48, 0.42, 1.25)
+uniform token[] xformOpOrder = ["xformOp:translate"]
+rel material:binding = </World/Looks/Tire>
+}
+            def Cylinder "LeftFrontWheel"
+{
+double radius = 0.42
+double height = 0.28
+uniform token axis = "X"
+double3 xformOp:translate = (-1.48, 0.42, -1.25)
+uniform token[] xformOpOrder = ["xformOp:translate"]
+rel material:binding = </World/Looks/Tire>
+}
+            def Cylinder "RightFrontWheel"
+{
+double radius = 0.42
+double height = 0.28
+uniform token axis = "X"
+double3 xformOp:translate = (1.48, 0.42, -1.25)
+uniform token[] xformOpOrder = ["xformOp:translate"]
+rel material:binding = </World/Looks/Tire>
+}
+}
+
+        def Xform "SpeedLines"
+{
+def Cube "Line01"
+{
+double size = 2
+double3 xformOp:translate = (-2.2, 0.35, -2.2)
+float3 xformOp:scale = (0.035, 0.035, 1.2)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/SpeedBlue>
+}
+            def Cube "Line02"
+{
+double size = 2
+double3 xformOp:translate = (2.2, 0.55, -3.2)
+float3 xformOp:scale = (0.035, 0.035, 1.5)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/SpeedBlue>
+}
+            def Cube "Line03"
+{
+double size = 2
+double3 xformOp:translate = (-2.7, 0.8, -5)
+float3 xformOp:scale = (0.03, 0.03, 1)
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+rel material:binding = </World/Looks/SpeedBlue>
+}
+}
+}
+
+    def DomeLight "SkyLight"
+{
+float intensity = 0.55
+
+color3f color = (0.55, 0.68, 1)
+}
+
+    def DistantLight "Sun"
+{
+float angle = 0.6
+
+float intensity = 2.4
+
+color3f color = (1, 0.87, 0.68)
+
+float3 xformOp:rotateXYZ = (-45, -30, 0)
+
+uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+}
+
+    def SphereLight "WarmStreetGlow"
+{
+float intensity = 750
+
+float radius = 1.2
+
+color3f color = (1, 0.62, 0.25)
+
+double3 xformOp:translate = (-3.8, 6, -2)
+
+uniform token[] xformOpOrder = ["xformOp:translate"]
+}
+
+    def Xform "Looks"
+{
+def Material "Asphalt"
+{
+token outputs:surface.connect = </World/Looks/Asphalt/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.055, 0.065, 0.085)
+float inputs:metallic = 0.05
+float inputs:roughness = 0.82
+token outputs:surface
+}
+}
+        def Material "Concrete"
+{
+token outputs:surface.connect = </World/Looks/Concrete/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.34, 0.37, 0.4)
+float inputs:roughness = 0.75
+token outputs:surface
+}
+}
+        def Material "RoadPaint"
+{
+token outputs:surface.connect = </World/Looks/RoadPaint/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (1, 0.84, 0.16)
+float inputs:roughness = 0.42
+token outputs:surface
+}
+}
+        def Material "BuildingBlue"
+{
+token outputs:surface.connect = </World/Looks/BuildingBlue/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.12, 0.32, 0.62)
+float inputs:roughness = 0.58
+token outputs:surface
+}
+}
+        def Material "BuildingCoral"
+{
+token outputs:surface.connect = </World/Looks/BuildingCoral/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.72, 0.25, 0.22)
+float inputs:roughness = 0.62
+token outputs:surface
+}
+}
+        def Material "BuildingCream"
+{
+token outputs:surface.connect = </World/Looks/BuildingCream/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.78, 0.66, 0.48)
+float inputs:roughness = 0.72
+token outputs:surface
+}
+}
+        def Material "BuildingMint"
+{
+token outputs:surface.connect = </World/Looks/BuildingMint/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.2, 0.56, 0.48)
+float inputs:roughness = 0.64
+token outputs:surface
+}
+}
+        def Material "BuildingGold"
+{
+token outputs:surface.connect = </World/Looks/BuildingGold/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.82, 0.56, 0.12)
+float inputs:roughness = 0.55
+token outputs:surface
+}
+}
+        def Material "BuildingPurple"
+{
+token outputs:surface.connect = </World/Looks/BuildingPurple/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.38, 0.18, 0.52)
+float inputs:roughness = 0.62
+token outputs:surface
+}
+}
+        def Material "BuildingTeal"
+{
+token outputs:surface.connect = </World/Looks/BuildingTeal/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.08, 0.45, 0.52)
+float inputs:roughness = 0.58
+token outputs:surface
+}
+}
+        def Material "BuildingBrick"
+{
+token outputs:surface.connect = </World/Looks/BuildingBrick/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.48, 0.16, 0.1)
+float inputs:roughness = 0.7
+token outputs:surface
+}
+}
+        def Material "WindowGlow"
+{
+token outputs:surface.connect = </World/Looks/WindowGlow/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (1, 0.63, 0.14)
+color3f inputs:emissiveColor = (1, 0.28, 0.03)
+float inputs:roughness = 0.2
+token outputs:surface
+}
+}
+        def Material "WindowCool"
+{
+token outputs:surface.connect = </World/Looks/WindowCool/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.1, 0.5, 0.85)
+color3f inputs:emissiveColor = (0.02, 0.12, 0.3)
+float inputs:metallic = 0.25
+float inputs:roughness = 0.18
+token outputs:surface
+}
+}
+        def Material "TreeTrunk"
+{
+token outputs:surface.connect = </World/Looks/TreeTrunk/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.22, 0.09, 0.035)
+float inputs:roughness = 0.85
+token outputs:surface
+}
+}
+        def Material "LeafGreen"
+{
+token outputs:surface.connect = </World/Looks/LeafGreen/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.12, 0.5, 0.16)
+float inputs:roughness = 0.68
+token outputs:surface
+}
+}
+        def Material "MonkeyFur"
+{
+token outputs:surface.connect = </World/Looks/MonkeyFur/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.32, 0.11, 0.035)
+float inputs:roughness = 0.72
+token outputs:surface
+}
+}
+        def Material "MonkeyFace"
+{
+token outputs:surface.connect = </World/Looks/MonkeyFace/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.78, 0.48, 0.25)
+float inputs:roughness = 0.62
+token outputs:surface
+}
+}
+        def Material "MonkeyEar"
+{
+token outputs:surface.connect = </World/Looks/MonkeyEar/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.85, 0.35, 0.28)
+float inputs:roughness = 0.6
+token outputs:surface
+}
+}
+        def Material "EyeWhite"
+{
+token outputs:surface.connect = </World/Looks/EyeWhite/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.98, 0.96, 0.88)
+float inputs:roughness = 0.25
+token outputs:surface
+}
+}
+        def Material "EyeDark"
+{
+token outputs:surface.connect = </World/Looks/EyeDark/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.015, 0.008, 0.004)
+float inputs:metallic = 0.12
+float inputs:roughness = 0.12
+token outputs:surface
+}
+}
+        def Material "NosePink"
+{
+token outputs:surface.connect = </World/Looks/NosePink/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.86, 0.18, 0.2)
+float inputs:roughness = 0.4
+token outputs:surface
+}
+}
+        def Material "SmileDark"
+{
+token outputs:surface.connect = </World/Looks/SmileDark/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.06, 0.015, 0.012)
+float inputs:roughness = 0.5
+token outputs:surface
+}
+}
+        def Material "CarRed"
+{
+token outputs:surface.connect = </World/Looks/CarRed/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.72, 0.015, 0.025)
+float inputs:metallic = 0.5
+float inputs:roughness = 0.22
+token outputs:surface
+}
+}
+        def Material "CarRedDark"
+{
+token outputs:surface.connect = </World/Looks/CarRedDark/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.42, 0.008, 0.015)
+float inputs:metallic = 0.58
+float inputs:roughness = 0.2
+token outputs:surface
+}
+}
+        def Material "CarGlass"
+{
+token outputs:surface.connect = </World/Looks/CarGlass/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.025, 0.08, 0.14)
+float inputs:metallic = 0.35
+float inputs:roughness = 0.08
+token outputs:surface
+}
+}
+        def Material "TailLight"
+{
+token outputs:surface.connect = </World/Looks/TailLight/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (1, 0.01, 0.005)
+color3f inputs:emissiveColor = (1, 0, 0)
+float inputs:roughness = 0.18
+token outputs:surface
+}
+}
+        def Material "PlateYellow"
+{
+token outputs:surface.connect = </World/Looks/PlateYellow/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (1, 0.72, 0.05)
+float inputs:roughness = 0.45
+token outputs:surface
+}
+}
+        def Material "Tire"
+{
+token outputs:surface.connect = </World/Looks/Tire/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.018, 0.018, 0.022)
+float inputs:roughness = 0.92
+token outputs:surface
+}
+}
+        def Material "SpeedBlue"
+{
+token outputs:surface.connect = </World/Looks/SpeedBlue/Shader.outputs:surface>
+def Shader "Shader"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor = (0.08, 0.48, 1)
+color3f inputs:emissiveColor = (0.02, 0.1, 0.5)
+float inputs:roughness = 0.2
+token outputs:surface
+}
+}
+}
+}

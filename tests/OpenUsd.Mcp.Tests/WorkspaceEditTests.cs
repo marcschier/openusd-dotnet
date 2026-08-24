@@ -95,4 +95,36 @@ public sealed class WorkspaceEditTests
                     [new ClearOverlayAttributeWorkspaceEdit("/World", "bad::name")]).Validate(1))
             .Throws<ArgumentException>();
     }
+
+    [Test]
+    public async Task RichTypedAttributeEditsValidateAsOneBatch()
+    {
+        WorkspaceEditOperation[] edits =
+        [
+            new SetBoolWorkspaceEdit("/World/Light", "visibility:enabled", true),
+            new SetInt64WorkspaceEdit("/World/Model", "custom:index", 42),
+            new SetStringWorkspaceEdit("/World/Model", "custom:label", "hero"),
+            new SetTokenWorkspaceEdit("/World/Model", "purpose", "render"),
+            new SetFloat3WorkspaceEdit("/World/Model", "xformOp:scale", 1, 2, 3),
+            new SetColor3fWorkspaceEdit(
+                "/World/Looks/Shader",
+                "inputs:diffuseColor",
+                0.2f,
+                0.4f,
+                0.8f),
+        ];
+
+        await Assert.That(() => new WorkspaceEditBatch(edits).Validate(edits.Length))
+            .ThrowsNothing();
+        await Assert.That(
+                () => new WorkspaceEditBatch(
+                    [new SetFloat3WorkspaceEdit("/World", "xformOp:scale", float.NaN, 1, 1)])
+                    .Validate(1))
+            .Throws<ArgumentOutOfRangeException>();
+        await Assert.That(
+                () => new WorkspaceEditBatch(
+                    [new SetTokenWorkspaceEdit("/World", "purpose", "bad\nvalue")])
+                    .Validate(1))
+            .Throws<ArgumentException>();
+    }
 }

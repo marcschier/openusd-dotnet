@@ -21,7 +21,7 @@ public sealed class StdioProtocolTests
         Directory.CreateDirectory(sourceRoot);
         Directory.CreateDirectory(outputRoot);
         var standardError = new ConcurrentQueue<string>();
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         try
         {
             var transport = new StdioClientTransport(

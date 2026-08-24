@@ -270,6 +270,15 @@ public sealed class McpApplicationPackagingTests
                 Path.Combine(previousLayout, "OpenUsd.Mcp.exe"))).IsTrue();
             await Assert.That(File.Exists(
                 Path.Combine(previousLayout, "bin", "openusd_hdsilk.dll"))).IsTrue();
+            await Assert.That(File.Exists(
+                Path.Combine(previousLayout, "bin", "usd_ms.dll"))).IsTrue();
+            await Assert.That(File.Exists(Path.Combine(
+                previousLayout,
+                "plugin",
+                "usd",
+                "sdf",
+                "resources",
+                "plugInfo.json"))).IsTrue();
             await Assert.That(File.Exists(Path.Combine(
                 previousLayout,
                 "plugin",
@@ -357,6 +366,17 @@ public sealed class McpApplicationPackagingTests
                 runtimeRoot,
                 "bin",
                 "openusd_dotnet.dll"))).IsTrue();
+            await Assert.That(File.Exists(Path.Combine(
+                runtimeRoot,
+                "bin",
+                "usd_ms.dll"))).IsTrue();
+            await Assert.That(File.Exists(Path.Combine(
+                runtimeRoot,
+                "plugin",
+                "usd",
+                "sdf",
+                "resources",
+                "plugInfo.json"))).IsTrue();
             await Assert.That(await File.ReadAllTextAsync(invocation))
                 .IsEqualTo(Path.Combine(runtimeRoot, "plugin", "usd"));
             await AssertNoTemporarySiblingAsync(
@@ -622,6 +642,15 @@ public sealed class McpApplicationPackagingTests
         }
         WriteFile(
             Path.Combine(nativeRoot, "lib", "usd", "plugInfo.json"),
+            "{}");
+        WriteFile(
+            Path.Combine(
+                nativeRoot,
+                "lib",
+                "usd",
+                "sdf",
+                "resources",
+                "plugInfo.json"),
             "{}");
         WriteFile(
             Path.Combine(nativeRoot, "plugin", "usd", "plugInfo.json"),

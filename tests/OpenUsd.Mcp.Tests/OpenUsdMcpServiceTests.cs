@@ -7,6 +7,116 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class OpenUsdMcpServiceTests
 {
     [Test]
+    public async Task MapsRichTypedEditsIntoOneAtomicWorkspaceBatch()
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(
+            workspace,
+            provider,
+            CreateOptions(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" },
+            default);
+
+        _ = await service.ApplyEditsAsync(
+            new ApplyEditsRequest
+            {
+                SessionId = session.SessionId,
+                Generation = session.Generation,
+                StageRevision = session.StageRevision,
+                Edits =
+                [
+                    new WorkspaceEditDto
+                    {
+                        Kind = "set_bool",
+                        PrimPath = "/World",
+                        AttributeName = "custom:enabled",
+                        BoolValue = true,
+                    },
+                    new WorkspaceEditDto
+                    {
+                        Kind = "set_int64",
+                        PrimPath = "/World",
+                        AttributeName = "custom:index",
+                        Int64Value = 7,
+                    },
+                    new WorkspaceEditDto
+                    {
+                        Kind = "set_string",
+                        PrimPath = "/World",
+                        AttributeName = "custom:label",
+                        StringValue = "hero",
+                    },
+                    new WorkspaceEditDto
+                    {
+                        Kind = "set_token",
+                        PrimPath = "/World",
+                        AttributeName = "purpose",
+                        StringValue = "render",
+                    },
+                    new WorkspaceEditDto
+                    {
+                        Kind = "set_float3",
+                        PrimPath = "/World",
+                        AttributeName = "xformOp:scale",
+                        VectorValue = [1, 2, 3],
+                    },
+                    new WorkspaceEditDto
+                    {
+                        Kind = "set_color3f",
+                        PrimPath = "/World",
+                        AttributeName = "primvars:displayColor",
+                        VectorValue = [0.2, 0.4, 0.8],
+                    },
+                ],
+            },
+            default);
+
+        await Assert.That(backend.LastBatch).IsNotNull();
+        await Assert.That(backend.LastBatch!.Operations.Select(static edit => edit.Kind))
+            .IsEquivalentTo(
+            [
+                WorkspaceEditKind.SetBool,
+                WorkspaceEditKind.SetInt64,
+                WorkspaceEditKind.SetString,
+                WorkspaceEditKind.SetToken,
+                WorkspaceEditKind.SetFloat3,
+                WorkspaceEditKind.SetColor3f,
+            ]);
+    }
+
+    [Test]
+    public async Task PreviewRejectsMalformedAuthoredCameraPathBeforeCapture()
+    {
+        using var files = new WorkspaceTestFiles();
+        var backend = new RecordingWorkspaceBackend();
+        await using var workspace = files.CreateWorkspace(backend);
+        using ServiceProvider provider = new ServiceCollection().BuildServiceProvider();
+        using var service = new OpenUsdMcpService(
+            workspace,
+            provider,
+            CreateOptions(files));
+
+        await Assert.That(
+                async () => await service.RenderPreviewAsync(
+                    new RenderPreviewRequest
+                    {
+                        SessionId = "unused",
+                        Kind = "still",
+                        Width = 64,
+                        Height = 64,
+                        CameraPath = "World/Camera",
+                        Views = [new CaptureViewDto { Name = "hero" }],
+                    },
+                    default))
+            .Throws<ArgumentException>();
+        await Assert.That(backend.Events).IsEmpty();
+    }
+
+    [Test]
     public async Task TraversalRootedAndMissingSourcePathsReturnPathDenied()
     {
         using var files = new WorkspaceTestFiles();

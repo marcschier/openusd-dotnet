@@ -8,41 +8,45 @@ namespace OpenUsd.Mcp;
 
 internal interface IOpenUsdMcpService
 {
-    ValueTask<McpSessionDto> OpenSceneAsync(
-        OpenSceneRequest request, CancellationToken cancellationToken);
+    ValueTask<McpSessionDto> OpenSceneAsync(OpenSceneRequest request, CancellationToken cancellationToken);
 
     ValueTask<McpClosedSceneDto> CloseSceneAsync(
-        SceneRevisionRequest request, CancellationToken cancellationToken);
+        SceneRevisionRequest request,
+        CancellationToken cancellationToken);
 
-    ValueTask<McpSessionDto> GetSceneAsync(
-        SceneRevisionRequest request, CancellationToken cancellationToken);
+    ValueTask<McpSessionDto> GetSceneAsync(SceneRevisionRequest request, CancellationToken cancellationToken);
 
     ValueTask<McpSceneInspectionDto> InspectSceneAsync(
-        SceneRevisionRequest request, CancellationToken cancellationToken);
+        SceneRevisionRequest request,
+        CancellationToken cancellationToken);
 
-    ValueTask<McpEditResultDto> ApplyEditsAsync(
-        ApplyEditsRequest request, CancellationToken cancellationToken);
+    ValueTask<McpEditResultDto> ApplyEditsAsync(ApplyEditsRequest request, CancellationToken cancellationToken);
 
     ValueTask<McpCheckpointResultDto> CheckpointSceneAsync(
-        SceneRevisionRequest request, CancellationToken cancellationToken);
+        SceneRevisionRequest request,
+        CancellationToken cancellationToken);
 
     ValueTask<McpRollbackResultDto> RollbackSceneAsync(
-        RollbackSceneRequest request, CancellationToken cancellationToken);
+        RollbackSceneRequest request,
+        CancellationToken cancellationToken);
 
     ValueTask<McpCaptureResultDto> RenderPreviewAsync(
-        RenderPreviewRequest request, CancellationToken cancellationToken);
+        RenderPreviewRequest request,
+        CancellationToken cancellationToken);
 
-    ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(
-        AnalyzeSceneRequest request, CancellationToken cancellationToken);
+    ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(AnalyzeSceneRequest request, CancellationToken cancellationToken);
 
     ValueTask<McpApplyProposalsResultDto> ApplyProposalsAsync(
-        ApplyProposalsRequest request, CancellationToken cancellationToken);
+        ApplyProposalsRequest request,
+        CancellationToken cancellationToken);
 
     ValueTask<McpFinalizationResultDto> FinalizeSceneAsync(
-        SceneRevisionRequest request, CancellationToken cancellationToken);
+        SceneRevisionRequest request,
+        CancellationToken cancellationToken);
 
     ValueTask<McpPresentationResultDto> PresentSceneAsync(
-        PresentSceneRequest request, CancellationToken cancellationToken);
+        PresentSceneRequest request,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class OpenUsdMcpService(
@@ -96,6 +100,13 @@ internal sealed class OpenUsdMcpService(
             throw new OpenUsdMcpFailureException(
                 OpenUsdMcpErrorCodes.PathDenied,
                 "The source path is unavailable or outside the configured source root.",
+                exception);
+        }
+        catch (WorkspaceSourceCompositionException exception)
+        {
+            throw new OpenUsdMcpFailureException(
+                OpenUsdMcpErrorCodes.NativeFailure,
+                exception.Message,
                 exception);
         }
         finally
@@ -294,6 +305,16 @@ internal sealed class OpenUsdMcpService(
                 "-",
                 Guid.NewGuid().ToString("N"));
             CaptureKind kind = ParseCaptureKind(request.Kind);
+            IReadOnlyList<CameraState> cameras = await workspace
+                .CreatePreviewCamerasAsync(
+                    revision,
+                    request.CameraPath,
+                    kind == CaptureKind.Turntable && request.CameraPath is null,
+                    request.Width,
+                    request.Height,
+                    request.Views.Select(static view => view.TimeCode).ToArray(),
+                    cancellationToken)
+                .ConfigureAwait(false);
             var captureRequest = new PreviewCaptureRequest(
                 requestId,
                 kind,
@@ -301,7 +322,10 @@ internal sealed class OpenUsdMcpService(
                 request.Height,
                 Array.AsReadOnly(
                     request.Views.Select(
-                            view => new CaptureView(view.Name, CameraState.Default, view.TimeCode))
+                            (view, index) => new CaptureView(
+                                view.Name,
+                                cameras[index],
+                                view.TimeCode))
                         .ToArray()));
             PreviewCaptureResult result;
             try
@@ -625,12 +649,77 @@ internal sealed class OpenUsdMcpService(
                     edit.AttributeName,
                     value,
                     edit.TimeCode),
+            "set_bool" when edit.AttributeName is not null &&
+                edit.BoolValue is bool boolValue =>
+                new SetBoolWorkspaceEdit(
+                    edit.PrimPath,
+                    edit.AttributeName,
+                    boolValue,
+                    edit.TimeCode),
+            "set_int64" when edit.AttributeName is not null &&
+                edit.Int64Value is long int64Value =>
+                new SetInt64WorkspaceEdit(
+                    edit.PrimPath,
+                    edit.AttributeName,
+                    int64Value,
+                    edit.TimeCode),
+            "set_string" when edit.AttributeName is not null &&
+                edit.StringValue is not null =>
+                new SetStringWorkspaceEdit(
+                    edit.PrimPath,
+                    edit.AttributeName,
+                    edit.StringValue,
+                    edit.TimeCode),
+            "set_token" when edit.AttributeName is not null &&
+                edit.StringValue is not null =>
+                new SetTokenWorkspaceEdit(
+                    edit.PrimPath,
+                    edit.AttributeName,
+                    edit.StringValue,
+                    edit.TimeCode),
+            "set_float3" when edit.AttributeName is not null &&
+                edit.VectorValue is not null =>
+                CreateFloat3Edit(edit, color: false),
+            "set_color3f" when edit.AttributeName is not null &&
+                edit.VectorValue is not null =>
+                CreateFloat3Edit(edit, color: true),
             "clear_overlay_attribute" when edit.AttributeName is not null =>
                 new ClearOverlayAttributeWorkspaceEdit(edit.PrimPath, edit.AttributeName),
             _ => throw new ArgumentException(
                 $"Edit kind '{edit.Kind}' is unsupported or is missing required fields.",
                 nameof(edit)),
         };
+    }
+
+    private static WorkspaceEditOperation CreateFloat3Edit(
+        WorkspaceEditDto edit,
+        bool color)
+    {
+        if (edit.VectorValue is null || edit.VectorValue.Count != 3)
+        {
+            throw new ArgumentException(
+                "Float3 and color3f edits require exactly three components.",
+                nameof(edit));
+        }
+
+        float x = checked((float)edit.VectorValue[0]);
+        float y = checked((float)edit.VectorValue[1]);
+        float z = checked((float)edit.VectorValue[2]);
+        return color
+            ? new SetColor3fWorkspaceEdit(
+                edit.PrimPath,
+                edit.AttributeName!,
+                x,
+                y,
+                z,
+                edit.TimeCode)
+            : new SetFloat3WorkspaceEdit(
+                edit.PrimPath,
+                edit.AttributeName!,
+                x,
+                y,
+                z,
+                edit.TimeCode);
     }
 
     private static WorkspaceEditOperation CreateEdit(ProposalPayload payload) =>
@@ -706,6 +795,18 @@ internal sealed class OpenUsdMcpService(
                     nameof(request),
                     "View time codes must be finite.");
             }
+
+        }
+
+        if (request.CameraPath is not null)
+        {
+            ValidateString(
+                request.CameraPath,
+                OpenUsdMcpLimits.MaximumPathLength,
+                nameof(request.CameraPath));
+            WorkspaceEditValidation.ValidatePrimPath(
+                request.CameraPath,
+                nameof(request.CameraPath));
         }
     }
 

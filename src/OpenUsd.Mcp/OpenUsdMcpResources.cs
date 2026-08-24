@@ -22,9 +22,9 @@ internal sealed class OpenUsdMcpResources(IArtifactResourceStore artifacts)
     [Description(OpenUsdMcpDescriptions.ArtifactResource)]
     public async ValueTask<ResourceContents> ReadArtifactAsync(
         [Description(
-            "Percent-decoded process-local artifact identifier copied from an openusd://artifact/{id} tool " +
-            "result URI; 1-1024 characters with no control characters or path separators.")]
-        string id,
+            "Percent-decoded process-local artifact identifier copied from an " +
+            "openusd://artifact/{id} tool result URI; 1-1024 characters with no control " +
+            "characters or path separators.")] string id,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

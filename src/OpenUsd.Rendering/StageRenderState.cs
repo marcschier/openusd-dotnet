@@ -43,7 +43,7 @@ public enum CameraMode : uint
 /// <summary>
 /// Describes the renderer-neutral camera for a frame.
 /// </summary>
-public readonly record struct CameraState
+public readonly record struct CameraState : IUsdDetachedResult
 {
     private readonly ImmutableArray<Vector4> _clipPlanes;
 
