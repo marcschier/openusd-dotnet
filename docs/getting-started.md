@@ -1,6 +1,6 @@
 # Getting started
 
-This guide covers the supported source workflow for the public `0.11.0-alpha` repository. Managed
+This guide covers the supported source workflow for the public `0.12.0-alpha` repository. Managed
 packages are published to NuGet.org, but the source workflow below does not depend on them; see
 [Packaging](packaging.md) for consuming the published packages instead.
 

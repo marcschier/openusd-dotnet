@@ -8,29 +8,41 @@ namespace OpenUsd.Mcp;
 
 internal interface IOpenUsdMcpService
 {
-    ValueTask<McpSessionDto> OpenSceneAsync(OpenSceneRequest request, CancellationToken cancellationToken);
+    ValueTask<McpSessionDto> OpenSceneAsync(
+        OpenSceneRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpClosedSceneDto> CloseSceneAsync(SceneRevisionRequest request, CancellationToken cancellationToken);
+    ValueTask<McpClosedSceneDto> CloseSceneAsync(
+        SceneRevisionRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpSessionDto> GetSceneAsync(SceneRevisionRequest request, CancellationToken cancellationToken);
+    ValueTask<McpSessionDto> GetSceneAsync(
+        SceneRevisionRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpSceneInspectionDto> InspectSceneAsync(SceneRevisionRequest request, CancellationToken cancellationToken);
+    ValueTask<McpSceneInspectionDto> InspectSceneAsync(
+        SceneRevisionRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpEditResultDto> ApplyEditsAsync(ApplyEditsRequest request, CancellationToken cancellationToken);
+    ValueTask<McpEditResultDto> ApplyEditsAsync(
+        ApplyEditsRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpCheckpointResultDto> CheckpointSceneAsync(SceneRevisionRequest request, CancellationToken cancellationToken);
+    ValueTask<McpCheckpointResultDto> CheckpointSceneAsync(
+        SceneRevisionRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpRollbackResultDto> RollbackSceneAsync(RollbackSceneRequest request, CancellationToken cancellationToken);
+    ValueTask<McpRollbackResultDto> RollbackSceneAsync(
+        RollbackSceneRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpCaptureResultDto> RenderPreviewAsync(RenderPreviewRequest request, CancellationToken cancellationToken);
+    ValueTask<McpCaptureResultDto> RenderPreviewAsync(
+        RenderPreviewRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(AnalyzeSceneRequest request, CancellationToken cancellationToken);
+    ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(
+        AnalyzeSceneRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpApplyProposalsResultDto> ApplyProposalsAsync(ApplyProposalsRequest request, CancellationToken cancellationToken);
+    ValueTask<McpApplyProposalsResultDto> ApplyProposalsAsync(
+        ApplyProposalsRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpFinalizationResultDto> FinalizeSceneAsync(SceneRevisionRequest request, CancellationToken cancellationToken);
+    ValueTask<McpFinalizationResultDto> FinalizeSceneAsync(
+        SceneRevisionRequest request, CancellationToken cancellationToken);
 
-    ValueTask<McpPresentationResultDto> PresentSceneAsync(PresentSceneRequest request, CancellationToken cancellationToken);
+    ValueTask<McpPresentationResultDto> PresentSceneAsync(
+        PresentSceneRequest request, CancellationToken cancellationToken);
 }
 
 internal sealed class OpenUsdMcpService(

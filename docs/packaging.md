@@ -270,7 +270,7 @@ Dependencies are limited to system libraries and safe `@rpath` or
 the package under `build/`.
 
 Each Imaging package has an exact dependency on its matching Core version, for example
-`[0.11.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
+`[0.12.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
 resource staging arrive when a consumer references only Imaging.
 
 ## Pack
@@ -393,10 +393,11 @@ generated local feed. After a Release build, run them with:
 
 ## Publish
 
-Twenty-three packages are published at `0.11.0-alpha`: the eight non-Cesium managed libraries
+Twenty-seven packages are published at `0.12.0-alpha`: the ten non-Cesium managed libraries
 (`OpenUsd`, `OpenUsd.Interop`, `OpenUsd.Rendering`, `OpenUsd.Rendering.Silk`, the three hdSilk
-backends, and `OpenUsd.Rendering.Storm`), the embeddable `OpenUsd.Viewer` shell, the two runtime
-metapackages, the six per-RID Core/Imaging runtime packages, the `OpenUsd.Mcp.Tool` .NET tool, and
+backends, `OpenUsd.Rendering.Storm`, and `OpenUsd.Physics`), the embeddable `OpenUsd.Viewer` shell,
+the three runtime metapackages, the eight per-RID Core/Imaging/Physics runtime packages, the
+`OpenUsd.Mcp.Tool` .NET tool, and
 the five Cesium IDs
 (`OpenUsd.Cesium`, `OpenUsd.Runtime.Cesium`, and the three per-RID Cesium runtime packages) that
 became public after being withheld at `0.5.0-alpha`. `eng/pack-packages.ps1` is the single
@@ -484,8 +485,8 @@ A pushed symbol package is served from NuGet's symbol CDN at:
 https://globalcdn.nuget.org/symbol-packages/<lowercase-id>.<lowercase-version>.snupkg
 ```
 
-For example, the managed package `OpenUsd 0.11.0-alpha` should appear as
-`https://globalcdn.nuget.org/symbol-packages/openusd.0.11.0-alpha.snupkg` after a successful
+For example, the managed package `OpenUsd 0.12.0-alpha` should appear as
+`https://globalcdn.nuget.org/symbol-packages/openusd.0.12.0-alpha.snupkg` after a successful
 nuget.org promotion. The corrected promotion path is wired in the tree, but it has not yet been
 proven by a real tagged release promotion end to end.
 

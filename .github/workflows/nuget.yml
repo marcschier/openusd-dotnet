@@ -98,6 +98,7 @@ jobs:
             OpenUsd.Rendering.Silk.Vulkan
             OpenUsd.Rendering.Storm
             OpenUsd.Cesium
+            OpenUsd.Physics
             OpenUsd.Viewer
             OpenUsd.Mcp.Tool
             OpenUsd.Runtime.Core
@@ -112,6 +113,9 @@ jobs:
             OpenUsd.Runtime.Cesium.win-x64
             OpenUsd.Runtime.Cesium.linux-x64
             OpenUsd.Runtime.Cesium.osx-arm64
+            OpenUsd.Runtime.Physics
+            OpenUsd.Runtime.Physics.win-x64
+            OpenUsd.Runtime.Physics.linux-x64
           )
 
           mkdir -p artifacts versions
