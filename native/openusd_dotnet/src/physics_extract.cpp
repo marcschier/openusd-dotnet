@@ -63,15 +63,6 @@ namespace
 {
 
 constexpr uint32_t kAlignment = OPENUSD_PHYSICS_EXTRACT_ALIGNMENT;
-constexpr uint32_t kObjectRecordBytes = 208u;
-constexpr uint32_t kPropertyRecordBytes = 40u;
-constexpr uint32_t kRelationshipRecordBytes = 24u;
-constexpr uint32_t kTargetRecordBytes = 16u;
-constexpr uint32_t kNumberRecordBytes = 8u;
-constexpr uint32_t kTextRecordBytes = 8u;
-constexpr uint32_t kPointRecordBytes = 12u;
-constexpr uint32_t kIndexRecordBytes = 4u;
-constexpr uint32_t kDiagnosticRecordBytes = 32u;
 
 // One-call proof counters. Extraction is the only writer.
 std::atomic<uint64_t> gTraversalCount{0};
