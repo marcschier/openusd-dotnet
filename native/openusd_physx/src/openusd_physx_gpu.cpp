@@ -14,8 +14,8 @@
 #include <extensions/PxDeformableVolumeExt.h>
 #endif
 
+#include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <map>
 #include <utility>
 
@@ -954,13 +954,16 @@ void Reset(Content& content) noexcept
         {
             continue;
         }
-        std::memcpy(
-            body.mirror_positions,
-            body.initial_positions.data(),
-            body.initial_positions.size() * sizeof(PxVec4));
+        std::copy(
+            body.initial_positions.begin(),
+            body.initial_positions.end(),
+            body.mirror_positions);
         if (body.mirror_velocities != nullptr)
         {
-            std::memset(body.mirror_velocities, 0, body.initial_positions.size() * sizeof(PxVec4));
+            std::fill_n(
+                body.mirror_velocities,
+                body.initial_positions.size(),
+                PxVec4(0.0F));
         }
         if (body.surface != nullptr)
         {

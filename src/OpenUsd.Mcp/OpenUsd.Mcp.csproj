@@ -95,6 +95,8 @@
       <TfmSpecificPackageFile Remove="$(PublishDir)**/*.so" />
       <TfmSpecificPackageFile Remove="$(PublishDir)**\*.dylib" />
       <TfmSpecificPackageFile Remove="$(PublishDir)**/*.dylib" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**\*.metallib" />
+      <TfmSpecificPackageFile Remove="$(PublishDir)**/*.metallib" />
       <TfmSpecificPackageFile Remove="$(PublishDir)dxcompiler.dll" />
       <TfmSpecificPackageFile Remove="$(PublishDir)dxil.dll" />
       <TfmSpecificPackageFile Remove="$(PublishDir)spirv-cross.dll" />

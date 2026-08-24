@@ -120,26 +120,35 @@ public sealed class McpToolPackageTests
             Guid.NewGuid().ToString("N"));
         string packageRoot = Path.Combine(testRoot, "packages");
         Directory.CreateDirectory(packageRoot);
-        string staleNativeAsset = Path.Combine(
+        string publishRoot = Path.Combine(
             root,
             "src",
             "OpenUsd.Mcp",
             "bin",
             "Release",
             "net10.0",
-            "publish",
-            "openusd_dotnet.dll");
-        bool createdStaleNativeAsset = false;
+            "publish");
+        string[] staleNativeAssets =
+        [
+            Path.Combine(publishRoot, "openusd_dotnet.dll"),
+            Path.Combine(publishRoot, "mesh.metallib"),
+        ];
+        List<string> createdStaleNativeAssets = [];
 
         try
         {
-            if (!File.Exists(staleNativeAsset))
+            foreach (string staleNativeAsset in staleNativeAssets)
             {
+                if (File.Exists(staleNativeAsset))
+                {
+                    continue;
+                }
+
                 Directory.CreateDirectory(Path.GetDirectoryName(staleNativeAsset)!);
                 await File.WriteAllTextAsync(
                     staleNativeAsset,
                     "stale local native install");
-                createdStaleNativeAsset = true;
+                createdStaleNativeAssets.Add(staleNativeAsset);
             }
 
             ProcessResult pack = await RunDotNetAsync(
@@ -225,7 +234,7 @@ public sealed class McpToolPackageTests
         }
         finally
         {
-            if (createdStaleNativeAsset)
+            foreach (string staleNativeAsset in createdStaleNativeAssets)
             {
                 File.Delete(staleNativeAsset);
             }
