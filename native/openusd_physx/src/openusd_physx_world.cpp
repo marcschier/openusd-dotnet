@@ -602,14 +602,14 @@ bool BuildPairFilterBlock(
     return true;
 }
 
-PxGeometryHolder MakeGeometry(
+bool MakeGeometry(
     openusd_physx_world& world,
     const openusd_physx_page::View& view,
     const openusd_physx_shape_desc& shape,
     size_t shape_index,
+    PxGeometryHolder& holder,
     std::string& reason)
 {
-    PxGeometryHolder holder;
     const PxVec3 scale = openusd_physx_translate::ToPx(shape.scale);
     const float uniform = std::max(std::max(std::fabs(scale.x), std::fabs(scale.y)), std::fabs(scale.z));
     switch (shape.type)
@@ -651,7 +651,7 @@ PxGeometryHolder MakeGeometry(
             if (!geometry.isValid())
             {
                 reason = "Cylinder geometry for shape " + std::to_string(shape_index) + " is not valid.";
-                return holder;
+                return false;
             }
             holder = geometry;
         }
@@ -664,7 +664,7 @@ PxGeometryHolder MakeGeometry(
             if (!geometry.isValid())
             {
                 reason = "Cone geometry for shape " + std::to_string(shape_index) + " is not valid.";
-                return holder;
+                return false;
             }
             holder = geometry;
         }
@@ -691,7 +691,7 @@ PxGeometryHolder MakeGeometry(
         if (field == nullptr)
         {
             reason = "Height field cooking failed for shape " + std::to_string(shape_index) + ".";
-            return holder;
+            return false;
         }
         world.height_fields.push_back(field);
         holder = PxHeightFieldGeometry(
@@ -723,7 +723,7 @@ PxGeometryHolder MakeGeometry(
             if (mesh == nullptr)
             {
                 reason = "Convex cooking failed for shape " + std::to_string(shape_index) + ".";
-                return holder;
+                return false;
             }
             world.convex_meshes.push_back(mesh);
             holder = PxConvexMeshGeometry(mesh);
@@ -746,7 +746,7 @@ PxGeometryHolder MakeGeometry(
         if (mesh == nullptr)
         {
             reason = "Triangle mesh cooking failed for shape " + std::to_string(shape_index) + ".";
-            return holder;
+            return false;
         }
         world.triangle_meshes.push_back(mesh);
         holder = PxTriangleMeshGeometry(mesh);
@@ -754,9 +754,9 @@ PxGeometryHolder MakeGeometry(
     }
     default:
         reason = "Shape " + std::to_string(shape_index) + " has an unsupported type.";
-        break;
+        return false;
     }
-    return holder;
+    return true;
 }
 
 PxJoint* CreateJoint(
@@ -1868,8 +1868,7 @@ openusd_physx_status BuildContent(
             if (geometry_ready[shape_index] == 0)
             {
                 reason.clear();
-                geometry[shape_index] = MakeGeometry(world, view, shape, shape_index, reason);
-                if (!reason.empty())
+                if (!MakeGeometry(world, view, shape, shape_index, geometry[shape_index], reason))
                 {
                     return false;
                 }
