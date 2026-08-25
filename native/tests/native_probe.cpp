@@ -3827,13 +3827,129 @@ bool VerifyCompositionEnumeration(
     }
     return true;
 }
+
+bool VerifyImageDecode(
+    const char* grayscalePath,
+    const char* rgbPath,
+    const char* grayscaleAlphaPath,
+    openusd_error_buffer* error)
+{
+    auto decode = [&](
+        const char* path,
+        uint32_t convertSrgbToLinear,
+        uint32_t expectedWidth,
+        uint32_t expectedHeight)
+    {
+        openusd_image_info info{
+            sizeof(openusd_image_info),
+            OPENUSD_IMAGE_INFO_VERSION,
+            0,
+            0};
+        const openusd_status sizingStatus = openusd_decode_image_rgba8(
+            path,
+            convertSrgbToLinear,
+            &info,
+            nullptr,
+            0,
+            error);
+        if (sizingStatus != OPENUSD_STATUS_BUFFER_TOO_SMALL ||
+            info.width != expectedWidth ||
+            info.height != expectedHeight)
+        {
+            return std::vector<uint8_t>{};
+        }
+
+        const size_t required =
+            static_cast<size_t>(info.width) * static_cast<size_t>(info.height) * 4u;
+        std::vector<uint8_t> undersized(required - 1u, 0xa5);
+        if (openusd_decode_image_rgba8(
+                path,
+                convertSrgbToLinear,
+                &info,
+                undersized.data(),
+                undersized.size(),
+                error) != OPENUSD_STATUS_BUFFER_TOO_SMALL ||
+            !std::all_of(
+                undersized.begin(),
+                undersized.end(),
+                [](uint8_t value) { return value == 0xa5; }))
+        {
+            return std::vector<uint8_t>{};
+        }
+
+        std::vector<uint8_t> pixels(required);
+        if (openusd_decode_image_rgba8(
+                path,
+                convertSrgbToLinear,
+                &info,
+                pixels.data(),
+                pixels.size(),
+                error) != OPENUSD_STATUS_OK)
+        {
+            return std::vector<uint8_t>{};
+        }
+        return pixels;
+    };
+
+    const std::vector<uint8_t> grayscale = decode(grayscalePath, 0, 1024, 1024);
+    if (grayscale.empty())
+    {
+        return false;
+    }
+    for (size_t offset = 0; offset < grayscale.size(); offset += 4)
+    {
+        if (grayscale[offset] != grayscale[offset + 1] ||
+            grayscale[offset] != grayscale[offset + 2] ||
+            grayscale[offset + 3] != 255)
+        {
+            return false;
+        }
+    }
+
+    const std::vector<uint8_t> grayscaleAlpha = decode(grayscaleAlphaPath, 0, 2, 1);
+    if (grayscaleAlpha != std::vector<uint8_t>{64, 64, 64, 128, 200, 200, 200, 255})
+    {
+        return false;
+    }
+
+    const std::vector<uint8_t> rgb = decode(rgbPath, 0, 1024, 1024);
+    const std::vector<uint8_t> linear = decode(rgbPath, 1, 1024, 1024);
+    if (rgb.empty() || linear.size() != rgb.size())
+    {
+        return false;
+    }
+    bool hasColoredPixel = false;
+    bool conversionChangedPixel = false;
+    for (size_t offset = 0; offset < rgb.size(); offset += 4)
+    {
+        if (rgb[offset + 3] != 255 || linear[offset + 3] != 255)
+        {
+            return false;
+        }
+        hasColoredPixel = hasColoredPixel ||
+            rgb[offset] != rgb[offset + 1] ||
+            rgb[offset] != rgb[offset + 2];
+        for (size_t component = 0; component < 3; ++component)
+        {
+            if (linear[offset + component] > rgb[offset + component])
+            {
+                return false;
+            }
+            conversionChangedPixel = conversionChangedPixel ||
+                linear[offset + component] != rgb[offset + component];
+        }
+    }
+    return hasColoredPixel && conversionChangedPixel;
+}
 }
 
 int main(int argc, char** argv)
 {
-    if (argc != 3)
+    if (argc != 6)
     {
-        std::cerr << "Usage: openusd_native_probe <plugin-path> <stage-path>\n";
+        std::cerr <<
+            "Usage: openusd_native_probe <plugin-path> <stage-path> " <<
+            "<grayscale-jpeg> <rgb-jpeg> <grayscale-alpha-png>\n";
         return 2;
     }
 
@@ -3975,6 +4091,13 @@ int main(int argc, char** argv)
         return 5;
     }
     std::cout << "Registered plugins: " << pluginCount << '\n';
+
+    if (!VerifyImageDecode(argv[3], argv[4], argv[5], &error))
+    {
+        std::cerr << "RGBA8 image decode contract failed: " << errorText.data() << '\n';
+        return 111;
+    }
+    std::cout << "RGBA8 image decode passed.\n";
 
     openusd_stage* stage = nullptr;
     status = openusd_stage_open(argv[2], &stage, &error);

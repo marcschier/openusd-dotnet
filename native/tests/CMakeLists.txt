@@ -27,7 +27,10 @@ add_test(
     COMMAND
         $<TARGET_FILE:openusd_native_probe>
         "${_openusd_test_prefix}/lib/usd"
-        "${CMAKE_SOURCE_DIR}/../test-assets/minimal.usda")
+        "${CMAKE_SOURCE_DIR}/../test-assets/minimal.usda"
+        "${CMAKE_SOURCE_DIR}/../test-assets/mcp-monkey-car-city-textures/asphalt_roughness.jpg"
+        "${CMAKE_SOURCE_DIR}/../test-assets/mcp-monkey-car-city-textures/asphalt_diffuse.jpg"
+        "${CMAKE_SOURCE_DIR}/../test-assets/native-image-gray-alpha.png")
 if(WIN32)
     set_tests_properties(
         openusd_native_probe

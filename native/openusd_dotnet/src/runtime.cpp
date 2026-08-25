@@ -133,24 +133,77 @@ openusd_status openusd_decode_image_rgba8(
             }
             info->width = static_cast<uint32_t>(width);
             info->height = static_cast<uint32_t>(height);
-            const size_t required =
-                static_cast<size_t>(width) * static_cast<size_t>(height) * 4u;
+            const HioFormat source_format = image->GetFormat();
+            const HioType source_type = HioGetHioType(source_format);
+            const int source_components = HioGetComponentCount(source_format);
+            if ((source_type != HioTypeUnsignedByte &&
+                 source_type != HioTypeUnsignedByteSRGB) ||
+                source_components < 1 ||
+                source_components > 4)
+            {
+                WriteError(error, "Only one- through four-channel 8-bit images are supported.");
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+
+            const size_t width_size = static_cast<size_t>(width);
+            const size_t height_size = static_cast<size_t>(height);
+            if (width_size > std::numeric_limits<size_t>::max() / height_size)
+            {
+                WriteError(error, "Image dimensions exceed the supported allocation size.");
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            const size_t pixel_count = width_size * height_size;
+            if (pixel_count > std::numeric_limits<size_t>::max() / 4u)
+            {
+                WriteError(error, "Decoded RGBA image exceeds the supported allocation size.");
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+            const size_t required = pixel_count * 4u;
             if (rgba == nullptr || rgba_size < required)
             {
                 return OPENUSD_STATUS_BUFFER_TOO_SMALL;
             }
 
+            std::vector<uint8_t> source(pixel_count * static_cast<size_t>(source_components));
             HioImage::StorageSpec storage;
             storage.width = width;
             storage.height = height;
             storage.depth = 1;
-            storage.format = HioFormatUNorm8Vec4;
+            storage.format = source_format;
             storage.flipped = false;
-            storage.data = rgba;
+            storage.data = source.data();
             if (!image->Read(storage))
             {
                 WriteError(error, std::string("Could not read image: ") + asset_path);
                 return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+
+            for (size_t pixel = 0; pixel < pixel_count; ++pixel)
+            {
+                const uint8_t* input =
+                    source.data() + (pixel * static_cast<size_t>(source_components));
+                uint8_t* output = rgba + (pixel * 4u);
+                if (source_components == 1)
+                {
+                    output[0] = input[0];
+                    output[1] = input[0];
+                    output[2] = input[0];
+                    output[3] = 255;
+                }
+                else if (source_components == 2)
+                {
+                    output[0] = input[0];
+                    output[1] = input[0];
+                    output[2] = input[0];
+                    output[3] = input[1];
+                }
+                else
+                {
+                    output[0] = input[0];
+                    output[1] = input[1];
+                    output[2] = input[2];
+                    output[3] = source_components == 4 ? input[3] : 255;
+                }
             }
             if (convert_srgb_to_linear != 0)
             {

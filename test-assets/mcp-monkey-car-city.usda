@@ -1,7 +1,10 @@
 #usda 1.0
 (
     defaultPrim = "World"
+    endTimeCode = 96
     metersPerUnit = 1
+    startTimeCode = 0
+    timeCodesPerSecond = 24
     upAxis = "Y"
 )
 
@@ -17,8 +20,20 @@ float verticalAperture = 15.2908
 
 double2 clippingRange = (0.1, 1000)
 
-double3 xformOp:translate = (1.1, 2.45, 1.55)
-float3 xformOp:rotateXYZ = (-5, 0, 0)
+double3 xformOp:translate.timeSamples = {
+    0: (1.1, 2.45, 1.55),
+    24: (0.8, 2.52, -4.95),
+    48: (1.4, 2.43, -11.45),
+    72: (0.7, 2.53, -17.95),
+    96: (1.1, 2.45, -23.95),
+}
+float3 xformOp:rotateXYZ.timeSamples = {
+    0: (-5, 0, 0),
+    24: (-4, -2, 0.8),
+    48: (-6, 2, -0.8),
+    72: (-4, -2, 0.8),
+    96: (-5, 0, 0),
+}
 
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
 }
@@ -37,6 +52,28 @@ uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
 
 rel material:binding = </World/Looks/Asphalt>
 }
+
+        def Mesh "TexturedRoadSurface" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [
+                (-4.5, 0.025, 14),
+                (4.5, 0.025, 14),
+                (4.5, 0.025, -38),
+                (-4.5, 0.025, -38),
+            ]
+            color3f[] primvars:displayColor = [(0.055, 0.065, 0.085)] (
+                interpolation = "constant"
+            )
+            texCoord2f[] primvars:st = [(0, 0), (4, 0), (4, 20), (0, 20)] (
+                interpolation = "faceVarying"
+            )
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/Looks/AsphaltPbr>
+        }
 
         def Cube "LeftSidewalk"
 {
@@ -240,6 +277,50 @@ rel material:binding = </World/Looks/BuildingBrick>
 }
 }
 
+        def Mesh "TexturedBuildingFacades" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [
+                0, 1, 2, 3,
+                4, 5, 6, 7,
+                8, 9, 10, 11,
+                12, 13, 14, 15,
+                16, 17, 18, 19,
+                20, 21, 22, 23,
+                24, 25, 26, 27,
+                28, 29, 30, 31,
+            ]
+            point3f[] points = [
+                (-5.99, 0, -3), (-5.99, 8, -3), (-5.99, 8, 3), (-5.99, 0, 3),
+                (-5.99, 0, -11), (-5.99, 6, -11), (-5.99, 6, -5), (-5.99, 0, -5),
+                (-5.99, 0, -20.5), (-5.99, 11, -20.5), (-5.99, 11, -13.5), (-5.99, 0, -13.5),
+                (-5.99, 0, -31), (-5.99, 7.2, -31), (-5.99, 7.2, -23), (-5.99, 0, -23),
+                (5.99, 0, -2.5), (5.99, 0, 4.5), (5.99, 7, 4.5), (5.99, 7, -2.5),
+                (5.99, 0, -11), (5.99, 0, -5), (5.99, 10, -5), (5.99, 10, -11),
+                (5.99, 0, -20.5), (5.99, 0, -13.5), (5.99, 8, -13.5), (5.99, 8, -20.5),
+                (5.99, 0, -31), (5.99, 0, -23), (5.99, 6, -23), (5.99, 6, -31),
+            ]
+            color3f[] primvars:displayColor = [(0.48, 0.16, 0.1)] (
+                interpolation = "constant"
+            )
+            texCoord2f[] primvars:st = [
+                (0, 0), (0, 5), (4, 5), (4, 0),
+                (0, 0), (0, 4), (4, 4), (4, 0),
+                (0, 0), (0, 7), (5, 7), (5, 0),
+                (0, 0), (0, 5), (5, 5), (5, 0),
+                (0, 0), (5, 0), (5, 5), (0, 5),
+                (0, 0), (4, 0), (4, 7), (0, 7),
+                (0, 0), (5, 0), (5, 6), (0, 6),
+                (0, 0), (5, 0), (5, 4), (0, 4),
+            ] (
+                interpolation = "faceVarying"
+            )
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/Looks/BrickFacadePbr>
+        }
+
         def Xform "Windows"
 {
 def Cube "LeftWindows01"
@@ -333,7 +414,13 @@ rel material:binding = </World/Looks/LeafGreen>
 {
 def Xform "CuteMonkey"
 {
-double3 xformOp:translate = (1.1, 0, 2.5)
+double3 xformOp:translate.timeSamples = {
+    0: (1.1, 0, 2.5),
+    24: (0.8, 0.08, -4),
+    48: (1.4, 0, -10.5),
+    72: (0.7, 0.08, -17),
+    96: (1.1, 0, -23),
+}
 
 float3 xformOp:rotateXYZ = (0, -12, 0)
 
@@ -342,6 +429,7 @@ uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
             def Sphere "Body"
 {
 double radius = 0.75
+color3f[] primvars:displayColor = [(0.32, 0.11, 0.035)]
 double3 xformOp:translate = (0, 1.35, 0)
 float3 xformOp:scale = (0.75, 1.2, 0.65)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -358,6 +446,7 @@ rel material:binding = </World/Looks/MonkeyFace>
             def Sphere "Head"
 {
 double radius = 0.72
+color3f[] primvars:displayColor = [(0.32, 0.11, 0.035)]
 double3 xformOp:translate = (0, 2.35, -0.08)
 float3 xformOp:scale = (0.95, 1, 0.9)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -382,6 +471,7 @@ rel material:binding = </World/Looks/MonkeyEar>
             def Sphere "Muzzle"
 {
 double radius = 0.5
+color3f[] primvars:displayColor = [(0.78, 0.48, 0.25)]
 double3 xformOp:translate = (0, 2.18, -0.6)
 float3 xformOp:scale = (0.9, 0.65, 0.45)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -390,6 +480,7 @@ rel material:binding = </World/Looks/MonkeyFace>
             def Sphere "LeftEyeWhite"
 {
 double radius = 0.18
+color3f[] primvars:displayColor = [(0.98, 0.96, 0.88)]
 double3 xformOp:translate = (-0.24, 2.48, -0.66)
 float3 xformOp:scale = (0.85, 1.15, 0.35)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -398,6 +489,7 @@ rel material:binding = </World/Looks/EyeWhite>
             def Sphere "RightEyeWhite"
 {
 double radius = 0.18
+color3f[] primvars:displayColor = [(0.98, 0.96, 0.88)]
 double3 xformOp:translate = (0.24, 2.48, -0.66)
 float3 xformOp:scale = (0.85, 1.15, 0.35)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -406,6 +498,7 @@ rel material:binding = </World/Looks/EyeWhite>
             def Sphere "LeftPupil"
 {
 double radius = 0.09
+color3f[] primvars:displayColor = [(0.015, 0.008, 0.004)]
 double3 xformOp:translate = (-0.24, 2.47, -0.735)
 float3 xformOp:scale = (0.8, 1, 0.3)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -414,6 +507,7 @@ rel material:binding = </World/Looks/EyeDark>
             def Sphere "RightPupil"
 {
 double radius = 0.09
+color3f[] primvars:displayColor = [(0.015, 0.008, 0.004)]
 double3 xformOp:translate = (0.24, 2.47, -0.735)
 float3 xformOp:scale = (0.8, 1, 0.3)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -422,6 +516,7 @@ rel material:binding = </World/Looks/EyeDark>
             def Sphere "Nose"
 {
 double radius = 0.11
+color3f[] primvars:displayColor = [(0.86, 0.18, 0.2)]
 double3 xformOp:translate = (0, 2.22, -0.83)
 float3 xformOp:scale = (1.1, 0.7, 0.45)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -441,7 +536,13 @@ rel material:binding = </World/Looks/SmileDark>
 double radius = 0.18
 double height = 1.15
 double3 xformOp:translate = (-0.65, 1.45, -0.15)
-float3 xformOp:rotateXYZ = (35, 0, -48)
+float3 xformOp:rotateXYZ.timeSamples = {
+    0: (35, 0, -48),
+    24: (-40, 0, -48),
+    48: (35, 0, -48),
+    72: (-40, 0, -48),
+    96: (35, 0, -48),
+}
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
 rel material:binding = </World/Looks/MonkeyFur>
 }
@@ -450,7 +551,13 @@ rel material:binding = </World/Looks/MonkeyFur>
 double radius = 0.18
 double height = 1.15
 double3 xformOp:translate = (0.63, 1.55, 0.05)
-float3 xformOp:rotateXYZ = (-40, 0, 52)
+float3 xformOp:rotateXYZ.timeSamples = {
+    0: (-40, 0, 52),
+    24: (35, 0, 52),
+    48: (-40, 0, 52),
+    72: (35, 0, 52),
+    96: (-40, 0, 52),
+}
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
 rel material:binding = </World/Looks/MonkeyFur>
 }
@@ -459,7 +566,13 @@ rel material:binding = </World/Looks/MonkeyFur>
 double radius = 0.21
 double height = 1.2
 double3 xformOp:translate = (-0.35, 0.58, 0.12)
-float3 xformOp:rotateXYZ = (42, 0, -18)
+float3 xformOp:rotateXYZ.timeSamples = {
+    0: (42, 0, -18),
+    24: (-48, 0, -18),
+    48: (42, 0, -18),
+    72: (-48, 0, -18),
+    96: (42, 0, -18),
+}
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
 rel material:binding = </World/Looks/MonkeyFur>
 }
@@ -468,7 +581,13 @@ rel material:binding = </World/Looks/MonkeyFur>
 double radius = 0.21
 double height = 1.2
 double3 xformOp:translate = (0.38, 0.58, -0.12)
-float3 xformOp:rotateXYZ = (-48, 0, 20)
+float3 xformOp:rotateXYZ.timeSamples = {
+    0: (-48, 0, 20),
+    24: (42, 0, 20),
+    48: (-48, 0, 20),
+    72: (42, 0, 20),
+    96: (-48, 0, 20),
+}
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
 rel material:binding = </World/Looks/MonkeyFur>
 }
@@ -490,7 +609,13 @@ rel material:binding = </World/Looks/MonkeyFur>
 
         def Xform "RedGetawayCar"
 {
-double3 xformOp:translate = (-0.4, 0, -5.4)
+double3 xformOp:translate.timeSamples = {
+    0: (-0.4, 0, -5.4),
+    24: (-1, 0, -11.2),
+    48: (-0.3, 0, -17.4),
+    72: (-1.2, 0, -24),
+    96: (-0.4, 0, -30.8),
+}
 
 float3 xformOp:rotateXYZ = (0, 2, 0)
 
@@ -499,14 +624,44 @@ uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
             def Cube "Body"
 {
 double size = 2
+color3f[] primvars:displayColor = [(0.72, 0.015, 0.025)]
 double3 xformOp:translate = (0, 0.62, 0)
 float3 xformOp:scale = (1.45, 0.42, 2.25)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
 rel material:binding = </World/Looks/CarRed>
 }
+            def Mesh "PaintedBodyPanels" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                int[] faceVertexCounts = [4, 4]
+                int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7]
+                point3f[] points = [
+                    (-1.45, 1.465, -2.25),
+                    (1.45, 1.465, -2.25),
+                    (1.45, 1.465, 2.25),
+                    (-1.45, 1.465, 2.25),
+                    (-1.45, 0.2, 2.255),
+                    (1.45, 0.2, 2.255),
+                    (1.45, 1.46, 2.255),
+                    (-1.45, 1.46, 2.255),
+                ]
+                color3f[] primvars:displayColor = [(0.72, 0.015, 0.025)] (
+                    interpolation = "constant"
+                )
+                texCoord2f[] primvars:st = [
+                    (0, 0), (2, 0), (2, 3), (0, 3),
+                    (0, 0), (2, 0), (2, 1), (0, 1),
+                ] (
+                    interpolation = "faceVarying"
+                )
+                uniform token subdivisionScheme = "none"
+                rel material:binding = </World/Looks/CarPaintPbr>
+            }
             def Cube "Cabin"
 {
 double size = 2
+color3f[] primvars:displayColor = [(0.42, 0.008, 0.015)]
 double3 xformOp:translate = (0, 1.2, -0.15)
 float3 xformOp:scale = (1.12, 0.48, 1.18)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -515,6 +670,7 @@ rel material:binding = </World/Looks/CarRedDark>
             def Cube "RearWindow"
 {
 double size = 2
+color3f[] primvars:displayColor = [(0.025, 0.08, 0.14)]
 double3 xformOp:translate = (0, 1.25, 1.04)
 float3 xformOp:scale = (0.92, 0.31, 0.035)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -523,6 +679,7 @@ rel material:binding = </World/Looks/CarGlass>
             def Cube "LeftTailLight"
 {
 double size = 2
+color3f[] primvars:displayColor = [(1, 0.01, 0.005)]
 double3 xformOp:translate = (-0.82, 0.72, 2.255)
 float3 xformOp:scale = (0.3, 0.16, 0.03)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -531,6 +688,7 @@ rel material:binding = </World/Looks/TailLight>
             def Cube "RightTailLight"
 {
 double size = 2
+color3f[] primvars:displayColor = [(1, 0.01, 0.005)]
 double3 xformOp:translate = (0.82, 0.72, 2.255)
 float3 xformOp:scale = (0.3, 0.16, 0.03)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -539,6 +697,7 @@ rel material:binding = </World/Looks/TailLight>
             def Cube "Plate"
 {
 double size = 2
+color3f[] primvars:displayColor = [(1, 0.72, 0.05)]
 double3 xformOp:translate = (0, 0.46, 2.29)
 float3 xformOp:scale = (0.42, 0.16, 0.02)
 uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
@@ -548,36 +707,68 @@ rel material:binding = </World/Looks/PlateYellow>
 {
 double radius = 0.42
 double height = 0.28
+color3f[] primvars:displayColor = [(0.018, 0.018, 0.022)]
 uniform token axis = "X"
 double3 xformOp:translate = (-1.48, 0.42, 1.25)
-uniform token[] xformOpOrder = ["xformOp:translate"]
+float xformOp:rotateX.timeSamples = {
+    0: 0,
+    24: 720,
+    48: 1440,
+    72: 2160,
+    96: 2880,
+}
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX"]
 rel material:binding = </World/Looks/Tire>
 }
             def Cylinder "RightRearWheel"
 {
 double radius = 0.42
 double height = 0.28
+color3f[] primvars:displayColor = [(0.018, 0.018, 0.022)]
 uniform token axis = "X"
 double3 xformOp:translate = (1.48, 0.42, 1.25)
-uniform token[] xformOpOrder = ["xformOp:translate"]
+float xformOp:rotateX.timeSamples = {
+    0: 0,
+    24: 720,
+    48: 1440,
+    72: 2160,
+    96: 2880,
+}
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX"]
 rel material:binding = </World/Looks/Tire>
 }
             def Cylinder "LeftFrontWheel"
 {
 double radius = 0.42
 double height = 0.28
+color3f[] primvars:displayColor = [(0.018, 0.018, 0.022)]
 uniform token axis = "X"
 double3 xformOp:translate = (-1.48, 0.42, -1.25)
-uniform token[] xformOpOrder = ["xformOp:translate"]
+float xformOp:rotateX.timeSamples = {
+    0: 0,
+    24: 720,
+    48: 1440,
+    72: 2160,
+    96: 2880,
+}
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX"]
 rel material:binding = </World/Looks/Tire>
 }
             def Cylinder "RightFrontWheel"
 {
 double radius = 0.42
 double height = 0.28
+color3f[] primvars:displayColor = [(0.018, 0.018, 0.022)]
 uniform token axis = "X"
 double3 xformOp:translate = (1.48, 0.42, -1.25)
-uniform token[] xformOpOrder = ["xformOp:translate"]
+float xformOp:rotateX.timeSamples = {
+    0: 0,
+    24: 720,
+    48: 1440,
+    72: 2160,
+    96: 2880,
+}
+uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX"]
 rel material:binding = </World/Looks/Tire>
 }
 }
@@ -646,7 +837,165 @@ uniform token[] xformOpOrder = ["xformOp:translate"]
 
     def Xform "Looks"
 {
-def Material "Asphalt"
+def Material "AsphaltPbr"
+{
+token outputs:surface.connect = </World/Looks/AsphaltPbr/Surface.outputs:surface>
+def Shader "Surface"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor.connect = </World/Looks/AsphaltPbr/Diffuse.outputs:rgb>
+normal3f inputs:normal.connect = </World/Looks/AsphaltPbr/Normal.outputs:rgb>
+float inputs:roughness.connect = </World/Looks/AsphaltPbr/Roughness.outputs:r>
+token outputs:surface
+}
+def Shader "Primvar"
+{
+uniform token info:id = "UsdPrimvarReader_float2"
+token inputs:varname = "st"
+float2 outputs:result
+}
+def Shader "Diffuse"
+{
+uniform token info:id = "UsdUVTexture"
+asset inputs:file = @./mcp-monkey-car-city-textures/asphalt_diffuse.jpg@
+float2 inputs:st.connect = </World/Looks/AsphaltPbr/Primvar.outputs:result>
+token inputs:sourceColorSpace = "sRGB"
+token inputs:wrapS = "repeat"
+token inputs:wrapT = "repeat"
+float3 outputs:rgb
+}
+def Shader "Roughness"
+{
+uniform token info:id = "UsdUVTexture"
+asset inputs:file = @./mcp-monkey-car-city-textures/asphalt_roughness.jpg@
+float2 inputs:st.connect = </World/Looks/AsphaltPbr/Primvar.outputs:result>
+token inputs:sourceColorSpace = "raw"
+token inputs:wrapS = "repeat"
+token inputs:wrapT = "repeat"
+float outputs:r
+}
+def Shader "Normal"
+{
+uniform token info:id = "UsdUVTexture"
+asset inputs:file = @./mcp-monkey-car-city-textures/asphalt_normal.jpg@
+float4 inputs:bias = (-1, -1, -1, 0)
+float4 inputs:scale = (2, 2, 2, 1)
+float2 inputs:st.connect = </World/Looks/AsphaltPbr/Primvar.outputs:result>
+token inputs:sourceColorSpace = "raw"
+token inputs:wrapS = "repeat"
+token inputs:wrapT = "repeat"
+float3 outputs:rgb
+}
+}
+
+        def Material "BrickFacadePbr"
+{
+token outputs:surface.connect = </World/Looks/BrickFacadePbr/Surface.outputs:surface>
+def Shader "Surface"
+{
+uniform token info:id = "UsdPreviewSurface"
+color3f inputs:diffuseColor.connect = </World/Looks/BrickFacadePbr/Diffuse.outputs:rgb>
+normal3f inputs:normal.connect = </World/Looks/BrickFacadePbr/Normal.outputs:rgb>
+float inputs:roughness.connect = </World/Looks/BrickFacadePbr/Roughness.outputs:r>
+token outputs:surface
+}
+def Shader "Primvar"
+{
+uniform token info:id = "UsdPrimvarReader_float2"
+token inputs:varname = "st"
+float2 outputs:result
+}
+def Shader "Diffuse"
+{
+uniform token info:id = "UsdUVTexture"
+asset inputs:file = @./mcp-monkey-car-city-textures/brick_diffuse.jpg@
+float2 inputs:st.connect = </World/Looks/BrickFacadePbr/Primvar.outputs:result>
+token inputs:sourceColorSpace = "sRGB"
+token inputs:wrapS = "repeat"
+token inputs:wrapT = "repeat"
+float3 outputs:rgb
+}
+def Shader "Roughness"
+{
+uniform token info:id = "UsdUVTexture"
+asset inputs:file = @./mcp-monkey-car-city-textures/brick_roughness.jpg@
+float2 inputs:st.connect = </World/Looks/BrickFacadePbr/Primvar.outputs:result>
+token inputs:sourceColorSpace = "raw"
+token inputs:wrapS = "repeat"
+token inputs:wrapT = "repeat"
+float outputs:r
+}
+def Shader "Normal"
+{
+uniform token info:id = "UsdUVTexture"
+asset inputs:file = @./mcp-monkey-car-city-textures/brick_normal.jpg@
+float4 inputs:bias = (-1, -1, -1, 0)
+float4 inputs:scale = (2, 2, 2, 1)
+float2 inputs:st.connect = </World/Looks/BrickFacadePbr/Primvar.outputs:result>
+token inputs:sourceColorSpace = "raw"
+token inputs:wrapS = "repeat"
+token inputs:wrapT = "repeat"
+float3 outputs:rgb
+}
+}
+
+        def Material "CarPaintPbr"
+{
+token outputs:surface.connect = </World/Looks/CarPaintPbr/Surface.outputs:surface>
+def Shader "Surface"
+{
+uniform token info:id = "UsdPreviewSurface"
+float inputs:clearcoat = 0.9
+float inputs:clearcoatRoughness = 0.08
+color3f inputs:diffuseColor.connect = </World/Looks/CarPaintPbr/Diffuse.outputs:rgb>
+float inputs:metallic = 0.82
+normal3f inputs:normal.connect = </World/Looks/CarPaintPbr/Normal.outputs:rgb>
+float inputs:roughness.connect = </World/Looks/CarPaintPbr/Roughness.outputs:r>
+token outputs:surface
+}
+def Shader "Primvar"
+{
+uniform token info:id = "UsdPrimvarReader_float2"
+token inputs:varname = "st"
+float2 outputs:result
+}
+def Shader "Diffuse"
+{
+uniform token info:id = "UsdUVTexture"
+asset inputs:file = @./mcp-monkey-car-city-textures/car_metal_diffuse.jpg@
+float4 inputs:bias = (0.38, 0, 0, 0)
+float4 inputs:scale = (0.85, 0.12, 0.12, 1)
+float2 inputs:st.connect = </World/Looks/CarPaintPbr/Primvar.outputs:result>
+token inputs:sourceColorSpace = "sRGB"
+token inputs:wrapS = "repeat"
+token inputs:wrapT = "repeat"
+float3 outputs:rgb
+}
+def Shader "Roughness"
+{
+uniform token info:id = "UsdUVTexture"
+asset inputs:file = @./mcp-monkey-car-city-textures/car_metal_roughness.jpg@
+float2 inputs:st.connect = </World/Looks/CarPaintPbr/Primvar.outputs:result>
+token inputs:sourceColorSpace = "raw"
+token inputs:wrapS = "repeat"
+token inputs:wrapT = "repeat"
+float outputs:r
+}
+def Shader "Normal"
+{
+uniform token info:id = "UsdUVTexture"
+asset inputs:file = @./mcp-monkey-car-city-textures/car_metal_normal.jpg@
+float4 inputs:bias = (-1, -1, -1, 0)
+float4 inputs:scale = (2, 2, 2, 1)
+float2 inputs:st.connect = </World/Looks/CarPaintPbr/Primvar.outputs:result>
+token inputs:sourceColorSpace = "raw"
+token inputs:wrapS = "repeat"
+token inputs:wrapT = "repeat"
+float3 outputs:rgb
+}
+}
+
+        def Material "Asphalt"
 {
 token outputs:surface.connect = </World/Looks/Asphalt/Shader.outputs:surface>
 def Shader "Shader"

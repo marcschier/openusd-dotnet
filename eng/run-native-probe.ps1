@@ -74,6 +74,16 @@ if (Test-Path $shimPluginSource)
 
 $stagedStage = Join-Path $publishRoot ([System.IO.Path]::GetFileName($StagePath))
 Copy-Item ([System.IO.Path]::GetFullPath($StagePath)) $stagedStage -Force
+$stagedImageFixtures = @(
+    'test-assets/mcp-monkey-car-city-textures/asphalt_roughness.jpg',
+    'test-assets/mcp-monkey-car-city-textures/asphalt_diffuse.jpg',
+    'test-assets/native-image-gray-alpha.png'
+) | ForEach-Object {
+    $source = Join-Path $repoRoot $_
+    $target = Join-Path $publishRoot ([System.IO.Path]::GetFileName($source))
+    Copy-Item $source $target -Force
+    $target
+}
 
 $nativeProbe = $null
 if (-not $SkipNativeAbiProbe)
@@ -106,7 +116,7 @@ try
 
     if ($null -ne $nativeProbe)
     {
-        & $nativeProbe $pluginPath $stagedStage
+        & $nativeProbe $pluginPath $stagedStage @stagedImageFixtures
         if ($LASTEXITCODE -ne 0)
         {
             exit $LASTEXITCODE

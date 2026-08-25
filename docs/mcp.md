@@ -934,6 +934,12 @@ Resource reads additionally use `artifact_not_found`, `artifact_invalid_text`,
 12. Call `close_scene` with the current coordinates before opening another asset or stopping
     the client.
 
+The repository includes `test-assets/mcp-monkey-car-city.usda` as a complete visual workflow
+sample. It contains a 96-frame animated chase, an authored monkey-view camera, UV-mapped geometry,
+USD Preview Surface networks, and compact CC0 PBR maps. Open it with `open_scene`, pass
+`/World/MonkeyChaseCamera` to `render_preview`, render multiple time codes as a turntable sequence
+or contact sheet, then call `finalize_scene` and `present_scene` for the same revision.
+
 ## Troubleshooting
 
 - **`openusd-mcp` is not found:** run `dotnet tool list --global`, verify
