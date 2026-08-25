@@ -66,12 +66,24 @@ else()
             "remove the vehicle sources and the vehicle capability together, and correct the "
             "package documentation to match.")
     endif()
+    get_target_property(OPENUSD_PHYSX_EXTENSIONS_LIBRARY
+        unofficial::omniverse-physx-sdk::PhysXExtensions IMPORTED_LOCATION_RELEASE)
+    if(NOT OPENUSD_PHYSX_EXTENSIONS_LIBRARY)
+        message(FATAL_ERROR
+            "The PhysX Extensions target has no release import location. Linux needs that archive "
+            "after the aggregate SDK to resolve the generated geometry and metadata helpers.")
+    endif()
     message(STATUS "openusd_physx: PhysXVehicle2 -> ${OPENUSD_PHYSX_VEHICLE2_LIBRARY}")
+    message(STATUS "openusd_physx: trailing PhysXExtensions -> ${OPENUSD_PHYSX_EXTENSIONS_LIBRARY}")
     target_link_libraries(openusd_physx
         PRIVATE
             "${OPENUSD_PHYSX_VEHICLE2_LIBRARY}"
             unofficial::omniverse-physx-sdk::sdk
+            "${OPENUSD_PHYSX_EXTENSIONS_LIBRARY}"
             usd_m)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_options(openusd_physx PRIVATE -Wl,-z,defs)
+    endif()
 endif()
 if(TARGET openusd_native_sanitizers)
     target_link_libraries(openusd_physx PRIVATE openusd_native_sanitizers)

@@ -261,10 +261,20 @@ public sealed class NativeShimPrefixContractTests
             "unofficial::omniverse-physx-sdk::sdk",
             vehicleIndex,
             StringComparison.Ordinal);
+        int trailingExtensionsIndex = cmake.IndexOf(
+            "\"${OPENUSD_PHYSX_EXTENSIONS_LIBRARY}\"",
+            aggregateIndex,
+            StringComparison.Ordinal);
         await Assert.That(vehicleIndex).IsGreaterThan(0);
         await Assert.That(aggregateIndex)
             .IsGreaterThan(vehicleIndex)
             .Because("Vehicle2 must precede the aggregate SDK target on the link line");
+        await Assert.That(trailingExtensionsIndex)
+            .IsGreaterThan(aggregateIndex)
+            .Because("PhysX Extensions must follow the aggregate to resolve its static archive symbols");
+        await Assert.That(cmake)
+            .Contains("target_link_options(openusd_physx PRIVATE -Wl,-z,defs)")
+            .Because("Linux must reject unresolved shim symbols before probes or packages link");
 
         // The sources this contract exists for. If the vehicle translation unit is ever dropped,
         // this test should be revisited deliberately rather than keep passing over nothing.
