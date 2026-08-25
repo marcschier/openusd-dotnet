@@ -651,7 +651,7 @@ PxGeometryHolder MakeGeometry(
             if (!geometry.isValid())
             {
                 reason = "Cylinder geometry for shape " + std::to_string(shape_index) + " is not valid.";
-                return PxGeometryHolder();
+                return holder;
             }
             holder = geometry;
         }
@@ -664,7 +664,7 @@ PxGeometryHolder MakeGeometry(
             if (!geometry.isValid())
             {
                 reason = "Cone geometry for shape " + std::to_string(shape_index) + " is not valid.";
-                return PxGeometryHolder();
+                return holder;
             }
             holder = geometry;
         }
