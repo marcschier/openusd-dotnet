@@ -602,6 +602,11 @@ bool BuildPairFilterBlock(
     return true;
 }
 
+PX_NOINLINE void StoreGeometry(PxGeometryHolder& holder, const PxGeometry& geometry)
+{
+    holder.storeAny(geometry);
+}
+
 bool MakeGeometry(
     openusd_physx_world& world,
     const openusd_physx_page::View& view,
@@ -615,21 +620,21 @@ bool MakeGeometry(
     switch (shape.type)
     {
     case OPENUSD_PHYSX_SHAPE_SPHERE:
-        holder = PxSphereGeometry(std::max(shape.radius * uniform, 1e-4F));
+        StoreGeometry(holder, PxSphereGeometry(std::max(shape.radius * uniform, 1e-4F)));
         break;
     case OPENUSD_PHYSX_SHAPE_BOX:
-        holder = PxBoxGeometry(
+        StoreGeometry(holder, PxBoxGeometry(
             std::max(shape.half_extents.x * std::fabs(scale.x), 1e-4F),
             std::max(shape.half_extents.y * std::fabs(scale.y), 1e-4F),
-            std::max(shape.half_extents.z * std::fabs(scale.z), 1e-4F));
+            std::max(shape.half_extents.z * std::fabs(scale.z), 1e-4F)));
         break;
     case OPENUSD_PHYSX_SHAPE_CAPSULE:
-        holder = PxCapsuleGeometry(
+        StoreGeometry(holder, PxCapsuleGeometry(
             std::max(shape.radius * uniform, 1e-4F),
-            std::max(shape.half_height * uniform, 1e-4F));
+            std::max(shape.half_height * uniform, 1e-4F)));
         break;
     case OPENUSD_PHYSX_SHAPE_PLANE:
-        holder = PxPlaneGeometry();
+        StoreGeometry(holder, PxPlaneGeometry());
         break;
     case OPENUSD_PHYSX_SHAPE_CYLINDER:
     case OPENUSD_PHYSX_SHAPE_CONE:
@@ -653,7 +658,7 @@ bool MakeGeometry(
                 reason = "Cylinder geometry for shape " + std::to_string(shape_index) + " is not valid.";
                 return false;
             }
-            holder = geometry;
+            StoreGeometry(holder, geometry);
         }
         else
         {
@@ -666,7 +671,7 @@ bool MakeGeometry(
                 reason = "Cone geometry for shape " + std::to_string(shape_index) + " is not valid.";
                 return false;
             }
-            holder = geometry;
+            StoreGeometry(holder, geometry);
         }
         break;
     }
@@ -694,12 +699,12 @@ bool MakeGeometry(
             return false;
         }
         world.height_fields.push_back(field);
-        holder = PxHeightFieldGeometry(
+        StoreGeometry(holder, PxHeightFieldGeometry(
             field,
             PxMeshGeometryFlags(),
             std::max(shape.height_scale * std::fabs(scale.y), 1e-4F),
             std::max(shape.row_scale * std::fabs(scale.x), 1e-4F),
-            std::max(shape.column_scale * std::fabs(scale.z), 1e-4F));
+            std::max(shape.column_scale * std::fabs(scale.z), 1e-4F)));
         break;
     }
     case OPENUSD_PHYSX_SHAPE_CONVEX_MESH:
@@ -726,7 +731,7 @@ bool MakeGeometry(
                 return false;
             }
             world.convex_meshes.push_back(mesh);
-            holder = PxConvexMeshGeometry(mesh);
+            StoreGeometry(holder, PxConvexMeshGeometry(mesh));
             break;
         }
         std::vector<uint32_t> indices(shape.index_count);
@@ -749,7 +754,7 @@ bool MakeGeometry(
             return false;
         }
         world.triangle_meshes.push_back(mesh);
-        holder = PxTriangleMeshGeometry(mesh);
+        StoreGeometry(holder, PxTriangleMeshGeometry(mesh));
         break;
     }
     default:
@@ -1234,17 +1239,6 @@ bool DecodeActorUserData(const PxActor* actor, uintptr_t& kind, size_t& index) n
     kind = raw >> kUserDataKindShift;
     index = static_cast<size_t>(slot) - 1;
     return true;
-}
-
-size_t ActorIndexOf(const PxActor* actor) noexcept
-{
-    uintptr_t kind = 0;
-    size_t index = 0;
-    if (!DecodeActorUserData(actor, kind, index) || kind != kUserDataKindActor)
-    {
-        return static_cast<size_t>(-1);
-    }
-    return index;
 }
 
 size_t ShapeIndexOf(const PxShape* shape) noexcept
