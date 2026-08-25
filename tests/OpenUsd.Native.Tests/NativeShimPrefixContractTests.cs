@@ -273,8 +273,24 @@ public sealed class NativeShimPrefixContractTests
             .IsGreaterThan(aggregateIndex)
             .Because("PhysX Extensions must follow the aggregate to resolve its static archive symbols");
         await Assert.That(cmake)
-            .Contains("$<LINK_GROUP:RESCAN,${OPENUSD_PHYSX_VEHICLE2_LIBRARY}")
-            .Because("Linux must rescan the circular PhysX static archives until all symbols resolve");
+            .Contains("string(CONCAT OPENUSD_PHYSX_LINUX_LINK_GROUP")
+            .Because("Linux must construct one rescan group for the circular PhysX static archives");
+        foreach (string dependency in new[]
+                 {
+                     "PhysXExtensions",
+                     "PhysXPvdSDK",
+                     "PhysXCharacterKinematic",
+                     "PhysXCooking",
+                     "PhysXCommon",
+                     "PhysXFoundation",
+                     "PhysXVehicle",
+                 })
+        {
+            string terminator = dependency == "PhysXVehicle" ? ">" : ",";
+            await Assert.That(cmake)
+                .Contains($"unofficial::omniverse-physx-sdk::{dependency}{terminator}")
+                .Because($"{dependency} must participate in the Linux static archive rescan");
+        }
         await Assert.That(cmake)
             .Contains("target_link_options(openusd_physx PRIVATE -Wl,-z,defs)")
             .Because("Linux must reject unresolved shim symbols before probes or packages link");

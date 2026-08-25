@@ -76,9 +76,20 @@ else()
     message(STATUS "openusd_physx: PhysXVehicle2 -> ${OPENUSD_PHYSX_VEHICLE2_LIBRARY}")
     message(STATUS "openusd_physx: trailing PhysXExtensions -> ${OPENUSD_PHYSX_EXTENSIONS_LIBRARY}")
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        string(CONCAT OPENUSD_PHYSX_LINUX_LINK_GROUP
+            "$<LINK_GROUP:RESCAN,"
+            "${OPENUSD_PHYSX_VEHICLE2_LIBRARY},"
+            "unofficial::omniverse-physx-sdk::sdk,"
+            "unofficial::omniverse-physx-sdk::PhysXExtensions,"
+            "unofficial::omniverse-physx-sdk::PhysXPvdSDK,"
+            "unofficial::omniverse-physx-sdk::PhysXCharacterKinematic,"
+            "unofficial::omniverse-physx-sdk::PhysXCooking,"
+            "unofficial::omniverse-physx-sdk::PhysXCommon,"
+            "unofficial::omniverse-physx-sdk::PhysXFoundation,"
+            "unofficial::omniverse-physx-sdk::PhysXVehicle>")
         target_link_libraries(openusd_physx
             PRIVATE
-                "$<LINK_GROUP:RESCAN,${OPENUSD_PHYSX_VEHICLE2_LIBRARY},unofficial::omniverse-physx-sdk::sdk,${OPENUSD_PHYSX_EXTENSIONS_LIBRARY}>"
+                "${OPENUSD_PHYSX_LINUX_LINK_GROUP}"
                 usd_m)
         target_link_options(openusd_physx PRIVATE -Wl,-z,defs)
     else()
