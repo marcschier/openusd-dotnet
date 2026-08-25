@@ -75,14 +75,19 @@ else()
     endif()
     message(STATUS "openusd_physx: PhysXVehicle2 -> ${OPENUSD_PHYSX_VEHICLE2_LIBRARY}")
     message(STATUS "openusd_physx: trailing PhysXExtensions -> ${OPENUSD_PHYSX_EXTENSIONS_LIBRARY}")
-    target_link_libraries(openusd_physx
-        PRIVATE
-            "${OPENUSD_PHYSX_VEHICLE2_LIBRARY}"
-            unofficial::omniverse-physx-sdk::sdk
-            "${OPENUSD_PHYSX_EXTENSIONS_LIBRARY}"
-            usd_m)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_libraries(openusd_physx
+            PRIVATE
+                "$<LINK_GROUP:RESCAN,${OPENUSD_PHYSX_VEHICLE2_LIBRARY},unofficial::omniverse-physx-sdk::sdk,${OPENUSD_PHYSX_EXTENSIONS_LIBRARY}>"
+                usd_m)
         target_link_options(openusd_physx PRIVATE -Wl,-z,defs)
+    else()
+        target_link_libraries(openusd_physx
+            PRIVATE
+                "${OPENUSD_PHYSX_VEHICLE2_LIBRARY}"
+                unofficial::omniverse-physx-sdk::sdk
+                "${OPENUSD_PHYSX_EXTENSIONS_LIBRARY}"
+                usd_m)
     endif()
 endif()
 if(TARGET openusd_native_sanitizers)
