@@ -631,6 +631,9 @@ OpenUsd.Rendering.RenderPlatform.Linux = 2 -> OpenUsd.Rendering.RenderPlatform
 OpenUsd.Rendering.RenderPlatform.MacOS = 3 -> OpenUsd.Rendering.RenderPlatform
 OpenUsd.Rendering.RenderPlatform.Unknown = 0 -> OpenUsd.Rendering.RenderPlatform
 OpenUsd.Rendering.RenderPlatform.Windows = 1 -> OpenUsd.Rendering.RenderPlatform
+OpenUsd.Rendering.RenderOutputTransform
+OpenUsd.Rendering.RenderOutputTransform.Identity = 0 -> OpenUsd.Rendering.RenderOutputTransform
+OpenUsd.Rendering.RenderOutputTransform.Reinhard = 1 -> OpenUsd.Rendering.RenderOutputTransform
 OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderPurpose.Default = 1 -> OpenUsd.Rendering.RenderPurpose
 OpenUsd.Rendering.RenderPurpose.Guide = 8 -> OpenUsd.Rendering.RenderPurpose
@@ -644,8 +647,11 @@ OpenUsd.Rendering.RenderSettings.Complexity.get -> OpenUsd.Rendering.RenderCompl
 OpenUsd.Rendering.RenderSettings.EnableLighting.get -> bool
 OpenUsd.Rendering.RenderSettings.EnableShadows.get -> bool
 OpenUsd.Rendering.RenderSettings.Equals(OpenUsd.Rendering.RenderSettings other) -> bool
+OpenUsd.Rendering.RenderSettings.Exposure.get -> float
+OpenUsd.Rendering.RenderSettings.OutputTransform.get -> OpenUsd.Rendering.RenderOutputTransform
 OpenUsd.Rendering.RenderSettings.RenderSettings() -> void
 OpenUsd.Rendering.RenderSettings.RenderSettings(int samplesPerPixel, bool enableLighting, bool enableShadows, System.Numerics.Vector4 clearColor, bool backfaceCulling = true, bool useSceneMaterials = true, OpenUsd.Rendering.RenderComplexity complexity = OpenUsd.Rendering.RenderComplexity.Low) -> void
+OpenUsd.Rendering.RenderSettings.RenderSettings(int samplesPerPixel, bool enableLighting, bool enableShadows, System.Numerics.Vector4 clearColor, bool backfaceCulling, bool useSceneMaterials, OpenUsd.Rendering.RenderComplexity complexity, OpenUsd.Rendering.RenderOutputTransform outputTransform, float exposure) -> void
 OpenUsd.Rendering.RenderSettings.SamplesPerPixel.get -> int
 OpenUsd.Rendering.RenderSettings.UseSceneMaterials.get -> bool
 OpenUsd.Rendering.RenderVisibility
@@ -801,6 +807,7 @@ static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, st
 static OpenUsd.Rendering.CameraState.FromStageCamera(OpenUsd.UsdStage! stage, string! primPath, int width, int height) -> OpenUsd.Rendering.CameraState
 static OpenUsd.Rendering.CameraState.operator !=(OpenUsd.Rendering.CameraState left, OpenUsd.Rendering.CameraState right) -> bool
 static OpenUsd.Rendering.CameraState.operator ==(OpenUsd.Rendering.CameraState left, OpenUsd.Rendering.CameraState right) -> bool
+static OpenUsd.Rendering.RenderSettings.PresentationDefault.get -> OpenUsd.Rendering.RenderSettings
 static OpenUsd.Rendering.CompositionExternalImage.operator !=(OpenUsd.Rendering.CompositionExternalImage left, OpenUsd.Rendering.CompositionExternalImage right) -> bool
 static OpenUsd.Rendering.CompositionExternalImage.operator ==(OpenUsd.Rendering.CompositionExternalImage left, OpenUsd.Rendering.CompositionExternalImage right) -> bool
 static OpenUsd.Rendering.CompositionExternalSemaphore.operator !=(OpenUsd.Rendering.CompositionExternalSemaphore left, OpenUsd.Rendering.CompositionExternalSemaphore right) -> bool

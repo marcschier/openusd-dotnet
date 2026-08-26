@@ -7792,7 +7792,11 @@ public sealed class RuntimePackageTests
 
     private static string CreateWorkRoot(string repositoryRoot)
     {
-        string workRoot = Path.Combine(repositoryRoot, "artifacts", "package-tests", Guid.NewGuid().ToString("N"));
+        string workRoot = Path.Combine(
+            repositoryRoot,
+            "artifacts",
+            "package-tests",
+            Guid.NewGuid().ToString("N")[..12]);
         Directory.CreateDirectory(workRoot);
         return workRoot;
     }

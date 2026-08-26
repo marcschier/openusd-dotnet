@@ -124,7 +124,9 @@ internal sealed class ViewerRenderCoordinator : IAsyncDisposable
                 static stage => stage.RootLayerIdentifier,
                 cancellationToken).ConfigureAwait(false);
             ViewerStartupOptions.WriteStatus("Renderer coordinator: root layer query completed");
-            StageRenderState state = StageRenderState.Create(new StageIdentity(identifier));
+            StageRenderState state = StageRenderState
+                .Create(new StageIdentity(identifier))
+                .WithRenderSettings(RenderSettings.PresentationDefault);
             IViewerRenderBackendHost host = hostFactory(scheduler, source);
             RenderPlatform platform = GetPlatform();
             var backendRegistry = new ViewerRenderBackendRegistry();

@@ -188,6 +188,16 @@ argument-buffer and per-draw fallback paths. Tier 1 devices keep using separate 
 draw also calls `useResources` for encoded textures; texture and sampler wrappers remain leased until the submitted
 command buffer completes because the argument buffer stores live Metal object references for the draw.
 
+### hdSilk display output
+
+`RenderSettings.OutputTransform` and `RenderSettings.Exposure` define the renderer-neutral display-output contract.
+`Identity` writes scene-linear color unchanged and remains the default for Storm/hdSilk conformance evidence.
+`Reinhard` applies exposure in stops and compresses each non-negative channel before the 8-bit presentation target.
+`RenderSettings.PresentationDefault` selects Reinhard with a daylight-oriented `-6` stop exposure; MCP previews and
+new Viewer sessions use that preset so physically authored light values do not collapse most geometry to white.
+`SilkMeshRenderOptions` carries the same controls for direct retained-renderer users. The frame uniform cache includes
+both values, so changing only exposure or output transform updates the GPU block without requiring a scene revision.
+
 ### hdSilk shader pipeline cache
 
 Mesh shader variants are addressed by `SilkShaderPermutationId`, whose flags mirror

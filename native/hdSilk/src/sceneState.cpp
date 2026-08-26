@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <exception>
 #include <limits>
@@ -305,11 +306,15 @@ void AppendFrame(
     {
         if (light.ambientOnly)
         {
-            // Storm's untextured DomeLight path falls back to unit diffuse
-            // irradiance rather than tinting by authored color/intensity.
-            ambientColor[0] = 0.96f;
-            ambientColor[1] = 0.96f;
-            ambientColor[2] = 0.96f;
+            // Storm's unit white dome resolves to 0.96 diffuse irradiance. Preserve that
+            // normalization while still honoring authored color, intensity, exposure,
+            // and diffuse contribution. Multiple domes accumulate instead of whichever
+            // record happens to be visited last replacing every earlier one.
+            const float exposed =
+                0.96f * light.intensity * std::pow(2.0f, light.exposure) * light.diffuse;
+            ambientColor[0] += light.color[0] * exposed;
+            ambientColor[1] += light.color[1] * exposed;
+            ambientColor[2] += light.color[2] * exposed;
             ambientIntensity = 1.0f;
             continue;
         }

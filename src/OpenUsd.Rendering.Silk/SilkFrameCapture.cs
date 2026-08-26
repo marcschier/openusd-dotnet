@@ -208,7 +208,7 @@ public static class SilkFrameCapture
                 SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
 
     private static SilkMeshRenderOptions CreateRenderOptions(RenderSettings renderSettings) =>
-        new(
+        new SilkMeshRenderOptions(
             new SilkColor(
                 renderSettings.ClearColor.X,
                 renderSettings.ClearColor.Y,
@@ -216,7 +216,11 @@ public static class SilkFrameCapture
                 renderSettings.ClearColor.W),
             1,
             renderSettings.BackfaceCulling,
-            renderSettings.UseSceneMaterials);
+            renderSettings.UseSceneMaterials)
+        {
+            OutputTransform = renderSettings.OutputTransform,
+            Exposure = renderSettings.Exposure,
+        };
 
     private static SilkFrameCaptureResult ReadbackFrame(
         ISilkGraphicsTexture color,

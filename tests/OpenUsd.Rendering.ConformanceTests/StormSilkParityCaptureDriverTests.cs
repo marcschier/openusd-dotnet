@@ -636,6 +636,83 @@ def Xform "World"
     }
 
     [Test]
+    public async Task HdSilkDomeAmbientPreservesAuthoredColorIntensityAndExposure()
+    {
+        Vector3 ambient;
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-light-dome-authored.usda");
+            string pluginPath = ResolvePluginPath();
+
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            using OpenUsdSilkPage page = session.Sync(64, 64);
+            using SilkCommandEnumerator commands = page.GetEnumerator();
+            if (!commands.MoveNext())
+            {
+                throw new InvalidDataException("The hdSilk page contains no frame command.");
+            }
+            SilkFrameCommand frame = commands.Current.AsFrame();
+            ambient = new Vector3(
+                frame.GetAmbientColor(0),
+                frame.GetAmbientColor(1),
+                frame.GetAmbientColor(2));
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk authored dome ambient", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        await Assert.That(ambient.X).IsEqualTo(0.24f).Within(0.0001f);
+        await Assert.That(ambient.Y).IsEqualTo(0.48f).Within(0.0001f);
+        await Assert.That(ambient.Z).IsEqualTo(0.72f).Within(0.0001f);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task ChasePresentationRetainsHighlightsOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        OutputTransformSaturation saturation;
+        try
+        {
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            saturation = CaptureChaseOutputTransform(device);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk chase presentation D3D12", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        await AssertChaseOutputTransform(saturation);
+    }
+
+    [Test]
+    public async Task ChasePresentationRetainsHighlightsOnVulkan()
+    {
+        OutputTransformSaturation saturation;
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            saturation = CaptureChaseOutputTransform(device);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk chase presentation Vulkan", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        await AssertChaseOutputTransform(saturation);
+    }
+
+    [Test]
     public async Task SilkComplexityMediumChangesPointPage()
     {
         MeshPageStats lowStats;
@@ -2511,6 +2588,79 @@ def Xform "World"
             throw new DirectoryNotFoundException("Could not locate the repository root.");
         }
         return Path.Combine(root, "test-assets", "parity", fileName);
+    }
+
+    private static string ResolveTestAsset(string fileName)
+    {
+        string? root = FindRepositoryRoot();
+        if (root is null)
+        {
+            throw new DirectoryNotFoundException("Could not locate the repository root.");
+        }
+        return Path.Combine(root, "test-assets", fileName);
+    }
+
+    private static OutputTransformSaturation CaptureChaseOutputTransform(
+        ISilkGraphicsDevice device)
+    {
+        const int width = 320;
+        const int height = 180;
+        PrependHdSilkNativeSearchPath();
+        string stagePath = ResolveTestAsset("mcp-monkey-car-city.usda");
+        string pluginPath = ResolvePluginPath();
+        using UsdStage stage = UsdStage.Open(stagePath);
+        CameraState camera = CameraState.FromStageCamera(
+            stage,
+            "/World/MonkeyChaseCamera",
+            24,
+            width,
+            height);
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+        using OpenUsdSilkPage page = session.Sync(width, height, 24, camera);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            width,
+            height,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(width, height));
+        using var renderer = new SilkMeshRenderer(device);
+        _ = renderer.ApplyAndRender(page, color, depth);
+        byte[] identity = new byte[width * height * ParityImage.BytesPerPixel];
+        color.ReadbackForTesting(identity);
+
+        var presentation = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1)
+        {
+            OutputTransform = RenderSettings.PresentationDefault.OutputTransform,
+            Exposure = RenderSettings.PresentationDefault.Exposure,
+        };
+        _ = renderer.Render(color, depth, presentation);
+        byte[] mapped = new byte[identity.Length];
+        color.ReadbackForTesting(mapped);
+        return new OutputTransformSaturation(
+            ExactWhiteFraction(identity),
+            ExactWhiteFraction(mapped));
+    }
+
+    private static double ExactWhiteFraction(ReadOnlySpan<byte> pixels)
+    {
+        int white = 0;
+        for (int index = 0; index < pixels.Length; index += ParityImage.BytesPerPixel)
+        {
+            if (pixels[index] == byte.MaxValue &&
+                pixels[index + 1] == byte.MaxValue &&
+                pixels[index + 2] == byte.MaxValue)
+            {
+                white++;
+            }
+        }
+        return white / (double)(pixels.Length / ParityImage.BytesPerPixel);
+    }
+
+    private static async Task AssertChaseOutputTransform(OutputTransformSaturation saturation)
+    {
+        await Assert.That(saturation.IdentityWhiteFraction).IsGreaterThan(0.4);
+        await Assert.That(saturation.PresentationWhiteFraction).IsLessThan(0.01);
     }
 
     private static float[] OutsideUnitTextureCoordinates() =>
@@ -4502,6 +4652,10 @@ def Xform "World"
         string DisabledHash,
         bool ChangedStorm,
         object Comparison);
+
+    private readonly record struct OutputTransformSaturation(
+        double IdentityWhiteFraction,
+        double PresentationWhiteFraction);
 
     private readonly record struct ParityPerformanceBudget(
         int MeasuredDrawCount,

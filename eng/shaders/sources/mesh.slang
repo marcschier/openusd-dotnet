@@ -494,6 +494,11 @@ float4 FRAGMENT_ENTRY_POINT(
         }
     }
     color += emissiveColor;
+    color *= exp2(asfloat(frame.clipPlaneCount.z));
+    if (frame.clipPlaneCount.y == 1u)
+    {
+        color /= 1.0 + max(color, float3(0.0, 0.0, 0.0));
+    }
     return float4(color, opacity);
 #else
     return float4(abs(input.normal), 1.0) * input.tint;

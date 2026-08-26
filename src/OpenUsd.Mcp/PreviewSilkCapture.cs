@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Runtime.ExceptionServices;
+using OpenUsd.Rendering;
 using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Mcp;
@@ -129,6 +130,7 @@ internal sealed class PreviewSilkFrameSource : IPreviewFrameSource
                     session,
                     width,
                     height,
+                    RenderSettings.PresentationDefault,
                     view.TimeCode,
                     view.Camera);
                 return new ImageRgba8(result.Width, result.Height, result.Rgba.Span);

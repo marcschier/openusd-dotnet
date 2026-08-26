@@ -70,6 +70,12 @@ public sealed record SilkMeshRenderOptions(
     /// <summary>Gets opaque black with a far depth clear.</summary>
     public static SilkMeshRenderOptions Default { get; } =
         new(new SilkColor(0, 0, 0, 1), 1);
+
+    /// <summary>Gets or initializes the output transform applied before writing display pixels.</summary>
+    public RenderOutputTransform OutputTransform { get; init; }
+
+    /// <summary>Gets or initializes the exposure adjustment in stops.</summary>
+    public float Exposure { get; init; }
 }
 
 /// <summary>Per-frame retained-scene rendering evidence.</summary>
@@ -677,7 +683,10 @@ public sealed class SilkMeshRenderer :
         ValidateOptions(options);
         SyncPhysicsDeformations();
         int uniformUploads = GpuResources.UpdateUniforms(Scene.Frame, PhysicsOverrides);
-        ISilkGraphicsBuffer frameBuffer = GpuResources.RequireFrameBuffer(Scene.Frame);
+        ISilkGraphicsBuffer frameBuffer = GpuResources.RequireFrameBuffer(
+            Scene.Frame,
+            options.OutputTransform,
+            options.Exposure);
         bool renderSelectionOutline = PrepareSelectionOutline(depthTarget);
         using ISilkGraphicsCommandList commands = _device.CreateCommandList();
         ISilkSelectionOutlineGraphicsCommandList? selectionCommands = null;
@@ -2175,6 +2184,14 @@ public sealed class SilkMeshRenderer :
             options.ClearDepth > 1)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "Clear depth must be between zero and one.");
+        }
+        if (options.OutputTransform is < RenderOutputTransform.Identity or > RenderOutputTransform.Reinhard)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "The output transform is unknown.");
+        }
+        if (!float.IsFinite(options.Exposure))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Exposure must be finite.");
         }
     }
 

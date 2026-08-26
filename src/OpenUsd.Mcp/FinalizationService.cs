@@ -56,7 +56,7 @@ public sealed class FinalizationService
         string? stagingDirectory = WorkspacePathContainment.CreateContainedDirectory(
             sessionOutputDirectory,
             Path.Combine(
-                revisionDirectory,
+                sessionOutputDirectory,
                 string.Concat(".staging-", Guid.NewGuid().ToString("N"))));
         try
         {

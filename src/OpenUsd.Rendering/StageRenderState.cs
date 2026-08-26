@@ -789,6 +789,18 @@ public readonly record struct RenderSettings
         useSceneMaterials: true,
         RenderComplexity.Low);
 
+    /// <summary>Gets settings suitable for an 8-bit presentation image.</summary>
+    public static RenderSettings PresentationDefault { get; } = new(
+        samplesPerPixel: 1,
+        enableLighting: true,
+        enableShadows: true,
+        new Vector4(0, 0, 0, 1),
+        backfaceCulling: true,
+        useSceneMaterials: true,
+        RenderComplexity.Low,
+        RenderOutputTransform.Reinhard,
+        exposure: -6);
+
     /// <summary>Initializes render settings.</summary>
     /// <param name="samplesPerPixel">The requested samples per pixel.</param>
     /// <param name="enableLighting">Whether scene lighting is enabled.</param>
@@ -805,11 +817,52 @@ public readonly record struct RenderSettings
         bool backfaceCulling = true,
         bool useSceneMaterials = true,
         RenderComplexity complexity = RenderComplexity.Low)
+        : this(
+            samplesPerPixel,
+            enableLighting,
+            enableShadows,
+            clearColor,
+            backfaceCulling,
+            useSceneMaterials,
+            complexity,
+            RenderOutputTransform.Identity,
+            0)
+    {
+    }
+
+    /// <summary>Initializes render settings including display-output controls.</summary>
+    /// <param name="samplesPerPixel">The requested samples per pixel.</param>
+    /// <param name="enableLighting">Whether scene lighting is enabled.</param>
+    /// <param name="enableShadows">Whether shadows are enabled.</param>
+    /// <param name="clearColor">The linear RGBA viewport clear color.</param>
+    /// <param name="backfaceCulling">Whether back-facing single-sided surfaces are culled.</param>
+    /// <param name="useSceneMaterials">Whether authored scene materials are used.</param>
+    /// <param name="complexity">The requested curve and point tessellation density.</param>
+    /// <param name="outputTransform">The transform applied before writing display pixels.</param>
+    /// <param name="exposure">The exposure adjustment in stops before the output transform.</param>
+    public RenderSettings(
+        int samplesPerPixel,
+        bool enableLighting,
+        bool enableShadows,
+        Vector4 clearColor,
+        bool backfaceCulling,
+        bool useSceneMaterials,
+        RenderComplexity complexity,
+        RenderOutputTransform outputTransform,
+        float exposure)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(samplesPerPixel, 1);
         if (complexity is < RenderComplexity.Low or > RenderComplexity.VeryHigh)
         {
             throw new ArgumentOutOfRangeException(nameof(complexity));
+        }
+        if (outputTransform is < RenderOutputTransform.Identity or > RenderOutputTransform.Reinhard)
+        {
+            throw new ArgumentOutOfRangeException(nameof(outputTransform));
+        }
+        if (!float.IsFinite(exposure))
+        {
+            throw new ArgumentOutOfRangeException(nameof(exposure));
         }
         SamplesPerPixel = samplesPerPixel;
         EnableLighting = enableLighting;
@@ -818,6 +871,8 @@ public readonly record struct RenderSettings
         BackfaceCulling = backfaceCulling;
         UseSceneMaterials = useSceneMaterials;
         Complexity = complexity;
+        OutputTransform = outputTransform;
+        Exposure = exposure;
     }
 
     /// <summary>Gets the requested samples per pixel.</summary>
@@ -843,6 +898,22 @@ public readonly record struct RenderSettings
     /// intentionally not controlled by this setting.
     /// </summary>
     public RenderComplexity Complexity { get; }
+
+    /// <summary>Gets the transform applied before writing display pixels.</summary>
+    public RenderOutputTransform OutputTransform { get; }
+
+    /// <summary>Gets the exposure adjustment in stops before the output transform.</summary>
+    public float Exposure { get; }
+}
+
+/// <summary>Identifies the output transform applied to linear scene color.</summary>
+public enum RenderOutputTransform
+{
+    /// <summary>Writes scene color without a display transform.</summary>
+    Identity,
+
+    /// <summary>Applies a Reinhard transform to retain highlights in a bounded display image.</summary>
+    Reinhard
 }
 
 /// <summary>

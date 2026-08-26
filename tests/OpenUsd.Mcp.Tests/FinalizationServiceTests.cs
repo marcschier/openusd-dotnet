@@ -12,6 +12,8 @@ public sealed class FinalizationServiceTests
     {
         using var files = new WorkspaceTestFiles();
         var backend = new RecordingWorkspaceBackend();
+        string? exportPath = null;
+        backend.ExportCallback = (path, _) => exportPath = path;
         await using var workspace = files.CreateWorkspace(backend);
         WorkspaceSessionInfo session = await workspace.StartAsync("scene.usda");
         File.WriteAllText(session.OverlayPath, "#usda 1.0\n");
@@ -113,6 +115,9 @@ public sealed class FinalizationServiceTests
         await Assert.That(status.IsActive).IsTrue();
         await Assert.That(status.Session!.Generation).IsEqualTo(session.Generation);
         await Assert.That(backend.Events).Contains("export");
+        await Assert.That(exportPath).IsNotNull();
+        await Assert.That(Path.GetDirectoryName(Path.GetDirectoryName(exportPath!)))
+            .IsEqualTo(session.OutputDirectory);
     }
 
     [Test]

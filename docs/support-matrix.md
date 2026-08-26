@@ -422,7 +422,8 @@ remains measured but ungated until the remaining divergence is eliminated.
 | Deterministic headlight | Implemented and parity-gated | Used when no authored UsdLux light is present |
 | `UsdLuxDistantLight` | Implemented subset and parity-gated | Matte and glossy scenes gate; margin 0.609274 |
 | `UsdLuxSphereLight` | Implemented subset and parity-gated | Matte point-attenuation scene gates; margin 0.542752 |
-| `UsdLuxDomeLight` | Ambient-only and parity-gated | Untextured dome ambient is gated; image IBL is not implemented |
+| `UsdLuxDomeLight` | Ambient-only, parity-gated | Authored scalar/color controls; no image IBL |
+| Display output | Reinhard presentation, identity parity | MCP/Viewer preserve highlights |
 | Shadows | Measured, ungated | Offscreen Storm shadows are not a reference |
 | Rect/disk/cylinder area lights | Implemented and self-consistency-gated | Storm renders authored references black |
 | Light linking | Not implemented | No linked-light filtering; no instanced-shadow parity |

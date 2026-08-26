@@ -27,6 +27,44 @@ public sealed class StageRenderStateTests
     }
 
     [Test]
+    public async Task PresentationDefaultsRetainHighlightsWithoutChangingConformanceDefaults()
+    {
+        await Assert.That(RenderSettings.Default.OutputTransform)
+            .IsEqualTo(RenderOutputTransform.Identity);
+        await Assert.That(RenderSettings.Default.Exposure).IsEqualTo(0f);
+        await Assert.That(RenderSettings.PresentationDefault.OutputTransform)
+            .IsEqualTo(RenderOutputTransform.Reinhard);
+        await Assert.That(RenderSettings.PresentationDefault.Exposure).IsEqualTo(-6f);
+    }
+
+    [Test]
+    public async Task OutputControlsRejectUnknownTransformsAndNonFiniteExposure()
+    {
+        await Assert.That(() => new RenderSettings(
+                1,
+                true,
+                true,
+                Vector4.Zero,
+                true,
+                true,
+                RenderComplexity.Low,
+                (RenderOutputTransform)2,
+                0))
+            .Throws<ArgumentOutOfRangeException>();
+        await Assert.That(() => new RenderSettings(
+                1,
+                true,
+                true,
+                Vector4.Zero,
+                true,
+                true,
+                RenderComplexity.Low,
+                RenderOutputTransform.Reinhard,
+                float.NaN))
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
     public async Task ExplicitIdentityMatricesRemainDistinctFromAutomaticCamera()
     {
         var explicitIdentity = new CameraState(

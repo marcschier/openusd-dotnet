@@ -631,7 +631,9 @@ internal static class SilkFrameUniformWriter
     internal static void Write(
         SilkFrameState frame,
         Span<byte> destination,
-        bool flipClipSpaceY)
+        bool flipClipSpaceY,
+        RenderOutputTransform outputTransform,
+        float exposure)
     {
         if (destination.Length != ByteSize)
         {
@@ -655,8 +657,8 @@ internal static class SilkFrameUniformWriter
 
         WriteMatrixTranspose(destination, 0, clipToEye);
         WriteSingle(destination, 64, frame.ClipPlaneCount);
-        WriteSingle(destination, 68, 0u);
-        WriteSingle(destination, 72, 0u);
+        WriteSingle(destination, 68, (uint)outputTransform);
+        WriteSingle(destination, 72, exposure);
         WriteSingle(destination, 76, 0u);
 
         ReadOnlySpan<double> planes = frame.ClipPlanes.Span;
@@ -1501,6 +1503,8 @@ public sealed class SilkSceneGpuResources : IDisposable
     private ISilkGraphicsBuffer? _frameBuffer;
     private readonly byte[] _frameBytes = new byte[SilkFrameUniformWriter.ByteSize];
     private ulong _frameRevision = ulong.MaxValue;
+    private RenderOutputTransform _frameOutputTransform = (RenderOutputTransform)(-1);
+    private float _frameExposure = float.NaN;
     private bool _disposed;
 
     private readonly record struct SurfaceBuffer(
@@ -1690,7 +1694,10 @@ public sealed class SilkSceneGpuResources : IDisposable
     }
 
     /// <summary>Returns the per-frame constants the mesh shader reads.</summary>
-    internal ISilkGraphicsBuffer RequireFrameBuffer(SilkFrameState frame)
+    internal ISilkGraphicsBuffer RequireFrameBuffer(
+        SilkFrameState frame,
+        RenderOutputTransform outputTransform,
+        float exposure)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(frame);
@@ -1698,16 +1705,25 @@ public sealed class SilkSceneGpuResources : IDisposable
         _frameBuffer ??= CreateTrackedBuffer(
             SilkFrameUniformWriter.ByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
-        if (_frameRevision != frame.Revision)
+        if (_frameRevision != frame.Revision ||
+            _frameOutputTransform != outputTransform ||
+            _frameExposure != exposure)
         {
             Span<byte> constants = stackalloc byte[SilkFrameUniformWriter.ByteSize];
-            SilkFrameUniformWriter.Write(frame, constants, _device.ClipSpaceYPointsDown);
+            SilkFrameUniformWriter.Write(
+                frame,
+                constants,
+                _device.ClipSpaceYPointsDown,
+                outputTransform,
+                exposure);
             if (created || !constants.SequenceEqual(_frameBytes))
             {
                 WriteTracked(_frameBuffer, constants);
                 constants.CopyTo(_frameBytes);
             }
             _frameRevision = frame.Revision;
+            _frameOutputTransform = outputTransform;
+            _frameExposure = exposure;
         }
         return _frameBuffer;
     }
