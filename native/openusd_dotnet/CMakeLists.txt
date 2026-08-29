@@ -10,6 +10,7 @@ set(OPENUSD_DOTNET_SOURCES
     src/diagnostics.cpp
     src/layer.cpp
     src/metadata.cpp
+    src/ocio.cpp
     src/pcp.cpp
     src/physics_bake.cpp
     src/physics_extract.cpp
@@ -44,6 +45,7 @@ function(configure_openusd_dotnet_target target_name)
         ${target_name}
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/private)
     target_link_libraries(${target_name} PRIVATE usd_m)
+    target_link_libraries(${target_name} PRIVATE OpenColorIO::OpenColorIO)
     if(TARGET openusd_native_sanitizers)
         target_link_libraries(${target_name} PRIVATE openusd_native_sanitizers)
     endif()

@@ -1,0 +1,39 @@
+ocio_profile_version: 2.0
+
+environment:
+  {}
+
+search_path: ""
+
+roles:
+  default: linear
+  scene_linear: linear
+
+displays:
+  TestDisplay:
+    - !<View> {name: TestView, colorspace: srgb_display}
+
+active_displays: [TestDisplay]
+active_views: [TestView]
+
+looks:
+  - !<Look>
+    name: TestLook
+    process_space: linear
+    transform: !<MatrixTransform> {matrix: [1.5, 0, 0, 0, 0, 1.5, 0, 0, 0, 0, 1.5, 0, 0, 0, 0, 1]}
+
+colorspaces:
+  - !<ColorSpace>
+    name: linear
+    family: ""
+    bitdepth: 32f
+    isdata: false
+    allocation: uniform
+
+  - !<ColorSpace>
+    name: srgb_display
+    family: ""
+    bitdepth: 32f
+    isdata: false
+    allocation: uniform
+    from_scene_reference: !<ExponentWithLinearTransform> {gamma: 2.4, offset: 0.055}

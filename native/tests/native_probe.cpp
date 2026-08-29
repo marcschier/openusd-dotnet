@@ -3941,15 +3941,104 @@ bool VerifyImageDecode(
     }
     return hasColoredPixel && conversionChangedPixel;
 }
+
+bool VerifyOcioDisplayTransform(const char* configPath)
+{
+    openusd_ocio_processor_release(nullptr);
+
+    openusd_error_buffer noStorage{nullptr, 0, 0};
+    openusd_ocio_processor* processor =
+        reinterpret_cast<openusd_ocio_processor*>(uintptr_t{1});
+    if (openusd_ocio_processor_create(
+            nullptr,
+            "linear",
+            nullptr,
+            nullptr,
+            nullptr,
+            &processor,
+            &noStorage) != OPENUSD_STATUS_INVALID_ARGUMENT ||
+        processor != nullptr ||
+        noStorage.required <= 1)
+    {
+        return false;
+    }
+
+    std::array<char, 512> errorText{};
+    openusd_error_buffer error{errorText.data(), errorText.size(), 0};
+    processor = reinterpret_cast<openusd_ocio_processor*>(uintptr_t{1});
+    if (openusd_ocio_processor_create(
+            "missing-config.ocio",
+            "linear",
+            nullptr,
+            nullptr,
+            nullptr,
+            &processor,
+            &error) != OPENUSD_STATUS_NATIVE_ERROR ||
+        processor != nullptr ||
+        error.required <= 1)
+    {
+        return false;
+    }
+
+    if (openusd_ocio_processor_create(
+            configPath,
+            "linear",
+            "TestDisplay",
+            "TestView",
+            nullptr,
+            &processor,
+            &error) != OPENUSD_STATUS_OK ||
+        processor == nullptr ||
+        error.required != 0 ||
+        errorText[0] != '\0')
+    {
+        return false;
+    }
+
+    const std::array<uint8_t, 8> source{
+        0x00, 0x38, 0x00, 0x38, 0x00, 0x38, 0x00, 0x3c};
+    std::array<uint8_t, 4> destination{};
+    bool success = openusd_ocio_processor_apply_rgba16f_to_rgba8(
+        processor,
+        source.data(),
+        source.size(),
+        1,
+        1,
+        0.0f,
+        destination.data(),
+        destination.size(),
+        &error) == OPENUSD_STATUS_OK &&
+        destination[0] > 0 &&
+        destination[1] > 0 &&
+        destination[2] > 0 &&
+        destination[3] == 255;
+
+    uint8_t oneByte = 0;
+    success = success &&
+        openusd_ocio_processor_apply_rgba16f_to_rgba8(
+            processor,
+            &oneByte,
+            1,
+            std::numeric_limits<uint32_t>::max(),
+            std::numeric_limits<uint32_t>::max(),
+            0.0f,
+            &oneByte,
+            1,
+            &error) == OPENUSD_STATUS_INVALID_ARGUMENT &&
+        error.required > 1;
+
+    openusd_ocio_processor_release(processor);
+    return success;
+}
 }
 
 int main(int argc, char** argv)
 {
-    if (argc != 6)
+    if (argc != 7)
     {
         std::cerr <<
             "Usage: openusd_native_probe <plugin-path> <stage-path> " <<
-            "<grayscale-jpeg> <rgb-jpeg> <grayscale-alpha-png>\n";
+            "<grayscale-jpeg> <rgb-jpeg> <grayscale-alpha-png> <ocio-config>\n";
         return 2;
     }
 
@@ -3975,7 +4064,8 @@ int main(int argc, char** argv)
           OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2 |
           OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION |
           OPENUSD_CAPABILITY_SESSION_OVERLAY |
-          OPENUSD_CAPABILITY_PHYSICS_BAKE)) !=
+          OPENUSD_CAPABILITY_PHYSICS_BAKE |
+          OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM)) !=
             (OPENUSD_CAPABILITY_STRING_LIST_V2 |
              OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
              OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES |
@@ -3996,7 +4086,8 @@ int main(int argc, char** argv)
              OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2 |
              OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION |
              OPENUSD_CAPABILITY_SESSION_OVERLAY |
-             OPENUSD_CAPABILITY_PHYSICS_BAKE))
+             OPENUSD_CAPABILITY_PHYSICS_BAKE |
+             OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM))
     {
         std::cerr << "Unexpected ABI version.\n";
         return 3;
@@ -4012,6 +4103,11 @@ int main(int argc, char** argv)
 
     std::array<char, 4096> errorText{};
     openusd_error_buffer error{errorText.data(), errorText.size(), 0};
+    if (!VerifyOcioDisplayTransform(argv[6]))
+    {
+        std::cerr << "OpenColorIO display transform contract failed.\n";
+        return 5;
+    }
     const auto rejectsMalformedList =
         [&](const openusd_string_list_view& malformed)
         {

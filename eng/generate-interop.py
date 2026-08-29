@@ -46,7 +46,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
     native_name = match.group(2)
     managed_name = camel_case(native_name)
 
-    nullable_names = {"type_name", "target_prim_path", "variant_selection", "string_value"}
+    nullable_names = {"type_name", "target_prim_path", "variant_selection", "string_value",
+                      "display", "view", "looks"}
     if native_type == "const char*":
         nullable = "?" if native_name in nullable_names else ""
         return f"string{nullable}", managed_name
@@ -60,7 +61,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
                        "openusd_pcp_prim_index_list*", "openusd_ts_spline*",
                        "const openusd_ts_spline*",
                        "openusd_validation_metadata_list*",
-                       "openusd_validation_error_list*"}:
+                       "openusd_validation_error_list*",
+                       "const openusd_ocio_processor*", "openusd_ocio_processor*"}:
         return "nint", managed_name
     if native_type in {"openusd_stage**", "openusd_stage_access**",
                        "openusd_layer**", "openusd_string_list**",
@@ -68,7 +70,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
                        "openusd_pcp_prim_index_list**",
                        "openusd_ts_spline**",
                        "openusd_validation_metadata_list**",
-                       "openusd_validation_error_list**"}:
+                       "openusd_validation_error_list**",
+                       "openusd_ocio_processor**"}:
         return "out nint", managed_name
     if native_type == "openusd_error_buffer*":
         return "ref NativeErrorBuffer", managed_name

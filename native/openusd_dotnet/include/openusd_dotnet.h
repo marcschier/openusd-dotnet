@@ -283,6 +283,9 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION (UINT64_C(1) << 18)
 #define OPENUSD_CAPABILITY_SESSION_OVERLAY (UINT64_C(1) << 19)
 #define OPENUSD_CAPABILITY_PHYSICS_BAKE (UINT64_C(1) << 20)
+#define OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM (UINT64_C(1) << 21)
+
+typedef struct openusd_ocio_processor openusd_ocio_processor;
 
 typedef struct openusd_vec3f
 {
@@ -3271,6 +3274,36 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_physics_bake_author_page(
     size_t results_size,
     size_t* required,
     openusd_error_buffer* error);
+
+/*
+ * OpenColorIO display/view processor: create, apply, release.
+ * The processor is immutable and thread-safe after creation.
+ * display and view may be NULL to use config defaults.
+ * looks may be NULL for no look override.
+ */
+
+OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_create(
+    const char* config_path,
+    const char* source_color_space,
+    const char* display,
+    const char* view,
+    const char* looks,
+    openusd_ocio_processor** processor,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_apply_rgba16f_to_rgba8(
+    const openusd_ocio_processor* processor,
+    const uint8_t* source,
+    size_t source_size,
+    uint32_t width,
+    uint32_t height,
+    float exposure,
+    uint8_t* destination,
+    size_t destination_size,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API void openusd_ocio_processor_release(
+    openusd_ocio_processor* processor);
 
 #ifdef __cplusplus
 }

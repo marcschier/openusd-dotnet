@@ -28,6 +28,10 @@ public sealed class StormSilkParityCaptureDriverTests
     private const string VulkanSwiftShaderBackendName = "Vulkan SwiftShader";
     private const string MetalBackendName = "Metal";
     private const double ExactCuratedParityAdjustedIou = 1.0;
+    private static string OcioTestConfigPath => Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory,
+        "..", "..", "..", "..", "..",
+        "test-assets", "ocio-test-config.ocio"));
     private const string EmptyStage = """
 #usda 1.0
 (
@@ -827,6 +831,59 @@ def Xform "World"
         AssertNonZeroPixel(pixels, (64 * 48 / 2) * ParityImage.BytesPerPixel);
         AssertNonZeroPixel(pixels, ((64 * 48) - 1) * ParityImage.BytesPerPixel);
         await Assert.That(ContainsPixelDifferentFromClear(pixels, settings.ClearColor)).IsTrue();
+    }
+
+    [Test]
+    public async Task SilkFrameCaptureAppliesOcioDisplayTransform()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        SilkFrameCaptureResult capture;
+        var settings = new RenderSettings(
+            1,
+            enableLighting: true,
+            enableShadows: true,
+            new Vector4(0.07f, 0.11f, 0.17f, 1),
+            backfaceCulling: true,
+            useSceneMaterials: true,
+            RenderComplexity.Low);
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-points-asymmetric.usda");
+            string pluginPath = ResolvePluginPath();
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            using var ocioProcessor = new SilkOpenColorIoDisplayTransform(
+                OcioTestConfigPath,
+                "linear",
+                "TestDisplay",
+                "TestView").CreateProcessor();
+
+            capture = SilkFrameCapture.Capture(
+                session,
+                device,
+                64,
+                48,
+                settings,
+                ocioProcessor,
+                TimeCode,
+                CameraState.Default);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk OCIO frame capture", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        await Assert.That(capture.Width).IsEqualTo(64);
+        await Assert.That(capture.Height).IsEqualTo(48);
+        await Assert.That(capture.Rgba.Length).IsEqualTo(64 * 48 * ParityImage.BytesPerPixel);
+        await Assert.That(ContainsPixelDifferentFromClear(capture.Rgba.Span, settings.ClearColor)).IsTrue();
     }
 
     [Test]

@@ -411,9 +411,15 @@ remains measured but ungated until the remaining divergence is eliminated.
 - Animated materials, textures, lights, and topology have no parity scene.
 - GPU skinning is not implemented or gated. `docs/rendering.md` records the ABI/shader design that
   must land before this can become a backend gate.
-- OCIO final display/view/look correction is not implemented. OpenUSD exposes it through
-  `HdxColorCorrectionTask`, but hdSilk does not run the Hdx task graph and has no render-settings ABI
-  for OCIO config names, LUT resources, or generated colour-correction shader code.
+- OCIO final display/view/look correction for live GPU presentation is not yet implemented.
+  OpenUSD exposes it through `HdxColorCorrectionTask`, but hdSilk does not run the Hdx task
+  graph and has no render-settings ABI for OCIO config names, LUT resources, or generated
+  colour-correction shader code. CPU capture/export OCIO is supported through
+  `SilkOpenColorIoProcessor` applied after readback: create a processor from a
+  `SilkOpenColorIoDisplayTransform` (config path, source color space, optional display/view/looks)
+  and pass it to the OCIO `SilkFrameCapture.Capture` / `CaptureRetained` / `SilkFrameCapturer.Capture`
+  overloads. Exposure is applied before the OCIO transform; `RenderSettings.OutputTransform`
+  must be `Identity` when an OCIO processor is supplied.
 
 ### Unimplemented or deliberately excluded from the next-alpha parity claim
 

@@ -5562,6 +5562,69 @@ public static unsafe partial class OpenUsdNativeRuntime
         string attributeName,
         ref NativeErrorBuffer error);
 
+    internal static void ReleaseOcioProcessor(nint processor)
+    {
+        NativeMethods.OcioProcessorRelease(processor);
+    }
+
+    internal static OpenUsdNativeOcioProcessor CreateOcioProcessor(
+        string configPath,
+        string sourceColorSpace,
+        string? display,
+        string? view,
+        string? looks)
+    {
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.OcioProcessorCreate(
+                configPath,
+                sourceColorSpace,
+                display,
+                view,
+                looks,
+                out nint processor,
+                ref error);
+            if (status != OpenUsdNativeStatus.Ok && processor != 0)
+            {
+                NativeMethods.OcioProcessorRelease(processor);
+            }
+            ThrowIfFailed(status, errorBytes, error);
+            return new OpenUsdNativeOcioProcessor(processor);
+        }
+    }
+
+    internal static void ApplyOcioProcessorRgba16FToRgba8(
+        OpenUsdNativeOcioProcessor processor,
+        ReadOnlySpan<byte> source,
+        Span<byte> destination,
+        uint width,
+        uint height,
+        float exposure)
+    {
+        ArgumentNullException.ThrowIfNull(processor);
+        using var lease = new SafeHandleLease(processor);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        fixed (byte* sourcePointer = source)
+        fixed (byte* destinationPointer = destination)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.OcioProcessorApplyRgba16fToRgba8(
+                lease.Handle,
+                sourcePointer,
+                (nuint)source.Length,
+                width,
+                height,
+                exposure,
+                destinationPointer,
+                (nuint)destination.Length,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+        }
+    }
+
     private ref struct SafeHandleLease
     {
         private readonly SafeHandle _owner;

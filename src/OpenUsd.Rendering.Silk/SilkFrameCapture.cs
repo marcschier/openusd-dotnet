@@ -63,6 +63,68 @@ public static class SilkFrameCapture
         CameraState camera = default) =>
         Capture(session, device, width, height, RenderSettings.Default, timeCode, camera);
 
+    /// <summary>
+    /// Synchronizes, renders, and captures one RGBA8 frame using an OpenColorIO processor
+    /// for display-referred output.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The OCIO processor replaces the built-in <see cref="RenderOutputTransform"/> pipeline.
+    /// <see cref="RenderSettings.OutputTransform"/> must be
+    /// <see cref="RenderOutputTransform.Identity"/>; supplying any other transform alongside
+    /// an OCIO processor is rejected to prevent double-transforming.
+    /// </para>
+    /// <para>
+    /// <see cref="RenderSettings.Exposure"/> is applied to linear RGB channels before the
+    /// OCIO display/view transform, matching the existing exposure-first ordering.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="renderSettings"/> specifies a non-Identity
+    /// <see cref="RenderOutputTransform"/> alongside an OCIO processor.
+    /// </exception>
+    public static SilkFrameCaptureResult Capture(
+        OpenUsdSilkSession session,
+        ISilkGraphicsDevice device,
+        int width,
+        int height,
+        RenderSettings renderSettings,
+        SilkOpenColorIoProcessor ocioProcessor,
+        double timeCode = 0,
+        CameraState camera = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(ocioProcessor);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        ValidateOcioSettings(renderSettings);
+
+        bool wasSynchronized = session.HasSynchronized;
+        using var renderer = new SilkMeshRenderer(device);
+        SilkFrameCaptureResult result = CaptureCoreOcio(
+            session,
+            device,
+            renderer,
+            width,
+            height,
+            renderSettings,
+            ocioProcessor,
+            timeCode,
+            camera);
+        if (wasSynchronized && result.RenderResult.DrawCount == 0 && renderer.Scene.Meshes.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "The hdSilk session was already synchronized and reported no geometry, so this " +
+                "capture would return a blank frame. Sync reports only what changed since the " +
+                "previous synchronization, and the one-shot helper builds a renderer per call " +
+                "with no retained scene. Use SilkFrameCapturer to capture more than once from " +
+                "the same session, or create a session per capture.");
+        }
+
+        return result;
+    }
+
     /// <summary>Synchronizes, renders, and captures one RGBA8 frame.</summary>
     /// <remarks>
     /// This is a one-shot helper: it builds a renderer per call, while
@@ -197,6 +259,60 @@ public static class SilkFrameCapture
             silkRenderer.GpuResources.Diagnostics);
     }
 
+    /// <summary>
+    /// Renders and captures one RGBA8 frame from a retained renderer using an OpenColorIO
+    /// processor for display-referred output.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="renderSettings"/> specifies a non-Identity
+    /// <see cref="RenderOutputTransform"/> alongside an OCIO processor.
+    /// </exception>
+    public static SilkFrameCaptureResult CaptureRetained(
+        ISilkRenderTargetRenderer renderer,
+        ISilkGraphicsDevice device,
+        int width,
+        int height,
+        RenderSettings renderSettings,
+        SilkOpenColorIoProcessor ocioProcessor,
+        ulong pageRevision = 0)
+    {
+        ArgumentNullException.ThrowIfNull(renderer);
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(ocioProcessor);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        ValidateOcioSettings(renderSettings);
+
+        if (renderer is not SilkMeshRenderer silkRenderer)
+        {
+            throw new NotSupportedException(
+                "OCIO capture is only supported with the built-in SilkMeshRenderer.");
+        }
+
+        using IDisposable captureLease = silkRenderer.AcquireDisplayCaptureLease();
+        using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.SampledDepthTarget(
+                checked((uint)width),
+                checked((uint)height)));
+        SilkMeshRenderOptions options = CreateRenderOptions(renderSettings);
+        SilkMeshRenderResult result =
+            silkRenderer.RenderForDisplayCapture(color, depth, options);
+        return ReadbackFrameOcio(
+            device,
+            silkRenderer,
+            color,
+            depth,
+            width,
+            height,
+            renderSettings,
+            ocioProcessor,
+            result,
+            pageRevision,
+            commandCount: 0,
+            silkRenderer.GpuResources.Diagnostics);
+    }
+
     internal static SilkFrameCaptureResult CaptureCore(
         OpenUsdSilkSession session,
         ISilkGraphicsDevice device,
@@ -233,6 +349,51 @@ public static class SilkFrameCapture
             width,
             height,
             renderSettings,
+            result,
+            page.Revision,
+            page.CommandCount,
+            renderer.GpuResources.Diagnostics);
+    }
+
+    internal static SilkFrameCaptureResult CaptureCoreOcio(
+        OpenUsdSilkSession session,
+        ISilkGraphicsDevice device,
+        SilkMeshRenderer renderer,
+        int width,
+        int height,
+        RenderSettings renderSettings,
+        SilkOpenColorIoProcessor ocioProcessor,
+        double timeCode,
+        CameraState camera)
+    {
+        ValidateOcioSettings(renderSettings);
+        using IDisposable captureLease = renderer.AcquireDisplayCaptureLease();
+        using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.SampledDepthTarget(
+                checked((uint)width),
+                checked((uint)height)));
+        using OpenUsdSilkPage page = session.Sync(
+            width,
+            height,
+            timeCode,
+            camera,
+            renderSettings.Complexity);
+        SilkMeshRenderResult result = renderer.ApplyAndRenderForDisplayCapture(
+            page,
+            color,
+            depth,
+            CreateRenderOptions(renderSettings));
+
+        return ReadbackFrameOcio(
+            device,
+            renderer,
+            color,
+            depth,
+            width,
+            height,
+            renderSettings,
+            ocioProcessor,
             result,
             page.Revision,
             page.CommandCount,
@@ -310,6 +471,54 @@ public static class SilkFrameCapture
             pageRevision,
             commandCount,
             diagnostics);
+    }
+
+    private static SilkFrameCaptureResult ReadbackFrameOcio(
+        ISilkGraphicsDevice device,
+        SilkMeshRenderer renderer,
+        ISilkGraphicsTexture color,
+        ISilkGraphicsTexture depth,
+        int width,
+        int height,
+        RenderSettings renderSettings,
+        SilkOpenColorIoProcessor ocioProcessor,
+        SilkMeshRenderResult result,
+        ulong pageRevision,
+        uint commandCount,
+        RenderDiagnosticsState diagnostics)
+    {
+        byte[] linearRgba16 = new byte[checked(width * height * 8)];
+        color.ReadbackForTesting(linearRgba16);
+        byte[] rgba = new byte[checked(width * height * 4)];
+        ocioProcessor.Apply(linearRgba16, rgba, width, height, renderSettings.Exposure);
+        if (renderer.Selection.Items.Count != 0 &&
+            renderer.SelectionOutlineSettings.Enabled)
+        {
+            using ISilkGraphicsTexture display = CreateDisplayTarget(device, width, height);
+            UploadDisplayImage(device, display, rgba);
+            if (renderer.TryRenderDisplaySelectionOutline(display, depth))
+            {
+                display.ReadbackForTesting(rgba);
+            }
+        }
+        return new SilkFrameCaptureResult(
+            width,
+            height,
+            rgba,
+            result,
+            pageRevision,
+            commandCount,
+            diagnostics);
+    }
+
+    internal static void ValidateOcioSettings(RenderSettings renderSettings)
+    {
+        if (renderSettings.OutputTransform != RenderOutputTransform.Identity)
+        {
+            throw new InvalidOperationException(
+                "RenderSettings.OutputTransform must be Identity when an OCIO processor is " +
+                "supplied. A non-Identity output transform would double-transform the image.");
+        }
     }
 
     private static SilkFrameCaptureResult CaptureCustomRenderer(

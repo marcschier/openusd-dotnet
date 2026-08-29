@@ -49,7 +49,7 @@
   },
   "abi": {
     "data": 15,
-    "dataCapabilities": 2097151,
+    "dataCapabilities": 4194303,
     "storm": 8,
     "renderCommands": 12,
     "physics": 7,

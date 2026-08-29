@@ -1752,3 +1752,19 @@ static OpenUsd.Rendering.Silk.SilkViewport.operator ==(OpenUsd.Rendering.Silk.Si
 ~override OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.ToString() -> string
 ~override OpenUsd.Rendering.Silk.SilkViewport.Equals(object obj) -> bool
 ~override OpenUsd.Rendering.Silk.SilkViewport.ToString() -> string
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.SilkOpenColorIoDisplayTransform(string! configPath, string! sourceColorSpace, string? display = null, string? view = null, string? looks = null) -> void
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.ConfigPath.get -> string!
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.SourceColorSpace.get -> string!
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.Display.get -> string?
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.View.get -> string?
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.Looks.get -> string?
+OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform.CreateProcessor() -> OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor!
+OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor
+OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.SilkOpenColorIoProcessor(OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform! transform) -> void
+OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.Transform.get -> OpenUsd.Rendering.Silk.SilkOpenColorIoDisplayTransform!
+OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.Apply(System.ReadOnlySpan<byte> sourceRgba16F, System.Span<byte> destinationRgba8, int width, int height, float exposure) -> void
+OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor.Dispose() -> void
+static OpenUsd.Rendering.Silk.SilkFrameCapture.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+static OpenUsd.Rendering.Silk.SilkFrameCapture.CaptureRetained(OpenUsd.Rendering.Silk.ISilkRenderTargetRenderer! renderer, OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, ulong pageRevision = 0) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!
+OpenUsd.Rendering.Silk.SilkFrameCapturer.Capture(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, int width, int height, OpenUsd.Rendering.RenderSettings renderSettings, OpenUsd.Rendering.Silk.SilkOpenColorIoProcessor! ocioProcessor, double timeCode = 0, OpenUsd.Rendering.CameraState camera = default(OpenUsd.Rendering.CameraState)) -> OpenUsd.Rendering.Silk.SilkFrameCaptureResult!

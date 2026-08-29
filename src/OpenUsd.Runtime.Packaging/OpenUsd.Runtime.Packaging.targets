@@ -103,6 +103,10 @@
 
   <ItemGroup>
     <_OpenUsdInstalledLibrary Include="$(OpenUsdInstallRoot)/bin/*.dll;$(OpenUsdInstallRoot)/bin/*.so;$(OpenUsdInstallRoot)/bin/*.so.*;$(OpenUsdInstallRoot)/bin/*.dylib;$(OpenUsdInstallRoot)/lib/*.dll;$(OpenUsdInstallRoot)/lib/*.so;$(OpenUsdInstallRoot)/lib/*.so.*;$(OpenUsdInstallRoot)/lib/*.dylib" />
+    <!-- Project shims come from their dedicated install and are packed by kind below. -->
+    <_OpenUsdInstalledLibrary Remove="$(OpenUsdInstallRoot)/bin/openusd_*.dll;$(OpenUsdInstallRoot)/lib/libopenusd_*.so;$(OpenUsdInstallRoot)/lib/libopenusd_*.so.*;$(OpenUsdInstallRoot)/lib/libopenusd_*.dylib" />
+    <_OpenUsdOcioRuntimeLibrary Include="$(OpenUsdInstallRoot)/bin/*OpenColorIO*.dll;$(OpenUsdInstallRoot)/lib/libOpenColorIO*.so;$(OpenUsdInstallRoot)/lib/libOpenColorIO*.so.*;$(OpenUsdInstallRoot)/lib/libOpenColorIO*.dylib" />
+    <_OpenUsdImathRuntimeLibrary Include="$(OpenUsdInstallRoot)/bin/Imath*.dll;$(OpenUsdInstallRoot)/lib/libImath*.so;$(OpenUsdInstallRoot)/lib/libImath*.so.*;$(OpenUsdInstallRoot)/lib/libImath*.dylib" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'win-x64'">
     <_OpenUsdVulkanRuntimeLibrary Include="$(OpenUsdVulkanRuntimeLibrary)" />
@@ -169,6 +173,8 @@
     <Error Condition="'$(RuntimePackageKind)' == 'Physics' and !Exists('$(_OpenUsdPhysXNotice)')" Text="The PhysX redistribution notice is missing: '$(_OpenUsdPhysXNotice)'. Run eng/build-physx-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdMonolithicLibrary)')" Text="The locked OpenUSD install is incomplete: '$(_OpenUsdMonolithicLibrary)' is missing." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdDotnetLibrary)')" Text="The OpenUsd data shim is missing: '$(_OpenUsdDotnetLibrary)'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and '@(_OpenUsdOcioRuntimeLibrary->Count())' == '0'" Text="The locked OpenColorIO runtime for $(RuntimePackageRid) is missing from '$(OpenUsdInstallRoot)'." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and '@(_OpenUsdImathRuntimeLibrary->Count())' == '0'" Text="The locked Imath runtime required by OpenColorIO for $(RuntimePackageRid) is missing from '$(OpenUsdInstallRoot)'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'win-x64' and '@(_OpenUsdVulkanRuntimeLibrary->Count())' != '1'" Text="The locked Windows Vulkan loader is missing or ambiguous. Expected exactly one native/install/vulkan-sdk-*/bin/vulkan-1.dll, or set OpenUsdVulkanRuntimeLibrary explicitly." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(OpenUsdInstallRoot)/lib/usd/plugInfo.json')" Text="The nested USD plugin resource tree is missing from '$(OpenUsdInstallRoot)/lib/usd'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Imaging' and !Exists('$(_OpenUsdHydraLibrary)')" Text="The OpenUsd Hydra shim is missing: '$(_OpenUsdHydraLibrary)'." />

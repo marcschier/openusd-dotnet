@@ -678,7 +678,9 @@ public sealed class RuntimePackageTests
                 corePackage.Path,
                 [
                     "buildTransitive/OpenUsd.Runtime.Core.win-x64.targets",
+                    "runtimes/win-x64/native/Imath-3_1.dll",
                     "runtimes/win-x64/native/MaterialXCore.dll",
+                    "runtimes/win-x64/native/OpenColorIO_2_2.dll",
                     "runtimes/win-x64/native/openusd_dotnet.dll",
                     "runtimes/win-x64/native/usd_ms.dll",
                     "runtimes/win-x64/native/vulkan-1.dll",
@@ -717,6 +719,8 @@ public sealed class RuntimePackageTests
             string[] publishedPaths =
             [
                 "MaterialXCore.dll",
+                "Imath-3_1.dll",
+                "OpenColorIO_2_2.dll",
                 "openusd_dotnet.dll",
                 "usd_ms.dll",
                 Path.Combine("usd", "plugInfo.json"),
@@ -3366,6 +3370,27 @@ public sealed class RuntimePackageTests
                 .IsGreaterThan(50_000);
             await Assert.That(new FileInfo(imagingRuntimePackage.Path).Length)
                 .IsLessThan(10_000_000);
+            string[] ocioDependencies = platform.Rid switch
+            {
+                "win-x64" =>
+                [
+                    "runtimes/win-x64/native/Imath-3_1.dll",
+                    "runtimes/win-x64/native/OpenColorIO_2_2.dll",
+                ],
+                "linux-x64" =>
+                [
+                    "runtimes/linux-x64/native/libImath-3_1.so",
+                    "runtimes/linux-x64/native/libOpenColorIO.so",
+                ],
+                "osx-arm64" =>
+                [
+                    "runtimes/osx-arm64/native/libImath-3_1.dylib",
+                    "runtimes/osx-arm64/native/libOpenColorIO.dylib",
+                ],
+                _ => throw new InvalidOperationException(
+                    $"Unsupported execution RID '{platform.Rid}'."),
+            };
+            await AssertPackageEntriesAsync(coreRuntimePackage.Path, ocioDependencies);
 
             string packageVersion = managedPackages[0].Version;
             foreach (PackedPackage package in managedPackages)
@@ -3441,6 +3466,7 @@ public sealed class RuntimePackageTests
             await Assert.That(result.Output).Contains("INCREMENTAL_GPU_UPLOAD=true");
             await Assert.That(result.Output).Contains("WAIT_IDLE=true");
             await Assert.That(result.Output).Contains("PLUGIN_LAYOUT=true");
+            await Assert.That(result.Output).Contains("OCIO_DISPLAY_TRANSFORM=true");
             await Assert.That(result.Output).Contains("CWD_IS_PUBLISH=true");
             if (platform.Rid is "win-x64" or "osx-arm64")
             {
@@ -6483,6 +6509,8 @@ public sealed class RuntimePackageTests
               <ItemGroup>
                 <None Update="minimal.usda" CopyToOutputDirectory="PreserveNewest"
                       CopyToPublishDirectory="PreserveNewest" />
+                <None Update="ocio-test-config.ocio" CopyToOutputDirectory="PreserveNewest"
+                      CopyToPublishDirectory="PreserveNewest" />
               </ItemGroup>
             </Project>
             """);
@@ -6502,6 +6530,9 @@ public sealed class RuntimePackageTests
                 }
             }
             """);
+        File.Copy(
+            Path.Combine(FindRepositoryRoot(), "test-assets", "ocio-test-config.ocio"),
+            Path.Combine(consumerRoot, "ocio-test-config.ocio"));
         await File.WriteAllTextAsync(
             Path.Combine(consumerRoot, "Program.cs"),
             CreateImagingConsumerProgram(
@@ -6588,6 +6619,27 @@ public sealed class RuntimePackageTests
                     if (!pluginLayout || !File.Exists(stagePath))
                     {
                         return 2;
+                    }
+
+                    string ocioConfigPath = Path.Combine(
+                        AppContext.BaseDirectory,
+                        "ocio-test-config.ocio");
+                    using var ocioProcessor = new SilkOpenColorIoDisplayTransform(
+                        ocioConfigPath,
+                        "linear",
+                        "TestDisplay",
+                        "TestView").CreateProcessor();
+                    byte[] linearPixel = [0x00, 0x38, 0x00, 0x38, 0x00, 0x38, 0x00, 0x3C];
+                    byte[] displayPixel = new byte[4];
+                    ocioProcessor.Apply(linearPixel, displayPixel, 1, 1, 0);
+                    bool ocioDisplayTransform =
+                        displayPixel[0] > 0 &&
+                        displayPixel[1] > 0 &&
+                        displayPixel[2] > 0 &&
+                        displayPixel[3] == byte.MaxValue;
+                    if (!ocioDisplayTransform)
+                    {
+                        return 12;
                     }
 
                     uint stormChildAbi = 0;
@@ -6703,6 +6755,8 @@ public sealed class RuntimePackageTests
                         $"SOFTWARE_DEVICE={device.Capabilities.IsSoftware.ToString().ToLowerInvariant()}");
                     Console.WriteLine("WAIT_IDLE=true");
                     Console.WriteLine($"PLUGIN_LAYOUT={pluginLayout.ToString().ToLowerInvariant()}");
+                    Console.WriteLine(
+                        $"OCIO_DISPLAY_TRANSFORM={ocioDisplayTransform.ToString().ToLowerInvariant()}");
                     Console.WriteLine($"STORM_CHILD_ABI={stormChildAbi}");
                     Console.WriteLine(
                         $"STORM_CHILD_DLLIMPORT={stormChildDllImport.ToString().ToLowerInvariant()}");
@@ -7604,6 +7658,8 @@ public sealed class RuntimePackageTests
         string installRoot = Path.Combine(workRoot, "native", "install", "win-x64");
         string shimRoot = Path.Combine(workRoot, "native", "install", "shim", "win-x64");
         WriteTestFile(Path.Combine(installRoot, "bin", "MaterialXCore.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "Imath-3_1.dll"));
+        WriteTestFile(Path.Combine(installRoot, "bin", "OpenColorIO_2_2.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd_ms.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd", "plugInfo.json"), "{}");
         WriteTestFile(Path.Combine(installRoot, "lib", "usd", "usd", "resources", "plugInfo.json"), "{}");
@@ -7707,6 +7763,8 @@ public sealed class RuntimePackageTests
         string shimRoot = Path.Combine(workRoot, "native", "install", "shim", rid);
         string extension = rid == "linux-x64" ? ".so" : ".dylib";
 
+        WriteTestFile(Path.Combine(installRoot, "lib", $"libImath-3_1{extension}"));
+        WriteTestFile(Path.Combine(installRoot, "lib", $"libOpenColorIO{extension}"));
         WriteTestFile(Path.Combine(installRoot, "lib", $"libusd_ms{extension}"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd", "plugInfo.json"), "{}");
         WriteTestFile(Path.Combine(installRoot, "plugin", "usd", "plugInfo.json"), "{}");

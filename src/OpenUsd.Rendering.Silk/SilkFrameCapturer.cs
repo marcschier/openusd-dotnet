@@ -86,6 +86,44 @@ public sealed class SilkFrameCapturer : IDisposable
         }
     }
 
+    /// <summary>
+    /// Synchronizes, renders, and captures one RGBA8 frame using an OpenColorIO processor
+    /// for display-referred output.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="renderSettings"/> specifies a non-Identity
+    /// <see cref="RenderOutputTransform"/> alongside an OCIO processor.
+    /// </exception>
+    public SilkFrameCaptureResult Capture(
+        OpenUsdSilkSession session,
+        int width,
+        int height,
+        RenderSettings renderSettings,
+        SilkOpenColorIoProcessor ocioProcessor,
+        double timeCode = 0,
+        CameraState camera = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(ocioProcessor);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return SilkFrameCapture.CaptureCoreOcio(
+                session,
+                _device,
+                _renderer,
+                width,
+                height,
+                renderSettings,
+                ocioProcessor,
+                timeCode,
+                camera);
+        }
+    }
+
     /// <inheritdoc/>
     public void Dispose()
     {

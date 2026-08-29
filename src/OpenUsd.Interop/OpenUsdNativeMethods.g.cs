@@ -4400,5 +4400,42 @@ public static unsafe partial class OpenUsdNativeRuntime
             nuint resultsSize,
             out nuint required,
             ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ocio_processor_create",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus OcioProcessorCreate(
+            string configPath,
+            string sourceColorSpace,
+            string? display,
+            string? view,
+            string? looks,
+            out nint processor,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ocio_processor_apply_rgba16f_to_rgba8")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus OcioProcessorApplyRgba16fToRgba8(
+            nint processor,
+            byte* source,
+            nuint sourceSize,
+            uint width,
+            uint height,
+            float exposure,
+            byte* destination,
+            nuint destinationSize,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_ocio_processor_release")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial void OcioProcessorRelease(
+            nint processor);
     }
 }

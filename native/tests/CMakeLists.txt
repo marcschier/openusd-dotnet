@@ -30,7 +30,8 @@ add_test(
         "${CMAKE_SOURCE_DIR}/../test-assets/minimal.usda"
         "${CMAKE_SOURCE_DIR}/../test-assets/mcp-monkey-car-city-textures/asphalt_roughness.jpg"
         "${CMAKE_SOURCE_DIR}/../test-assets/mcp-monkey-car-city-textures/asphalt_diffuse.jpg"
-        "${CMAKE_SOURCE_DIR}/../test-assets/native-image-gray-alpha.png")
+        "${CMAKE_SOURCE_DIR}/../test-assets/native-image-gray-alpha.png"
+        "${CMAKE_SOURCE_DIR}/../test-assets/ocio-test-config.ocio")
 if(WIN32)
     set_tests_properties(
         openusd_native_probe

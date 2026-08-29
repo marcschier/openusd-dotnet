@@ -153,6 +153,28 @@ synchronizing hdSilk, using the retained scene, camera, time code, and complexit
 frame. Because no command page is consumed, the result reports `CommandCount = 0` and echoes the caller-supplied page
 revision.
 
+### CPU capture with OpenColorIO
+
+For export workflows that require colour-managed output, the capture path supports an optional
+`SilkOpenColorIoProcessor`. The processor is created once from a `SilkOpenColorIoDisplayTransform`
+(OCIO config path, source colour space, optional display/view/looks) and reused across frames:
+
+```csharp
+var transform = new SilkOpenColorIoDisplayTransform(
+    configPath: "studio.ocio",
+    sourceColorSpace: "ACES - ACEScg",
+    display: "sRGB",
+    view: "ACES 1.0 - SDR Video");
+using var processor = transform.CreateProcessor();
+SilkFrameCaptureResult result = SilkFrameCapture.Capture(
+    session, device, 1920, 1080, renderSettings, processor);
+```
+
+`RenderSettings.Exposure` is applied to linear RGB channels **before** the OCIO display/view
+transform. `RenderSettings.OutputTransform` must be `Identity` when an OCIO processor is
+supplied; supplying `Reinhard` or any other built-in transform alongside OCIO is rejected to
+prevent double-transforming. Live GPU presentation OCIO is deferred.
+
 Viewer frame adapters capture one immutable `StageRenderState` request and forward its exact revision,
 time, and camera. Storm synchronous/asynchronous requests and the D3D12, Vulkan, and Metal hdSilk
 session sync paths therefore cannot combine a new revision with an older camera. The legacy
