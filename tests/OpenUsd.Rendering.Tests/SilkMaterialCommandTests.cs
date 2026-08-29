@@ -416,6 +416,67 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    public async Task MaterialTextureSlotsBindIndependentSamplerState()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/MixedWrap",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Clamp,
+                    SilkColorSpace.Srgb,
+                    4,
+                    [1f, 1f, 1f, 1f],
+                    [0f, 0f, 0f, 0f],
+                    [1f, 1f, 1f, 1f],
+                    "base.png",
+                    "st"),
+                new TextureSpec(
+                    SilkMaterialParameter.Normal,
+                    SilkTextureWrap.Mirror,
+                    SilkTextureWrap.Black,
+                    SilkColorSpace.Raw,
+                    3,
+                    [1f, 1f, 1f, 1f],
+                    [0f, 0f, 0f, 0f],
+                    [0.5f, 0.5f, 1f, 1f],
+                    "normal.png",
+                    "st"),
+            ]));
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(1, 1, [255, 255, 255, 255]));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(
+            commands,
+            material,
+            SilkMaterialParameter.DiffuseColor);
+        resources.BindMaterialTexture(
+            commands,
+            material,
+            SilkMaterialParameter.Normal);
+
+        await Assert.That(commands.SamplerBindings.Select(binding => binding.Binding))
+            .IsEquivalentTo(new uint[] { 1, 10 });
+        await Assert.That(commands.TextureBindings)
+            .IsEquivalentTo(new uint[] { 2, 3 });
+        await Assert.That(commands.SamplerBindings[0].Descriptor.AddressU)
+            .IsEqualTo(SilkSamplerAddressMode.Repeat);
+        await Assert.That(commands.SamplerBindings[0].Descriptor.AddressV)
+            .IsEqualTo(SilkSamplerAddressMode.ClampToEdge);
+        await Assert.That(commands.SamplerBindings[1].Descriptor.AddressU)
+            .IsEqualTo(SilkSamplerAddressMode.MirrorRepeat);
+        await Assert.That(commands.SamplerBindings[1].Descriptor.AddressV)
+            .IsEqualTo(SilkSamplerAddressMode.ClampToEdge);
+    }
+
+    [Test]
     public async Task UnresolvedAndUnsupportedMaterialsUseDistinctDiagnostics()
     {
         using var device = new TextureGraphicsDevice();
@@ -832,7 +893,7 @@ public sealed class SilkMaterialCommandTests
             new TextureGraphicsBuffer(size, usage);
 
         public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor) =>
-            throw new NotSupportedException();
+            new TextureSampler(descriptor);
 
         public ISilkGraphicsShaderModule CreateShaderModule(SilkShaderModuleDescriptor descriptor) =>
             throw new NotSupportedException();
@@ -865,6 +926,16 @@ public sealed class SilkMaterialCommandTests
 
         public void WaitIdle()
         {
+        }
+
+        private sealed class TextureSampler(SilkSamplerDescriptor descriptor)
+            : ISilkGraphicsSampler
+        {
+            public SilkSamplerDescriptor Descriptor { get; } = descriptor;
+
+            public void Dispose()
+            {
+            }
         }
 
         public void Dispose()
@@ -922,6 +993,10 @@ public sealed class SilkMaterialCommandTests
 
         internal int UploadCount => Uploads.Count;
 
+        internal List<(uint Binding, SilkSamplerDescriptor Descriptor)> SamplerBindings { get; } = [];
+
+        internal List<uint> TextureBindings { get; } = [];
+
         public void UploadTexture(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source) =>
             Uploads.Add(source.ToArray());
 
@@ -953,10 +1028,10 @@ public sealed class SilkMaterialCommandTests
             throw new NotSupportedException();
 
         public void SetTexture(uint setIndex, uint binding, ISilkGraphicsTexture texture) =>
-            throw new NotSupportedException();
+            TextureBindings.Add(binding);
 
         public void SetSampler(uint setIndex, uint binding, ISilkGraphicsSampler sampler) =>
-            throw new NotSupportedException();
+            SamplerBindings.Add((binding, sampler.Descriptor));
 
         public void DrawIndexed(uint indexCount) =>
             throw new NotSupportedException();

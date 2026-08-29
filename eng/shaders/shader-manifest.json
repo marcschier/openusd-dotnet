@@ -118,15 +118,18 @@
       ],
       "resources": [
         {
-          "name": "materialSampler",
+          "name": "volumeDensitySampler",
+          "targets": [
+            "spirv"
+          ],
           "access": "read",
           "d3d": {
             "registerClass": "s",
-            "register": 0,
+            "register": 4,
             "space": 0
           },
           "vulkan": {
-            "binding": 1,
+            "binding": 13,
             "set": 0
           }
         },
@@ -189,6 +192,20 @@
       "permutationResources": [
         {
           "feature": "MAP_BASE_COLOR",
+          "name": "baseColorSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 1,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_BASE_COLOR",
           "name": "baseColorTexture",
           "access": "read",
           "d3d": {
@@ -198,6 +215,20 @@
           },
           "vulkan": {
             "binding": 2,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_NORMAL",
+          "name": "normalSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 1,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 10,
             "set": 0
           }
         },
@@ -217,6 +248,20 @@
         },
         {
           "feature": "MAP_ROUGHNESS_METALLIC",
+          "name": "roughnessMetallicSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 2,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 11,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_ROUGHNESS_METALLIC",
           "name": "roughnessMetallicTexture",
           "access": "read",
           "d3d": {
@@ -226,6 +271,20 @@
           },
           "vulkan": {
             "binding": 4,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_EMISSIVE",
+          "name": "emissiveSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 3,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 12,
             "set": 0
           }
         },

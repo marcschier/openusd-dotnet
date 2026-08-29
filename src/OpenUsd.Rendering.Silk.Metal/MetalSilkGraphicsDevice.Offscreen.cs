@@ -963,13 +963,32 @@ public sealed partial class MetalSilkGraphicsDevice
         }
         if (binding.Kind == SilkBindingKind.SampledTexture)
         {
-            encoder.SetFragmentTexture(binding.Texture!.Texture, binding.Binding);
+            encoder.SetFragmentTexture(
+                binding.Texture!.Texture,
+                ToMetalShaderResourceIndex(binding));
             return;
         }
         encoder.SetFragmentSamplerState(
             binding.Sampler!.Sampler,
-            binding.Binding);
+            ToMetalShaderResourceIndex(binding));
     }
+
+    private static uint ToMetalShaderResourceIndex(MetalMaterialBinding binding) =>
+        binding.Kind switch
+        {
+            SilkBindingKind.SampledTexture when binding.Binding is >= 2 and <= 5 =>
+                binding.Binding - 2,
+            SilkBindingKind.Sampler => binding.Binding switch
+            {
+                1 => 0,
+                10 => 1,
+                11 => 2,
+                12 => 3,
+                13 => 4,
+                _ => binding.Binding
+            },
+            _ => binding.Binding
+        };
 
     private static MTLCullMode ToMetalCullMode(SilkCullMode cullMode) =>
         cullMode switch

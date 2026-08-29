@@ -1877,8 +1877,7 @@ public sealed class SilkSceneGpuResources : IDisposable
     internal void BindMaterialTexture(
         ISilkGraphicsCommandList commands,
         SilkMaterialData material,
-        SilkMaterialParameter parameter,
-        uint binding)
+        SilkMaterialParameter parameter)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(commands);
@@ -1893,8 +1892,10 @@ public sealed class SilkSceneGpuResources : IDisposable
             _textureUploadBytes += checked((ulong)entry.Pixels.Length);
             entry.Uploaded = true;
         }
-        commands.SetSampler(0, 1, RequireSampler(texture));
-        commands.SetTexture(0, binding, entry.Texture);
+        (uint samplerBinding, uint textureBinding) =
+            SilkBindingLayoutDescriptor.GetMaterialTextureBindings(parameter);
+        commands.SetSampler(0, samplerBinding, RequireSampler(texture));
+        commands.SetTexture(0, textureBinding, entry.Texture);
     }
 
     internal void BindVolumeDensityTexture(

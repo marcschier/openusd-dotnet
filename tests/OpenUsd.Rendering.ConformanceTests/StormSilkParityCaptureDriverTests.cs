@@ -1414,6 +1414,42 @@ def Xform "World"
     }
 
     [Test]
+    public async Task MixedTextureSlotWrapModesRemainIndependentOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            image = CaptureSyntheticMixedTextureWrapSelfConsistency(device);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("mixed texture wrap Vulkan self-consistency", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+    }
+
+    [Test]
+    public async Task MixedTextureSlotWrapModesRemainIndependentOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        ParityImage image = CaptureSyntheticMixedTextureWrapSelfConsistency(device);
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+    }
+
+    [Test]
     public async Task TextureAutoColorSpaceMatchesSrgbOnDiffuseTextureOnVulkan()
     {
         ParityImage image;
@@ -2104,6 +2140,16 @@ def Xform "World"
         MaterialScalarSpec[] LeftScalars,
         MaterialScalarSpec[] RightScalars);
 
+    private sealed record MaterialTextureSpec(
+        string Asset,
+        SilkMaterialParameter Parameter,
+        SilkTextureWrap Wrap,
+        SilkColorSpace ColorSpace,
+        float[] Scale,
+        float[] Bias,
+        float[] Fallback,
+        string UvPrimvar);
+
     private sealed record ConstantMaterialInputCase(
         string Name,
         MaterialScalarSpec[] ReferenceScalars,
@@ -2175,6 +2221,57 @@ def Xform "World"
                 [1, 0, 1, 1],
                 "st"),
             textureCoordinates);
+
+    private static ParityImage CaptureSyntheticMixedTextureWrapSelfConsistency(
+        ISilkGraphicsDevice device)
+    {
+        MaterialScalarSpec[] scalars =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.90f, 0.28f, 0.08f]),
+            new(SilkMaterialParameter.Roughness, [0.72f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialTextureSpec baseColor = new(
+            "mixed-wrap-base",
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Srgb,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st");
+        MaterialTextureSpec repeatedEmissive = new(
+            "mixed-wrap-emissive",
+            SilkMaterialParameter.EmissiveColor,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [0.08f, 0.08f, 0.08f, 1],
+            "st");
+        MaterialTextureSpec clampedEmissive = repeatedEmissive with
+        {
+            Wrap = SilkTextureWrap.Clamp
+        };
+
+        return CaptureSyntheticMaterialPair(
+            device,
+            CreateTexturedMaterialCommand("/Repeat", [baseColor, repeatedEmissive], scalars),
+            CreateTexturedMaterialCommand("/Candidate", [baseColor, clampedEmissive], scalars),
+            OutsideUnitTextureCoordinates(),
+            requireImagePlugins: false,
+            static (asset, _) => asset.EndsWith("base", StringComparison.Ordinal)
+                ? new SilkDecodedImage(
+                    2,
+                    2,
+                    [
+                        255, 0, 0, 255,
+                        0, 255, 0, 255,
+                        0, 0, 255, 255,
+                        255, 255, 255, 255,
+                    ])
+                : new SilkDecodedImage(1, 1, [20, 20, 20, 255]));
+    }
 
     private static ParityImage CaptureSyntheticTextureColorSpaceSelfConsistency() =>
         CaptureSyntheticMaterialPair(
@@ -2640,12 +2737,28 @@ def Xform "World"
         ReadOnlySpan<float> textureCoordinates = default,
         bool requireImagePlugins = true)
     {
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        return CaptureSyntheticMaterialPair(
+            device,
+            leftMaterial,
+            rightMaterial,
+            textureCoordinates,
+            requireImagePlugins);
+    }
+
+    private static ParityImage CaptureSyntheticMaterialPair(
+        ISilkGraphicsDevice device,
+        byte[] leftMaterial,
+        byte[] rightMaterial,
+        ReadOnlySpan<float> textureCoordinates = default,
+        bool requireImagePlugins = true,
+        Func<string, bool, SilkDecodedImage>? imageDecoder = null)
+    {
         if (requireImagePlugins)
         {
             _ = ImagePluginsRegistered.Value;
         }
 
-        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
         using ISilkGraphicsTexture color = device.CreateTexture2D(
             new SilkTextureDescriptor(
                 checked((uint)Width),
@@ -2654,7 +2767,18 @@ def Xform "World"
                 SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.DepthTarget(checked((uint)Width), checked((uint)Height)));
-        using var renderer = new SilkMeshRenderer(device);
+        using var renderer = imageDecoder is null
+            ? new SilkMeshRenderer(device)
+            : new SilkMeshRenderer(
+                device,
+                device.Backend switch
+                {
+                    SilkGraphicsBackend.D3D12 => SilkShaderBinaryFormat.Dxil,
+                    SilkGraphicsBackend.Vulkan => SilkShaderBinaryFormat.SpirV,
+                    SilkGraphicsBackend.Metal => SilkShaderBinaryFormat.MetalLibrary,
+                    _ => throw new ArgumentOutOfRangeException(nameof(device))
+                },
+                imageDecoder);
         SilkMeshRendererConformance.Apply(
             renderer,
             revision: 1,
@@ -3108,39 +3232,71 @@ def Xform "World"
         ReadOnlySpan<float> fallback,
         string uvPrimvar,
         ReadOnlySpan<MaterialScalarSpec> scalars)
+        => CreateTexturedMaterialCommand(
+            path,
+            [
+                new MaterialTextureSpec(
+                    asset,
+                    parameter,
+                    wrap,
+                    colorSpace,
+                    scale.ToArray(),
+                    bias.ToArray(),
+                    fallback.ToArray(),
+                    uvPrimvar),
+            ],
+            scalars);
+
+    private static byte[] CreateTexturedMaterialCommand(
+        string path,
+        ReadOnlySpan<MaterialTextureSpec> textures,
+        ReadOnlySpan<MaterialScalarSpec> scalars)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
-        byte[] assetBytes = Encoding.UTF8.GetBytes(asset);
-        byte[] uvBytes = Encoding.UTF8.GetBytes(uvPrimvar);
+        int textureByteCount = 0;
+        foreach (MaterialTextureSpec texture in textures)
+        {
+            textureByteCount = checked(
+                textureByteCount +
+                76 +
+                Encoding.UTF8.GetByteCount(texture.Asset) +
+                Encoding.UTF8.GetByteCount(texture.UvPrimvar));
+        }
         var bytes = new byte[
-            32 + pathBytes.Length + GetScalarByteCount(scalars) + 76 +
-            assetBytes.Length + uvBytes.Length + (2 * sizeof(uint))];
+            32 + pathBytes.Length + GetScalarByteCount(scalars) +
+            textureByteCount + (2 * sizeof(uint))];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(path));
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), (uint)pathBytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)SilkSurfaceKind.PreviewSurface);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), checked((uint)scalars.Length));
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), checked((uint)textures.Length));
         pathBytes.CopyTo(bytes.AsSpan(32));
         int offset = 32 + pathBytes.Length;
         foreach (MaterialScalarSpec scalar in scalars)
         {
             WriteScalar(bytes, ref offset, scalar.Parameter, scalar.Values);
         }
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), (uint)parameter);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 4), (uint)wrap);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 8), (uint)wrap);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 12), (uint)colorSpace);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 16), (uint)assetBytes.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 20), (uint)uvBytes.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 24), 4);
-        WriteVector4(bytes.AsSpan(offset + 28), scale);
-        WriteVector4(bytes.AsSpan(offset + 44), bias);
-        WriteVector4(bytes.AsSpan(offset + 60), fallback);
-        assetBytes.CopyTo(bytes.AsSpan(offset + 76));
-        uvBytes.CopyTo(bytes.AsSpan(offset + 76 + assetBytes.Length));
-        int generatedOffset = offset + 76 + assetBytes.Length + uvBytes.Length;
+        foreach (MaterialTextureSpec texture in textures)
+        {
+            byte[] assetBytes = Encoding.UTF8.GetBytes(texture.Asset);
+            byte[] uvBytes = Encoding.UTF8.GetBytes(texture.UvPrimvar);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), (uint)texture.Parameter);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 4), (uint)texture.Wrap);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 8), (uint)texture.Wrap);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 12), (uint)texture.ColorSpace);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 16), (uint)assetBytes.Length);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 20), (uint)uvBytes.Length);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 24), 4);
+            WriteVector4(bytes.AsSpan(offset + 28), texture.Scale);
+            WriteVector4(bytes.AsSpan(offset + 44), texture.Bias);
+            WriteVector4(bytes.AsSpan(offset + 60), texture.Fallback);
+            assetBytes.CopyTo(bytes.AsSpan(offset + 76));
+            uvBytes.CopyTo(bytes.AsSpan(offset + 76 + assetBytes.Length));
+            offset += 76 + assetBytes.Length + uvBytes.Length;
+        }
+        int generatedOffset = offset;
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset + sizeof(uint)), 0);
         return bytes;

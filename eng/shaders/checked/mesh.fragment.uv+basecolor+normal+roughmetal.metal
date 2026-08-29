@@ -59,21 +59,25 @@ struct KernelContext_0
     SurfaceParameters_natural_0 device* surfaceParameters_0;
     FrameParameters_natural_0 device* frameParameters_0;
     texture2d<float, access::sample> baseColorTexture_0;
-    sampler materialSampler_0;
+    sampler baseColorSampler_0;
     texture2d<float, access::sample> normalTexture_0;
+    sampler normalSampler_0;
     texture2d<float, access::sample> roughnessMetallicTexture_0;
+    sampler roughnessMetallicSampler_0;
 };
 
-[[fragment]] pixelOutput_0 fragmentMain_uv_basecolor_normal_roughmetal(pixelInput_0 _S1 [[stage_in]], bool isFrontFace_0 [[front_facing]], float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]], FrameParameters_natural_0 device* frameParameters_1 [[buffer(8)]], texture2d<float, access::sample> baseColorTexture_1 [[texture(0)]], sampler materialSampler_1 [[sampler(0)]], texture2d<float, access::sample> normalTexture_1 [[texture(1)]], texture2d<float, access::sample> roughnessMetallicTexture_1 [[texture(2)]])
+[[fragment]] pixelOutput_0 fragmentMain_uv_basecolor_normal_roughmetal(pixelInput_0 _S1 [[stage_in]], bool isFrontFace_0 [[front_facing]], float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]], FrameParameters_natural_0 device* frameParameters_1 [[buffer(8)]], texture2d<float, access::sample> baseColorTexture_1 [[texture(0)]], sampler baseColorSampler_1 [[sampler(0)]], texture2d<float, access::sample> normalTexture_1 [[texture(1)]], sampler normalSampler_1 [[sampler(1)]], texture2d<float, access::sample> roughnessMetallicTexture_1 [[texture(2)]], sampler roughnessMetallicSampler_1 [[sampler(2)]])
 {
     uint4 _S2;
     thread KernelContext_0 kernelContext_0;
     (&kernelContext_0)->surfaceParameters_0 = surfaceParameters_1;
     (&kernelContext_0)->frameParameters_0 = frameParameters_1;
     (&kernelContext_0)->baseColorTexture_0 = baseColorTexture_1;
-    (&kernelContext_0)->materialSampler_0 = materialSampler_1;
+    (&kernelContext_0)->baseColorSampler_0 = baseColorSampler_1;
     (&kernelContext_0)->normalTexture_0 = normalTexture_1;
+    (&kernelContext_0)->normalSampler_0 = normalSampler_1;
     (&kernelContext_0)->roughnessMetallicTexture_0 = roughnessMetallicTexture_1;
+    (&kernelContext_0)->roughnessMetallicSampler_0 = roughnessMetallicSampler_1;
     SurfaceParameters_natural_0 surface_0 = surfaceParameters_1[int(0)];
     FrameParameters_natural_0 device* _S3 = frameParameters_1+int(0);
     for(;;)
@@ -130,14 +134,14 @@ struct KernelContext_0
         return _S11;
     }
     float4 _S12 = float4(surface_0.metallicRoughnessThresholdWorkflow_0) ;
-    float4 sampledBaseColor_0 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->materialSampler_0), (_S1.texCoord_0)));
+    float4 sampledBaseColor_0 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), (_S1.texCoord_0)));
     float3 diffuseColor_1 = sampledBaseColor_0.xyz;
     float opacity_1 = opacity_0 * sampledBaseColor_0.w;
     float3 _S13 = float3(1.0f) ;
-    float3 sampledNormal_0 = (((&kernelContext_0)->normalTexture_0).sample(((&kernelContext_0)->materialSampler_0), (_S1.texCoord_0))).xyz * float3(2.0f)  - _S13;
+    float3 sampledNormal_0 = (((&kernelContext_0)->normalTexture_0).sample(((&kernelContext_0)->normalSampler_0), (_S1.texCoord_0))).xyz * float3(2.0f)  - _S13;
     float3 tangent_1 = normalize(_S1.tangent_0.xyz);
     float3 shadingNormal_0 = normalize(tangent_1 * float3(sampledNormal_0.x)  + cross(normalize(_S1.normal_0), tangent_1) * float3(_S1.tangent_0.w)  * float3(sampledNormal_0.y)  + _S1.normal_0 * float3(sampledNormal_0.z) );
-    float3 sampledRoughnessMetallic_0 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->materialSampler_0), (_S1.texCoord_0))).xyz;
+    float3 sampledRoughnessMetallic_0 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), (_S1.texCoord_0))).xyz;
     float roughness_0 = clamp(clamp(_S12.y, 0.00999999977648258f, 1.0f) * sampledRoughnessMetallic_0.y, 0.00999999977648258f, 1.0f);
     float metallic_0 = saturate(saturate(_S12.x) * sampledRoughnessMetallic_0.z);
     float opacityThreshold_0 = _S12.z;

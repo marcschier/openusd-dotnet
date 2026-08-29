@@ -9,15 +9,15 @@
   },
   "resources": [
     {
-      "name": "materialSampler",
+      "name": "volumeDensitySampler",
       "bindings": {
         "d3d": {
           "registerClass": "s",
-          "register": 0,
+          "register": 4,
           "space": 0
         },
         "vulkan": {
-          "binding": 1,
+          "binding": 13,
           "set": 0
         }
       },
@@ -973,6 +973,36 @@
           ]
         },
         "elementStride": 1056,
+        "size": null
+      }
+    },
+    {
+      "name": "baseColorSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 0,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 1,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
         "size": null
       }
     },

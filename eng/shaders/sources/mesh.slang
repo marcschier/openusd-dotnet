@@ -96,9 +96,25 @@ struct InstanceParameters
 StructuredBuffer<InstanceParameters> instanceParameters : register(t6);
 #endif
 
-#if FRAGMENT_STAGE
+#if FRAGMENT_STAGE && MAP_BASE_COLOR
 [[vk::binding(1, 0)]]
-SamplerState materialSampler : register(s0);
+SamplerState baseColorSampler : register(s0);
+#endif
+#if FRAGMENT_STAGE && MAP_NORMAL
+[[vk::binding(10, 0)]]
+SamplerState normalSampler : register(s1);
+#endif
+#if FRAGMENT_STAGE && MAP_ROUGHNESS_METALLIC
+[[vk::binding(11, 0)]]
+SamplerState roughnessMetallicSampler : register(s2);
+#endif
+#if FRAGMENT_STAGE && MAP_EMISSIVE
+[[vk::binding(12, 0)]]
+SamplerState emissiveSampler : register(s3);
+#endif
+#if FRAGMENT_STAGE && VOLUME_DENSITY_TEXTURES
+[[vk::binding(13, 0)]]
+SamplerState volumeDensitySampler : register(s4);
 #endif
 #if FRAGMENT_STAGE && MAP_BASE_COLOR
 [[vk::binding(2, 0)]]
@@ -247,7 +263,7 @@ float SampleVolumeDensity(float3 objectPosition)
     for (uint step = 0u; step < stepCount; step++)
     {
         float z = ((float)step + 0.5) / (float)stepCount;
-        density += volumeDensityTexture.Sample(materialSampler, float3(uv, z));
+        density += volumeDensityTexture.Sample(volumeDensitySampler, float3(uv, z));
     }
     return density / (float)stepCount;
 }
@@ -290,13 +306,13 @@ float4 FRAGMENT_ENTRY_POINT(
     float3 shadingNormal = input.normal;
 
 #if MAP_BASE_COLOR
-    float4 sampledBaseColor = baseColorTexture.Sample(materialSampler, input.texCoord);
+    float4 sampledBaseColor = baseColorTexture.Sample(baseColorSampler, input.texCoord);
     diffuseColor = sampledBaseColor.rgb;
     opacity *= sampledBaseColor.a;
 #endif
 #if MAP_NORMAL
     float3 sampledNormal =
-        normalTexture.Sample(materialSampler, input.texCoord).xyz * 2.0 - 1.0;
+        normalTexture.Sample(normalSampler, input.texCoord).xyz * 2.0 - 1.0;
     float3 tangent = normalize(input.tangent.xyz);
     float3 bitangent = cross(normalize(shadingNormal), tangent) * input.tangent.w;
     shadingNormal = normalize(
@@ -306,12 +322,12 @@ float4 FRAGMENT_ENTRY_POINT(
 #endif
 #if MAP_ROUGHNESS_METALLIC
     float3 sampledRoughnessMetallic =
-        roughnessMetallicTexture.Sample(materialSampler, input.texCoord).rgb;
+        roughnessMetallicTexture.Sample(roughnessMetallicSampler, input.texCoord).rgb;
     roughness = clamp(roughness * sampledRoughnessMetallic.g, 0.01, 1.0);
     metallic = saturate(metallic * sampledRoughnessMetallic.b);
 #endif
 #if MAP_EMISSIVE
-    emissiveColor = emissiveTexture.Sample(materialSampler, input.texCoord).rgb;
+    emissiveColor = emissiveTexture.Sample(emissiveSampler, input.texCoord).rgb;
 #endif
 
     float opacityThreshold = surface.metallicRoughnessThresholdWorkflow.z;

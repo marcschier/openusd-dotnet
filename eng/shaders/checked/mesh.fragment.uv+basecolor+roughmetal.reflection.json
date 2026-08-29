@@ -9,15 +9,15 @@
   },
   "resources": [
     {
-      "name": "materialSampler",
+      "name": "volumeDensitySampler",
       "bindings": {
         "d3d": {
           "registerClass": "s",
-          "register": 0,
+          "register": 4,
           "space": 0
         },
         "vulkan": {
-          "binding": 1,
+          "binding": 13,
           "set": 0
         }
       },
@@ -977,6 +977,36 @@
       }
     },
     {
+      "name": "baseColorSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 0,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 1,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
       "name": "baseColorTexture",
       "bindings": {
         "d3d": {
@@ -1016,6 +1046,36 @@
             "scalarType": "float32"
           }
         },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "roughnessMetallicSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 2,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 11,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
         "elementStride": null,
         "size": null
       }

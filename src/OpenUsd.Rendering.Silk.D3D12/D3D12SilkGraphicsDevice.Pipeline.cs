@@ -218,7 +218,15 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     {
         if (slot.Kind == SilkBindingKind.Sampler)
         {
-            return 0;
+            return slot.Binding switch
+            {
+                1 => 0,
+                10 => 1,
+                11 => 2,
+                12 => 3,
+                13 => 4,
+                _ => slot.Binding
+            };
         }
         if (slot.Kind == SilkBindingKind.SampledTexture && slot.Binding >= 2)
         {

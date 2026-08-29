@@ -58,17 +58,17 @@ struct KernelContext_0
     SurfaceParameters_natural_0 device* surfaceParameters_0;
     FrameParameters_natural_0 device* frameParameters_0;
     texture2d<float, access::sample> baseColorTexture_0;
-    sampler materialSampler_0;
+    sampler baseColorSampler_0;
 };
 
-[[fragment]] pixelOutput_0 fragmentMain_uv_basecolor(pixelInput_0 _S1 [[stage_in]], bool isFrontFace_0 [[front_facing]], float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]], FrameParameters_natural_0 device* frameParameters_1 [[buffer(8)]], texture2d<float, access::sample> baseColorTexture_1 [[texture(0)]], sampler materialSampler_1 [[sampler(0)]])
+[[fragment]] pixelOutput_0 fragmentMain_uv_basecolor(pixelInput_0 _S1 [[stage_in]], bool isFrontFace_0 [[front_facing]], float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]], FrameParameters_natural_0 device* frameParameters_1 [[buffer(8)]], texture2d<float, access::sample> baseColorTexture_1 [[texture(0)]], sampler baseColorSampler_1 [[sampler(0)]])
 {
     uint4 _S2;
     thread KernelContext_0 kernelContext_0;
     (&kernelContext_0)->surfaceParameters_0 = surfaceParameters_1;
     (&kernelContext_0)->frameParameters_0 = frameParameters_1;
     (&kernelContext_0)->baseColorTexture_0 = baseColorTexture_1;
-    (&kernelContext_0)->materialSampler_0 = materialSampler_1;
+    (&kernelContext_0)->baseColorSampler_0 = baseColorSampler_1;
     SurfaceParameters_natural_0 surface_0 = surfaceParameters_1[int(0)];
     FrameParameters_natural_0 device* _S3 = frameParameters_1+int(0);
     for(;;)
@@ -127,7 +127,7 @@ struct KernelContext_0
     float4 _S12 = float4(surface_0.metallicRoughnessThresholdWorkflow_0) ;
     float metallic_0 = saturate(_S12.x);
     float roughness_0 = clamp(_S12.y, 0.00999999977648258f, 1.0f);
-    float4 sampledBaseColor_0 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->materialSampler_0), (_S1.texCoord_0)));
+    float4 sampledBaseColor_0 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), (_S1.texCoord_0)));
     float3 diffuseColor_1 = sampledBaseColor_0.xyz;
     float opacity_1 = opacity_0 * sampledBaseColor_0.w;
     float opacityThreshold_0 = _S12.z;

@@ -549,6 +549,9 @@ Backends differ in what they must keep alive, and the difference is deliberate:
 The checked mesh shader samples the declared UsdPreviewSurface map permutations. hdSilk decodes resolved
 texture assets through OpenUSD Hio, uploads one cached RGBA8 texture per
 material/asset/colour-space/parameter identity, and reuses backend samplers keyed by wrap/filter state.
+Base-colour, normal, roughness/metallic, emissive, and volume-density textures each bind an independent
+sampler slot, so simultaneously active maps preserve their own `wrapS` and `wrapT` values rather than
+letting the final texture bound to a draw overwrite every map's address mode.
 Including the material identity prevents one material's scale, bias, or authored fallback from leaking
 into another material that references the same asset. Texture upload is recorded before the rendering
 scope so all draw paths can bind every declared sampler/texture slot without relying on backend defaults;

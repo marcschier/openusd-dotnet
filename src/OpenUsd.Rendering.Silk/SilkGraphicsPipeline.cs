@@ -182,14 +182,27 @@ public readonly record struct SilkShaderPermutationId
             return SilkBindingLayoutDescriptor.SceneParameters;
         }
 
-        var slots = new List<SilkBindingSlot>
-        {
-            new(0, 1, SilkBindingKind.Sampler, 0, SilkShaderStageVisibility.Fragment)
-        };
-        AddTextureSlot(slots, SilkShaderFeatures.BaseColorMap, 2);
-        AddTextureSlot(slots, SilkShaderFeatures.NormalMap, 3);
-        AddTextureSlot(slots, SilkShaderFeatures.RoughnessMetallicMap, 4);
-        AddTextureSlot(slots, SilkShaderFeatures.EmissiveMap, 5);
+        var slots = new List<SilkBindingSlot>();
+        AddTextureSlots(
+            slots,
+            SilkShaderFeatures.BaseColorMap,
+            SilkBindingLayoutDescriptor.BaseColorSamplerBinding,
+            SilkBindingLayoutDescriptor.BaseColorTextureBinding);
+        AddTextureSlots(
+            slots,
+            SilkShaderFeatures.NormalMap,
+            SilkBindingLayoutDescriptor.NormalSamplerBinding,
+            SilkBindingLayoutDescriptor.NormalTextureBinding);
+        AddTextureSlots(
+            slots,
+            SilkShaderFeatures.RoughnessMetallicMap,
+            SilkBindingLayoutDescriptor.RoughnessMetallicSamplerBinding,
+            SilkBindingLayoutDescriptor.RoughnessMetallicTextureBinding);
+        AddTextureSlots(
+            slots,
+            SilkShaderFeatures.EmissiveMap,
+            SilkBindingLayoutDescriptor.EmissiveSamplerBinding,
+            SilkBindingLayoutDescriptor.EmissiveTextureBinding);
         return SilkBindingLayoutDescriptor.ForMaterial(slots);
     }
 
@@ -226,10 +239,11 @@ public readonly record struct SilkShaderPermutationId
         return $"{baseName}.{suffix}";
     }
 
-    private void AddTextureSlot(
+    private void AddTextureSlots(
         List<SilkBindingSlot> slots,
         SilkShaderFeatures feature,
-        uint binding)
+        uint samplerBinding,
+        uint textureBinding)
     {
         if ((Features & feature) == 0)
         {
@@ -238,7 +252,13 @@ public readonly record struct SilkShaderPermutationId
 
         slots.Add(new SilkBindingSlot(
             0,
-            binding,
+            samplerBinding,
+            SilkBindingKind.Sampler,
+            0,
+            SilkShaderStageVisibility.Fragment));
+        slots.Add(new SilkBindingSlot(
+            0,
+            textureBinding,
             SilkBindingKind.SampledTexture,
             0,
             SilkShaderStageVisibility.Fragment));
@@ -396,7 +416,16 @@ public readonly record struct SilkBindingLayoutDescriptor(
     public const uint FrameParametersBinding = 8;
 
     /// <summary>The sampler used by sampled density volumes.</summary>
-    internal const uint VolumeSamplerBinding = 1;
+    internal const uint VolumeSamplerBinding = 13;
+
+    internal const uint BaseColorSamplerBinding = 1;
+    internal const uint NormalSamplerBinding = 10;
+    internal const uint RoughnessMetallicSamplerBinding = 11;
+    internal const uint EmissiveSamplerBinding = 12;
+    internal const uint BaseColorTextureBinding = 2;
+    internal const uint NormalTextureBinding = 3;
+    internal const uint RoughnessMetallicTextureBinding = 4;
+    internal const uint EmissiveTextureBinding = 5;
 
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
@@ -457,6 +486,24 @@ public readonly record struct SilkBindingLayoutDescriptor(
             VolumeDensityTextureSlot
         ]
     };
+
+    internal static (uint Sampler, uint Texture) GetMaterialTextureBindings(
+        SilkMaterialParameter parameter) =>
+        parameter switch
+        {
+            SilkMaterialParameter.DiffuseColor =>
+                (BaseColorSamplerBinding, BaseColorTextureBinding),
+            SilkMaterialParameter.Normal =>
+                (NormalSamplerBinding, NormalTextureBinding),
+            SilkMaterialParameter.Roughness or SilkMaterialParameter.Metallic =>
+                (RoughnessMetallicSamplerBinding, RoughnessMetallicTextureBinding),
+            SilkMaterialParameter.EmissiveColor =>
+                (EmissiveSamplerBinding, EmissiveTextureBinding),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(parameter),
+                parameter,
+                "The material parameter does not have a 2D shader texture slot.")
+        };
 
     /// <summary>Creates a material layout from its slots.</summary>
     public static SilkBindingLayoutDescriptor ForMaterial(

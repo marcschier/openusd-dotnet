@@ -241,6 +241,35 @@ public sealed class SilkGraphicsPipelineTests
     }
 
     [Test]
+    public async Task MeshTextureMapsDeclareIndependentSamplerSlots()
+    {
+        SilkBindingLayoutDescriptor layout = new SilkShaderPermutationId(
+            SilkShaderFeatures.Uv |
+            SilkShaderFeatures.BaseColorMap |
+            SilkShaderFeatures.NormalMap |
+            SilkShaderFeatures.RoughnessMetallicMap |
+            SilkShaderFeatures.EmissiveMap)
+            .CreateMeshBindingLayout();
+
+        (uint Binding, SilkBindingKind Kind)[] materialBindings = layout.MaterialSlots
+            .Where(slot => slot.Kind is SilkBindingKind.Sampler or SilkBindingKind.SampledTexture)
+            .Select(slot => (slot.Binding, slot.Kind))
+            .ToArray();
+
+        await Assert.That(materialBindings).IsEquivalentTo(
+        [
+            (1u, SilkBindingKind.Sampler),
+            (2u, SilkBindingKind.SampledTexture),
+            (10u, SilkBindingKind.Sampler),
+            (3u, SilkBindingKind.SampledTexture),
+            (11u, SilkBindingKind.Sampler),
+            (4u, SilkBindingKind.SampledTexture),
+            (12u, SilkBindingKind.Sampler),
+            (5u, SilkBindingKind.SampledTexture),
+        ]);
+    }
+
+    [Test]
     public async Task MissingMeshPermutationAssetThrowsInsteadOfFallingBack()
     {
         InvalidDataException exception = Assert.Throws<InvalidDataException>(

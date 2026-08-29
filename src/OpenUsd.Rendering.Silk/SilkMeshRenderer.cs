@@ -195,7 +195,8 @@ public sealed class SilkMeshRenderer :
 
     internal SilkMeshRenderer(
         ISilkGraphicsDevice device,
-        SilkShaderBinaryFormat shaderFormat)
+        SilkShaderBinaryFormat shaderFormat,
+        Func<string, bool, SilkDecodedImage>? imageDecoder = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         _device = device;
@@ -203,7 +204,9 @@ public sealed class SilkMeshRenderer :
         _pickingDevice = device as ISilkPickingGraphicsDevice;
         _selectionOutlineDevice = device as ISilkSelectionOutlineGraphicsDevice;
         Scene = new SilkSceneState();
-        GpuResources = new SilkSceneGpuResources(device);
+        GpuResources = imageDecoder is null
+            ? new SilkSceneGpuResources(device)
+            : new SilkSceneGpuResources(device, imageDecoder);
 
         ISilkGraphicsShaderModule? vertexShader = null;
         ISilkGraphicsShaderModule? fragmentShader = null;
@@ -1268,12 +1271,14 @@ public sealed class SilkMeshRenderer :
             GpuResources.BindMaterialTexture(
                 commands,
                 ResolveMaterial(mesh.Mesh)!,
-                SilkMaterialParameter.DiffuseColor,
-                2);
+                SilkMaterialParameter.DiffuseColor);
         }
         if ((features & SilkShaderFeatures.NormalMap) != 0)
         {
-            GpuResources.BindMaterialTexture(commands, ResolveMaterial(mesh.Mesh)!, SilkMaterialParameter.Normal, 3);
+            GpuResources.BindMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.Normal);
         }
         if ((features & SilkShaderFeatures.RoughnessMetallicMap) != 0)
         {
@@ -1283,16 +1288,14 @@ public sealed class SilkMeshRenderer :
                 material,
                 material.GetTexture(SilkMaterialParameter.Roughness) is not null
                     ? SilkMaterialParameter.Roughness
-                    : SilkMaterialParameter.Metallic,
-                4);
+                    : SilkMaterialParameter.Metallic);
         }
         if ((features & SilkShaderFeatures.EmissiveMap) != 0)
         {
             GpuResources.BindMaterialTexture(
                 commands,
                 ResolveMaterial(mesh.Mesh)!,
-                SilkMaterialParameter.EmissiveColor,
-                5);
+                SilkMaterialParameter.EmissiveColor);
         }
         if (ResolveMaterial(mesh.Mesh) is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
