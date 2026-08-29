@@ -67,6 +67,7 @@ OpenUsd.Rendering.Silk.ISilkGraphicsSubmission.Wait() -> void
 OpenUsd.Rendering.Silk.ISilkGraphicsTexture
 OpenUsd.Rendering.Silk.ISilkGraphicsTexture.Format.get -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.ISilkGraphicsTexture.Height.get -> uint
+OpenUsd.Rendering.Silk.ISilkGraphicsTexture.MipLevelCount.get -> uint
 OpenUsd.Rendering.Silk.ISilkGraphicsTexture.ReadbackForTesting(System.Span<byte> destination) -> void
 OpenUsd.Rendering.Silk.ISilkGraphicsTexture.ReadbackForTesting(System.Span<float> destination) -> void
 OpenUsd.Rendering.Silk.ISilkGraphicsTexture.Usage.get -> OpenUsd.Rendering.Silk.SilkTextureUsage
@@ -428,6 +429,7 @@ OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.AcquireSubmissionLease() -> Syste
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.Format.get -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.Height.get -> uint
+OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.MipLevelCount.get -> uint
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.SilkGraphicsTextureBase(OpenUsd.Rendering.Silk.SilkTextureDescriptor descriptor) -> void
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.SilkGraphicsTextureBase(uint width, uint height, OpenUsd.Rendering.Silk.SilkTextureFormat format) -> void
 OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ThrowIfTextureDisposed() -> void
@@ -1332,14 +1334,16 @@ OpenUsd.Rendering.Silk.SilkSurfaceKind.PreviewSurface = 1 -> OpenUsd.Rendering.S
 OpenUsd.Rendering.Silk.SilkSurfaceKind.Unsupported = 0 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.VolumeDensity = 4 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkTextureDescriptor
-OpenUsd.Rendering.Silk.SilkTextureDescriptor.Deconstruct(out uint Width, out uint Height, out OpenUsd.Rendering.Silk.SilkTextureFormat Format, out OpenUsd.Rendering.Silk.SilkTextureUsage Usage) -> void
+OpenUsd.Rendering.Silk.SilkTextureDescriptor.Deconstruct(out uint Width, out uint Height, out OpenUsd.Rendering.Silk.SilkTextureFormat Format, out OpenUsd.Rendering.Silk.SilkTextureUsage Usage, out uint MipLevelCount) -> void
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Equals(OpenUsd.Rendering.Silk.SilkTextureDescriptor other) -> bool
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Format.get -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Format.init -> void
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Height.get -> uint
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Height.init -> void
+OpenUsd.Rendering.Silk.SilkTextureDescriptor.MipLevelCount.get -> uint
+OpenUsd.Rendering.Silk.SilkTextureDescriptor.MipLevelCount.init -> void
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.SilkTextureDescriptor() -> void
-OpenUsd.Rendering.Silk.SilkTextureDescriptor.SilkTextureDescriptor(uint Width, uint Height, OpenUsd.Rendering.Silk.SilkTextureFormat Format, OpenUsd.Rendering.Silk.SilkTextureUsage Usage) -> void
+OpenUsd.Rendering.Silk.SilkTextureDescriptor.SilkTextureDescriptor(uint Width, uint Height, OpenUsd.Rendering.Silk.SilkTextureFormat Format, OpenUsd.Rendering.Silk.SilkTextureUsage Usage, uint MipLevelCount = 1) -> void
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Usage.get -> OpenUsd.Rendering.Silk.SilkTextureUsage
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Usage.init -> void
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Validate() -> void

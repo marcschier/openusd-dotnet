@@ -47,6 +47,57 @@ public sealed class MetalPickingTests
     }
 
     [Test]
+    public async Task MipCopyPlanBuildsOnePlanPerLevelMatchingThePackedChainLayout()
+    {
+        MetalMipCopyPlan[] plans = MetalMipCopyPlan.Create(
+            4,
+            4,
+            SilkTextureFormat.Rgba8Unorm,
+            mipLevelCount: 3);
+
+        await Assert.That(plans.Length).IsEqualTo(3);
+        await Assert.That(plans[0]).IsEqualTo(
+            new MetalMipCopyPlan(0, 16, 64, 4, 4, 0));
+        await Assert.That(plans[1]).IsEqualTo(
+            new MetalMipCopyPlan(64, 8, 16, 2, 2, 1));
+        await Assert.That(plans[2]).IsEqualTo(
+            new MetalMipCopyPlan(80, 4, 4, 1, 1, 2));
+    }
+
+    [Test]
+    public async Task MipCopyPlanForASingleLevelTextureIsOnePlanAtOffsetZero()
+    {
+        MetalMipCopyPlan[] plans = MetalMipCopyPlan.Create(
+            2,
+            3,
+            SilkTextureFormat.Rgba8Unorm,
+            mipLevelCount: 1);
+
+        await Assert.That(plans.Length).IsEqualTo(1);
+        await Assert.That(plans[0]).IsEqualTo(
+            new MetalMipCopyPlan(0, 8, 24, 2, 3, 0));
+    }
+
+    [Test]
+    public async Task UploadTextureUsesOneCopyFromBufferCallPerMipCopyPlan()
+    {
+        string root = FindRepositoryRoot();
+        string offscreen = await File.ReadAllTextAsync(Path.Combine(
+            root,
+            "src",
+            "OpenUsd.Rendering.Silk.Metal",
+            "MetalSilkGraphicsDevice.Offscreen.cs"));
+        string uploadEncoding = Slice(
+            offscreen,
+            "case SilkGraphicsCommandKind.UploadTexture:",
+            "case SilkGraphicsCommandKind.ClearColor:");
+
+        await Assert.That(uploadEncoding).Contains("MetalMipCopyPlan.Create(");
+        await Assert.That(uploadEncoding).Contains("foreach (MetalMipCopyPlan uploadPlan in uploadPlans)");
+        await Assert.That(uploadEncoding).Contains("uploadPlan.DestinationLevel");
+    }
+
+    [Test]
     public async Task CommandFailureGenerationIsMonotonic()
     {
         var generation = new MetalPickDeviceGeneration();

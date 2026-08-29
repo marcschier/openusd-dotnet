@@ -639,6 +639,8 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(device.CreatedTextureFormats)
             .Contains(SilkTextureFormat.Rgba32Float);
         float[] uploaded = MemoryMarshal.Cast<byte, float>(commands.Uploads.Single()).ToArray();
+        // The base 2x2 level is followed by its CPU-generated 1x1 mip: an ordinary component
+        // average of the four base texels (this is not a normal-map slot).
         await Assert.That(uploaded)
             .IsEquivalentTo(
             [
@@ -646,6 +648,7 @@ public sealed class SilkMaterialCommandTests
                 20.5f, 11.25f, 6f, 1f,
                 2.5f, 2.25f, 1.5f, 1f,
                 8.5f, 5.25f, 3f, 1f,
+                11.5f, 6.75f, 3.75f, 1f,
             ]);
     }
 
@@ -1138,6 +1141,8 @@ public sealed class SilkMaterialCommandTests
         public SilkTextureFormat Format { get; } = format;
 
         public SilkTextureUsage Usage => SilkTextureUsage.Sampled;
+
+        public uint MipLevelCount => 1;
 
         public void ReadbackForTesting(Span<byte> destination) =>
             throw new NotSupportedException();

@@ -627,7 +627,7 @@
         },
         {
           "id": "preview-surface-textures",
-          "description": "UsdPreviewSurface map binding on all three RHIs through OpenUSD Hio: UNorm8/sRGB, SNorm8, integer, half, float, double; 1-4 channel expansion; missing-asset fallbacks",
+          "description": "UsdPreviewSurface map binding on all three RHIs through OpenUSD Hio: typed decode, ordinary-image mip chains with normal renormalization, 1-4 channel expansion, and missing-asset fallbacks",
           "status": "workflow-gated",
           "evidenceWorkflows": ["render.yml"],
           "evidenceWorkflowJobs": {
@@ -640,7 +640,8 @@
           },
           "evidenceTests": [
             "tests/OpenUsd.Rendering.Tests/SilkGraphicsTextureTests.cs",
-            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs"
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMipChainTests.cs"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },

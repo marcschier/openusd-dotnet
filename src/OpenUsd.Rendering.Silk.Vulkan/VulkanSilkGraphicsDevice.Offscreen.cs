@@ -51,7 +51,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             ImageType = ImageType.Type2D,
             Format = nativeFormat,
             Extent = new Extent3D(descriptor.Width, descriptor.Height, 1),
-            MipLevels = 1,
+            MipLevels = descriptor.MipLevelCount,
             ArrayLayers = 1,
             Samples = SampleCountFlags.Count1Bit,
             Tiling = ImageTiling.Optimal,
@@ -96,7 +96,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                         ? ImageAspectFlags.DepthBit
                         : ImageAspectFlags.ColorBit,
                     BaseMipLevel = 0,
-                    LevelCount = 1,
+                    LevelCount = descriptor.MipLevelCount,
                     BaseArrayLayer = 0,
                     LayerCount = 1
                 }
@@ -259,12 +259,14 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 SType = StructureType.SamplerCreateInfo,
                 MagFilter = GetFilter(descriptor.MagFilter),
                 MinFilter = GetFilter(descriptor.MinFilter),
-                MipmapMode = SamplerMipmapMode.Nearest,
+                MipmapMode = descriptor.MinFilter == SilkSamplerFilter.Linear
+                    ? SamplerMipmapMode.Linear
+                    : SamplerMipmapMode.Nearest,
                 AddressModeU = GetAddressMode(descriptor.AddressU),
                 AddressModeV = GetAddressMode(descriptor.AddressV),
                 AddressModeW = GetAddressMode(descriptor.AddressW),
                 MinLod = 0,
-                MaxLod = 0,
+                MaxLod = Vk.LodClampNone,
                 MaxAnisotropy = 1,
                 BorderColor = BorderColor.FloatTransparentBlack
             };
@@ -430,32 +432,53 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             uploadTexture.Image,
                             uploadTexture.AspectMask,
                             GetCurrentLayout(finalLayouts, uploadTexture),
-                            ImageLayout.TransferDstOptimal);
-                        var copyRegion = new BufferImageCopy
-                        {
-                            ImageSubresource = new ImageSubresourceLayers
-                            {
-                                AspectMask = ImageAspectFlags.ColorBit,
-                                LayerCount = 1
-                            },
-                            ImageExtent = new Extent3D(
-                                uploadTexture.Width,
-                                uploadTexture.Height,
-                                1)
-                        };
-                        _api.CmdCopyBufferToImage(
-                            nativeCommands,
-                            upload.Buffer,
-                            uploadTexture.Image,
                             ImageLayout.TransferDstOptimal,
-                            1,
-                            &copyRegion);
+                            uploadTexture.MipLevelCount);
+                        SilkMipLevelLayout[] uploadLevels = SilkMipChainLayout.Create(
+                            uploadTexture.Width,
+                            uploadTexture.Height,
+                            uploadTexture.Format,
+                            uploadTexture.MipLevelCount);
+                        var copyRegions = new BufferImageCopy[uploadLevels.Length];
+                        for (int level = 0; level < uploadLevels.Length; level++)
+                        {
+                            SilkMipLevelLayout uploadLevel = uploadLevels[level];
+                            copyRegions[level] = new BufferImageCopy
+                            {
+                                BufferOffset = checked((ulong)uploadLevel.Offset),
+                                BufferRowLength = 0,
+                                BufferImageHeight = 0,
+                                ImageSubresource = new ImageSubresourceLayers
+                                {
+                                    AspectMask = ImageAspectFlags.ColorBit,
+                                    MipLevel = checked((uint)level),
+                                    BaseArrayLayer = 0,
+                                    LayerCount = 1
+                                },
+                                ImageOffset = new Offset3D(0, 0, 0),
+                                ImageExtent = new Extent3D(
+                                    uploadLevel.Width,
+                                    uploadLevel.Height,
+                                    1)
+                            };
+                        }
+                        fixed (BufferImageCopy* copyRegionsPointer = copyRegions)
+                        {
+                            _api.CmdCopyBufferToImage(
+                                nativeCommands,
+                                upload.Buffer,
+                                uploadTexture.Image,
+                                ImageLayout.TransferDstOptimal,
+                                checked((uint)copyRegions.Length),
+                                copyRegionsPointer);
+                        }
                         Transition(
                             nativeCommands,
                             uploadTexture.Image,
                             uploadTexture.AspectMask,
                             ImageLayout.TransferDstOptimal,
-                            ImageLayout.TransferSrcOptimal);
+                            ImageLayout.TransferSrcOptimal,
+                            uploadTexture.MipLevelCount);
                         finalLayouts[uploadTexture] = ImageLayout.TransferSrcOptimal;
                         break;
                     case SilkGraphicsCommandKind.UploadTexture3D:
@@ -668,7 +691,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             materialTexture.Image,
                             ImageAspectFlags.ColorBit,
                             GetCurrentLayout(finalLayouts, materialTexture),
-                            ImageLayout.ShaderReadOnlyOptimal);
+                            ImageLayout.ShaderReadOnlyOptimal,
+                            materialTexture.MipLevelCount);
                         finalLayouts[materialTexture] = ImageLayout.ShaderReadOnlyOptimal;
                         RecordMaterialBinding(
                             materialBindings,
@@ -1616,7 +1640,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 texture.Image,
                 texture.AspectMask,
                 texture.Layout,
-                ImageLayout.TransferSrcOptimal);
+                ImageLayout.TransferSrcOptimal,
+                texture.MipLevelCount);
             var region = new BufferImageCopy
             {
                 BufferOffset = 0,
@@ -1900,12 +1925,19 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             "vkWaitForFences");
     }
 
+    /// <summary>
+    /// Records an image layout transition barrier. <paramref name="levelCount"/> defaults to
+    /// <c>1</c> for the common single-level render-target/pick paths; upload and shader-binding
+    /// call sites pass the texture's full <see cref="ISilkGraphicsTexture.MipLevelCount"/> so
+    /// every allocated mip level ends up in a consistent, well-defined layout.
+    /// </summary>
     internal void Transition(
         CommandBuffer commands,
         Image image,
         ImageAspectFlags aspectMask,
         ImageLayout before,
-        ImageLayout after)
+        ImageLayout after,
+        uint levelCount = 1)
     {
         if (before == after)
         {
@@ -1933,7 +1965,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             {
                 AspectMask = aspectMask,
                 BaseMipLevel = 0,
-                LevelCount = 1,
+                LevelCount = levelCount,
                 BaseArrayLayer = 0,
                 LayerCount = 1
             }
@@ -2075,7 +2107,7 @@ internal sealed class VulkanSilkGraphicsTexture : SilkGraphicsTextureBase
     {
         AspectMask = AspectMask,
         BaseMipLevel = 0,
-        LevelCount = 1,
+        LevelCount = MipLevelCount,
         BaseArrayLayer = 0,
         LayerCount = 1
     };
@@ -2184,10 +2216,11 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
             throw new InvalidOperationException(
                 "UploadTexture requires a color or sampled texture with CopyDestination usage.");
         }
-        int requiredLength = checked(
-            (int)(vulkanTexture.Width *
-                vulkanTexture.Height *
-                SilkTextureFormats.GetBytesPerPixel(vulkanTexture.Format)));
+        int requiredLength = SilkMipChainLayout.GetTotalByteSize(
+            vulkanTexture.Width,
+            vulkanTexture.Height,
+            vulkanTexture.Format,
+            vulkanTexture.MipLevelCount);
         if (source.Length != requiredLength)
         {
             throw new ArgumentException(

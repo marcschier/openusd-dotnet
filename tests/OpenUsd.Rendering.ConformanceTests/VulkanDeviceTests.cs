@@ -192,6 +192,20 @@ public sealed class VulkanDeviceTests
     }
 
     [Test]
+    public async Task SwiftShaderUploadsMultiLevelMipChainAndPreservesBaseLevelReadback()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.MultiLevelTextureUploadPreservesBaseLevelReadback(device);
+    }
+
+    [Test]
     public async Task SwiftShaderRejectsCrossDeviceTextureUploads()
     {
         if (!OperatingSystem.IsWindows())

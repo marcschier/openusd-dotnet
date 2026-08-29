@@ -176,6 +176,14 @@ assets use authored fallbacks with bounded stable diagnostics; failed loads are 
 the successful cache and can be explicitly retried. Unresolved and unsupported materials likewise retain
 default shading with distinct diagnostics. Every active texture slot binds its own cached sampler, preserving
 independent `wrapS` and `wrapT` state across base-colour, normal, roughness/metallic, emissive, and volume maps.
+Ordinary (non-UDIM) material textures now upload a full CPU-generated mip chain instead of one level:
+a shared packed layout (mip 0 first, ascending, each tightly packed) is validated by every backend's
+upload path, and D3D12, Vulkan, and Metal each allocate, bind, and transition every requested level.
+The CPU box-filters Rgba8Unorm and Rgba32Float alike after decode/flip/scale-bias, averages alpha and
+scalar maps ordinarily, and renormalizes normal maps after averaging (falling back to straight-up on
+exact cancellation); base-level readback is unchanged. `<UDIM>` atlases remain single-level in this
+slice — their sparse per-tile gutter layout is not naively downsamplable — and anisotropic filtering
+remains outside the current support claim regardless of mip level count.
 Resolver-aware `<UDIM>` textures use bounded per-slot atlases with one-pixel gutters, standard tile
 numbering, and authored fallback values in sparse cells. Tile format/dimension mismatches and atlas
 spans above 256 cells are diagnosed and rejected. RGBA32Float sampling is nearest-only until

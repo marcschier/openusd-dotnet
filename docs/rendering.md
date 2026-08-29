@@ -559,6 +559,22 @@ not portable across the supported RHIs; explicit filter negotiation remains outs
 Base-colour, normal, roughness/metallic, emissive, and volume-density textures each bind an independent
 sampler slot, so simultaneously active maps preserve their own `wrapS` and `wrapT` values rather than
 letting the final texture bound to a draw overwrite every map's address mode.
+Ordinary (non-UDIM) material textures upload a full packed mip chain rather than a single level. A
+shared backend-neutral layout stores mip 0 first, then ascending levels in order, each tightly packed
+to `max(1, base >> level)`; `UploadTexture` validates the source against that layout's exact total byte
+size on every backend. The CPU generates the chain with a 2x2 box filter (clamp-to-edge at odd
+dimensions) after decode, vertical flip, and scale/bias are applied, so Rgba8Unorm and Rgba32Float both
+downsample in the same linear space the base level was authored in and out-of-range HDR values survive
+intact. Alpha and ordinary scalar maps (roughness/metallic and similar) average components directly;
+normal-map slots instead decode encoded RGB to a tangent-space direction, average, and renormalize
+before re-encoding, falling back deterministically to straight-up (0, 0, 1) when neighbouring normals
+exactly cancel to a zero-length average. D3D12, Vulkan, and Metal each allocate every requested level,
+expose all of them to shader binding, and issue one upload per level from the same packed source
+buffer — D3D12 additionally repacks each level into its own 256-byte-aligned row pitch, while Vulkan and
+Metal consume the tightly packed source directly; base-level readback and the existing single-level 3D
+volume-texture path are unchanged on every backend. `<UDIM>` atlases remain single-level in this slice:
+their sparse per-tile gutter/fallback layout cannot be naively downsampled, so atlas textures continue
+to allocate exactly one mip level regardless of tile resolution.
 `<UDIM>` assets are discovered in one resolver-aware native call, then packed into a bounded atlas
 per material slot. One-pixel gutters keep linear filtering inside each tile, sparse atlas cells
 contain the authored fallback, and shader-side tile selection uses the standard

@@ -2051,7 +2051,8 @@ public sealed class SilkSceneGpuResources : IDisposable
             image,
             _textures,
             texture.Asset.Contains("<UDIM>", StringComparison.Ordinal),
-            dependencies);
+            dependencies,
+            texture.Parameter == SilkMaterialParameter.Normal);
     }
 
     private TextureCacheEntry CreateFailedTexture(
@@ -2074,7 +2075,10 @@ public sealed class SilkSceneGpuResources : IDisposable
         return CreateTextureEntry(
             key,
             CreateFallbackImage(texture),
-            _failedTextures);
+            _failedTextures,
+            isUdim: false,
+            dependencies: null,
+            isNormalMap: texture.Parameter == SilkMaterialParameter.Normal);
     }
 
     private TextureCacheEntry CreateTextureEntry(
@@ -2082,11 +2086,27 @@ public sealed class SilkSceneGpuResources : IDisposable
         SilkDecodedImage image,
         Dictionary<TextureCacheKey, TextureCacheEntry> cache,
         bool isUdim = false,
-        IReadOnlyList<string>? dependencies = null)
+        IReadOnlyList<string>? dependencies = null,
+        bool isNormalMap = false)
     {
         ISilkGraphicsTexture? gpuTexture = null;
         try
         {
+            // UDIM atlases carry sparse per-tile metadata and gutter padding that a naive box
+            // filter would corrupt across tile boundaries, so they always stay single-level in
+            // this slice. Ordinary material images generate a full CPU mip chain instead.
+            byte[] pixels = image.Pixels;
+            uint mipLevelCount = 1;
+            if (!isUdim)
+            {
+                pixels = SilkMipGenerator.GenerateChain(
+                    image.Pixels,
+                    image.Width,
+                    image.Height,
+                    image.Format,
+                    isNormalMap,
+                    out mipLevelCount);
+            }
             gpuTexture = _device.CreateTexture2D(
                 new SilkTextureDescriptor(
                     image.Width,
@@ -2094,10 +2114,11 @@ public sealed class SilkSceneGpuResources : IDisposable
                     image.Format,
                     SilkTextureUsage.Sampled |
                         SilkTextureUsage.CopySource |
-                        SilkTextureUsage.CopyDestination));
+                        SilkTextureUsage.CopyDestination,
+                    mipLevelCount));
             var entry = new TextureCacheEntry(
                 gpuTexture,
-                image.Pixels,
+                pixels,
                 isUdim,
                 CaptureDependencies(dependencies));
             cache.Add(key, entry);

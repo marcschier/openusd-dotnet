@@ -163,6 +163,21 @@ public sealed class MetalDeviceTests
 
     [Test]
     [SupportedOSPlatform("macos")]
+    public async Task UploadsMultiLevelMipChainAndPreservesBaseLevelReadbackOnMacOS()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.MultiLevelTextureUploadPreservesBaseLevelReadback(device);
+    }
+
+    [Test]
+    [SupportedOSPlatform("macos")]
     public async Task RejectsCrossDeviceTextureUploadsOnMacOS()
     {
         if (!OperatingSystem.IsMacOS())
