@@ -174,6 +174,7 @@ public sealed class SilkMeshRenderer :
     private ISilkGraphicsTexture? _selectionBoundDepthTarget;
     private ISilkSelectionOutlineBinding? _selectionOutlineBinding;
     private ulong _selectionOutlineDeviceGeneration;
+    private SilkTextureFormat _selectionOutlineColorFormat;
     private bool _selectionOutlineInfrastructureInitialized;
     private ulong _selectionMaskPasses;
     private ulong _selectionOutlinePasses;
@@ -687,7 +688,7 @@ public sealed class SilkMeshRenderer :
             Scene.Frame,
             options.OutputTransform,
             options.Exposure);
-        bool renderSelectionOutline = PrepareSelectionOutline(depthTarget);
+        bool renderSelectionOutline = PrepareSelectionOutline(colorTarget, depthTarget);
         using ISilkGraphicsCommandList commands = _device.CreateCommandList();
         ISilkSelectionOutlineGraphicsCommandList? selectionCommands = null;
         if (renderSelectionOutline)
@@ -798,6 +799,7 @@ public sealed class SilkMeshRenderer :
                 IsSampledVolumeMesh(singleMesh.Mesh),
                 cullMode,
                 singleMesh.Mesh.TopologyKind,
+                colorTarget.Format,
                 materialShader);
             commands.SetGraphicsPipeline(pipeline);
             DisposePipelineLease(pipeline);
@@ -852,6 +854,7 @@ public sealed class SilkMeshRenderer :
                     commands,
                     first,
                     key,
+                    colorTarget.Format,
                     ref boundPipeline);
                 commands.SetVertexBuffer(first.VertexBuffer);
                 commands.SetIndexBuffer(first.IndexBuffer);
@@ -883,6 +886,7 @@ public sealed class SilkMeshRenderer :
                 commands,
                 first,
                 key,
+                colorTarget.Format,
                 ref boundPipeline);
             commands.SetVertexBuffer(first.VertexBuffer);
             commands.SetIndexBuffer(first.IndexBuffer);
@@ -920,6 +924,7 @@ public sealed class SilkMeshRenderer :
         ISilkGraphicsCommandList commands,
         SilkMeshGpuResource mesh,
         BatchKey key,
+        SilkTextureFormat colorFormat,
         ref PipelineKey? boundPipeline)
     {
         PipelineKey next = new(
@@ -940,6 +945,7 @@ public sealed class SilkMeshRenderer :
             key.SampledVolume,
             key.CullMode,
             key.TopologyKind,
+            colorFormat,
             string.IsNullOrEmpty(key.MaterialShaderIdentity)
                 ? null
                 : GetMaterialShaderRequest(mesh.Mesh, key.Features));
@@ -1029,6 +1035,7 @@ public sealed class SilkMeshRenderer :
         bool sampledVolume,
         SilkCullMode cullMode,
         SilkTopologyKind topologyKind,
+        SilkTextureFormat colorFormat,
         SilkMaterialShaderRequest? materialShader = null)
     {
         if (materialShader?.Status == SilkMaterialShaderStatus.Ready)
@@ -1036,14 +1043,15 @@ public sealed class SilkMeshRenderer :
             return _pipelineCache.GetOrCreateMaterialPipeline(
                 materialShader.Program,
                 mesh.VertexLayout,
-                SilkTextureFormat.Rgba8Unorm,
+                colorFormat,
                 SilkTextureFormat.D32Float,
                 cullMode,
                 topologyKind);
         }
         if (features == SilkShaderFeatures.None &&
             !sampledVolume &&
-            mesh.VertexLayout.Equals(SilkVertexLayoutDescriptor.PositionNormal))
+            mesh.VertexLayout.Equals(SilkVertexLayoutDescriptor.PositionNormal) &&
+            colorFormat == SilkTextureFormat.Rgba8Unorm)
         {
             return topologyKind switch
             {
@@ -1059,7 +1067,7 @@ public sealed class SilkMeshRenderer :
         {
             return _pipelineCache.GetOrCreateSampledVolumePipeline(
                 mesh.VertexLayout,
-                SilkTextureFormat.Rgba8Unorm,
+                colorFormat,
                 SilkTextureFormat.D32Float,
                 cullMode,
                 topologyKind);
@@ -1067,7 +1075,7 @@ public sealed class SilkMeshRenderer :
         return _pipelineCache.GetOrCreateMeshPipeline(
             new SilkShaderPermutationId(features),
             mesh.VertexLayout,
-            SilkTextureFormat.Rgba8Unorm,
+            colorFormat,
             SilkTextureFormat.D32Float,
             cullMode,
             topologyKind);
@@ -1349,7 +1357,9 @@ public sealed class SilkMeshRenderer :
         }
     }
 
-    private bool PrepareSelectionOutline(ISilkGraphicsTexture depthTarget)
+    private bool PrepareSelectionOutline(
+        ISilkGraphicsTexture colorTarget,
+        ISilkGraphicsTexture depthTarget)
     {
         int itemCount = _selectionItemCount;
         if (itemCount == 0)
@@ -1399,7 +1409,7 @@ public sealed class SilkMeshRenderer :
             return false;
         }
 
-        EnsureSelectionOutlineInfrastructure(outlineDevice);
+        EnsureSelectionOutlineInfrastructure(outlineDevice, colorTarget.Format);
         EnsureSelectionOutlineTarget(outlineDevice, depthTarget);
         UpdateSelectionOutlineParameters(depthTarget.Width, depthTarget.Height);
         return true;
@@ -1475,11 +1485,13 @@ public sealed class SilkMeshRenderer :
     }
 
     private void EnsureSelectionOutlineInfrastructure(
-        ISilkSelectionOutlineGraphicsDevice outlineDevice)
+        ISilkSelectionOutlineGraphicsDevice outlineDevice,
+        SilkTextureFormat colorFormat)
     {
         ulong generation = outlineDevice.SelectionOutlineDeviceGeneration;
         if (_selectionOutlineInfrastructureInitialized &&
-            generation == _selectionOutlineDeviceGeneration)
+            generation == _selectionOutlineDeviceGeneration &&
+            colorFormat == _selectionOutlineColorFormat)
         {
             return;
         }
@@ -1493,7 +1505,10 @@ public sealed class SilkMeshRenderer :
         SilkSelectionMaskPipelineDescriptor maskDescriptor =
             SilkSelectionMaskPipelineDescriptor.CreateChecked(_shaderFormat);
         SilkSelectionOutlinePipelineDescriptor outlineDescriptor =
-            SilkSelectionOutlinePipelineDescriptor.CreateChecked(_shaderFormat);
+            SilkSelectionOutlinePipelineDescriptor.CreateChecked(_shaderFormat) with
+            {
+                ColorFormat = colorFormat
+            };
         maskDescriptor.Validate();
         outlineDescriptor.Validate();
 
@@ -1526,6 +1541,7 @@ public sealed class SilkMeshRenderer :
         _selectionOutlineSampler = sampler;
         _selectionOutlineParameters = parameters;
         _selectionOutlineDeviceGeneration = generation;
+        _selectionOutlineColorFormat = colorFormat;
         _selectionOutlineInfrastructureInitialized = true;
         _selectionOutlineParametersInitialized = false;
         _selectionPipelineCreations += 2;
@@ -1712,6 +1728,7 @@ public sealed class SilkMeshRenderer :
         _selectionOutlineParametersInitialized = false;
         _selectionOutlineInfrastructureInitialized = false;
         _selectionOutlineDeviceGeneration = 0;
+        _selectionOutlineColorFormat = default;
     }
 
     private void ProcessPicking(
@@ -2156,11 +2173,11 @@ public sealed class SilkMeshRenderer :
     {
         ArgumentNullException.ThrowIfNull(colorTarget);
         ArgumentNullException.ThrowIfNull(depthTarget);
-        if (colorTarget.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (!SilkTextureFormats.IsColorRenderTarget(colorTarget.Format) ||
             (colorTarget.Usage & SilkTextureUsage.ColorRenderTarget) == 0)
         {
             throw new ArgumentException(
-                "The color target must be an RGBA8 render-target texture.",
+                "The color target must use a supported color render-target format.",
                 nameof(colorTarget));
         }
         if (depthTarget.Format != SilkTextureFormat.D32Float ||

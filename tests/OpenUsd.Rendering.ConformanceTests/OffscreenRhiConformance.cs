@@ -48,6 +48,69 @@ internal static class OffscreenRhiConformance
         texture.Dispose();
     }
 
+    internal static async Task FloatingPointTextureRoundTrips(ISilkGraphicsDevice device)
+    {
+        using ISilkGraphicsTexture rgba32 = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                2,
+                1,
+                SilkTextureFormat.Rgba32Float,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using (ISilkGraphicsCommandList commands = device.CreateCommandList())
+        {
+            commands.ClearColor(rgba32, new SilkColor(4, -0.5f, 2, 1));
+            using ISilkGraphicsSubmission submission = device.Submit(commands);
+            submission.Wait();
+        }
+
+        float[] rgba32Values = new float[8];
+        rgba32.ReadbackForTesting(rgba32Values);
+        await Assert.That(rgba32Values.AsSpan().SequenceEqual(
+            new float[] { 4, -0.5f, 2, 1, 4, -0.5f, 2, 1 })).IsTrue();
+
+        using ISilkGraphicsTexture rgba16 = device.CreateTexture2D(
+            SilkTextureDescriptor.HdrColorTarget(1, 1));
+        using (ISilkGraphicsCommandList commands = device.CreateCommandList())
+        {
+            commands.ClearColor(rgba16, new SilkColor(4, -0.5f, 2, 1));
+            using ISilkGraphicsSubmission submission = device.Submit(commands);
+            submission.Wait();
+        }
+
+        byte[] rgba16Bytes = new byte[8];
+        rgba16.ReadbackForTesting(rgba16Bytes);
+        await Assert.That((float)MemoryMarshal.Read<Half>(rgba16Bytes.AsSpan(0, 2)))
+            .IsEqualTo(4);
+        await Assert.That((float)MemoryMarshal.Read<Half>(rgba16Bytes.AsSpan(2, 2)))
+            .IsEqualTo(-0.5f);
+        await Assert.That((float)MemoryMarshal.Read<Half>(rgba16Bytes.AsSpan(4, 2)))
+            .IsEqualTo(2);
+        await Assert.That((float)MemoryMarshal.Read<Half>(rgba16Bytes.AsSpan(6, 2)))
+            .IsEqualTo(1);
+
+        using ISilkGraphicsTexture r32 = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                2,
+                1,
+                SilkTextureFormat.R32Float,
+                SilkTextureUsage.Sampled |
+                    SilkTextureUsage.CopySource |
+                    SilkTextureUsage.CopyDestination));
+        using (ISilkGraphicsCommandList commands = device.CreateCommandList())
+        {
+            commands.UploadTexture(
+                r32,
+                MemoryMarshal.AsBytes<float>(new float[] { 0.25f, 8 }));
+            using ISilkGraphicsSubmission submission = device.Submit(commands);
+            submission.Wait();
+        }
+
+        float[] r32Values = new float[2];
+        r32.ReadbackForTesting(r32Values);
+        await Assert.That(r32Values.AsSpan().SequenceEqual(new float[] { 0.25f, 8 }))
+            .IsTrue();
+    }
+
     internal static async Task SubmittedTextureSurvivesEarlyDispose(
         ISilkGraphicsDevice device)
     {

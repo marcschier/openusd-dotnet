@@ -712,9 +712,10 @@ public readonly record struct SilkGraphicsPipelineDescriptor(
     {
         ArgumentNullException.ThrowIfNull(Program);
         VertexLayout.Validate();
-        if (ColorFormat != SilkTextureFormat.Rgba8Unorm)
+        if (!SilkTextureFormats.IsColorRenderTarget(ColorFormat))
         {
-            throw new ArgumentException("The color format must be Rgba8Unorm.");
+            throw new ArgumentException(
+                "The color format must be Rgba8Unorm, Rgba16Float, or Rgba32Float.");
         }
         if (DepthFormat != SilkTextureFormat.D32Float)
         {

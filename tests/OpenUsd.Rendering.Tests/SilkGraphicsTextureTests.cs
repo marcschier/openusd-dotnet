@@ -79,6 +79,45 @@ public sealed class SilkGraphicsTextureTests
     }
 
     [Test]
+    public async Task FloatingPointColorReadbackUsesFormatComponentWidth()
+    {
+        using var rgba16 = new TestTexture(
+            SilkTextureDescriptor.HdrColorTarget(2, 3));
+        using var rgba32 = new TestTexture(
+            new SilkTextureDescriptor(
+                2,
+                3,
+                SilkTextureFormat.Rgba32Float,
+                SilkTextureUsage.ColorRenderTarget));
+
+        rgba16.ReadbackForTesting(new byte[48]);
+        rgba32.ReadbackForTesting(new float[24]);
+
+        await Assert.That(
+            () => rgba16.ReadbackForTesting(new float[24]))
+            .Throws<InvalidOperationException>();
+        await Assert.That(
+            () => rgba32.ReadbackForTesting(new byte[48]))
+            .Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task HdrDescriptorIsSampledAndReadable()
+    {
+        SilkTextureDescriptor descriptor =
+            SilkTextureDescriptor.HdrColorTarget(2, 3);
+
+        descriptor.Validate();
+
+        await Assert.That(descriptor.Format)
+            .IsEqualTo(SilkTextureFormat.Rgba16Float);
+        await Assert.That(descriptor.Usage).IsEqualTo(
+            SilkTextureUsage.ColorRenderTarget |
+            SilkTextureUsage.Sampled |
+            SilkTextureUsage.CopySource);
+    }
+
+    [Test]
     public async Task SampledDescriptorIncludesUploadAndReadbackUsage()
     {
         SilkTextureDescriptor descriptor = SilkTextureDescriptor.SampledRgba8(2, 3);
@@ -116,6 +155,21 @@ public sealed class SilkGraphicsTextureTests
             SilkTextureUsage.DepthRenderTarget);
 
         ArgumentException exception = Assert.Throws<ArgumentException>(descriptor.Validate);
+
+        await Assert.That(exception.ParamName).IsEqualTo("Usage");
+    }
+
+    [Test]
+    public async Task SingleChannelFloatDescriptorRejectsColorTargetUsage()
+    {
+        var descriptor = new SilkTextureDescriptor(
+            2,
+            3,
+            SilkTextureFormat.R32Float,
+            SilkTextureUsage.ColorRenderTarget);
+
+        ArgumentException exception = Assert.Throws<ArgumentException>(
+            descriptor.Validate);
 
         await Assert.That(exception.ParamName).IsEqualTo("Usage");
     }

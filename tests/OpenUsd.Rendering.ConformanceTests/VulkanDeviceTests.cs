@@ -89,6 +89,22 @@ public sealed class VulkanDeviceTests
     }
 
     [Test]
+    public async Task SwiftShaderRoundTripsFloatingPointTextures()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.FloatingPointTextureRoundTrips(device);
+        await SilkMeshRendererConformance.RendersIntoFloatingPointTarget(device);
+        await SilkMeshRendererConformance.RendersSelectionIntoFloatingPointTarget(device);
+    }
+
+    [Test]
     public async Task SwiftShaderSubmissionLeasesTextureUntilCompletion()
     {
         if (!OperatingSystem.IsWindows())

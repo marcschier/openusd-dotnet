@@ -169,7 +169,8 @@ public sealed partial class MetalSilkGraphicsDevice
                     };
                 MTLRenderPipelineColorAttachmentDescriptor colorAttachment =
                     pipelineDescriptor.ColorAttachments.Object(0);
-                colorAttachment.PixelFormat = MTLPixelFormat.RGBA8Unorm;
+                colorAttachment.PixelFormat =
+                    GetNativeFormat(descriptor.ColorFormat);
                 pipelineDescriptor.DepthAttachmentPixelFormat =
                     MTLPixelFormat.Depth32Float;
 

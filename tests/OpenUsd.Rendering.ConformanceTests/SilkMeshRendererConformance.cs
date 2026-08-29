@@ -8,6 +8,67 @@ namespace OpenUsd.Rendering.ConformanceTests;
 
 internal static class SilkMeshRendererConformance
 {
+    internal static async Task RendersIntoFloatingPointTarget(ISilkGraphicsDevice device)
+    {
+        const uint size = 32;
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                size,
+                size,
+                SilkTextureFormat.Rgba32Float,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(size, size));
+        using var renderer = new SilkMeshRenderer(device);
+
+        Apply(
+            renderer,
+            revision: 1,
+            CreateFrameCommand(size, size, Identity()),
+            CreateTriangleCommand(1, "/Triangle", 0, 0, [4, 0.25f, 0.125f, 1]));
+
+        SilkMeshRenderResult result = renderer.Render(color, depth);
+        float[] pixels = new float[size * size * 4];
+        color.ReadbackForTesting(pixels);
+
+        await Assert.That(result.DrawCount).IsEqualTo(1);
+        await Assert.That(
+            pixels.Where((_, index) => index % 4 == 0).Max()).IsGreaterThan(1);
+    }
+
+    internal static async Task RendersSelectionIntoFloatingPointTarget(
+        ISilkGraphicsDevice device)
+    {
+        const uint size = 32;
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                size,
+                size,
+                SilkTextureFormat.Rgba32Float,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.SampledDepthTarget(size, size));
+        using var renderer = new SilkMeshRenderer(device);
+
+        Apply(
+            renderer,
+            revision: 1,
+            CreateFrameCommand(size, size, Identity()),
+            CreateTriangleCommand(1, "/Triangle", 0, 0, [1, 0, 0, 1]));
+        _ = renderer.Render(color, depth);
+        float[] baseline = new float[size * size * 4];
+        color.ReadbackForTesting(baseline);
+
+        renderer.UpdateSelection(new SelectionState(["/Triangle"]));
+        _ = renderer.Render(color, depth);
+        float[] selected = new float[baseline.Length];
+        color.ReadbackForTesting(selected);
+
+        await Assert.That(selected.AsSpan().SequenceEqual(baseline)).IsFalse();
+        await Assert.That(renderer.SelectionOutlineDiagnostics.Status)
+            .IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+    }
+
     internal static async Task RendersRetainedMeshes(ISilkGraphicsDevice device)
     {
         const uint size = 64;

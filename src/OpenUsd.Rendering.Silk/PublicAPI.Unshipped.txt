@@ -1348,6 +1348,8 @@ OpenUsd.Rendering.Silk.SilkTextureDescriptor.Width.init -> void
 OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureFormat.D32Float = 1 -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureFormat.R32Float = 2 -> OpenUsd.Rendering.Silk.SilkTextureFormat
+OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba16Float = 3 -> OpenUsd.Rendering.Silk.SilkTextureFormat
+OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba32Float = 4 -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTextureFormat.Rgba8Unorm = 0 -> OpenUsd.Rendering.Silk.SilkTextureFormat
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Deconstruct(out uint X, out uint Y) -> void
@@ -1643,6 +1645,7 @@ static OpenUsd.Rendering.Silk.SilkShaderResourceBindingReflection.operator ==(Op
 static OpenUsd.Rendering.Silk.SilkTextureDescriptor.ColorTarget(uint width, uint height) -> OpenUsd.Rendering.Silk.SilkTextureDescriptor
 static OpenUsd.Rendering.Silk.SilkTextureDescriptor.DepthTarget(uint width, uint height) -> OpenUsd.Rendering.Silk.SilkTextureDescriptor
 static OpenUsd.Rendering.Silk.SilkTextureDescriptor.GetDefaultUsage(OpenUsd.Rendering.Silk.SilkTextureFormat format) -> OpenUsd.Rendering.Silk.SilkTextureUsage
+static OpenUsd.Rendering.Silk.SilkTextureDescriptor.HdrColorTarget(uint width, uint height) -> OpenUsd.Rendering.Silk.SilkTextureDescriptor
 static OpenUsd.Rendering.Silk.SilkTextureDescriptor.SampledDepthTarget(uint width, uint height) -> OpenUsd.Rendering.Silk.SilkTextureDescriptor
 static OpenUsd.Rendering.Silk.SilkTextureDescriptor.SampledRgba8(uint width, uint height) -> OpenUsd.Rendering.Silk.SilkTextureDescriptor
 static OpenUsd.Rendering.Silk.SilkTextureDescriptor.SelectionMask(uint width, uint height) -> OpenUsd.Rendering.Silk.SilkTextureDescriptor

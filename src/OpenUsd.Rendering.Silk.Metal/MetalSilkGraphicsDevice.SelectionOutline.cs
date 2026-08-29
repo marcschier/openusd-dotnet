@@ -64,7 +64,7 @@ public sealed partial class MetalSilkGraphicsDevice
                 pipelineDescriptor.RasterSampleCount = descriptor.SampleCount;
                 MTLRenderPipelineColorAttachmentDescriptor color =
                     pipelineDescriptor.ColorAttachments.Object(0);
-                color.PixelFormat = MTLPixelFormat.RGBA8Unorm;
+                color.PixelFormat = GetNativeFormat(descriptor.ColorFormat);
                 pipelineDescriptor.DepthAttachmentPixelFormat =
                     MTLPixelFormat.Depth32Float;
 
@@ -158,7 +158,7 @@ public sealed partial class MetalSilkGraphicsDevice
                 pipelineDescriptor.RasterSampleCount = descriptor.SampleCount;
                 MTLRenderPipelineColorAttachmentDescriptor color =
                     pipelineDescriptor.ColorAttachments.Object(0);
-                color.PixelFormat = MTLPixelFormat.RGBA8Unorm;
+                color.PixelFormat = GetNativeFormat(descriptor.ColorFormat);
                 color.IsBlendingEnabled = true;
                 color.RgbBlendOperation = MTLBlendOperation.Add;
                 color.AlphaBlendOperation = MTLBlendOperation.Add;

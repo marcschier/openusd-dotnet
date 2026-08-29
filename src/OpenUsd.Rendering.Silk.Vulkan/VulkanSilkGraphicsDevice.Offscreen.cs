@@ -25,9 +25,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         descriptor.Validate();
         RegisterDependentObject();
 
-        Format nativeFormat = descriptor.Format == SilkTextureFormat.Rgba8Unorm
-            ? Format.R8G8B8A8Unorm
-            : Format.D32Sfloat;
+        Format nativeFormat = GetNativeFormat(descriptor.Format);
         ImageUsageFlags nativeUsage = ImageUsageFlags.TransferSrcBit;
         if (descriptor.Usage.HasFlag(SilkTextureUsage.ColorRenderTarget))
         {
@@ -94,9 +92,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 Format = nativeFormat,
                 SubresourceRange = new ImageSubresourceRange
                 {
-                    AspectMask = descriptor.Format == SilkTextureFormat.Rgba8Unorm
-                        ? ImageAspectFlags.ColorBit
-                        : ImageAspectFlags.DepthBit,
+                    AspectMask = descriptor.Format == SilkTextureFormat.D32Float
+                        ? ImageAspectFlags.DepthBit
+                        : ImageAspectFlags.ColorBit,
                     BaseMipLevel = 0,
                     LevelCount = 1,
                     BaseArrayLayer = 0,
@@ -135,6 +133,17 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             }
         }
     }
+
+    internal static Format GetNativeFormat(SilkTextureFormat format) =>
+        format switch
+        {
+            SilkTextureFormat.Rgba8Unorm => Format.R8G8B8A8Unorm,
+            SilkTextureFormat.D32Float => Format.D32Sfloat,
+            SilkTextureFormat.R32Float => Format.R32Sfloat,
+            SilkTextureFormat.Rgba16Float => Format.R16G16B16A16Sfloat,
+            SilkTextureFormat.Rgba32Float => Format.R32G32B32A32Sfloat,
+            _ => throw new ArgumentOutOfRangeException(nameof(format))
+        };
 
     ISilkGraphicsTexture ISilkVolumeTextureGraphicsDevice.CreateTexture3D(
         uint width,
@@ -2169,13 +2178,16 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     {
         ThrowIfOutsideRendering();
         VulkanSilkGraphicsTexture vulkanTexture = ValidateTexture(texture);
-        if (vulkanTexture.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (vulkanTexture.Format == SilkTextureFormat.D32Float ||
             !vulkanTexture.Usage.HasFlag(SilkTextureUsage.CopyDestination))
         {
             throw new InvalidOperationException(
-                "UploadTexture requires an RGBA8 texture with CopyDestination usage.");
+                "UploadTexture requires a color or sampled texture with CopyDestination usage.");
         }
-        int requiredLength = checked((int)(vulkanTexture.Width * vulkanTexture.Height * 4));
+        int requiredLength = checked(
+            (int)(vulkanTexture.Width *
+                vulkanTexture.Height *
+                SilkTextureFormats.GetBytesPerPixel(vulkanTexture.Format)));
         if (source.Length != requiredLength)
         {
             throw new ArgumentException(
@@ -2213,12 +2225,19 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     {
         ThrowIfOutsideRendering();
         VulkanSilkGraphicsTexture vulkanTexture = ValidateTexture(texture);
-        if (vulkanTexture.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (!SilkTextureFormats.IsColorRenderTarget(vulkanTexture.Format) ||
             !vulkanTexture.Usage.HasFlag(SilkTextureUsage.ColorRenderTarget))
         {
-            throw new InvalidOperationException("ClearColor requires an RGBA8 color render target.");
+            throw new InvalidOperationException("ClearColor requires a color render target.");
         }
-        color.Validate();
+        if (SilkTextureFormats.IsFloatingPointColor(vulkanTexture.Format))
+        {
+            color.ValidateFinite();
+        }
+        else
+        {
+            color.Validate();
+        }
         _commands.Add(VulkanGraphicsCommand.ClearColor(vulkanTexture, color));
     }
 
@@ -2245,7 +2264,7 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
         }
         VulkanSilkGraphicsTexture color = ValidateTexture(descriptor.ColorAttachment);
         VulkanSilkGraphicsTexture depth = ValidateTexture(descriptor.DepthAttachment);
-        if (color.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (!SilkTextureFormats.IsColorRenderTarget(color.Format) ||
             !color.Usage.HasFlag(SilkTextureUsage.ColorRenderTarget) ||
             depth.Format != SilkTextureFormat.D32Float ||
             !depth.Usage.HasFlag(SilkTextureUsage.DepthRenderTarget) ||
@@ -2253,7 +2272,7 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
             color.Height != depth.Height)
         {
             throw new ArgumentException(
-                "Rendering requires matching RGBA8 color and D32Float depth attachments.",
+                "Rendering requires matching supported color and D32Float depth attachments.",
                 nameof(descriptor));
         }
         _colorAttachment = color;
@@ -2279,6 +2298,12 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
                 nameof(pipeline));
         }
         vulkanPipeline.ThrowIfDisposed();
+        if (_colorAttachment?.Format != vulkanPipeline.Descriptor.ColorFormat)
+        {
+            throw new ArgumentException(
+                "The pipeline color format does not match the active color attachment.",
+                nameof(pipeline));
+        }
         _pipeline = vulkanPipeline;
         _pickPipeline = null;
         _commands.Add(VulkanGraphicsCommand.SetPipeline(vulkanPipeline));

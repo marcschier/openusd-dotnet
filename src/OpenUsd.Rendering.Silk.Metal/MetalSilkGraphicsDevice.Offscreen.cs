@@ -33,9 +33,7 @@ public sealed partial class MetalSilkGraphicsDevice
         try
         {
             nativeDescriptor = MTLTextureDescriptor.Texture2DDescriptor(
-                descriptor.Format == SilkTextureFormat.Rgba8Unorm
-                    ? MTLPixelFormat.RGBA8Unorm
-                    : MTLPixelFormat.Depth32Float,
+                GetNativeFormat(descriptor.Format),
                 descriptor.Width,
                 descriptor.Height,
                 false);
@@ -47,6 +45,7 @@ public sealed partial class MetalSilkGraphicsDevice
             {
                 nativeUsage |= MTLTextureUsage.RenderTarget;
             }
+
             if (descriptor.Usage.HasFlag(SilkTextureUsage.Sampled))
             {
                 nativeUsage |= MTLTextureUsage.ShaderRead;
@@ -76,6 +75,17 @@ public sealed partial class MetalSilkGraphicsDevice
             }
         }
     }
+
+    private static MTLPixelFormat GetNativeFormat(SilkTextureFormat format) =>
+        format switch
+        {
+            SilkTextureFormat.Rgba8Unorm => MTLPixelFormat.RGBA8Unorm,
+            SilkTextureFormat.D32Float => MTLPixelFormat.Depth32Float,
+            SilkTextureFormat.R32Float => MTLPixelFormat.R32Float,
+            SilkTextureFormat.Rgba16Float => MTLPixelFormat.RGBA16Float,
+            SilkTextureFormat.Rgba32Float => MTLPixelFormat.RGBA32Float,
+            _ => throw new ArgumentOutOfRangeException(nameof(format))
+        };
 
     /// <inheritdoc/>
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
@@ -426,7 +436,9 @@ public sealed partial class MetalSilkGraphicsDevice
                         blitEncoder.CopyFromBuffer(
                             upload,
                             0,
-                            checked((ulong)uploadTexture.Width * 4),
+                            checked(
+                                (ulong)uploadTexture.Width *
+                                SilkTextureFormats.GetBytesPerPixel(uploadTexture.Format)),
                             checked((ulong)command.Data!.Length),
                             new MTLSize
                             {
@@ -1128,7 +1140,7 @@ internal sealed unsafe class MetalSilkGraphicsTexture : SilkGraphicsTextureBase
         {
             _texture.GetBytes(
                 (nint)destinationPointer,
-                checked((ulong)Width * 4),
+                checked((ulong)Width * SilkTextureFormats.GetBytesPerPixel(Format)),
                 region,
                 0);
         }
@@ -1225,13 +1237,16 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
     {
         ThrowIfOutsideRendering();
         MetalSilkGraphicsTexture metalTexture = ValidateTexture(texture);
-        if (metalTexture.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (metalTexture.Format == SilkTextureFormat.D32Float ||
             !metalTexture.Usage.HasFlag(SilkTextureUsage.CopyDestination))
         {
             throw new InvalidOperationException(
-                "UploadTexture requires an RGBA8 texture with CopyDestination usage.");
+                "UploadTexture requires a color or sampled texture with CopyDestination usage.");
         }
-        int requiredLength = checked((int)(metalTexture.Width * metalTexture.Height * 4));
+        int requiredLength = checked(
+            (int)(metalTexture.Width *
+                metalTexture.Height *
+                SilkTextureFormats.GetBytesPerPixel(metalTexture.Format)));
         if (source.Length != requiredLength)
         {
             throw new ArgumentException(
@@ -1245,12 +1260,19 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
     {
         ThrowIfOutsideRendering();
         MetalSilkGraphicsTexture metalTexture = ValidateTexture(texture);
-        if (metalTexture.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (!SilkTextureFormats.IsColorRenderTarget(metalTexture.Format) ||
             !metalTexture.Usage.HasFlag(SilkTextureUsage.ColorRenderTarget))
         {
-            throw new InvalidOperationException("ClearColor requires an RGBA8 color render target.");
+            throw new InvalidOperationException("ClearColor requires a color render target.");
         }
-        color.Validate();
+        if (SilkTextureFormats.IsFloatingPointColor(metalTexture.Format))
+        {
+            color.ValidateFinite();
+        }
+        else
+        {
+            color.Validate();
+        }
         _commands.Add(MetalGraphicsCommand.ClearColor(metalTexture, color));
     }
 
@@ -1277,7 +1299,7 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
         }
         MetalSilkGraphicsTexture color = ValidateTexture(descriptor.ColorAttachment);
         MetalSilkGraphicsTexture depth = ValidateTexture(descriptor.DepthAttachment);
-        if (color.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (!SilkTextureFormats.IsColorRenderTarget(color.Format) ||
             !color.Usage.HasFlag(SilkTextureUsage.ColorRenderTarget) ||
             depth.Format != SilkTextureFormat.D32Float ||
             !depth.Usage.HasFlag(SilkTextureUsage.DepthRenderTarget) ||
@@ -1285,7 +1307,7 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
             color.Height != depth.Height)
         {
             throw new ArgumentException(
-                "Rendering requires matching RGBA8 color and D32Float depth attachments.",
+                "Rendering requires matching supported color and D32Float depth attachments.",
                 nameof(descriptor));
         }
         _colorAttachment = color;
@@ -1309,6 +1331,12 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
                 nameof(pipeline));
         }
         metalPipeline.ThrowIfDisposed();
+        if (_colorAttachment?.Format != metalPipeline.Descriptor.ColorFormat)
+        {
+            throw new ArgumentException(
+                "The pipeline color format does not match the active color attachment.",
+                nameof(pipeline));
+        }
         _pipeline = metalPipeline;
         _pickPipeline = null;
         _selectionMaskPipeline = null;
@@ -1586,6 +1614,12 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
                 nameof(pipeline));
         }
         metalPipeline.ThrowIfUnavailable();
+        if (_colorAttachment?.Format != metalPipeline.Descriptor.ColorFormat)
+        {
+            throw new ArgumentException(
+                "The selection-outline pipeline format does not match the visible target.",
+                nameof(pipeline));
+        }
         _pipeline = null;
         _pickPipeline = null;
         _selectionOutlinePipeline = metalPipeline;

@@ -305,7 +305,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 DSVFormat = Format.FormatD32Float,
                 SampleDesc = new SampleDesc(1, 0)
             };
-            pipelineDescription.RTVFormats[0] = Format.FormatR8G8B8A8Unorm;
+            pipelineDescription.RTVFormats[0] =
+                GetNativeFormat(descriptor.ColorFormat);
             Guid pipelineId = ID3D12PipelineState.Guid;
             SilkMarshal.ThrowHResult(_device->CreateGraphicsPipelineState(
                 &pipelineDescription,

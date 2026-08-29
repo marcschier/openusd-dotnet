@@ -33,11 +33,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         bool sampled = descriptor.Usage.HasFlag(SilkTextureUsage.Sampled);
         bool sampledDepth =
             sampled && descriptor.Format == SilkTextureFormat.D32Float;
-        Format nativeFormat = descriptor.Format == SilkTextureFormat.Rgba8Unorm
-            ? Format.FormatR8G8B8A8Unorm
-            : sampledDepth
-                ? Format.FormatR32Typeless
-                : Format.FormatD32Float;
+        Format nativeFormat = sampledDepth
+            ? Format.FormatR32Typeless
+            : GetNativeFormat(descriptor.Format);
         ResourceFlags resourceFlags = ResourceFlags.None;
         if (descriptor.Usage.HasFlag(SilkTextureUsage.ColorRenderTarget))
         {
@@ -63,9 +61,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         bool hasAttachment =
             descriptor.Usage.HasFlag(SilkTextureUsage.ColorRenderTarget) ||
             descriptor.Usage.HasFlag(SilkTextureUsage.DepthRenderTarget);
-        Format attachmentFormat = descriptor.Format == SilkTextureFormat.Rgba8Unorm
-            ? Format.FormatR8G8B8A8Unorm
-            : Format.FormatD32Float;
+        Format attachmentFormat = GetNativeFormat(descriptor.Format);
         var clearValue = new ClearValue(attachmentFormat);
         if (descriptor.Usage.HasFlag(SilkTextureUsage.DepthRenderTarget))
         {
@@ -146,7 +142,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 {
                     Format = sampledDepth
                         ? Format.FormatR32Float
-                        : Format.FormatR8G8B8A8Unorm,
+                        : GetNativeFormat(descriptor.Format),
                     ViewDimension = SrvDimension.Texture2D,
                     Shader4ComponentMapping = 0x1688,
                     Texture2D = new Tex2DSrv(0, 1, 0, 0)
@@ -171,6 +167,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         &readOnlyView,
                         readOnlyDepthView);
                 }
+
             }
             success = true;
             return new D3D12SilkGraphicsTexture(
@@ -200,6 +197,17 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             }
         }
     }
+
+    private static Format GetNativeFormat(SilkTextureFormat format) =>
+        format switch
+        {
+            SilkTextureFormat.Rgba8Unorm => Format.FormatR8G8B8A8Unorm,
+            SilkTextureFormat.D32Float => Format.FormatD32Float,
+            SilkTextureFormat.R32Float => Format.FormatR32Float,
+            SilkTextureFormat.Rgba16Float => Format.FormatR16G16B16A16Float,
+            SilkTextureFormat.Rgba32Float => Format.FormatR32G32B32A32Float,
+            _ => throw new ArgumentOutOfRangeException(nameof(format))
+        };
 
     ISilkGraphicsTexture ISilkVolumeTextureGraphicsDevice.CreateTexture3D(
         uint width,
@@ -1363,11 +1371,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             try
             {
                 ResourceDesc description = texture.Resource->GetDesc();
-                int texelSize = texture.Format switch
-                {
-                    SilkTextureFormat.Rgba8Unorm or SilkTextureFormat.R32Float => 4,
-                    _ => throw new InvalidOperationException("Unsupported texture upload format.")
-                };
+                int texelSize = checked((int)SilkTextureFormats.GetBytesPerPixel(texture.Format));
                 int sourceRowPitch = checked((int)texture.Width * texelSize);
                 int sourceSlicePitch = checked(sourceRowPitch * (int)texture.Height);
                 int destinationRowPitch =
@@ -1826,7 +1830,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             SilkMarshal.ThrowHResult(readback->Map(0, &readRange, &mapped));
             try
             {
-                int destinationRowPitch = checked((int)texture.Width * 4);
+                int destinationRowPitch = checked(
+                    (int)(texture.Width *
+                        SilkTextureFormats.GetBytesPerPixel(texture.Format)));
                 int sourceRowPitch = checked((int)footprint.Footprint.RowPitch);
                 for (int row = 0; row < texture.Height; row++)
                 {
@@ -2013,13 +2019,16 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
     {
         ThrowIfOutsideRendering();
         D3D12SilkGraphicsTexture d3d12Texture = ValidateTexture(texture);
-        if (d3d12Texture.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (d3d12Texture.Format == SilkTextureFormat.D32Float ||
             !d3d12Texture.Usage.HasFlag(SilkTextureUsage.CopyDestination))
         {
             throw new InvalidOperationException(
-                "UploadTexture requires an RGBA8 texture with CopyDestination usage.");
+                "UploadTexture requires a color or sampled texture with CopyDestination usage.");
         }
-        int requiredLength = checked((int)(d3d12Texture.Width * d3d12Texture.Height * 4));
+        int requiredLength = checked(
+            (int)(d3d12Texture.Width *
+                d3d12Texture.Height *
+                SilkTextureFormats.GetBytesPerPixel(d3d12Texture.Format)));
         if (source.Length != requiredLength)
         {
             throw new ArgumentException(
@@ -2059,12 +2068,19 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
     {
         ThrowIfOutsideRendering();
         D3D12SilkGraphicsTexture d3d12Texture = ValidateTexture(texture);
-        if (d3d12Texture.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (!SilkTextureFormats.IsColorRenderTarget(d3d12Texture.Format) ||
             !d3d12Texture.Usage.HasFlag(SilkTextureUsage.ColorRenderTarget))
         {
-            throw new InvalidOperationException("ClearColor requires an RGBA8 color render target.");
+            throw new InvalidOperationException("ClearColor requires a color render target.");
         }
-        color.Validate();
+        if (SilkTextureFormats.IsFloatingPointColor(d3d12Texture.Format))
+        {
+            color.ValidateFinite();
+        }
+        else
+        {
+            color.Validate();
+        }
         _commands.Add(D3D12GraphicsCommand.ClearColor(d3d12Texture, color));
     }
 
@@ -2091,7 +2107,7 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
         }
         D3D12SilkGraphicsTexture color = ValidateTexture(descriptor.ColorAttachment);
         D3D12SilkGraphicsTexture depth = ValidateTexture(descriptor.DepthAttachment);
-        if (color.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (!SilkTextureFormats.IsColorRenderTarget(color.Format) ||
             !color.Usage.HasFlag(SilkTextureUsage.ColorRenderTarget) ||
             depth.Format != SilkTextureFormat.D32Float ||
             !depth.Usage.HasFlag(SilkTextureUsage.DepthRenderTarget) ||
@@ -2099,7 +2115,7 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
             color.Height != depth.Height)
         {
             throw new ArgumentException(
-                "Rendering requires matching RGBA8 color and D32Float depth attachments.",
+                "Rendering requires matching supported color and D32Float depth attachments.",
                 nameof(descriptor));
         }
         _colorAttachment = color;
@@ -2123,6 +2139,12 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
                 nameof(pipeline));
         }
         d3d12Pipeline.ThrowIfDisposed();
+        if (_colorAttachment?.Format != d3d12Pipeline.Descriptor.ColorFormat)
+        {
+            throw new ArgumentException(
+                "The pipeline color format does not match the active color attachment.",
+                nameof(pipeline));
+        }
         _pickPipeline = null;
         _pickBaseToken = 0;
         _selectionMaskPipeline = null;

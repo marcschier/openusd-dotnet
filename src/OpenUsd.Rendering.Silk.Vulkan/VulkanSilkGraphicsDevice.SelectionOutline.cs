@@ -821,7 +821,7 @@ internal sealed unsafe class VulkanSilkSelectionMaskGraphicsPipeline :
         AttachmentDescription* attachments = stackalloc AttachmentDescription[2];
         attachments[0] = new AttachmentDescription
         {
-            Format = Format.R8G8B8A8Unorm,
+            Format = VulkanSilkGraphicsDevice.GetNativeFormat(Descriptor.ColorFormat),
             Samples = SampleCountFlags.Count1Bit,
             LoadOp = AttachmentLoadOp.Load,
             StoreOp = AttachmentStoreOp.Store,
@@ -1302,7 +1302,7 @@ internal sealed unsafe class VulkanSilkSelectionOutlineGraphicsPipeline :
     {
         var attachment = new AttachmentDescription
         {
-            Format = Format.R8G8B8A8Unorm,
+            Format = VulkanSilkGraphicsDevice.GetNativeFormat(Descriptor.ColorFormat),
             Samples = SampleCountFlags.Count1Bit,
             LoadOp = AttachmentLoadOp.Load,
             StoreOp = AttachmentStoreOp.Store,
@@ -1840,6 +1840,12 @@ internal sealed partial class VulkanSilkGraphicsCommandList
         {
             throw new InvalidOperationException(
                 "The Vulkan selection-outline pipeline belongs to a stale device generation.");
+        }
+        if (_colorAttachment?.Format != vulkanPipeline.Descriptor.ColorFormat)
+        {
+            throw new ArgumentException(
+                "The selection-outline pipeline format does not match the visible target.",
+                nameof(pipeline));
         }
         _selectionOutlinePipeline = vulkanPipeline;
         _commands.Add(VulkanGraphicsCommand.SetSelectionOutlinePipeline(

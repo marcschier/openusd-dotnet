@@ -53,6 +53,23 @@ public sealed class MetalDeviceTests
 
     [Test]
     [SupportedOSPlatform("macos")]
+    public async Task RoundTripsFloatingPointTexturesOnMacOS()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.FloatingPointTextureRoundTrips(device);
+        await SilkMeshRendererConformance.RendersIntoFloatingPointTarget(device);
+        await SilkMeshRendererConformance.RendersSelectionIntoFloatingPointTarget(device);
+    }
+
+    [Test]
+    [SupportedOSPlatform("macos")]
     public async Task SubmissionLeasesTextureUntilCompletionOnMacOS()
     {
         if (!OperatingSystem.IsMacOS())

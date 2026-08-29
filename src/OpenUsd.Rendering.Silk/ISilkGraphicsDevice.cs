@@ -193,10 +193,10 @@ public interface ISilkGraphicsTexture : IDisposable
     /// <summary>Gets the intended texture usage.</summary>
     SilkTextureUsage Usage { get; }
 
-    /// <summary>Copies tightly packed texture bytes to host memory for conformance testing.</summary>
+    /// <summary>Copies tightly packed raw texture bytes to host memory for conformance testing.</summary>
     void ReadbackForTesting(Span<byte> destination);
 
-    /// <summary>Copies tightly packed depth values to host memory for conformance testing.</summary>
+    /// <summary>Copies tightly packed 32-bit floating-point values to host memory for testing.</summary>
     void ReadbackForTesting(Span<float> destination);
 }
 
@@ -306,15 +306,16 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
     /// <summary>Releases the backend texture after disposal and all submission leases complete.</summary>
     protected abstract void ReleaseNative();
 
-    /// <summary>Validates a tightly packed RGBA8 readback destination.</summary>
+    /// <summary>Validates a tightly packed raw readback destination.</summary>
     protected int ValidateReadback(int destinationLength)
     {
-        if (Format != SilkTextureFormat.Rgba8Unorm)
+        if (Format == SilkTextureFormat.D32Float)
         {
             throw new InvalidOperationException(
-                "Byte readback is supported only for SilkTextureFormat.Rgba8Unorm.");
+                "Depth textures require floating-point readback.");
         }
-        int requiredLength = checked((int)(Width * Height * 4));
+        int requiredLength = checked(
+            (int)(Width * Height * SilkTextureFormats.GetBytesPerPixel(Format)));
         if (destinationLength != requiredLength)
         {
             throw new ArgumentException(
@@ -324,15 +325,17 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
         return requiredLength;
     }
 
-    /// <summary>Validates a tightly packed D32Float readback destination.</summary>
+    /// <summary>Validates a tightly packed 32-bit floating-point readback destination.</summary>
     protected int ValidateDepthReadback(int destinationLength)
     {
-        if (Format != SilkTextureFormat.D32Float)
+        int componentCount = Format switch
         {
-            throw new InvalidOperationException(
-                "Float readback is supported only for SilkTextureFormat.D32Float.");
-        }
-        int requiredLength = checked((int)(Width * Height));
+            SilkTextureFormat.D32Float or SilkTextureFormat.R32Float => 1,
+            SilkTextureFormat.Rgba32Float => 4,
+            _ => throw new InvalidOperationException(
+                "Float readback requires D32Float, R32Float, or Rgba32Float.")
+        };
+        int requiredLength = checked((int)(Width * Height * componentCount));
         if (destinationLength != requiredLength)
         {
             throw new ArgumentException(
@@ -681,7 +684,13 @@ public enum SilkTextureFormat
     D32Float,
 
     /// <summary>One 32-bit floating-point sampled channel.</summary>
-    R32Float
+    R32Float,
+
+    /// <summary>Four 16-bit floating-point color channels.</summary>
+    Rgba16Float,
+
+    /// <summary>Four 32-bit floating-point color channels.</summary>
+    Rgba32Float
 }
 
 /// <summary>
@@ -731,6 +740,16 @@ public readonly record struct SilkTextureDescriptor(
             SilkTextureFormat.D32Float,
             SilkTextureUsage.DepthRenderTarget | SilkTextureUsage.Sampled);
 
+    /// <summary>Creates an RGBA16Float linear HDR color render-target descriptor.</summary>
+    public static SilkTextureDescriptor HdrColorTarget(uint width, uint height) =>
+        new(
+            width,
+            height,
+            SilkTextureFormat.Rgba16Float,
+            SilkTextureUsage.ColorRenderTarget |
+                SilkTextureUsage.Sampled |
+                SilkTextureUsage.CopySource);
+
     /// <summary>Creates a reusable sampled RGBA8 selection-mask descriptor.</summary>
     public static SilkTextureDescriptor SelectionMask(uint width, uint height) =>
         new(
@@ -753,8 +772,11 @@ public readonly record struct SilkTextureDescriptor(
     public static SilkTextureUsage GetDefaultUsage(SilkTextureFormat format) =>
         format switch
         {
-            SilkTextureFormat.Rgba8Unorm => SilkTextureUsage.ColorRenderTarget,
+            SilkTextureFormat.Rgba8Unorm or
+            SilkTextureFormat.Rgba16Float or
+            SilkTextureFormat.Rgba32Float => SilkTextureUsage.ColorRenderTarget,
             SilkTextureFormat.D32Float => SilkTextureUsage.DepthRenderTarget,
+            SilkTextureFormat.R32Float => SilkTextureUsage.Sampled,
             _ => throw new ArgumentOutOfRangeException(nameof(format))
         };
 
@@ -763,6 +785,10 @@ public readonly record struct SilkTextureDescriptor(
     {
         ArgumentOutOfRangeException.ThrowIfZero(Width);
         ArgumentOutOfRangeException.ThrowIfZero(Height);
+        if (!Enum.IsDefined(Format))
+        {
+            throw new ArgumentOutOfRangeException(nameof(Format));
+        }
         const SilkTextureUsage knownUsage =
             SilkTextureUsage.Sampled |
             SilkTextureUsage.ColorRenderTarget |
@@ -773,11 +799,11 @@ public readonly record struct SilkTextureDescriptor(
         {
             throw new ArgumentException("Texture usage must contain only defined values.", nameof(Usage));
         }
-        if (Format == SilkTextureFormat.Rgba8Unorm &&
+        if (Format != SilkTextureFormat.D32Float &&
             Usage.HasFlag(SilkTextureUsage.DepthRenderTarget))
         {
             throw new ArgumentException(
-                "Rgba8Unorm textures cannot use DepthRenderTarget.",
+                "Color and sampled textures cannot use DepthRenderTarget.",
                 nameof(Usage));
         }
         if (Format == SilkTextureFormat.D32Float &&
@@ -795,7 +821,36 @@ public readonly record struct SilkTextureDescriptor(
                 "D32Float textures cannot use ColorRenderTarget or CopyDestination.",
                 nameof(Usage));
         }
+        if (!SilkTextureFormats.IsColorRenderTarget(Format) &&
+            Usage.HasFlag(SilkTextureUsage.ColorRenderTarget))
+        {
+            throw new ArgumentException(
+                "Only RGBA color formats can use ColorRenderTarget.",
+                nameof(Usage));
+        }
     }
+}
+
+internal static class SilkTextureFormats
+{
+    internal static bool IsColorRenderTarget(SilkTextureFormat format) =>
+        format is SilkTextureFormat.Rgba8Unorm or
+            SilkTextureFormat.Rgba16Float or
+            SilkTextureFormat.Rgba32Float;
+
+    internal static bool IsFloatingPointColor(SilkTextureFormat format) =>
+        format is SilkTextureFormat.Rgba16Float or SilkTextureFormat.Rgba32Float;
+
+    internal static uint GetBytesPerPixel(SilkTextureFormat format) =>
+        format switch
+        {
+            SilkTextureFormat.Rgba8Unorm or
+            SilkTextureFormat.D32Float or
+            SilkTextureFormat.R32Float => 4,
+            SilkTextureFormat.Rgba16Float => 8,
+            SilkTextureFormat.Rgba32Float => 16,
+            _ => throw new ArgumentOutOfRangeException(nameof(format))
+        };
 }
 
 /// <summary>
@@ -899,9 +954,25 @@ public readonly record struct SilkColor(float Red, float Green, float Blue, floa
         ValidateChannel(Alpha, nameof(Alpha));
     }
 
+    internal void ValidateFinite()
+    {
+        ValidateFiniteChannel(Red, nameof(Red));
+        ValidateFiniteChannel(Green, nameof(Green));
+        ValidateFiniteChannel(Blue, nameof(Blue));
+        ValidateFiniteChannel(Alpha, nameof(Alpha));
+    }
+
     private static void ValidateChannel(float value, string name)
     {
         if (!float.IsFinite(value) || value < 0 || value > 1)
+        {
+            throw new ArgumentOutOfRangeException(name);
+        }
+    }
+
+    private static void ValidateFiniteChannel(float value, string name)
+    {
+        if (!float.IsFinite(value))
         {
             throw new ArgumentOutOfRangeException(name);
         }

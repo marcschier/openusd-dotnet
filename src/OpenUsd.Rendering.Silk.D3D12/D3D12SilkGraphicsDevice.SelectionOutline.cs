@@ -406,7 +406,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 DSVFormat = Format.FormatD32Float,
                 SampleDesc = new SampleDesc(1, 0)
             };
-            pipelineDescription.RTVFormats[0] = Format.FormatR8G8B8A8Unorm;
+            pipelineDescription.RTVFormats[0] =
+                GetNativeFormat(descriptor.ColorFormat);
             Guid pipelineId = ID3D12PipelineState.Guid;
             SilkMarshal.ThrowHResult(_device->CreateGraphicsPipelineState(
                 &pipelineDescription,
@@ -453,7 +454,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 DSVFormat = Format.FormatUnknown,
                 SampleDesc = new SampleDesc(1, 0)
             };
-            pipelineDescription.RTVFormats[0] = Format.FormatR8G8B8A8Unorm;
+            pipelineDescription.RTVFormats[0] =
+                GetNativeFormat(descriptor.ColorFormat);
             Guid pipelineId = ID3D12PipelineState.Guid;
             SilkMarshal.ThrowHResult(_device->CreateGraphicsPipelineState(
                 &pipelineDescription,
@@ -706,6 +708,12 @@ internal sealed partial class D3D12SilkGraphicsCommandList
         {
             throw new InvalidOperationException(
                 "The D3D12 selection-outline pipeline belongs to an invalid device generation.");
+        }
+        if (_colorAttachment?.Format != d3d12Pipeline.Descriptor.ColorFormat)
+        {
+            throw new ArgumentException(
+                "The selection-outline pipeline format does not match the visible target.",
+                nameof(pipeline));
         }
         _pipeline = null;
         _pickPipeline = null;

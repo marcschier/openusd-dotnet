@@ -162,6 +162,11 @@ descriptor-indexed texture-table availability when the backend exposes it, softw
 draw counts, retained hdSilk command counts, uniform uploads, and cumulative retained-scene upload
 bytes. ABI/package mismatches are presented as stale-runtime-package errors with remediation guidance
 instead of raw initialization exceptions.
+The shared RHI and all three concrete backends support RGBA8, RGBA16Float, and
+RGBA32Float color targets, R32Float sampled textures, and D32Float depth targets.
+Mesh rendering and visible selection compositing are format-aware; picking and
+selection masks deliberately remain RGBA8 identity surfaces. Frame capture remains
+an explicit RGBA8 display-image contract.
 hdSilk now supports texture-backed `UsdPreviewSurface` map binding on all three RHIs by decoding
 resolved assets through OpenUSD Hio and uploading cached sampled RGBA8 textures. Missing and corrupt
 assets use authored fallbacks with bounded stable diagnostics; failed loads are cached without poisoning

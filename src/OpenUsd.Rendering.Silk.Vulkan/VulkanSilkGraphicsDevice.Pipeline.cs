@@ -380,7 +380,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     null,
                     &pipelineLayout),
                 "vkCreatePipelineLayout");
-            renderPass = CreateTriangleRenderPass();
+            renderPass = CreateTriangleRenderPass(descriptor.ColorFormat);
             pipeline = CreateTrianglePipeline(
                 descriptor,
                 program,
@@ -422,12 +422,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
     }
 
-    private RenderPass CreateTriangleRenderPass()
+    private RenderPass CreateTriangleRenderPass(SilkTextureFormat colorFormat)
     {
         AttachmentDescription* attachments = stackalloc AttachmentDescription[2];
         attachments[0] = new AttachmentDescription
         {
-            Format = Format.R8G8B8A8Unorm,
+            Format = GetNativeFormat(colorFormat),
             Samples = SampleCountFlags.Count1Bit,
             LoadOp = AttachmentLoadOp.Load,
             StoreOp = AttachmentStoreOp.Store,

@@ -188,6 +188,23 @@ argument-buffer and per-draw fallback paths. Tier 1 devices keep using separate 
 draw also calls `useResources` for encoded textures; texture and sampler wrappers remain leased until the submitted
 command buffer completes because the argument buffer stores live Metal object references for the draw.
 
+### hdSilk texture and render-target formats
+
+The renderer-neutral RHI supports `Rgba8Unorm`, `Rgba16Float`, and `Rgba32Float` color
+targets, `R32Float` sampled textures, and `D32Float` depth targets. The D3D12, Vulkan,
+and Metal backends map those formats without treating single-channel `R32Float` as
+depth. Texture upload and raw readback sizes derive from the format rather than a
+fixed four-byte texel. `Span<float>` readback is available for `R32Float`,
+`Rgba32Float`, and `D32Float`; `Rgba16Float` uses tightly packed raw bytes so callers
+can preserve half-float values exactly.
+
+Mesh pipelines include the color format in their cache identity and can render into
+all three color-target formats. Selection masks and picking remain RGBA8 identity
+surfaces, while the fullscreen selection outline pipeline matches and blends into
+the visible color target's format. `SilkFrameCapture` remains an explicit display
+capture: it renders and returns tightly packed RGBA8 rather than exposing
+backend-specific HDR bytes.
+
 ### hdSilk display output
 
 `RenderSettings.OutputTransform` and `RenderSettings.Exposure` define the renderer-neutral display-output contract.
@@ -402,8 +419,9 @@ A capable backend implements `ISilkSelectionOutlineGraphicsDevice`, and its comm
 2. Clear and render selected meshes into one reusable single-sample sampled RGBA8 mask while loading
    the sampled D32 visible depth read-only, using less-equal depth, no depth writes, no blending, and
    no culling.
-3. Load the visible RGBA8 target and draw one generated fullscreen triangle with straight-alpha-over
-   blending. The fragment shader samples the mask and visible depth with a nearest clamp sampler,
+3. Load the visible RGBA8, RGBA16Float, or RGBA32Float target and draw one generated
+   fullscreen triangle with straight-alpha-over blending. The fragment shader samples
+   the mask and visible depth with a nearest clamp sampler,
    applies the physical-pixel circular edge kernel, and suppresses pixels over nearer occluders.
 
 The fullscreen binding is D3D `t0` mask, `t1` visible depth, `s0` sampler, and `b0`

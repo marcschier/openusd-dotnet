@@ -436,7 +436,7 @@ public readonly record struct SilkSelectionOutlinePipelineDescriptor(
         }
 
         BindingLayout.Validate();
-        if (ColorFormat != SilkTextureFormat.Rgba8Unorm ||
+        if (!SilkTextureFormats.IsColorRenderTarget(ColorFormat) ||
             SampleCount != 1 ||
             Primitive != SilkSelectionOutlinePrimitive.FullscreenTriangle ||
             BlendMode != SilkSelectionOutlineBlendMode.StraightAlphaOver ||
@@ -444,7 +444,8 @@ public readonly record struct SilkSelectionOutlinePipelineDescriptor(
         {
             throw new ArgumentException(
                 "The selection outline requires one fullscreen triangle, " +
-                "single-sample RGBA8 straight-alpha-over blending, and no depth test.");
+                "a supported single-sample color target, straight-alpha-over blending, " +
+                "and no depth test.");
         }
     }
 }
@@ -563,15 +564,15 @@ public readonly record struct SilkSelectionMaskRenderingDescriptor(
 public readonly record struct SilkSelectionOutlineRenderingDescriptor(
     ISilkGraphicsTexture VisibleColorAttachment)
 {
-    /// <summary>Validates an RGBA8 color render target that will be preserved and blended.</summary>
+    /// <summary>Validates a color render target that will be preserved and blended.</summary>
     public void Validate()
     {
         ArgumentNullException.ThrowIfNull(VisibleColorAttachment);
-        if (VisibleColorAttachment.Format != SilkTextureFormat.Rgba8Unorm ||
+        if (!SilkTextureFormats.IsColorRenderTarget(VisibleColorAttachment.Format) ||
             (VisibleColorAttachment.Usage & SilkTextureUsage.ColorRenderTarget) == 0)
         {
             throw new ArgumentException(
-                "The visible outline target must be an RGBA8 color target.",
+                "The visible outline target must use a supported color format.",
                 nameof(VisibleColorAttachment));
         }
     }
