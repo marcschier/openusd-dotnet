@@ -184,6 +184,42 @@ StructuredBuffer<SurfaceParameters> surfaceParameters : register(t7);
 static const float SurfacePi = 3.14159265358979323846;
 static const float SurfaceEpsilon = 0.001;
 
+[ForceInline]
+float4 SampleMaterialTexture(
+    Texture2D<float4> textureMap,
+    SamplerState textureSampler,
+    float2 textureCoordinate,
+    bool isUdim)
+{
+    if (!isUdim)
+    {
+        return textureMap.Sample(textureSampler, textureCoordinate);
+    }
+
+    uint atlasWidth;
+    uint atlasHeight;
+    textureMap.GetDimensions(atlasWidth, atlasHeight);
+    float4 metadata = round(textureMap.Load(int3(0, 0, 0)) * 255.0);
+    int2 minimumTile = int2(metadata.xy);
+    int2 gridSize = int2(metadata.zw);
+    int2 tile = int2(floor(textureCoordinate)) - minimumTile;
+    if (any(tile < 0) || any(tile >= gridSize))
+    {
+        return textureMap.Load(int3(min(1u, atlasWidth - 1), 0, 0));
+    }
+
+    float2 cellSize = float2(
+        atlasWidth / gridSize.x,
+        (atlasHeight - 1) / gridSize.y);
+    float2 tileSize = cellSize - 2.0;
+    float2 pixel = float2(tile) * cellSize +
+        float2(1.5, 2.5) +
+        frac(textureCoordinate) * max(tileSize - 1.0, 0.0);
+    return textureMap.Sample(
+        textureSampler,
+        pixel / float2(atlasWidth, atlasHeight));
+}
+
 /// Mirrors Storm's Preview.Lighting NormalDistribution, including its epsilon, so
 /// the two renderers agree by construction rather than by approximation.
 [ForceInline]
@@ -306,13 +342,21 @@ float4 FRAGMENT_ENTRY_POINT(
     float3 shadingNormal = input.normal;
 
 #if MAP_BASE_COLOR
-    float4 sampledBaseColor = baseColorTexture.Sample(baseColorSampler, input.texCoord);
+    float4 sampledBaseColor = SampleMaterialTexture(
+        baseColorTexture,
+        baseColorSampler,
+        input.texCoord,
+        ((uint)round(surface.reserved.w) & 1u) != 0);
     diffuseColor = sampledBaseColor.rgb;
     opacity *= sampledBaseColor.a;
 #endif
 #if MAP_NORMAL
     float3 sampledNormal =
-        normalTexture.Sample(normalSampler, input.texCoord).xyz * 2.0 - 1.0;
+        SampleMaterialTexture(
+            normalTexture,
+            normalSampler,
+            input.texCoord,
+            ((uint)round(surface.reserved.w) & 2u) != 0).xyz * 2.0 - 1.0;
     float3 tangent = normalize(input.tangent.xyz);
     float3 bitangent = cross(normalize(shadingNormal), tangent) * input.tangent.w;
     shadingNormal = normalize(
@@ -321,13 +365,20 @@ float4 FRAGMENT_ENTRY_POINT(
         (shadingNormal * sampledNormal.z));
 #endif
 #if MAP_ROUGHNESS_METALLIC
-    float3 sampledRoughnessMetallic =
-        roughnessMetallicTexture.Sample(roughnessMetallicSampler, input.texCoord).rgb;
+    float3 sampledRoughnessMetallic = SampleMaterialTexture(
+        roughnessMetallicTexture,
+        roughnessMetallicSampler,
+        input.texCoord,
+        ((uint)round(surface.reserved.w) & 4u) != 0).rgb;
     roughness = clamp(roughness * sampledRoughnessMetallic.g, 0.01, 1.0);
     metallic = saturate(metallic * sampledRoughnessMetallic.b);
 #endif
 #if MAP_EMISSIVE
-    emissiveColor = emissiveTexture.Sample(emissiveSampler, input.texCoord).rgb;
+    emissiveColor = SampleMaterialTexture(
+        emissiveTexture,
+        emissiveSampler,
+        input.texCoord,
+        ((uint)round(surface.reserved.w) & 8u) != 0).rgb;
 #endif
 
     float opacityThreshold = surface.metallicRoughnessThresholdWorkflow.z;

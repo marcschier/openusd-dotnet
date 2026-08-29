@@ -12,6 +12,8 @@ internal sealed record SilkDecodedImage(
     byte[] Pixels,
     SilkTextureFormat Format = SilkTextureFormat.Rgba8Unorm);
 
+internal sealed record SilkUdimTile(uint Number, string Asset);
+
 internal static unsafe partial class SilkNativeImageDecoder
 {
     private const uint ImageInfoVersion = 1;
@@ -56,6 +58,45 @@ internal static unsafe partial class SilkNativeImageDecoder
                 errorBytes,
                 error);
         }
+    }
+
+    internal static IReadOnlyList<SilkUdimTile> ResolveUdimTiles(string asset)
+    {
+        string[] values;
+        try
+        {
+            values = OpenUsdNativeRuntime.ResolveUdimTiles(asset);
+        }
+        catch (OpenUsdNativeException exception)
+            when (exception.Status == OpenUsdNativeStatus.NotFound)
+        {
+            throw new FileNotFoundException(exception.Message, asset, exception);
+        }
+        if ((values.Length % 2) != 0)
+        {
+            throw new InvalidDataException(
+                "Native UDIM resolution returned an incomplete tile-path pair.");
+        }
+        var result = new SilkUdimTile[values.Length / 2];
+        for (int index = 0; index < result.Length; index++)
+        {
+            string tile = values[index * 2];
+            string path = values[(index * 2) + 1];
+            if (!uint.TryParse(
+                    tile,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out uint number) ||
+                number < 1001 ||
+                number > 1999 ||
+                string.IsNullOrWhiteSpace(path))
+            {
+                throw new InvalidDataException(
+                    "Native UDIM resolution returned an invalid tile-path pair.");
+            }
+            result[index] = new SilkUdimTile(number, path);
+        }
+        return result;
     }
 
     private static SilkDecodedImage DecodeRgba8(

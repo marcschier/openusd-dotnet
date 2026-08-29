@@ -478,6 +478,62 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    public async Task SparseUdimTilesUseBoundedAtlasWithAuthoredFallback()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Udim",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    4,
+                    [1f, 1f, 1f, 1f],
+                    [0f, 0f, 0f, 0f],
+                    [1f, 0f, 1f, 1f],
+                    "tiles.<UDIM>.png",
+                    "st"),
+            ]));
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) => asset.Contains("1001", StringComparison.Ordinal)
+                ? new SilkDecodedImage(2, 1, [255, 0, 0, 255, 255, 0, 0, 255])
+                : new SilkDecodedImage(2, 1, [0, 0, 255, 255, 0, 0, 255, 255]),
+            _ =>
+            [
+                new SilkUdimTile(1001, "tiles.1001.png"),
+                new SilkUdimTile(1003, "tiles.1003.png"),
+            ]);
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(
+            commands,
+            material,
+            SilkMaterialParameter.DiffuseColor);
+
+        await Assert.That(device.CreatedTextures.Single().Width).IsEqualTo(12u);
+        await Assert.That(device.CreatedTextures.Single().Height).IsEqualTo(4u);
+        byte[] atlas = commands.Uploads.Single();
+        await Assert.That(atlas.AsSpan(0, 4).ToArray())
+            .IsEquivalentTo(new byte[] { 0, 0, 3, 1 });
+        await Assert.That(atlas.AsSpan((2 * 12 + 1) * 4, 4).ToArray())
+            .IsEquivalentTo(new byte[] { 255, 0, 0, 255 });
+        await Assert.That(atlas.AsSpan((2 * 12 + 5) * 4, 4).ToArray())
+            .IsEquivalentTo(new byte[] { 255, 0, 255, 255 });
+        await Assert.That(atlas.AsSpan((2 * 12 + 9) * 4, 4).ToArray())
+            .IsEquivalentTo(new byte[] { 0, 0, 255, 255 });
+        await Assert.That(commands.SamplerBindings.Single().Descriptor.AddressU)
+            .IsEqualTo(SilkSamplerAddressMode.ClampToEdge);
+        await Assert.That(commands.SamplerBindings.Single().Descriptor.AddressV)
+            .IsEqualTo(SilkSamplerAddressMode.ClampToEdge);
+    }
+
+    [Test]
     public async Task FloatTextureDecodePreservesHdrValuesAndAppliesScaleBias()
     {
         SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
@@ -931,6 +987,7 @@ public sealed class SilkMaterialCommandTests
     private sealed class TextureGraphicsDevice : ISilkGraphicsDevice
     {
         internal List<SilkTextureFormat> CreatedTextureFormats { get; } = [];
+        internal List<SilkTextureDescriptor> CreatedTextures { get; } = [];
 
         public SilkGraphicsBackend Backend => SilkGraphicsBackend.D3D12;
 
@@ -952,6 +1009,7 @@ public sealed class SilkMaterialCommandTests
         public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor)
         {
             CreatedTextureFormats.Add(descriptor.Format);
+            CreatedTextures.Add(descriptor);
             return new Texture(descriptor.Width, descriptor.Height, descriptor.Format);
         }
 

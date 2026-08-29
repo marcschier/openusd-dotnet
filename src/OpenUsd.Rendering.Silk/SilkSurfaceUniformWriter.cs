@@ -104,7 +104,41 @@ internal static class SilkSurfaceUniformWriter
             Finite(light.Color.Y, "light green"),
             Finite(light.Color.Z, "light blue"),
             Finite(light.Ambient, "light ambient"));
-        WriteVector4(destination, 112, volumeDensity ? 1 : 0, density, 2, sampledVolume ? 1 : 0);
+        float udimMask = volumeDensity ? 0 : GetUdimMask(shaded);
+        WriteVector4(
+            destination,
+            112,
+            volumeDensity ? 1 : 0,
+            density,
+            2,
+            sampledVolume ? 1 : udimMask);
+    }
+
+    private static float GetUdimMask(SilkMaterialData? material)
+    {
+        int mask = 0;
+        addUdimBit(SilkMaterialParameter.DiffuseColor, 1);
+        addUdimBit(SilkMaterialParameter.Normal, 2);
+        if (material?.GetTexture(SilkMaterialParameter.Roughness) is not null)
+        {
+            addUdimBit(SilkMaterialParameter.Roughness, 4);
+        }
+        else
+        {
+            addUdimBit(SilkMaterialParameter.Metallic, 4);
+        }
+        addUdimBit(SilkMaterialParameter.EmissiveColor, 8);
+        return mask;
+
+        void addUdimBit(SilkMaterialParameter parameter, int bit)
+        {
+            if (material?.GetTexture(parameter)?.Asset.Contains(
+                    "<UDIM>",
+                    StringComparison.Ordinal) == true)
+            {
+                mask |= bit;
+            }
+        }
     }
 
     private static Vector3 Normalize(Vector3 direction)

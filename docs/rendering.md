@@ -559,6 +559,11 @@ not portable across the supported RHIs; explicit filter negotiation remains outs
 Base-colour, normal, roughness/metallic, emissive, and volume-density textures each bind an independent
 sampler slot, so simultaneously active maps preserve their own `wrapS` and `wrapT` values rather than
 letting the final texture bound to a draw overwrite every map's address mode.
+`<UDIM>` assets are discovered in one resolver-aware native call, then packed into a bounded atlas
+per material slot. One-pixel gutters keep linear filtering inside each tile, sparse atlas cells
+contain the authored fallback, and shader-side tile selection uses the standard
+`1001 + u + 10*v` mapping. Tile dimensions and formats must match; sets spanning more than 256
+atlas cells are rejected with a texture diagnostic instead of allocating an unbounded resource.
 Including the material identity prevents one material's scale, bias, or authored fallback from leaking
 into another material that references the same asset. Texture upload is recorded before the rendering
 scope so all draw paths can bind every declared sampler/texture slot without relying on backend defaults;

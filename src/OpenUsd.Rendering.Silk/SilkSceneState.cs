@@ -1490,9 +1490,11 @@ public readonly record struct SilkSceneDelta(
 public sealed class SilkSceneGpuResources : IDisposable
 {
     private const int DiagnosticCapacity = 128;
+    private const int MaximumUdimAtlasCells = 256;
 
     private readonly ISilkGraphicsDevice _device;
     private readonly Func<string, bool, SilkDecodedImage> _imageDecoder;
+    private readonly Func<string, IReadOnlyList<SilkUdimTile>> _udimResolver;
     private readonly Dictionary<ulong, SilkMeshGpuResource> _meshes = [];
     private readonly Dictionary<SilkMeshGpuGeometryKey, List<SilkMeshGpuGeometryResource>> _geometries =
         [];
@@ -1519,7 +1521,8 @@ public sealed class SilkSceneGpuResources : IDisposable
 
     private sealed record TextureCacheEntry(
         ISilkGraphicsTexture Texture,
-        byte[] Pixels)
+        byte[] Pixels,
+        bool IsUdim = false)
     {
         internal bool Uploaded { get; set; }
     }
@@ -1534,18 +1537,20 @@ public sealed class SilkSceneGpuResources : IDisposable
 
     /// <summary>Initializes GPU resource retention for one backend device.</summary>
     public SilkSceneGpuResources(ISilkGraphicsDevice device)
-        : this(device, SilkNativeImageDecoder.Decode)
+        : this(device, SilkNativeImageDecoder.Decode, SilkNativeImageDecoder.ResolveUdimTiles)
     {
     }
 
     internal SilkSceneGpuResources(
         ISilkGraphicsDevice device,
-        Func<string, bool, SilkDecodedImage> imageDecoder)
+        Func<string, bool, SilkDecodedImage> imageDecoder,
+        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(imageDecoder);
         _device = device;
         _imageDecoder = imageDecoder;
+        _udimResolver = udimResolver ?? SilkNativeImageDecoder.ResolveUdimTiles;
         SilkManagedDiagnostics.GpuSceneCreated();
     }
 
@@ -1897,7 +1902,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         commands.SetSampler(
             0,
             samplerBinding,
-            RequireSampler(texture, entry.Texture.Format));
+            RequireSampler(texture, entry.Texture.Format, entry.IsUdim));
         commands.SetTexture(0, textureBinding, entry.Texture);
     }
 
@@ -1998,12 +2003,9 @@ public sealed class SilkSceneGpuResources : IDisposable
         SilkDecodedImage image;
         try
         {
-            image = _imageDecoder(
-                texture.Asset,
-                effectiveColorSpace == SilkColorSpace.Srgb);
-            ValidateDecodedImage(image);
-            FlipRows(image.Pixels, image.Width, image.Height, image.Format);
-            ApplyScaleBias(image.Pixels, image.Format, texture);
+            image = texture.Asset.Contains("<UDIM>", StringComparison.Ordinal)
+                ? CreateUdimAtlas(texture, effectiveColorSpace)
+                : DecodeMaterialImage(texture.Asset, texture, effectiveColorSpace);
         }
         catch (FileNotFoundException exception)
         {
@@ -2032,7 +2034,11 @@ public sealed class SilkSceneGpuResources : IDisposable
                 SilkRenderDiagnosticCodes.TextureDecodeFailed,
                 exception.Message);
         }
-        return CreateTextureEntry(key, image, _textures);
+        return CreateTextureEntry(
+            key,
+            image,
+            _textures,
+            texture.Asset.Contains("<UDIM>", StringComparison.Ordinal));
     }
 
     private TextureCacheEntry CreateFailedTexture(
@@ -2061,7 +2067,8 @@ public sealed class SilkSceneGpuResources : IDisposable
     private TextureCacheEntry CreateTextureEntry(
         TextureCacheKey key,
         SilkDecodedImage image,
-        Dictionary<TextureCacheKey, TextureCacheEntry> cache)
+        Dictionary<TextureCacheKey, TextureCacheEntry> cache,
+        bool isUdim = false)
     {
         ISilkGraphicsTexture? gpuTexture = null;
         try
@@ -2074,7 +2081,7 @@ public sealed class SilkSceneGpuResources : IDisposable
                     SilkTextureUsage.Sampled |
                         SilkTextureUsage.CopySource |
                         SilkTextureUsage.CopyDestination));
-            var entry = new TextureCacheEntry(gpuTexture, image.Pixels);
+            var entry = new TextureCacheEntry(gpuTexture, image.Pixels, isUdim);
             cache.Add(key, entry);
             return entry;
         }
@@ -2083,6 +2090,186 @@ public sealed class SilkSceneGpuResources : IDisposable
             gpuTexture?.Dispose();
             throw;
         }
+    }
+
+    private SilkDecodedImage DecodeMaterialImage(
+        string asset,
+        SilkMaterialTexture texture,
+        SilkColorSpace effectiveColorSpace)
+    {
+        SilkDecodedImage image = _imageDecoder(
+            asset,
+            effectiveColorSpace == SilkColorSpace.Srgb);
+        ValidateDecodedImage(image);
+        FlipRows(image.Pixels, image.Width, image.Height, image.Format);
+        ApplyScaleBias(image.Pixels, image.Format, texture);
+        return image;
+    }
+
+    private SilkDecodedImage CreateUdimAtlas(
+        SilkMaterialTexture texture,
+        SilkColorSpace effectiveColorSpace)
+    {
+        IReadOnlyList<SilkUdimTile> tiles = _udimResolver(texture.Asset);
+        if (tiles.Count == 0)
+        {
+            throw new FileNotFoundException(
+                $"UDIM texture '{texture.Asset}' resolved no tiles.",
+                texture.Asset);
+        }
+
+        SilkDecodedImage[] images = new SilkDecodedImage[tiles.Count];
+        int minU = int.MaxValue;
+        int minV = int.MaxValue;
+        int maxU = int.MinValue;
+        int maxV = int.MinValue;
+        for (int index = 0; index < tiles.Count; index++)
+        {
+            SilkUdimTile tile = tiles[index];
+            int offset = checked((int)tile.Number - 1001);
+            int u = offset % 10;
+            int v = offset / 10;
+            minU = Math.Min(minU, u);
+            minV = Math.Min(minV, v);
+            maxU = Math.Max(maxU, u);
+            maxV = Math.Max(maxV, v);
+            images[index] = DecodeMaterialImage(
+                tile.Asset,
+                texture,
+                effectiveColorSpace);
+            if (index != 0 &&
+                (images[index].Width != images[0].Width ||
+                 images[index].Height != images[0].Height ||
+                 images[index].Format != images[0].Format))
+            {
+                throw new InvalidDataException(
+                    $"UDIM texture '{texture.Asset}' tiles must have identical dimensions and formats.");
+            }
+        }
+
+        int columns = checked(maxU - minU + 1);
+        int rows = checked(maxV - minV + 1);
+        if (checked(columns * rows) > MaximumUdimAtlasCells)
+        {
+            throw new InvalidDataException(
+                $"UDIM texture '{texture.Asset}' spans more than {MaximumUdimAtlasCells} atlas cells.");
+        }
+
+        SilkDecodedImage first = images[0];
+        int bytesPerPixel = checked((int)SilkTextureFormats.GetBytesPerPixel(first.Format));
+        int cellWidth = checked((int)first.Width + 2);
+        int cellHeight = checked((int)first.Height + 2);
+        int atlasWidth = checked(columns * cellWidth);
+        int atlasHeight = checked(1 + (rows * cellHeight));
+        byte[] fallback = CreateFallbackPixel(texture, first.Format);
+        byte[] pixels = new byte[checked(atlasWidth * atlasHeight * bytesPerPixel)];
+        for (int offset = 0; offset < pixels.Length; offset += bytesPerPixel)
+        {
+            fallback.CopyTo(pixels, offset);
+        }
+        WriteUdimMetadata(pixels, first.Format, minU, minV, columns, rows);
+
+        for (int index = 0; index < tiles.Count; index++)
+        {
+            int tileOffset = checked((int)tiles[index].Number - 1001);
+            int cellX = (tileOffset % 10) - minU;
+            int cellY = (tileOffset / 10) - minV;
+            CopyUdimTile(
+                images[index],
+                pixels,
+                atlasWidth,
+                cellX * cellWidth,
+                1 + (cellY * cellHeight));
+        }
+        return new SilkDecodedImage(
+            checked((uint)atlasWidth),
+            checked((uint)atlasHeight),
+            pixels,
+            first.Format);
+    }
+
+    private static byte[] CreateFallbackPixel(
+        SilkMaterialTexture texture,
+        SilkTextureFormat format)
+    {
+        if (format == SilkTextureFormat.Rgba32Float)
+        {
+            float[] values = new float[4];
+            for (int component = 0; component < values.Length; component++)
+            {
+                float source = component < texture.Fallback.Count
+                    ? texture.Fallback[component]
+                    : component == 3 ? 1 : 0;
+                values[component] =
+                    (source * texture.Scale[component]) + texture.Bias[component];
+                if (!float.IsFinite(values[component]))
+                {
+                    throw new InvalidDataException(
+                        "UDIM fallback scale and bias produced a non-finite channel.");
+                }
+            }
+            return MemoryMarshal.AsBytes(values.AsSpan()).ToArray();
+        }
+        return CreateFallbackImage(texture).Pixels;
+    }
+
+    private static void WriteUdimMetadata(
+        byte[] pixels,
+        SilkTextureFormat format,
+        int minU,
+        int minV,
+        int columns,
+        int rows)
+    {
+        Span<float> values = stackalloc float[4]
+        {
+            minU / 255f,
+            minV / 255f,
+            columns / 255f,
+            rows / 255f
+        };
+        if (format == SilkTextureFormat.Rgba32Float)
+        {
+            MemoryMarshal.AsBytes(values).CopyTo(pixels);
+            return;
+        }
+        for (int component = 0; component < 4; component++)
+        {
+            pixels[component] = checked((byte)MathF.Round(values[component] * 255));
+        }
+    }
+
+    private static void CopyUdimTile(
+        SilkDecodedImage image,
+        byte[] atlas,
+        int atlasWidth,
+        int cellX,
+        int cellY)
+    {
+        int bytesPerPixel = checked((int)SilkTextureFormats.GetBytesPerPixel(image.Format));
+        int tileWidth = checked((int)image.Width);
+        int tileHeight = checked((int)image.Height);
+        int atlasStride = checked(atlasWidth * bytesPerPixel);
+        int tileStride = checked(tileWidth * bytesPerPixel);
+        for (int y = 0; y < tileHeight; y++)
+        {
+            int source = y * tileStride;
+            int destination = checked(
+                ((cellY + y + 1) * atlasStride) + ((cellX + 1) * bytesPerPixel));
+            Buffer.BlockCopy(image.Pixels, source, atlas, destination, tileStride);
+            Buffer.BlockCopy(image.Pixels, source, atlas, destination - bytesPerPixel, bytesPerPixel);
+            Buffer.BlockCopy(
+                image.Pixels,
+                source + tileStride - bytesPerPixel,
+                atlas,
+                destination + tileStride,
+                bytesPerPixel);
+        }
+        int paddedStride = checked((tileWidth + 2) * bytesPerPixel);
+        int firstRow = checked(cellY * atlasStride + cellX * bytesPerPixel);
+        int lastRow = checked((cellY + tileHeight + 1) * atlasStride + cellX * bytesPerPixel);
+        Buffer.BlockCopy(atlas, firstRow + atlasStride, atlas, firstRow, paddedStride);
+        Buffer.BlockCopy(atlas, lastRow - atlasStride, atlas, lastRow, paddedStride);
     }
 
     private TextureCacheEntry RequireVolumeTexture(SilkMaterialTexture texture)
@@ -2252,10 +2439,15 @@ public sealed class SilkSceneGpuResources : IDisposable
 
     private ISilkGraphicsSampler RequireSampler(
         SilkMaterialTexture texture,
-        SilkTextureFormat format)
+        SilkTextureFormat format,
+        bool isUdim = false)
     {
-        SilkSamplerAddressMode addressU = GetAddressMode(texture.WrapS);
-        SilkSamplerAddressMode addressV = GetAddressMode(texture.WrapT);
+        SilkSamplerAddressMode addressU = isUdim
+            ? SilkSamplerAddressMode.ClampToEdge
+            : GetAddressMode(texture.WrapS);
+        SilkSamplerAddressMode addressV = isUdim
+            ? SilkSamplerAddressMode.ClampToEdge
+            : GetAddressMode(texture.WrapT);
         SilkSamplerFilter filter = format == SilkTextureFormat.Rgba32Float
             ? SilkSamplerFilter.Nearest
             : SilkSamplerFilter.Linear;

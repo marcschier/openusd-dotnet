@@ -176,8 +176,11 @@ assets use authored fallbacks with bounded stable diagnostics; failed loads are 
 the successful cache and can be explicitly retried. Unresolved and unsupported materials likewise retain
 default shading with distinct diagnostics. Every active texture slot binds its own cached sampler, preserving
 independent `wrapS` and `wrapT` state across base-colour, normal, roughness/metallic, emissive, and volume maps.
-RGBA32Float sampling is nearest-only until cross-backend filter negotiation lands. UDIM expansion and
-colour-delta parity with Storm remain outside the current support claim.
+Resolver-aware `<UDIM>` textures use bounded per-slot atlases with one-pixel gutters, standard tile
+numbering, and authored fallback values in sparse cells. Tile format/dimension mismatches and atlas
+spans above 256 cells are diagnosed and rejected. RGBA32Float sampling is nearest-only until
+cross-backend filter negotiation lands. Colour-delta parity with Storm remains outside the current
+support claim.
 It also supports a documented MaterialX projection plus generated-source paths for graphs outside that projection:
 `ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
 driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are

@@ -74,6 +74,30 @@ internal static partial class Program
             }
 
             string directory = Path.GetDirectoryName(Path.GetFullPath(args[1]))!;
+            string udim1001 = Path.Combine(directory, "managed-udim.1001.txt");
+            string udim1013 = Path.Combine(directory, "managed-udim.1013.txt");
+            await File.WriteAllTextAsync(udim1001, "1001").ConfigureAwait(false);
+            await File.WriteAllTextAsync(udim1013, "1013").ConfigureAwait(false);
+            try
+            {
+                string[] udimTiles = OpenUsdNativeRuntime.ResolveUdimTiles(
+                    Path.Combine(directory, "managed-udim.<UDIM>.txt"));
+                if (udimTiles.Length != 4 ||
+                    udimTiles[0] != "1001" ||
+                    udimTiles[1] != udim1001 ||
+                    udimTiles[2] != "1013" ||
+                    udimTiles[3] != udim1013)
+                {
+                    Console.Error.WriteLine("UDIM resolution returned unexpected tiles.");
+                    return 112;
+                }
+                Console.WriteLine("UDIM tile resolution passed.");
+            }
+            finally
+            {
+                File.Delete(udim1001);
+                File.Delete(udim1013);
+            }
             string authoredPath = Path.Combine(directory, "managed-authored.usda");
             File.Delete(authoredPath);
 

@@ -453,3 +453,60 @@ openusd_status openusd_decode_image_rgba32f(
         });
     });
 }
+
+openusd_status openusd_resolve_udim_tiles(
+    const char* asset_path,
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return Guard(error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetStringListOutput(list, view);
+        if (asset_path == nullptr ||
+            asset_path[0] == '\0' ||
+            list == nullptr ||
+            view == nullptr ||
+            view->struct_size < sizeof(openusd_string_list_view))
+        {
+            WriteError(error, "A UDIM asset path and versioned list output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        if (!UsdShadeUdimUtils::IsUdimIdentifier(asset_path))
+        {
+            WriteError(error, "The asset path does not contain the supported <UDIM> token.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+
+        return GuardStringListOutput(error, list, view, [&](auto& result)
+        {
+            std::vector<UsdShadeUdimUtils::ResolvedPathAndTile> tiles =
+                UsdShadeUdimUtils::ResolveUdimTilePaths(asset_path, SdfLayerHandle());
+            std::sort(
+                tiles.begin(),
+                tiles.end(),
+                [](const auto& left, const auto& right)
+                {
+                    return left.second < right.second;
+                });
+            if (tiles.empty())
+            {
+                WriteError(error, std::string("No UDIM tiles resolved for: ") + asset_path);
+                return OPENUSD_STATUS_NOT_FOUND;
+            }
+
+            std::vector<std::string> values;
+            values.reserve(tiles.size() * 2u);
+            for (const auto& [path, tile] : tiles)
+            {
+                values.push_back(tile);
+                values.push_back(path);
+            }
+            result = std::make_unique<openusd_string_list>();
+            FillStringList(result.get(), values, view);
+            return OPENUSD_STATUS_OK;
+        });
+    });
+}

@@ -54,6 +54,41 @@ public static unsafe partial class OpenUsdNativeRuntime
         }
     }
 
+    internal static string[] ResolveUdimTiles(string assetPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(assetPath);
+        EnsureCompatibleAbi();
+
+        var view = new NativeStringListView
+        {
+            StructSize = (uint)sizeof(NativeStringListView)
+        };
+        nint list = 0;
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.ResolveUdimTiles(
+                assetPath,
+                out list,
+                ref view,
+                ref error);
+            ThrowIfFailedAndReleaseStringList(status, errorBytes, error, ref list);
+        }
+
+        try
+        {
+            return DecodeStringListView(view);
+        }
+        finally
+        {
+            if (list != 0)
+            {
+                NativeMethods.StringListRelease(list);
+            }
+        }
+    }
+
     /// <summary>Opens an existing USD stage.</summary>
     /// <param name="path">The stage path or resolver identifier.</param>
     /// <returns>An owned stage handle.</returns>

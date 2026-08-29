@@ -699,6 +699,17 @@ bool VerifyFailedOutputInitialization(
     {
         return false;
     }
+    list = reinterpret_cast<openusd_string_list*>(uintptr_t{1});
+    view = makeSentinelView();
+    if (openusd_resolve_udim_tiles(
+            "not-a-udim.png",
+            &list,
+            &view,
+            error) != OPENUSD_STATUS_INVALID_ARGUMENT ||
+        list != nullptr || !isResetView(view))
+    {
+        return false;
+    }
     size_t primCount = 1;
     size_t totalPathBytes = 1;
     if (openusd_stage_get_prim_path_statistics(
@@ -4142,7 +4153,8 @@ int main(int argc, char** argv)
           OPENUSD_CAPABILITY_SESSION_OVERLAY |
           OPENUSD_CAPABILITY_PHYSICS_BAKE |
           OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
-          OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F)) !=
+          OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F |
+          OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION)) !=
             (OPENUSD_CAPABILITY_STRING_LIST_V2 |
              OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
              OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES |
@@ -4165,7 +4177,8 @@ int main(int argc, char** argv)
              OPENUSD_CAPABILITY_SESSION_OVERLAY |
              OPENUSD_CAPABILITY_PHYSICS_BAKE |
              OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
-             OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F))
+             OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F |
+             OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION))
     {
         std::cerr << "Unexpected ABI version.\n";
         return 3;
