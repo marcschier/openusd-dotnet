@@ -611,7 +611,7 @@ public sealed class NativeAbiVersionTests
         await Assert.That(Regex.Count(
             managed,
             @"\bThrowIfFailedAndReleaseStringList\(",
-            RegexOptions.CultureInvariant)).IsEqualTo(13);
+            RegexOptions.CultureInvariant)).IsEqualTo(14);
         await Assert.That(Regex.Count(
             managed,
             @"\bThrowIfFailedAndReleasePayloadArcList\(",
