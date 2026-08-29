@@ -317,6 +317,305 @@ public sealed class SilkMaterialCommandTests
             .Throws<InvalidDataException>();
     }
 
+    [Test]
+    public async Task MissingTextureFallbackIsDiagnosedAndExplicitlyRetryable()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Missing",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [1f, 0f, 1f, 1f],
+                    Asset: "missing.png",
+                    UvPrimvar: "st"),
+            ]));
+        int attempts = 0;
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) =>
+            {
+                attempts++;
+                if (attempts == 1)
+                {
+                    throw new FileNotFoundException("Texture is absent.", "missing.png");
+                }
+                return new SilkDecodedImage(1, 1, [10, 20, 30, 255]);
+            });
+        using var commands = new TextureCommandList();
+
+        resources.UploadMaterialTexture(
+            commands,
+            material,
+            SilkMaterialParameter.DiffuseColor);
+        resources.UploadMaterialTexture(
+            commands,
+            material,
+            SilkMaterialParameter.DiffuseColor);
+
+        await Assert.That(attempts).IsEqualTo(1);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .Contains(SilkRenderDiagnosticCodes.TextureAssetNotFound);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .Contains(SilkRenderDiagnosticCodes.TextureFallbackUsed);
+
+        resources.RetryFailedTextures();
+        resources.UploadMaterialTexture(
+            commands,
+            material,
+            SilkMaterialParameter.DiffuseColor);
+
+        await Assert.That(attempts).IsEqualTo(2);
+        await Assert.That(resources.Diagnostics.Entries).IsEmpty();
+        await Assert.That(commands.UploadCount).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task CorruptTextureProducesDecodeDiagnostic()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Corrupt",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "corrupt.png",
+                    UvPrimvar: "st"),
+            ]));
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => throw new InvalidDataException("Invalid PNG stream."));
+        using var commands = new TextureCommandList();
+
+        resources.UploadMaterialTexture(
+            commands,
+            material,
+            SilkMaterialParameter.DiffuseColor);
+
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .Contains(SilkRenderDiagnosticCodes.TextureDecodeFailed);
+    }
+
+    [Test]
+    public async Task UnresolvedAndUnsupportedMaterialsUseDistinctDiagnostics()
+    {
+        using var device = new TextureGraphicsDevice();
+
+        var unresolvedScene = new SilkSceneState();
+        using (var unresolvedResources = new SilkSceneGpuResources(device))
+        {
+            byte[] mesh = CreateMeshUpsert(
+                "/World/Unresolved",
+                "/World/Materials/Missing");
+            SilkSceneDelta delta = unresolvedScene.Apply(mesh, 1, 1);
+            unresolvedResources.Apply(unresolvedScene, delta);
+            _ = unresolvedResources.RequireSurfaceBuffer(
+                unresolvedScene,
+                unresolvedScene.Meshes.Values.Single(),
+                RenderHeadlight.Deterministic);
+
+            await Assert.That(unresolvedResources.Diagnostics.Entries.Select(
+                    entry => entry.Code))
+                .Contains(SilkRenderDiagnosticCodes.MaterialUnresolved);
+
+            byte[] remove = CreateMeshRemove("/World/Unresolved");
+            SilkSceneDelta removal = unresolvedScene.Apply(remove, 1, 2);
+            unresolvedResources.Apply(unresolvedScene, removal);
+            await Assert.That(unresolvedResources.Diagnostics.Entries.Select(
+                    entry => entry.Code))
+                .DoesNotContain(SilkRenderDiagnosticCodes.MaterialUnresolved);
+        }
+
+        var unsupportedScene = new SilkSceneState();
+        using var unsupportedResources = new SilkSceneGpuResources(device);
+        byte[] material = CreateMaterialUpsert(
+            "/World/Materials/Exotic",
+            SilkSurfaceKind.Unsupported,
+            scalars: [],
+            textures: []);
+        byte[] unsupportedMesh = CreateMeshUpsert(
+            "/World/Unsupported",
+            "/World/Materials/Exotic");
+        byte[] page = [.. material, .. unsupportedMesh];
+        SilkSceneDelta unsupportedDelta = unsupportedScene.Apply(page, 2, 1);
+        unsupportedResources.Apply(unsupportedScene, unsupportedDelta);
+        _ = unsupportedResources.RequireSurfaceBuffer(
+            unsupportedScene,
+            unsupportedScene.Meshes.Values.Single(),
+            RenderHeadlight.Deterministic);
+
+        await Assert.That(unsupportedResources.Diagnostics.Entries.Select(
+                entry => entry.Code))
+            .Contains(SilkRenderDiagnosticCodes.MaterialUnsupported);
+        await Assert.That(unsupportedResources.Meshes.Count).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task MaterialDiagnosticsAreDeduplicatedAndBounded()
+    {
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) => throw new FileNotFoundException("Missing.", asset));
+        using var commands = new TextureCommandList();
+
+        for (int index = 0; index < 130; index++)
+        {
+            SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+                $"/World/Materials/Missing{index}",
+                SilkSurfaceKind.PreviewSurface,
+                scalars: [],
+                textures:
+                [
+                    new TextureSpec(
+                        SilkMaterialParameter.DiffuseColor,
+                        SilkTextureWrap.Repeat,
+                        SilkTextureWrap.Repeat,
+                        SilkColorSpace.Srgb,
+                        ComponentCount: 3,
+                        Scale: [1f, 1f, 1f, 1f],
+                        Bias: [0f, 0f, 0f, 0f],
+                        Fallback: [1f, 0f, 1f, 1f],
+                        Asset: $"missing{index}.png",
+                        UvPrimvar: "st"),
+                ]));
+            resources.UploadMaterialTexture(
+                commands,
+                material,
+                SilkMaterialParameter.DiffuseColor);
+        }
+
+        await Assert.That(resources.Diagnostics.Entries.Count).IsEqualTo(128);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .Contains(SilkRenderDiagnosticCodes.CapacityExceeded);
+    }
+
+    [Test]
+    public async Task SharedMissingAssetPreservesEachMaterialsFallback()
+    {
+        SilkMaterialData red = CreateMissingMaterial(
+            "/World/Materials/Red",
+            [1f, 0f, 0f, 1f]);
+        SilkMaterialData blue = CreateMissingMaterial(
+            "/World/Materials/Blue",
+            [0f, 0f, 1f, 1f]);
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) => throw new FileNotFoundException("Missing.", asset));
+        using var commands = new TextureCommandList();
+
+        resources.UploadMaterialTexture(
+            commands,
+            red,
+            SilkMaterialParameter.DiffuseColor);
+        resources.UploadMaterialTexture(
+            commands,
+            blue,
+            SilkMaterialParameter.DiffuseColor);
+
+        await Assert.That(commands.Uploads[0])
+            .IsEquivalentTo(new byte[] { 255, 0, 0, 255 });
+        await Assert.That(commands.Uploads[1])
+            .IsEquivalentTo(new byte[] { 0, 0, 255, 255 });
+    }
+
+    [Test]
+    public async Task RemovingLastMaterialUserPrunesTextureFailureDiagnostics()
+    {
+        const string materialPath = "/World/Materials/Missing";
+        byte[] material = CreateMaterialUpsert(
+            materialPath,
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [1f, 0f, 1f, 1f],
+                    Asset: "missing.png",
+                    UvPrimvar: "st"),
+            ]);
+        byte[] mesh = CreateMeshUpsert("/World/Mesh", materialPath);
+        var scene = new SilkSceneState();
+        SilkSceneDelta first = scene.Apply([.. material, .. mesh], 2, 1);
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) => throw new FileNotFoundException("Missing.", asset));
+        using var commands = new TextureCommandList();
+        resources.Apply(scene, first);
+        resources.UploadMaterialTexture(
+            commands,
+            scene.Materials[materialPath],
+            SilkMaterialParameter.DiffuseColor);
+
+        SilkSceneDelta removal = scene.Apply(
+            CreateMeshRemove("/World/Mesh"),
+            1,
+            2);
+        resources.Apply(scene, removal);
+
+        await Assert.That(resources.Diagnostics.Entries).IsEmpty();
+    }
+
+    private static SilkMaterialData CreateMissingMaterial(
+        string path,
+        float[] fallback) =>
+        CopyMaterial(CreateMaterialUpsert(
+            path,
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: fallback,
+                    Asset: "shared-missing.png",
+                    UvPrimvar: "st"),
+            ]));
+
+    private static SilkMaterialData CopyMaterial(byte[] command)
+    {
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(
+            command,
+            1,
+            SilkCommandParser.PageAbiVersion);
+        _ = commands.MoveNext();
+        return SilkMaterialData.CopyFrom(commands.Current.AsMaterialUpsert());
+    }
+
     private sealed record TextureSpec(
         SilkMaterialParameter Parameter,
         SilkTextureWrap WrapS,
@@ -403,6 +702,92 @@ public sealed class SilkMaterialCommandTests
         return CreateCommand(5, payload);
     }
 
+    private static byte[] CreateMeshUpsert(string pathValue, string materialPath)
+    {
+        byte[] path = Encoding.UTF8.GetBytes(pathValue);
+        byte[] material = Encoding.UTF8.GetBytes(materialPath);
+        float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
+        uint[] indices = [0, 1, 2];
+        int size = 224 +
+            path.Length +
+            (points.Length * sizeof(float)) +
+            (indices.Length * sizeof(uint)) +
+            sizeof(uint) +
+            material.Length;
+        var bytes = new byte[size];
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes,
+            (uint)SilkCommandType.MeshUpsert);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            bytes.AsSpan(8),
+            SilkWireFormat.ComputeStableHash(pathValue));
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), 7);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(28),
+            (uint)SilkTopologyKind.TriangleList);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(44),
+            (uint)SilkMeshCullStyle.BackUnlessDoubleSided);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), (uint)path.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), 3);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56), 3);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(60), 1);
+        for (int i = 0; i < 4; i++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(64 + (i * 4)), 1);
+        }
+        for (int i = 0; i < 16; i++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(
+                bytes.AsSpan(80 + (i * 8)),
+                i % 5 == 0 ? 1 : 0);
+        }
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            bytes.AsSpan(208),
+            SilkWireFormat.ComputeStableHash(materialPath));
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(216),
+            (uint)material.Length);
+        path.CopyTo(bytes, 224);
+        int pointsOffset = 224 + path.Length;
+        for (int i = 0; i < points.Length; i++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(pointsOffset + (i * sizeof(float))),
+                points[i]);
+        }
+        int indicesOffset = pointsOffset + (points.Length * sizeof(float));
+        for (int i = 0; i < indices.Length; i++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(indicesOffset + (i * sizeof(uint))),
+                indices[i]);
+        }
+        int triangleOffset = indicesOffset + (indices.Length * sizeof(uint));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(triangleOffset), 0);
+        material.CopyTo(bytes, triangleOffset + sizeof(uint));
+        return bytes;
+    }
+
+    private static byte[] CreateMeshRemove(string pathValue)
+    {
+        byte[] path = Encoding.UTF8.GetBytes(pathValue);
+        var bytes = new byte[24 + path.Length];
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes,
+            (uint)SilkCommandType.MeshRemove);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            bytes.AsSpan(8),
+            SilkWireFormat.ComputeStableHash(pathValue));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)path.Length);
+        path.CopyTo(bytes, 24);
+        return bytes;
+    }
+
     private static byte[] CreateCommand(uint type, List<byte> payload)
     {
         byte[] command = new byte[8 + payload.Count];
@@ -422,5 +807,186 @@ public sealed class SilkMaterialCommandTests
             hash *= 1099511628211UL;
         }
         return hash;
+    }
+
+    private sealed class TextureGraphicsDevice : ISilkGraphicsDevice
+    {
+        public SilkGraphicsBackend Backend => SilkGraphicsBackend.D3D12;
+
+        public SilkGraphicsCapabilities Capabilities => new(
+            "Texture diagnostics test device",
+            "test",
+            SupportsCompute: false,
+            IsSoftware: true);
+
+        public ISilkGraphicsTexture CreateTexture2D(
+            uint width,
+            uint height,
+            SilkTextureFormat format = SilkTextureFormat.Rgba8Unorm) =>
+            new Texture(width, height, format);
+
+        public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor) =>
+            new Texture(descriptor.Width, descriptor.Height, descriptor.Format);
+
+        public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage) =>
+            new TextureGraphicsBuffer(size, usage);
+
+        public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsShaderModule CreateShaderModule(SilkShaderModuleDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsBindingLayout CreateBindingLayout(SilkBindingLayoutDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsShaderProgram CreateShaderProgram(SilkShaderProgramDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsPipeline CreateGraphicsPipeline(SilkGraphicsPipelineDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkComputeBindingLayout CreateComputeBindingLayout(
+            SilkComputeBindingLayoutDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkComputeShaderProgram CreateComputeShaderProgram(
+            SilkComputeShaderProgramDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkComputePipeline CreateComputePipeline(SilkComputePipelineDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsCommandList CreateCommandList() =>
+            throw new NotSupportedException();
+
+        public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList) =>
+            throw new NotSupportedException();
+
+        public void WaitIdle()
+        {
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class Texture(
+        uint width,
+        uint height,
+        SilkTextureFormat format) : ISilkGraphicsTexture
+    {
+        public uint Width { get; } = width;
+
+        public uint Height { get; } = height;
+
+        public SilkTextureFormat Format { get; } = format;
+
+        public SilkTextureUsage Usage => SilkTextureUsage.Sampled;
+
+        public void ReadbackForTesting(Span<byte> destination) =>
+            throw new NotSupportedException();
+
+        public void ReadbackForTesting(Span<float> destination) =>
+            throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class TextureGraphicsBuffer(nuint size, SilkBufferUsage usage)
+        : ISilkGraphicsBuffer
+    {
+        private readonly byte[] _bytes = new byte[checked((int)size)];
+
+        public nuint Size => size;
+
+        public SilkBufferUsage Usage => usage;
+
+        public void Write(ReadOnlySpan<byte> data, nuint offset = 0) =>
+            data.CopyTo(_bytes.AsSpan(checked((int)offset)));
+
+        public void ReadbackForTesting(Span<byte> destination) =>
+            _bytes.AsSpan(0, destination.Length).CopyTo(destination);
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class TextureCommandList : ISilkGraphicsCommandList
+    {
+        internal List<byte[]> Uploads { get; } = [];
+
+        internal int UploadCount => Uploads.Count;
+
+        public void UploadTexture(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source) =>
+            Uploads.Add(source.ToArray());
+
+        public void ClearColor(ISilkGraphicsTexture texture, SilkColor color) =>
+            throw new NotSupportedException();
+
+        public void ClearDepth(ISilkGraphicsTexture texture, float depth) =>
+            throw new NotSupportedException();
+
+        public void BeginRendering(SilkRenderingDescriptor descriptor) =>
+            throw new NotSupportedException();
+
+        public void SetGraphicsPipeline(ISilkGraphicsPipeline pipeline) =>
+            throw new NotSupportedException();
+
+        public void SetViewport(SilkViewport viewport) =>
+            throw new NotSupportedException();
+
+        public void SetScissor(SilkScissor scissor) =>
+            throw new NotSupportedException();
+
+        public void SetVertexBuffer(ISilkGraphicsBuffer buffer) =>
+            throw new NotSupportedException();
+
+        public void SetIndexBuffer(ISilkGraphicsBuffer buffer) =>
+            throw new NotSupportedException();
+
+        public void SetUniformBuffer(uint setIndex, uint binding, ISilkGraphicsBuffer buffer) =>
+            throw new NotSupportedException();
+
+        public void SetTexture(uint setIndex, uint binding, ISilkGraphicsTexture texture) =>
+            throw new NotSupportedException();
+
+        public void SetSampler(uint setIndex, uint binding, ISilkGraphicsSampler sampler) =>
+            throw new NotSupportedException();
+
+        public void DrawIndexed(uint indexCount) =>
+            throw new NotSupportedException();
+
+        public void DrawIndexedInstanced(uint indexCount, uint instanceCount) =>
+            throw new NotSupportedException();
+
+        public void EndRendering() =>
+            throw new NotSupportedException();
+
+        public void SetComputePipeline(ISilkComputePipeline pipeline) =>
+            throw new NotSupportedException();
+
+        public void SetStorageBuffer(uint setIndex, uint binding, ISilkGraphicsBuffer buffer) =>
+            throw new NotSupportedException();
+
+        public void SetComputeUniformBuffer(
+            uint setIndex,
+            uint binding,
+            ISilkGraphicsBuffer buffer) =>
+            throw new NotSupportedException();
+
+        public void Dispatch(uint elementCount) =>
+            throw new NotSupportedException();
+
+        public void BufferBarrier(ISilkGraphicsBuffer buffer) =>
+            throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
     }
 }

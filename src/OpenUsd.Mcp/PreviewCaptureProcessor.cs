@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using OpenUsd.Rendering;
+
 namespace OpenUsd.Mcp;
 
 public interface IPreviewCaptureProcessor
@@ -24,6 +26,11 @@ public interface IPreviewFrameSourceFactory
 public interface IPreviewFrameSource : IDisposable
 {
     ImageRgba8 Capture(CaptureView view, int width, int height);
+}
+
+internal interface IPreviewDiagnosticSource
+{
+    RenderDiagnosticsState Diagnostics { get; }
 }
 
 public sealed class PreviewCaptureProcessor :
@@ -111,7 +118,10 @@ public sealed class PreviewCaptureProcessor :
             request.Kind,
             request.Width,
             request.Height,
-            artifacts);
+            artifacts,
+            frameSource is IPreviewDiagnosticSource diagnosticSource
+                ? diagnosticSource.Diagnostics.Entries
+                : []);
     }
 
     internal void Reset()

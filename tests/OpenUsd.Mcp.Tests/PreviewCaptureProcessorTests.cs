@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using OpenUsd.Rendering;
+
 namespace OpenUsd.Mcp.Tests;
 
 public sealed class PreviewCaptureProcessorTests
@@ -25,6 +27,25 @@ public sealed class PreviewCaptureProcessorTests
         await Assert.That(decoded.Pixels.ToArray())
             .IsEquivalentTo(new byte[] { 1, 2, 3, 255 });
         await Assert.That(source.Disposed).IsFalse();
+    }
+
+    [Test]
+    public async Task CapturePublishesBoundedRendererDiagnostics()
+    {
+        var diagnostic = new RenderDiagnostic(
+            RenderDiagnosticSeverity.Warning,
+            "OPENUSD_SILK_TEXTURE_ASSET_NOT_FOUND",
+            "A texture asset was not found.");
+        var source = new RecordingFrameSource(
+            diagnostics: new RenderDiagnosticsState([diagnostic]));
+        using var processor = new PreviewCaptureProcessor(
+            new RecordingFrameSourceFactory(source),
+            new ArtifactResourceStore());
+
+        PreviewCaptureResult result = processor.Process(
+            new PreviewCaptureRequest("diagnostics", 1, 1));
+
+        await Assert.That(result.Diagnostics).IsEquivalentTo([diagnostic]);
     }
 
     [Test]
@@ -305,14 +326,18 @@ public sealed class PreviewCaptureProcessorTests
 
     private sealed class RecordingFrameSource(
         Action<int>? captureCallback = null,
-        int disposeFailuresRemaining = 0)
-        : IPreviewFrameSource
+        int disposeFailuresRemaining = 0,
+        RenderDiagnosticsState? diagnostics = null)
+        : IPreviewFrameSource, IPreviewDiagnosticSource
     {
         internal int CaptureCount { get; private set; }
 
         internal int DisposeAttemptCount { get; private set; }
 
         internal bool Disposed { get; private set; }
+
+        public RenderDiagnosticsState Diagnostics { get; } =
+            diagnostics ?? RenderDiagnosticsState.Empty;
 
         public ImageRgba8 Capture(CaptureView view, int width, int height)
         {

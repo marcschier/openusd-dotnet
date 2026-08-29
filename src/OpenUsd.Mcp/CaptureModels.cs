@@ -107,7 +107,8 @@ public sealed record PreviewCaptureResult
         CaptureKind kind,
         int width,
         int height,
-        IReadOnlyList<ArtifactResourceDescriptor> artifacts)
+        IReadOnlyList<ArtifactResourceDescriptor> artifacts,
+        IReadOnlyList<RenderDiagnostic>? diagnostics = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
@@ -118,6 +119,7 @@ public sealed record PreviewCaptureResult
         Width = width;
         Height = height;
         Artifacts = Array.AsReadOnly(artifacts.ToArray());
+        Diagnostics = Array.AsReadOnly((diagnostics ?? []).ToArray());
     }
 
     public string RequestId { get; }
@@ -129,4 +131,6 @@ public sealed record PreviewCaptureResult
     public int Height { get; }
 
     public IReadOnlyList<ArtifactResourceDescriptor> Artifacts { get; }
+
+    public IReadOnlyList<RenderDiagnostic> Diagnostics { get; }
 }

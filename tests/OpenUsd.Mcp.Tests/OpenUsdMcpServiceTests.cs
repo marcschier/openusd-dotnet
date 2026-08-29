@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using Microsoft.Extensions.DependencyInjection;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp.Tests;
 
@@ -379,7 +380,7 @@ public sealed class OpenUsdMcpServiceTests
         File.WriteAllText(
             Path.Combine(files.OutputRoot, session.SessionId, "overlay.usda"),
             "#usda 1.0\n");
-        _ = await service.RenderPreviewAsync(
+        McpCaptureResultDto capture = await service.RenderPreviewAsync(
             new RenderPreviewRequest
             {
                 SessionId = session.SessionId,
@@ -391,6 +392,9 @@ public sealed class OpenUsdMcpServiceTests
                 Views = [new CaptureViewDto { Name = "hero" }],
             },
             default);
+        await Assert.That(capture.Diagnostics.Count).IsEqualTo(1);
+        await Assert.That(capture.Diagnostics[0].Code)
+            .IsEqualTo("OPENUSD_SILK_TEXTURE_ASSET_NOT_FOUND");
         McpEditResultDto edit = await service.ApplyEditsAsync(
             new ApplyEditsRequest
             {
@@ -564,7 +568,13 @@ public sealed class OpenUsdMcpServiceTests
                 request.Kind,
                 request.Width,
                 request.Height,
-                [artifact]);
+                [artifact],
+                [
+                    new RenderDiagnostic(
+                        RenderDiagnosticSeverity.Warning,
+                        "OPENUSD_SILK_TEXTURE_ASSET_NOT_FOUND",
+                        "A texture asset was not found."),
+                ]);
         }
 
         public void Reset()

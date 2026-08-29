@@ -1489,16 +1489,22 @@ public readonly record struct SilkSceneDelta(
 /// </summary>
 public sealed class SilkSceneGpuResources : IDisposable
 {
+    private const int DiagnosticCapacity = 128;
+
     private readonly ISilkGraphicsDevice _device;
+    private readonly Func<string, bool, SilkDecodedImage> _imageDecoder;
     private readonly Dictionary<ulong, SilkMeshGpuResource> _meshes = [];
     private readonly Dictionary<SilkMeshGpuGeometryKey, List<SilkMeshGpuGeometryResource>> _geometries =
         [];
     private readonly Dictionary<string, SurfaceBuffer> _surfaceBuffers =
         new(StringComparer.Ordinal);
     private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _textures = [];
+    private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _failedTextures = [];
     private readonly Dictionary<string, TextureCacheEntry> _volumeTextures =
         new(StringComparer.Ordinal);
     private readonly Dictionary<SilkSamplerDescriptor, ISilkGraphicsSampler> _samplers = [];
+    private readonly Dictionary<string, RenderDiagnostic> _diagnostics =
+        new(StringComparer.Ordinal);
     private ISilkGraphicsBuffer? _defaultSurfaceBuffer;
     private ISilkGraphicsBuffer? _frameBuffer;
     private readonly byte[] _frameBytes = new byte[SilkFrameUniformWriter.ByteSize];
@@ -1521,20 +1527,49 @@ public sealed class SilkSceneGpuResources : IDisposable
     private readonly record struct VolumeTextureInfo(uint Width, uint Height, uint Depth);
 
     private readonly record struct TextureCacheKey(
+        string MaterialPath,
         string Asset,
         SilkColorSpace ColorSpace,
         SilkMaterialParameter Parameter);
 
     /// <summary>Initializes GPU resource retention for one backend device.</summary>
     public SilkSceneGpuResources(ISilkGraphicsDevice device)
+        : this(device, SilkNativeImageDecoder.DecodeRgba8)
+    {
+    }
+
+    internal SilkSceneGpuResources(
+        ISilkGraphicsDevice device,
+        Func<string, bool, SilkDecodedImage> imageDecoder)
     {
         ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(imageDecoder);
         _device = device;
+        _imageDecoder = imageDecoder;
         SilkManagedDiagnostics.GpuSceneCreated();
     }
 
     /// <summary>Gets uploaded mesh resources by explicit Hydra prim ID.</summary>
     public IReadOnlyDictionary<ulong, SilkMeshGpuResource> Meshes => _meshes;
+
+    /// <summary>Gets a bounded snapshot of material and texture degradation diagnostics.</summary>
+    public RenderDiagnosticsState Diagnostics =>
+        _diagnostics.Count == 0
+            ? RenderDiagnosticsState.Empty
+            : new RenderDiagnosticsState(
+                _diagnostics
+                    .OrderBy(static pair => pair.Key, StringComparer.Ordinal)
+                    .Select(static pair => pair.Value));
+
+    /// <summary>
+    /// Discards failed texture fallbacks so the next render retries assets that may have changed.
+    /// </summary>
+    public void RetryFailedTextures()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ClearFailedTextureCache();
+        RemoveTextureDiagnostics();
+    }
 
     internal Dictionary<ulong, SilkMeshGpuResource>.ValueCollection MeshValues =>
         _meshes.Values;
@@ -1650,6 +1685,13 @@ public sealed class SilkSceneGpuResources : IDisposable
         if (delta.MaterialChanges != 0)
         {
             ClearTextureCache();
+            RemoveMaterialDiagnostics();
+            RemoveTextureDiagnostics();
+        }
+        else if (delta.MeshUpserts != 0 || delta.MeshRemovals != 0)
+        {
+            RemoveMaterialResolutionDiagnostics();
+            PruneInactiveTextureFailures(scene);
         }
         if (changed)
         {
@@ -1755,6 +1797,26 @@ public sealed class SilkSceneGpuResources : IDisposable
 
         if (material is not { IsSupported: true })
         {
+            if (!string.IsNullOrEmpty(path))
+            {
+                if (material is null)
+                {
+                    AddDiagnostic(
+                        SilkRenderDiagnosticCodes.MaterialUnresolved,
+                        path,
+                        RenderDiagnosticSeverity.Warning,
+                        $"Mesh material '{path}' is not present in retained scene state; default shading was used.");
+                }
+                else
+                {
+                    AddDiagnostic(
+                        SilkRenderDiagnosticCodes.MaterialUnsupported,
+                        path,
+                        RenderDiagnosticSeverity.Warning,
+                        $"Material '{path}' uses unsupported surface kind " +
+                        $"{material.SurfaceKind}; default shading was used.");
+                }
+            }
             return _defaultSurfaceBuffer ??= CreateSurfaceBuffer(null, light);
         }
 
@@ -1824,7 +1886,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         SilkMaterialTexture texture = material.GetTexture(parameter) ??
             throw new InvalidDataException(
                 $"Material '{material.Path}' has no texture for {parameter}.");
-        TextureCacheEntry entry = RequireTexture(texture);
+        TextureCacheEntry entry = RequireTexture(material.Path, texture);
         if (!entry.Uploaded)
         {
             commands.UploadTexture(entry.Texture, entry.Pixels);
@@ -1901,7 +1963,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         SilkMaterialTexture texture = material.GetTexture(parameter) ??
             throw new InvalidDataException(
                 $"Material '{material.Path}' has no texture for {parameter}.");
-        TextureCacheEntry entry = RequireTexture(texture);
+        TextureCacheEntry entry = RequireTexture(material.Path, texture);
         if (!entry.Uploaded)
         {
             commands.UploadTexture(entry.Texture, entry.Pixels);
@@ -1910,11 +1972,21 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
     }
 
-    private TextureCacheEntry RequireTexture(SilkMaterialTexture texture)
+    private TextureCacheEntry RequireTexture(
+        string materialPath,
+        SilkMaterialTexture texture)
     {
         SilkColorSpace effectiveColorSpace = GetEffectiveColorSpace(texture);
-        var key = new TextureCacheKey(texture.Asset, effectiveColorSpace, texture.Parameter);
+        var key = new TextureCacheKey(
+            materialPath,
+            texture.Asset,
+            effectiveColorSpace,
+            texture.Parameter);
         if (_textures.TryGetValue(key, out TextureCacheEntry? entry))
+        {
+            return entry;
+        }
+        if (_failedTextures.TryGetValue(key, out entry))
         {
             return entry;
         }
@@ -1922,23 +1994,77 @@ public sealed class SilkSceneGpuResources : IDisposable
         SilkDecodedImage image;
         try
         {
-            image = SilkNativeImageDecoder.DecodeRgba8(
+            image = _imageDecoder(
                 texture.Asset,
                 effectiveColorSpace == SilkColorSpace.Srgb);
             FlipRows(image.Pixels, image.Width, image.Height);
             ApplyScaleBias(image.Pixels, texture);
         }
-        catch
+        catch (FileNotFoundException exception)
         {
-            image = CreateFallbackImage(texture);
+            return CreateFailedTexture(
+                key,
+                materialPath,
+                texture,
+                SilkRenderDiagnosticCodes.TextureAssetNotFound,
+                exception.Message);
         }
+        catch (DirectoryNotFoundException exception)
+        {
+            return CreateFailedTexture(
+                key,
+                materialPath,
+                texture,
+                SilkRenderDiagnosticCodes.TextureAssetNotFound,
+                exception.Message);
+        }
+        catch (InvalidDataException exception)
+        {
+            return CreateFailedTexture(
+                key,
+                materialPath,
+                texture,
+                SilkRenderDiagnosticCodes.TextureDecodeFailed,
+                exception.Message);
+        }
+        return CreateTextureEntry(key, image, _textures);
+    }
+
+    private TextureCacheEntry CreateFailedTexture(
+        TextureCacheKey key,
+        string materialPath,
+        SilkMaterialTexture texture,
+        string code,
+        string detail)
+    {
+        AddDiagnostic(
+            code,
+            string.Concat(materialPath, "\0", texture.Asset),
+            RenderDiagnosticSeverity.Warning,
+            $"Material '{materialPath}' texture '{texture.Asset}' failed: {detail}");
+        AddDiagnostic(
+            SilkRenderDiagnosticCodes.TextureFallbackUsed,
+            string.Concat(materialPath, "\0", texture.Asset, "\0", texture.Parameter),
+            RenderDiagnosticSeverity.Warning,
+            $"Material '{materialPath}' used the authored fallback for {texture.Parameter} texture '{texture.Asset}'.");
+        return CreateTextureEntry(
+            key,
+            CreateFallbackImage(texture),
+            _failedTextures);
+    }
+
+    private TextureCacheEntry CreateTextureEntry(
+        TextureCacheKey key,
+        SilkDecodedImage image,
+        Dictionary<TextureCacheKey, TextureCacheEntry> cache)
+    {
         ISilkGraphicsTexture? gpuTexture = null;
         try
         {
             gpuTexture = _device.CreateTexture2D(
                 SilkTextureDescriptor.SampledRgba8(image.Width, image.Height));
-            entry = new TextureCacheEntry(gpuTexture, image.Pixels);
-            _textures.Add(key, entry);
+            var entry = new TextureCacheEntry(gpuTexture, image.Pixels);
+            cache.Add(key, entry);
             return entry;
         }
         catch
@@ -2093,11 +2219,130 @@ public sealed class SilkSceneGpuResources : IDisposable
             entry.Texture.Dispose();
         }
         _textures.Clear();
+        ClearFailedTextureCache();
         foreach (TextureCacheEntry entry in _volumeTextures.Values)
         {
             entry.Texture.Dispose();
         }
         _volumeTextures.Clear();
+    }
+
+    private void ClearFailedTextureCache()
+    {
+        foreach (TextureCacheEntry entry in _failedTextures.Values)
+        {
+            entry.Texture.Dispose();
+        }
+        _failedTextures.Clear();
+    }
+
+    private void PruneInactiveTextureFailures(SilkSceneState scene)
+    {
+        if (_failedTextures.Count == 0)
+        {
+            return;
+        }
+        if (_diagnostics.Values.Any(static diagnostic =>
+                diagnostic.Code == SilkRenderDiagnosticCodes.CapacityExceeded))
+        {
+            ClearFailedTextureCache();
+            RemoveTextureDiagnostics();
+            return;
+        }
+
+        var activeMaterials = new HashSet<string>(
+            scene.Meshes.Values
+                .Select(static mesh => mesh.MaterialPath)
+                .Where(static path => !string.IsNullOrEmpty(path)),
+            StringComparer.Ordinal);
+        foreach (TextureCacheKey key in _failedTextures.Keys
+            .Where(key => !activeMaterials.Contains(key.MaterialPath))
+            .ToArray())
+        {
+            TextureCacheEntry entry = _failedTextures[key];
+            _failedTextures.Remove(key);
+            entry.Texture.Dispose();
+            RemoveTextureDiagnostics(key.MaterialPath);
+        }
+    }
+
+    private void AddDiagnostic(
+        string code,
+        string identity,
+        RenderDiagnosticSeverity severity,
+        string message)
+    {
+        string key = string.Concat(code, "\0", identity);
+        if (_diagnostics.ContainsKey(key))
+        {
+            return;
+        }
+        if (_diagnostics.Count < DiagnosticCapacity - 1)
+        {
+            _diagnostics.Add(key, new RenderDiagnostic(severity, code, message));
+            return;
+        }
+
+        const string capacityKey = SilkRenderDiagnosticCodes.CapacityExceeded;
+        if (!_diagnostics.ContainsKey(capacityKey))
+        {
+            _diagnostics.Add(capacityKey, new RenderDiagnostic(
+                RenderDiagnosticSeverity.Warning,
+                capacityKey,
+                "Additional hdSilk material diagnostics were omitted."));
+        }
+    }
+
+    private void RemoveTextureDiagnostics()
+    {
+        RemoveDiagnostics(static code =>
+            code is SilkRenderDiagnosticCodes.TextureAssetNotFound or
+                SilkRenderDiagnosticCodes.TextureDecodeFailed or
+                SilkRenderDiagnosticCodes.TextureFallbackUsed or
+                SilkRenderDiagnosticCodes.CapacityExceeded);
+    }
+
+    private void RemoveMaterialDiagnostics()
+    {
+        RemoveDiagnostics(static code =>
+            code is SilkRenderDiagnosticCodes.MaterialUnresolved or
+                SilkRenderDiagnosticCodes.MaterialUnsupported or
+                SilkRenderDiagnosticCodes.CapacityExceeded);
+    }
+
+    private void RemoveMaterialResolutionDiagnostics()
+    {
+        RemoveDiagnostics(static code =>
+            code is SilkRenderDiagnosticCodes.MaterialUnresolved or
+                SilkRenderDiagnosticCodes.MaterialUnsupported);
+    }
+
+    private void RemoveTextureDiagnostics(string materialPath)
+    {
+        foreach (string key in _diagnostics
+            .Where(pair =>
+                pair.Value.Code is SilkRenderDiagnosticCodes.TextureAssetNotFound or
+                    SilkRenderDiagnosticCodes.TextureDecodeFailed or
+                    SilkRenderDiagnosticCodes.TextureFallbackUsed &&
+                pair.Key.StartsWith(
+                    string.Concat(pair.Value.Code, "\0", materialPath, "\0"),
+                    StringComparison.Ordinal))
+            .Select(static pair => pair.Key)
+            .ToArray())
+        {
+            _diagnostics.Remove(key);
+        }
+    }
+
+    private void RemoveDiagnostics(Func<string, bool> predicate)
+    {
+        foreach (string key in _diagnostics
+            .Where(pair => predicate(pair.Value.Code))
+            .Select(static pair => pair.Key)
+            .ToArray())
+        {
+            _diagnostics.Remove(key);
+        }
     }
 
     /// <inheritdoc/>

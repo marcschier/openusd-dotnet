@@ -308,6 +308,7 @@ OpenUsd.Rendering.Silk.SilkDeformationResult.VertexCountMismatch = 3 -> OpenUsd.
 OpenUsd.Rendering.Silk.SilkFrameCapture
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.CommandCount.get -> uint
+OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Diagnostics.get -> OpenUsd.Rendering.RenderDiagnosticsState!
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.Height.get -> int
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.PageRevision.get -> ulong
 OpenUsd.Rendering.Silk.SilkFrameCaptureResult.RenderResult.get -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
@@ -911,6 +912,13 @@ OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator.CompileAsync(OpenUsd
 OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator.Register(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key, OpenUsd.Rendering.Silk.SilkShaderFeatures features) -> void
 OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator.RegisterGenerated(OpenUsd.Rendering.Silk.SilkMaterialShaderKey! key, System.ReadOnlyMemory<byte> fragmentCode) -> void
 OpenUsd.Rendering.Silk.SilkProjectedMaterialShaderGenerator.SilkProjectedMaterialShaderGenerator() -> void
+OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.CapacityExceeded = "OPENUSD_SILK_DIAGNOSTIC_CAPACITY_EXCEEDED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialUnresolved = "OPENUSD_SILK_MATERIAL_UNRESOLVED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialUnsupported = "OPENUSD_SILK_MATERIAL_UNSUPPORTED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureAssetNotFound = "OPENUSD_SILK_TEXTURE_ASSET_NOT_FOUND" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureDecodeFailed = "OPENUSD_SILK_TEXTURE_DECODE_FAILED" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureFallbackUsed = "OPENUSD_SILK_TEXTURE_FALLBACK_USED" -> string!
 OpenUsd.Rendering.Silk.SilkRenderingDescriptor
 OpenUsd.Rendering.Silk.SilkRenderingDescriptor.ColorAttachment.get -> OpenUsd.Rendering.Silk.ISilkGraphicsTexture!
 OpenUsd.Rendering.Silk.SilkRenderingDescriptor.ColorAttachment.init -> void
@@ -956,9 +964,11 @@ OpenUsd.Rendering.Silk.SilkSceneDelta.UpsertedMeshIds.get -> System.ReadOnlyMemo
 OpenUsd.Rendering.Silk.SilkSceneDelta.UpsertedMeshIds.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuResources
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Apply(OpenUsd.Rendering.Silk.SilkSceneState! scene, OpenUsd.Rendering.Silk.SilkSceneDelta delta) -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuResources.Diagnostics.get -> OpenUsd.Rendering.RenderDiagnosticsState!
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Meshes.get -> System.Collections.Generic.IReadOnlyDictionary<ulong, OpenUsd.Rendering.Silk.SilkMeshGpuResource!>!
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Revision.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuResources.RetryFailedTextures() -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.SilkSceneGpuResources(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Statistics.get -> OpenUsd.Rendering.Silk.SilkSceneGpuStatistics
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.UpdateUniforms(OpenUsd.Rendering.Silk.SilkFrameState! frame) -> int

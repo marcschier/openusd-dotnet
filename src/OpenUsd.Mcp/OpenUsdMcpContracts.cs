@@ -605,6 +605,17 @@ internal sealed record McpArtifactDto(
         "clients should read the URI.")]
     bool Inline);
 
+internal sealed record McpRenderDiagnosticDto(
+    [property: JsonPropertyName("severity")]
+    [property: Description("Diagnostic severity: info, warning, or error.")]
+    string Severity,
+    [property: JsonPropertyName("code")]
+    [property: Description("Stable machine-readable renderer diagnostic code.")]
+    string Code,
+    [property: JsonPropertyName("message")]
+    [property: Description("Bounded human-readable renderer degradation detail.")]
+    string Message);
+
 internal sealed record McpCaptureResultDto(
     [property: JsonPropertyName("sessionId")]
     [property: Description("Active session identifier used for this capture.")]
@@ -633,11 +644,17 @@ internal sealed record McpCaptureResultDto(
         "Ordered immutable PNG descriptors; at most 16. Tool content includes at most 16 " +
         "corresponding image or resource-link blocks.")]
     IReadOnlyList<McpArtifactDto> Artifacts,
+    [property: JsonPropertyName("diagnostics")]
+    [property: MaxLength(128)]
+    [property: Description(
+        "Current bounded hdSilk material and texture degradation diagnostics; at most 128.")]
+    IReadOnlyList<McpRenderDiagnosticDto> Diagnostics,
     [property: JsonIgnore] IReadOnlyList<ArtifactResourceDescriptor> ArtifactResources)
     : IOpenUsdMcpOutput, IOpenUsdMcpArtifactOutput
 {
     [JsonIgnore]
-    public string Summary => $"Created {Artifacts.Count} {Kind} preview artifact(s).";
+    public string Summary =>
+        $"Created {Artifacts.Count} {Kind} preview artifact(s) with {Diagnostics.Count} diagnostic(s).";
 }
 
 internal sealed record McpProposalDto(

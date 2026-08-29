@@ -109,9 +109,9 @@ public sealed class PreviewSilkFrameSourceFactory(
     }
 }
 
-internal sealed class PreviewSilkFrameSource : IPreviewFrameSource
+internal sealed class PreviewSilkFrameSource : IPreviewFrameSource, IPreviewDiagnosticSource
 {
-    private readonly Func<CaptureView, int, int, ImageRgba8> _capture;
+    private readonly Func<CaptureView, int, int, CapturedFrame> _capture;
     private IDisposable? _capturer;
     private IDisposable? _device;
     private IDisposable? _session;
@@ -133,7 +133,9 @@ internal sealed class PreviewSilkFrameSource : IPreviewFrameSource
                     RenderSettings.PresentationDefault,
                     view.TimeCode,
                     view.Camera);
-                return new ImageRgba8(result.Width, result.Height, result.Rgba.Span);
+                return new CapturedFrame(
+                    new ImageRgba8(result.Width, result.Height, result.Rgba.Span),
+                    result.Diagnostics);
             },
             capturer,
             session,
@@ -148,19 +150,34 @@ internal sealed class PreviewSilkFrameSource : IPreviewFrameSource
         IDisposable session,
         IDisposable device,
         IDisposable source)
+        : this(CreateCapture(capture), capturer, session, device, source)
     {
-        _capture = capture ?? throw new ArgumentNullException(nameof(capture));
+    }
+
+    private PreviewSilkFrameSource(
+        Func<CaptureView, int, int, CapturedFrame> capture,
+        IDisposable capturer,
+        IDisposable session,
+        IDisposable device,
+        IDisposable source)
+    {
+        _capture = capture;
         _capturer = capturer ?? throw new ArgumentNullException(nameof(capturer));
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _device = device ?? throw new ArgumentNullException(nameof(device));
         _source = source ?? throw new ArgumentNullException(nameof(source));
     }
 
+    public RenderDiagnosticsState Diagnostics { get; private set; } =
+        RenderDiagnosticsState.Empty;
+
     public ImageRgba8 Capture(CaptureView view, int width, int height)
     {
         ArgumentNullException.ThrowIfNull(view);
         ObjectDisposedException.ThrowIf(_teardownStarted, this);
-        return _capture(view, width, height);
+        CapturedFrame frame = _capture(view, width, height);
+        Diagnostics = frame.Diagnostics;
+        return frame.Image;
     }
 
     public void Dispose()
@@ -180,6 +197,18 @@ internal sealed class PreviewSilkFrameSource : IPreviewFrameSource
                 failures);
         }
     }
+
+    private static Func<CaptureView, int, int, CapturedFrame> CreateCapture(
+        Func<CaptureView, int, int, ImageRgba8> capture)
+    {
+        ArgumentNullException.ThrowIfNull(capture);
+        return (view, width, height) =>
+            new CapturedFrame(capture(view, width, height), RenderDiagnosticsState.Empty);
+    }
+
+    private sealed record CapturedFrame(
+        ImageRgba8 Image,
+        RenderDiagnosticsState Diagnostics);
 }
 
 internal static class PreviewResourceCleanup

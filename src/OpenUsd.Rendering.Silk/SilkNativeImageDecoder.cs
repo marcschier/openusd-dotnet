@@ -33,7 +33,7 @@ internal static unsafe partial class SilkNativeImageDecoder
                 ref errorBuffer);
             if (status != OpenUsdNativeStatus.BufferTooSmall)
             {
-                ThrowIfFailed(status, errorBytes, errorBuffer);
+                ThrowIfFailed(asset, status, errorBytes, errorBuffer);
             }
 
             byte[] pixels = new byte[checked((int)(info.Width * info.Height * 4))];
@@ -47,13 +47,14 @@ internal static unsafe partial class SilkNativeImageDecoder
                     pixelBytes,
                     (nuint)pixels.Length,
                     ref errorBuffer);
-                ThrowIfFailed(status, errorBytes, errorBuffer);
+                ThrowIfFailed(asset, status, errorBytes, errorBuffer);
             }
             return new SilkDecodedImage(info.Width, info.Height, pixels);
         }
     }
 
     private static void ThrowIfFailed(
+        string asset,
         OpenUsdNativeStatus status,
         ReadOnlySpan<byte> errorBytes,
         NativeErrorBuffer error)
@@ -66,6 +67,10 @@ internal static unsafe partial class SilkNativeImageDecoder
         string message = length == 0
             ? $"Native image decode failed with status {status}."
             : System.Text.Encoding.UTF8.GetString(errorBytes[..length]);
+        if (status == OpenUsdNativeStatus.NotFound)
+        {
+            throw new FileNotFoundException(message, asset);
+        }
         throw new InvalidDataException(message);
     }
 

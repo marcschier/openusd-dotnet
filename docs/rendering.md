@@ -504,10 +504,27 @@ Backends differ in what they must keep alive, and the difference is deliberate:
   layout.
 
 The checked mesh shader samples the declared UsdPreviewSurface map permutations. hdSilk decodes resolved
-texture assets through OpenUSD Hio, uploads one cached RGBA8 texture per asset/colour-space/parameter
-identity, and reuses backend samplers keyed by wrap/filter state. Texture upload is recorded before the
-rendering scope so all draw paths can bind every declared sampler/texture slot without relying on backend
-defaults; dirty material updates clear the retained texture cache rather than reusing stale assets.
+texture assets through OpenUSD Hio, uploads one cached RGBA8 texture per
+material/asset/colour-space/parameter identity, and reuses backend samplers keyed by wrap/filter state.
+Including the material identity prevents one material's scale, bias, or authored fallback from leaking
+into another material that references the same asset. Texture upload is recorded before the rendering
+scope so all draw paths can bind every declared sampler/texture slot without relying on backend defaults;
+dirty material updates clear the retained texture cache rather than reusing stale assets.
+
+`SilkSceneGpuResources.Diagnostics` returns a deterministic snapshot of at most 128 deduplicated
+material and texture warnings. Unresolved relationships and unsupported surface networks retain flat
+display-colour/default shading and report distinct stable codes. Missing files and corrupt or unsupported
+image data use the authored 1x1 texture fallback and report both the failure and fallback-use codes.
+Failed fallbacks are cached separately from successfully decoded textures, so the renderer neither retries
+I/O on every draw nor mistakes degradation for a successful load. Call `RetryFailedTextures()` after an
+asset changes to dispose only failed fallbacks and retry on the next render; material changes invalidate
+both texture caches and their stale diagnostics. `SilkFrameCaptureResult.Diagnostics` carries the same
+snapshot with a captured frame.
+
+The stable codes are `OPENUSD_SILK_MATERIAL_UNRESOLVED`,
+`OPENUSD_SILK_MATERIAL_UNSUPPORTED`, `OPENUSD_SILK_TEXTURE_ASSET_NOT_FOUND`,
+`OPENUSD_SILK_TEXTURE_DECODE_FAILED`, `OPENUSD_SILK_TEXTURE_FALLBACK_USED`, and
+`OPENUSD_SILK_DIAGNOSTIC_CAPACITY_EXCEEDED`.
 
 The documented MaterialX subset is intentionally a projection into that same data model:
 

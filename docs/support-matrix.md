@@ -163,8 +163,11 @@ draw counts, retained hdSilk command counts, uniform uploads, and cumulative ret
 bytes. ABI/package mismatches are presented as stale-runtime-package errors with remediation guidance
 instead of raw initialization exceptions.
 hdSilk now supports texture-backed `UsdPreviewSurface` map binding on all three RHIs by decoding
-resolved assets through OpenUSD Hio and uploading cached sampled RGBA8 textures. UDIM expansion and
-colour-delta parity with Storm remain outside the current support claim.
+resolved assets through OpenUSD Hio and uploading cached sampled RGBA8 textures. Missing and corrupt
+assets use authored fallbacks with bounded stable diagnostics; failed loads are cached without poisoning
+the successful cache and can be explicitly retried. Unresolved and unsupported materials likewise retain
+default shading with distinct diagnostics. UDIM expansion and colour-delta parity with Storm remain
+outside the current support claim.
 It also supports a documented MaterialX projection plus generated-source paths for graphs outside that projection:
 `ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
 driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are

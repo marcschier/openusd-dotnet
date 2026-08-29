@@ -159,6 +159,7 @@ public sealed class OpenUsdMcpToolsTests
                         linked.Sha256,
                         true),
                 ]),
+                [],
                 Array.AsReadOnly([inline, linked])),
         };
         var tools = new OpenUsdMcpTools(
@@ -513,6 +514,7 @@ internal sealed class FakeOpenUsdMcpService : IOpenUsdMcpService
                 "still",
                 1,
                 1,
+                [],
                 [],
                 []));
 

@@ -13,7 +13,8 @@ public sealed class SilkFrameCaptureResult
         byte[] rgba,
         SilkMeshRenderResult renderResult,
         ulong pageRevision,
-        uint commandCount)
+        uint commandCount,
+        RenderDiagnosticsState diagnostics)
     {
         Width = width;
         Height = height;
@@ -21,6 +22,7 @@ public sealed class SilkFrameCaptureResult
         RenderResult = renderResult;
         PageRevision = pageRevision;
         CommandCount = commandCount;
+        Diagnostics = diagnostics;
     }
 
     /// <summary>Gets the captured width in pixels.</summary>
@@ -40,6 +42,9 @@ public sealed class SilkFrameCaptureResult
 
     /// <summary>Gets the number of hdSilk commands consumed by the capture.</summary>
     public uint CommandCount { get; }
+
+    /// <summary>Gets bounded material and texture degradation diagnostics for the frame.</summary>
+    public RenderDiagnosticsState Diagnostics { get; }
 }
 
 /// <summary>
@@ -165,7 +170,16 @@ public static class SilkFrameCapture
             color,
             depth,
             CreateRenderOptions(renderSettings));
-        return ReadbackFrame(color, width, height, result, pageRevision, commandCount: 0);
+        return ReadbackFrame(
+            color,
+            width,
+            height,
+            result,
+            pageRevision,
+            commandCount: 0,
+            renderer is SilkMeshRenderer silkRenderer
+                ? silkRenderer.GpuResources.Diagnostics
+                : RenderDiagnosticsState.Empty);
     }
 
     internal static SilkFrameCaptureResult CaptureCore(
@@ -193,7 +207,14 @@ public static class SilkFrameCapture
             depth,
             CreateRenderOptions(renderSettings));
 
-        return ReadbackFrame(color, width, height, result, page.Revision, page.CommandCount);
+        return ReadbackFrame(
+            color,
+            width,
+            height,
+            result,
+            page.Revision,
+            page.CommandCount,
+            renderer.GpuResources.Diagnostics);
     }
 
     private static ISilkGraphicsTexture CreateColorTarget(
@@ -228,7 +249,8 @@ public static class SilkFrameCapture
         int height,
         SilkMeshRenderResult result,
         ulong pageRevision,
-        uint commandCount)
+        uint commandCount,
+        RenderDiagnosticsState diagnostics)
     {
         byte[] rgba = new byte[checked(width * height * 4)];
         color.ReadbackForTesting(rgba);
@@ -238,6 +260,7 @@ public static class SilkFrameCapture
             rgba,
             result,
             pageRevision,
-            commandCount);
+            commandCount,
+            diagnostics);
     }
 }

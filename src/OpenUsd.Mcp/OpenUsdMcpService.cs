@@ -916,6 +916,7 @@ internal sealed class OpenUsdMcpService(
             capture.Width,
             capture.Height,
             Array.AsReadOnly(capture.Artifacts.Select(ToArtifact).ToArray()),
+            Array.AsReadOnly(capture.Diagnostics.Select(ToDiagnostic).ToArray()),
             capture.Artifacts);
 
     private static McpArtifactDto ToArtifact(ArtifactResourceDescriptor artifact) =>
@@ -926,6 +927,19 @@ internal sealed class OpenUsdMcpService(
             artifact.ByteLength,
             artifact.Sha256,
             artifact.IsInline);
+
+    private static McpRenderDiagnosticDto ToDiagnostic(RenderDiagnostic diagnostic) =>
+        new(
+            diagnostic.Severity switch
+            {
+                RenderDiagnosticSeverity.Information => "info",
+                RenderDiagnosticSeverity.Warning => "warning",
+                RenderDiagnosticSeverity.Error => "error",
+                _ => throw new InvalidOperationException(
+                    "Unsupported renderer diagnostic severity."),
+            },
+            diagnostic.Code,
+            diagnostic.Message);
 
     private static McpProposalDto ToProposal(AnalysisProposal proposal) =>
         new(

@@ -715,7 +715,10 @@ capacity of 8, 128 process-local artifact resources, and 64 MiB total artifact-s
 Windows preview selects D3D12 WARP by default; Linux selects Vulkan; macOS selects Metal. There
 is no tool input for choosing a preview backend. Preview output uses the renderer's Reinhard
 presentation preset with a `-6` stop exposure; strict Storm/hdSilk parity captures continue to use
-identity output instead.
+identity output instead. The result's bounded `diagnostics` array reports unresolved or unsupported
+materials, missing or invalid texture assets, and authored fallback use with stable machine-readable
+codes. An empty array means the retained preview renderer reported no current material or texture
+degradation; material changes clear stale entries before the next capture.
 
 ### `analyze_scene` and proposals
 
