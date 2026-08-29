@@ -163,6 +163,21 @@ public sealed class MetalDeviceTests
 
     [Test]
     [SupportedOSPlatform("macos")]
+    public async Task UploadsMultiLevelMipChainAndPreservesBaseLevelReadbackOnMacOS()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.MultiLevelTextureUploadPreservesBaseLevelReadback(device);
+    }
+
+    [Test]
+    [SupportedOSPlatform("macos")]
     public async Task RejectsCrossDeviceTextureUploadsOnMacOS()
     {
         if (!OperatingSystem.IsMacOS())
@@ -192,6 +207,24 @@ public sealed class MetalDeviceTests
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
 
         await OffscreenRhiConformance.SamplerCreationAndDisposal(device);
+    }
+
+    [Test]
+    [SupportedOSPlatform("macos")]
+    public async Task AdvertisesAndHonorsAnisotropicSamplerCapabilityOnMacOS()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
+
+        // Apple documents MTLSamplerDescriptor.maxAnisotropy as accepting 1-16 on every
+        // device; no SharpMetal API currently exposes a narrower runtime limit to query.
+        await Assert.That(device.Capabilities.MaxSamplerAnisotropy).IsEqualTo(16f);
+        await OffscreenRhiConformance.AnisotropicSamplerCreationHonorsCapability(device);
     }
 
     [Test]

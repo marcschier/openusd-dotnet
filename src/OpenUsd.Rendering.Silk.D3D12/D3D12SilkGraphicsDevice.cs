@@ -76,7 +76,10 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             DescriptorIndexedTextureTablesDiagnostic =
                 _materialDescriptorTables is null
                     ? descriptorIndexedTextureTablesDiagnostic
-                    : null
+                    : null,
+            // Direct3D 11 and 12 both require every feature-level 11_0+ device -- including
+            // WARP -- to support up to 16x anisotropic filtering (D3D12_REQ_MAXANISOTROPY).
+            MaxSamplerAnisotropy = 16f
         };
     }
 

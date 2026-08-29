@@ -193,6 +193,9 @@ public interface ISilkGraphicsTexture : IDisposable
     /// <summary>Gets the intended texture usage.</summary>
     SilkTextureUsage Usage { get; }
 
+    /// <summary>Gets the number of allocated mip levels. Explicit chains are always the full valid chain.</summary>
+    uint MipLevelCount { get; }
+
     /// <summary>Copies tightly packed raw texture bytes to host memory for conformance testing.</summary>
     void ReadbackForTesting(Span<byte> destination);
 
@@ -237,6 +240,7 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
         Height = descriptor.Height;
         Format = descriptor.Format;
         Usage = descriptor.Usage;
+        MipLevelCount = descriptor.MipLevelCount;
     }
 
     /// <inheritdoc/>
@@ -250,6 +254,9 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
 
     /// <inheritdoc/>
     public SilkTextureUsage Usage { get; }
+
+    /// <inheritdoc/>
+    public uint MipLevelCount { get; }
 
     /// <inheritdoc/>
     public abstract void ReadbackForTesting(Span<byte> destination);
@@ -542,7 +549,13 @@ public enum SilkGraphicsCommandKind
 /// </summary>
 public interface ISilkGraphicsCommandList : IDisposable
 {
-    /// <summary>Uploads one tightly packed RGBA8 image.</summary>
+    /// <summary>
+    /// Uploads one texture's full packed chain: mip 0 first, then ascending levels, each
+    /// tightly packed with dimensions <c>max(1, base &gt;&gt; level)</c>. A single-level texture
+    /// still uploads one tightly packed image. The source length must equal the exact packed
+    /// chain size for the destination's <see cref="ISilkGraphicsTexture.MipLevelCount"/>; see
+    /// <see cref="SilkMipChainLayout"/>.
+    /// </summary>
     void UploadTexture(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source);
 
     /// <summary>Clears an RGBA8 color texture.</summary>
@@ -648,6 +661,13 @@ public readonly record struct SilkGraphicsCapabilities(
     /// Gets why descriptor-indexed material texture tables were unavailable, when they declined.
     /// </summary>
     public string? DescriptorIndexedTextureTablesDiagnostic { get; init; }
+
+    /// <summary>
+    /// Gets the maximum sampler anisotropy the device honors, in texel samples. The
+    /// backend-neutral default of <c>1</c> means anisotropic filtering is unavailable and every
+    /// caller that does not opt in keeps its prior isotropic-only behavior.
+    /// </summary>
+    public float MaxSamplerAnisotropy { get; init; } = 1f;
 }
 
 /// <summary>
@@ -718,11 +738,21 @@ public enum SilkTextureUsage
 /// <summary>
 /// Describes a two-dimensional texture allocation.
 /// </summary>
+/// <param name="Width">The texture width in texels.</param>
+/// <param name="Height">The texture height in texels.</param>
+/// <param name="Format">The texture format.</param>
+/// <param name="Usage">The intended texture usage.</param>
+/// <param name="MipLevelCount">
+/// The number of allocated mip levels. Must be <c>1</c> (default) or the full mathematically
+/// valid chain length for <paramref name="Width"/> and <paramref name="Height"/>; partial chains
+/// are rejected so every backend can allocate, view, and transition the same well-defined level set.
+/// </param>
 public readonly record struct SilkTextureDescriptor(
     uint Width,
     uint Height,
     SilkTextureFormat Format,
-    SilkTextureUsage Usage)
+    SilkTextureUsage Usage,
+    uint MipLevelCount = 1)
 {
     /// <summary>Creates an RGBA8 color render-target descriptor.</summary>
     public static SilkTextureDescriptor ColorTarget(uint width, uint height) =>
@@ -828,6 +858,23 @@ public readonly record struct SilkTextureDescriptor(
                 "Only RGBA color formats can use ColorRenderTarget.",
                 nameof(Usage));
         }
+        ArgumentOutOfRangeException.ThrowIfZero(MipLevelCount);
+        uint maxMipLevelCount = SilkMipChainLayout.GetMaxMipLevelCount(Width, Height);
+        if (MipLevelCount != 1 && MipLevelCount != maxMipLevelCount)
+        {
+            throw new ArgumentException(
+                $"MipLevelCount must be 1 or the full {maxMipLevelCount}-level chain for a " +
+                $"{Width}x{Height} texture; partial chains are not supported.",
+                nameof(MipLevelCount));
+        }
+        if (MipLevelCount > 1 &&
+            (Usage.HasFlag(SilkTextureUsage.ColorRenderTarget) ||
+             Usage.HasFlag(SilkTextureUsage.DepthRenderTarget)))
+        {
+            throw new ArgumentException(
+                "Render-target textures cannot allocate more than one mip level.",
+                nameof(MipLevelCount));
+        }
     }
 }
 
@@ -888,7 +935,8 @@ public readonly record struct SilkSamplerDescriptor(
     SilkSamplerFilter MagFilter,
     SilkSamplerAddressMode AddressU,
     SilkSamplerAddressMode AddressV,
-    SilkSamplerAddressMode AddressW)
+    SilkSamplerAddressMode AddressW,
+    float MaxAnisotropy = 1f)
 {
     /// <summary>Gets a linear-filtered clamp-to-edge sampler.</summary>
     public static SilkSamplerDescriptor LinearClamp => new(
@@ -914,7 +962,7 @@ public readonly record struct SilkSamplerDescriptor(
         SilkSamplerAddressMode.Repeat,
         SilkSamplerAddressMode.Repeat);
 
-    /// <summary>Validates all descriptor enum values.</summary>
+    /// <summary>Validates all descriptor enum values and the anisotropy range.</summary>
     public void Validate()
     {
         if (!Enum.IsDefined(MinFilter))
@@ -936,6 +984,30 @@ public readonly record struct SilkSamplerDescriptor(
         if (!Enum.IsDefined(AddressW))
         {
             throw new ArgumentOutOfRangeException(nameof(AddressW));
+        }
+        if (!float.IsFinite(MaxAnisotropy) || MaxAnisotropy < 1f)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(MaxAnisotropy),
+                MaxAnisotropy,
+                "MaxAnisotropy must be a finite value of at least 1.");
+        }
+    }
+
+    /// <summary>
+    /// Validates the descriptor and rejects an anisotropy request the device capability does
+    /// not honor, rather than silently clamping it to a value the caller did not ask for.
+    /// </summary>
+    public void Validate(SilkGraphicsCapabilities capabilities)
+    {
+        Validate();
+        if (MaxAnisotropy > capabilities.MaxSamplerAnisotropy)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(capabilities),
+                capabilities.MaxSamplerAnisotropy,
+                $"The requested max anisotropy {MaxAnisotropy} exceeds the device's " +
+                $"{capabilities.MaxSamplerAnisotropy} capability.");
         }
     }
 }

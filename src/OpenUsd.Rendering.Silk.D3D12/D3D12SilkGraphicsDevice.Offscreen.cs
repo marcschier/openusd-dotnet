@@ -53,7 +53,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             descriptor.Width,
             descriptor.Height,
             1,
-            1,
+            checked((ushort)descriptor.MipLevelCount),
             nativeFormat,
             new SampleDesc(1, 0),
             TextureLayout.LayoutUnknown,
@@ -145,7 +145,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         : GetNativeFormat(descriptor.Format),
                     ViewDimension = SrvDimension.Texture2D,
                     Shader4ComponentMapping = 0x1688,
-                    Texture2D = new Tex2DSrv(0, 1, 0, 0)
+                    Texture2D = new Tex2DSrv(0, descriptor.MipLevelCount, 0, 0)
                 };
                 _device->CreateShaderResourceView(resource, &view, shaderResourceView);
 
@@ -310,7 +310,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
     {
         ObjectDisposedException.ThrowIf(_device == null, this);
-        descriptor.Validate();
+        descriptor.Validate(Capabilities);
         RegisterDependentObject();
         ID3D12DescriptorHeap* heap = null;
         bool success = false;
@@ -326,13 +326,21 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 &heapDescription,
                 &heapId,
                 (void**)&heap));
+            bool useAnisotropy = descriptor.MaxAnisotropy > 1f;
             var nativeDescriptor = new SamplerDesc
             {
-                Filter = GetFilter(descriptor.MinFilter, descriptor.MagFilter),
+                // Anisotropic filtering replaces the min/mag/mip filter selection outright;
+                // 1x sampling keeps the existing point/linear combinations untouched.
+                Filter = useAnisotropy
+                    ? Filter.Anisotropic
+                    : GetFilter(descriptor.MinFilter, descriptor.MagFilter),
                 AddressU = GetAddressMode(descriptor.AddressU),
                 AddressV = GetAddressMode(descriptor.AddressV),
                 AddressW = GetAddressMode(descriptor.AddressW),
                 ComparisonFunc = ComparisonFunc.Always,
+                MaxAnisotropy = useAnisotropy
+                    ? (uint)MathF.Round(descriptor.MaxAnisotropy)
+                    : 1,
                 MinLOD = 0,
                 MaxLOD = float.MaxValue
             };
@@ -749,36 +757,39 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         uploadTexture.ThrowIfDisposed();
                         ResourceStates uploadPreviousState =
                             GetCurrentState(finalStates, uploadTexture);
-                        CreateTextureUpload(
+                        CreateTexture2DMipChainUpload(
                             uploadTexture,
                             command.Data!,
                             out ID3D12Resource* upload,
-                            out PlacedSubresourceFootprint footprint);
+                            out PlacedSubresourceFootprint[] footprints);
                         uploadResources.Add((nint)upload);
                         Transition(
                             nativeCommands,
                             uploadTexture.Resource,
                             uploadPreviousState,
                             ResourceStates.CopyDest);
-                        var sourceLocation = new TextureCopyLocation(
-                            upload,
-                            TextureCopyType.PlacedFootprint)
+                        for (int level = 0; level < footprints.Length; level++)
                         {
-                            PlacedFootprint = footprint
-                        };
-                        var destinationLocation = new TextureCopyLocation(
-                            uploadTexture.Resource,
-                            TextureCopyType.SubresourceIndex)
-                        {
-                            SubresourceIndex = 0
-                        };
-                        nativeCommands->CopyTextureRegion(
-                            &destinationLocation,
-                            0,
-                            0,
-                            0,
-                            &sourceLocation,
-                            null);
+                            var sourceLocation = new TextureCopyLocation(
+                                upload,
+                                TextureCopyType.PlacedFootprint)
+                            {
+                                PlacedFootprint = footprints[level]
+                            };
+                            var destinationLocation = new TextureCopyLocation(
+                                uploadTexture.Resource,
+                                TextureCopyType.SubresourceIndex)
+                            {
+                                SubresourceIndex = checked((uint)level)
+                            };
+                            nativeCommands->CopyTextureRegion(
+                                &destinationLocation,
+                                0,
+                                0,
+                                0,
+                                &sourceLocation,
+                                null);
+                        }
                         Transition(
                             nativeCommands,
                             uploadTexture.Resource,
@@ -791,7 +802,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         upload3DTexture.ThrowIfDisposed();
                         ResourceStates upload3DPreviousState =
                             GetCurrentState(finalStates, upload3DTexture);
-                        CreateTextureUpload(
+                        CreateVolumeTextureUpload(
                             upload3DTexture,
                             command.Data!,
                             out ID3D12Resource* upload3D,
@@ -1321,7 +1332,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         }
     }
 
-    private void CreateTextureUpload(
+    private void CreateVolumeTextureUpload(
         D3D12SilkGraphicsTexture texture,
         ReadOnlySpan<byte> source,
         out ID3D12Resource* upload,
@@ -1407,6 +1418,109 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             }
             upload = nativeUpload;
             footprint = nativeFootprint;
+        }
+        catch
+        {
+            Release(ref nativeUpload);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Stages a single upload buffer holding every requested mip level of a 2D texture, laid
+    /// out per D3D12's own per-level row-pitch alignment via <c>GetCopyableFootprints</c>. The
+    /// source span is the renderer-neutral packed chain from <see cref="SilkMipChainLayout"/>
+    /// (mip 0 first, ascending, tightly packed with no row-pitch padding), so each level is
+    /// re-packed from its tightly packed source rows into the destination's aligned row pitch.
+    /// </summary>
+    private void CreateTexture2DMipChainUpload(
+        D3D12SilkGraphicsTexture texture,
+        ReadOnlySpan<byte> source,
+        out ID3D12Resource* upload,
+        out PlacedSubresourceFootprint[] footprints)
+    {
+        uint mipLevelCount = texture.MipLevelCount;
+        ResourceDesc textureDescription = texture.Resource->GetDesc();
+        var nativeFootprints = new PlacedSubresourceFootprint[mipLevelCount];
+        var rowCounts = new uint[mipLevelCount];
+        var rowSizes = new ulong[mipLevelCount];
+        ulong totalSize;
+        fixed (PlacedSubresourceFootprint* footprintsPointer = nativeFootprints)
+        fixed (uint* rowCountsPointer = rowCounts)
+        fixed (ulong* rowSizesPointer = rowSizes)
+        {
+            _device->GetCopyableFootprints(
+                &textureDescription,
+                0,
+                mipLevelCount,
+                0,
+                footprintsPointer,
+                rowCountsPointer,
+                rowSizesPointer,
+                &totalSize);
+        }
+        var heapProperties = new HeapProperties(HeapType.Upload);
+        var uploadDescription = new ResourceDesc(
+            ResourceDimension.Buffer,
+            0,
+            totalSize,
+            1,
+            1,
+            1,
+            Format.FormatUnknown,
+            new SampleDesc(1, 0),
+            TextureLayout.LayoutRowMajor,
+            ResourceFlags.None);
+        ID3D12Resource* nativeUpload = null;
+        Guid resourceId = ID3D12Resource.Guid;
+        SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
+            &heapProperties,
+            HeapFlags.None,
+            &uploadDescription,
+            ResourceStates.GenericRead,
+            null,
+            &resourceId,
+            (void**)&nativeUpload));
+        try
+        {
+            void* mapped = null;
+            var readRange = new global::Silk.NET.Direct3D12.Range(0, 0);
+            SilkMarshal.ThrowHResult(nativeUpload->Map(0, &readRange, &mapped));
+            try
+            {
+                SilkMipLevelLayout[] sourceLevels = SilkMipChainLayout.Create(
+                    texture.Width,
+                    texture.Height,
+                    texture.Format,
+                    mipLevelCount);
+                for (int level = 0; level < mipLevelCount; level++)
+                {
+                    SilkMipLevelLayout sourceLevel = sourceLevels[level];
+                    PlacedSubresourceFootprint destinationFootprint = nativeFootprints[level];
+                    int destinationRowPitch =
+                        checked((int)destinationFootprint.Footprint.RowPitch);
+                    byte* destination =
+                        (byte*)mapped + checked((nint)destinationFootprint.Offset);
+                    for (int row = 0; row < sourceLevel.Height; row++)
+                    {
+                        source.Slice(
+                            checked(sourceLevel.Offset + (row * sourceLevel.RowPitch)),
+                            sourceLevel.RowPitch).CopyTo(
+                                new Span<byte>(
+                                    destination + checked(row * destinationRowPitch),
+                                    sourceLevel.RowPitch));
+                    }
+                }
+            }
+            finally
+            {
+                var writtenRange = new global::Silk.NET.Direct3D12.Range(
+                    0,
+                    checked((nuint)totalSize));
+                nativeUpload->Unmap(0, &writtenRange);
+            }
+            upload = nativeUpload;
+            footprints = nativeFootprints;
         }
         catch
         {
@@ -1713,9 +1827,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             (SilkSamplerFilter.Nearest, SilkSamplerFilter.Linear) =>
                 Filter.MinPointMagLinearMipPoint,
             (SilkSamplerFilter.Linear, SilkSamplerFilter.Nearest) =>
-                Filter.MinLinearMagMipPoint,
+                Filter.MinLinearMagPointMipLinear,
             (SilkSamplerFilter.Linear, SilkSamplerFilter.Linear) =>
-                Filter.MinMagLinearMipPoint,
+                Filter.MinMagMipLinear,
             _ => throw new ArgumentOutOfRangeException(nameof(minFilter))
         };
 
@@ -2025,10 +2139,11 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
             throw new InvalidOperationException(
                 "UploadTexture requires a color or sampled texture with CopyDestination usage.");
         }
-        int requiredLength = checked(
-            (int)(d3d12Texture.Width *
-                d3d12Texture.Height *
-                SilkTextureFormats.GetBytesPerPixel(d3d12Texture.Format)));
+        int requiredLength = SilkMipChainLayout.GetTotalByteSize(
+            d3d12Texture.Width,
+            d3d12Texture.Height,
+            d3d12Texture.Format,
+            d3d12Texture.MipLevelCount);
         if (source.Length != requiredLength)
         {
             throw new ArgumentException(

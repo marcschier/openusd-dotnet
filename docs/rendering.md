@@ -547,15 +547,68 @@ Backends differ in what they must keep alive, and the difference is deliberate:
   layout.
 
 The checked mesh shader samples the declared UsdPreviewSurface map permutations. hdSilk decodes resolved
-texture assets through OpenUSD Hio, uploads one cached RGBA8 texture per
-material/asset/colour-space/parameter identity, and reuses backend samplers keyed by wrap/filter state.
+texture assets through OpenUSD Hio. One- through four-channel UNorm8 and sRGB inputs retain the compact
+RGBA8 upload path. SNorm8, 16- and 32-bit integer, half, float, and double inputs are converted explicitly
+from their declared Hio source format and uploaded as RGBA32Float, preserving floating-point values outside
+`[0,1]`. One channel expands to RGB with opaque alpha; two channels expand luminance plus alpha; three
+channels gain opaque alpha. Requested sRGB conversion affects RGB only. Non-finite source values and
+compressed Hio formats are rejected with diagnostics rather than reinterpreted or silently quantized.
+Textures are cached per material/asset/colour-space/parameter identity, and backend samplers are reused by
+wrap/filter state. RGBA32Float textures use nearest filtering because linear filtering for that format is
+not portable across the supported RHIs; explicit filter negotiation remains outside the current claim.
 Base-colour, normal, roughness/metallic, emissive, and volume-density textures each bind an independent
 sampler slot, so simultaneously active maps preserve their own `wrapS` and `wrapT` values rather than
 letting the final texture bound to a draw overwrite every map's address mode.
+Ordinary (non-UDIM) material textures upload a full packed mip chain rather than a single level. A
+shared backend-neutral layout stores mip 0 first, then ascending levels in order, each tightly packed
+to `max(1, base >> level)`; `UploadTexture` validates the source against that layout's exact total byte
+size on every backend. The CPU generates the chain with a 2x2 box filter (clamp-to-edge at odd
+dimensions) after decode, vertical flip, and scale/bias are applied, so Rgba8Unorm and Rgba32Float both
+downsample in the same linear space the base level was authored in and out-of-range HDR values survive
+intact. Alpha and ordinary scalar maps (roughness/metallic and similar) average components directly;
+normal-map slots instead decode encoded RGB to a tangent-space direction, average, and renormalize
+before re-encoding, falling back deterministically to straight-up (0, 0, 1) when neighbouring normals
+exactly cancel to a zero-length average. D3D12, Vulkan, and Metal each allocate every requested level,
+expose all of them to shader binding, and issue one upload per level from the same packed source
+buffer — D3D12 additionally repacks each level into its own 256-byte-aligned row pitch, while Vulkan and
+Metal consume the tightly packed source directly; base-level readback and the existing single-level 3D
+volume-texture path are unchanged on every backend. `<UDIM>` atlases remain single-level in this slice:
+their sparse per-tile gutter/fallback layout cannot be naively downsampled, so atlas textures continue
+to allocate exactly one mip level regardless of tile resolution.
+Anisotropic sampling is capability-negotiated rather than assumed. `SilkGraphicsCapabilities` carries a
+backend-neutral `MaxSamplerAnisotropy` (defaulting to `1` so pre-existing callers keep their prior
+isotropic-only behaviour), and `SilkSamplerDescriptor` carries a validated trailing `MaxAnisotropy`
+(default `1`) that must be finite and at least `1`. `SilkSamplerDescriptor.Validate(capabilities)`
+explicitly rejects — rather than silently clamps — a request above the device's advertised maximum.
+D3D12 advertises `16` (the D3D11/12 `D3D12_REQ_MAXANISOTROPY` guarantee on every Feature Level 11_0+
+device, including WARP) and selects `Filter.Anisotropic` only when requested, preserving the prior
+point/linear filter mapping for 1x sampling. Vulkan queries `PhysicalDeviceFeatures.SamplerAnisotropy`
+and `PhysicalDeviceLimits.MaxSamplerAnisotropy` at device creation, enables the feature only when the
+physical device supports it, and advertises the real bounded maximum — including the legitimate `1`
+(unsupported) answer some software rasterizers such as SwiftShader may report; `AnisotropyEnable` and
+`MaxAnisotropy` on the native sampler are only set for a >1 request, and the feature is never requested
+of an unenabled device. Metal advertises `16`, the value Apple documents `MTLSamplerDescriptor
+.maxAnisotropy` as accepting on every device; no SharpMetal API in the current version exposes a
+narrower runtime query, so this is a conservative, API-guaranteed value rather than a probed one.
+The renderer requests anisotropy only for an ordinary (non-UDIM), linearly filtered, actually
+mipmapped (`MipLevelCount > 1`) material texture, bounded to `min(device max, 8)`; `<UDIM>` atlases,
+single-level volume-density textures, and nearest-only `Rgba32Float` sampling always stay isotropic.
+Because `MaxAnisotropy` is part of `SilkSamplerDescriptor`, it also differentiates the renderer's
+sampler cache, so isotropic and anisotropic requests for otherwise-identical sampler state never share
+a cached sampler object.
+`<UDIM>` assets are discovered in one resolver-aware native call, then packed into a bounded atlas
+per material slot. One-pixel gutters keep linear filtering inside each tile, sparse atlas cells
+contain the authored fallback, and shader-side tile selection uses the standard
+`1001 + u + 10*v` mapping. Tile dimensions and formats must match; sets spanning more than 256
+atlas cells are rejected with a texture diagnostic instead of allocating an unbounded resource.
 Including the material identity prevents one material's scale, bias, or authored fallback from leaking
 into another material that references the same asset. Texture upload is recorded before the rendering
 scope so all draw paths can bind every declared sampler/texture slot without relying on backend defaults;
 dirty material updates clear the retained texture cache rather than reusing stale assets.
+Successful local-file cache entries also retain file size and last-write fingerprints. A later draw
+invalidates and re-decodes only the entries whose source file or resolved UDIM tile changed; URI and
+other resolver-backed assets continue to use material dirtiness or explicit failed-texture retry
+because they do not expose portable filesystem metadata.
 
 `SilkSceneGpuResources.Diagnostics` returns a deterministic snapshot of at most 128 deduplicated
 material and texture warnings. Unresolved relationships and unsupported surface networks retain flat

@@ -324,6 +324,45 @@ internal static class OffscreenRhiConformance
         disposedSubmission.Dispose();
     }
 
+    internal static async Task MultiLevelTextureUploadPreservesBaseLevelReadback(
+        ISilkGraphicsDevice device)
+    {
+        // A packed chain buffer is mip 0 first, then ascending levels, each tightly packed; a
+        // 4x4 base texture has a full chain of 4x4, 2x2, and 1x1 levels.
+        byte[] level0 = CreatePattern(4, 4, 11);
+        byte[] level1 = CreatePattern(2, 2, 61);
+        byte[] level2 = CreatePattern(1, 1, 173);
+        byte[] chain = [.. level0, .. level1, .. level2];
+        using ISilkGraphicsTexture texture = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                4,
+                4,
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination,
+                MipLevelCount: 3));
+
+        await Assert.That(texture.MipLevelCount).IsEqualTo(3u);
+        using (ISilkGraphicsCommandList commands = device.CreateCommandList())
+        {
+            // An exact single-level payload must be rejected now that the texture allocates the
+            // full chain.
+            await Assert.That(() => commands.UploadTexture(texture, level0))
+                .Throws<ArgumentException>();
+        }
+
+        using (ISilkGraphicsCommandList commands = device.CreateCommandList())
+        {
+            commands.UploadTexture(texture, chain);
+            using ISilkGraphicsSubmission submission = device.Submit(commands);
+            submission.Wait();
+            await Assert.That(submission.IsCompleted).IsTrue();
+        }
+
+        byte[] actual = new byte[level0.Length];
+        texture.ReadbackForTesting(actual);
+        await Assert.That(actual.AsSpan().SequenceEqual(level0)).IsTrue();
+    }
+
     internal static async Task CrossDeviceUploadIsRejected(
         ISilkGraphicsDevice textureDevice,
         ISilkGraphicsDevice commandDevice)
@@ -357,6 +396,40 @@ internal static class OffscreenRhiConformance
             .IsEqualTo(SilkSamplerFilter.Nearest);
         await Assert.That(replacement.Descriptor.AddressW)
             .IsEqualTo(SilkSamplerAddressMode.Repeat);
+    }
+
+    /// <summary>
+    /// Proves the capability-negotiated anisotropy contract end to end against a real device:
+    /// the advertised maximum is always at least 1 (isotropic-only is a legitimate answer, not
+    /// a bug, for software rasterizers such as SwiftShader), an isotropic sampler always
+    /// succeeds, a sampler at exactly the advertised maximum succeeds whenever that maximum
+    /// exceeds 1, and a request one step above the advertised maximum is rejected outright
+    /// rather than silently clamped.
+    /// </summary>
+    internal static async Task AnisotropicSamplerCreationHonorsCapability(ISilkGraphicsDevice device)
+    {
+        float maxSupported = device.Capabilities.MaxSamplerAnisotropy;
+        await Assert.That(maxSupported).IsGreaterThanOrEqualTo(1f);
+
+        using ISilkGraphicsSampler isotropic = device.CreateSampler(SilkSamplerDescriptor.LinearClamp);
+        await Assert.That(isotropic.Descriptor.MaxAnisotropy).IsEqualTo(1f);
+
+        if (maxSupported > 1f)
+        {
+            SilkSamplerDescriptor atMax = SilkSamplerDescriptor.LinearClamp with
+            {
+                MaxAnisotropy = maxSupported
+            };
+            using ISilkGraphicsSampler anisotropic = device.CreateSampler(atMax);
+            await Assert.That(anisotropic.Descriptor.MaxAnisotropy).IsEqualTo(maxSupported);
+        }
+
+        SilkSamplerDescriptor aboveMax = SilkSamplerDescriptor.LinearClamp with
+        {
+            MaxAnisotropy = maxSupported + 1f
+        };
+        await Assert.That(() => device.CreateSampler(aboveMax))
+            .Throws<ArgumentOutOfRangeException>();
     }
 
     internal static async Task DrawsIndexedTriangle(

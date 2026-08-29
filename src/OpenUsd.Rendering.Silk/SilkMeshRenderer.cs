@@ -196,7 +196,8 @@ public sealed class SilkMeshRenderer :
     internal SilkMeshRenderer(
         ISilkGraphicsDevice device,
         SilkShaderBinaryFormat shaderFormat,
-        Func<string, bool, SilkDecodedImage>? imageDecoder = null)
+        Func<string, bool, SilkDecodedImage>? imageDecoder = null,
+        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         _device = device;
@@ -206,7 +207,7 @@ public sealed class SilkMeshRenderer :
         Scene = new SilkSceneState();
         GpuResources = imageDecoder is null
             ? new SilkSceneGpuResources(device)
-            : new SilkSceneGpuResources(device, imageDecoder);
+            : new SilkSceneGpuResources(device, imageDecoder, udimResolver);
 
         ISilkGraphicsShaderModule? vertexShader = null;
         ISilkGraphicsShaderModule? fragmentShader = null;

@@ -44,7 +44,11 @@ public sealed partial class MetalSilkGraphicsDevice
                 _materialDescriptorTables is null
                     ? "Metal descriptor-indexed texture tables unavailable: " +
                         $"ArgumentBuffersSupport is {_argumentBuffersSupport}; requires Tier2."
-                    : null
+                    : null,
+            // Metal guarantees samplers accept a maxAnisotropy of up to 16 on every device --
+            // there is no separate feature query in the current SharpMetal surface, so this
+            // uses the API-documented ceiling rather than an unverifiable runtime probe.
+            MaxSamplerAnisotropy = 16f
         };
     }
 

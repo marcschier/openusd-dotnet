@@ -7,7 +7,7 @@ namespace OpenUsd.Interop;
 /// </summary>
 public static class OpenUsdNativeContract
 {
-    private const ulong CoreCapabilities = 0x3F7FFF;
+    private const ulong CoreCapabilities = 0xFF7FFF;
     private const ulong SchemaFacadeCapabilities = 1UL << 15;
 
     /// <summary>Gets the platform-neutral native import name.</summary>

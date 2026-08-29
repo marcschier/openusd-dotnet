@@ -6,13 +6,19 @@ using OpenUsd.Interop;
 
 namespace OpenUsd.Rendering.Silk;
 
-internal sealed record SilkDecodedImage(uint Width, uint Height, byte[] Pixels);
+internal sealed record SilkDecodedImage(
+    uint Width,
+    uint Height,
+    byte[] Pixels,
+    SilkTextureFormat Format = SilkTextureFormat.Rgba8Unorm);
+
+internal sealed record SilkUdimTile(uint Number, string Asset);
 
 internal static unsafe partial class SilkNativeImageDecoder
 {
     private const uint ImageInfoVersion = 1;
 
-    internal static SilkDecodedImage DecodeRgba8(string asset, bool convertSrgbToLinear)
+    internal static SilkDecodedImage Decode(string asset, bool convertSrgbToLinear)
     {
         ArgumentException.ThrowIfNullOrEmpty(asset);
         NativeImageInfo info = new()
@@ -31,26 +37,130 @@ internal static unsafe partial class SilkNativeImageDecoder
                 null,
                 0,
                 ref errorBuffer);
-            if (status != OpenUsdNativeStatus.BufferTooSmall)
+            if (status == OpenUsdNativeStatus.BufferTooSmall)
             {
-                ThrowIfFailed(asset, status, errorBytes, errorBuffer);
-            }
-
-            byte[] pixels = new byte[checked((int)(info.Width * info.Height * 4))];
-            fixed (byte* pixelBytes = pixels)
-            {
-                errorBuffer = new NativeErrorBuffer(error, (nuint)errorBytes.Length);
-                status = DecodeImageRgba8(
+                return DecodeRgba8(
                     asset,
-                    convertSrgbToLinear ? 1u : 0u,
-                    ref info,
-                    pixelBytes,
-                    (nuint)pixels.Length,
-                    ref errorBuffer);
+                    convertSrgbToLinear,
+                    info,
+                    errorBytes,
+                    error,
+                    errorBuffer);
+            }
+            if (status is OpenUsdNativeStatus.NotFound or OpenUsdNativeStatus.InvalidArgument)
+            {
                 ThrowIfFailed(asset, status, errorBytes, errorBuffer);
             }
-            return new SilkDecodedImage(info.Width, info.Height, pixels);
+            return DecodeRgba32Float(
+                asset,
+                convertSrgbToLinear,
+                ref info,
+                errorBytes,
+                error);
         }
+    }
+
+    internal static IReadOnlyList<SilkUdimTile> ResolveUdimTiles(string asset)
+    {
+        string[] values;
+        try
+        {
+            values = OpenUsdNativeRuntime.ResolveUdimTiles(asset);
+        }
+        catch (OpenUsdNativeException exception)
+            when (exception.Status == OpenUsdNativeStatus.NotFound)
+        {
+            throw new FileNotFoundException(exception.Message, asset, exception);
+        }
+        if ((values.Length % 2) != 0)
+        {
+            throw new InvalidDataException(
+                "Native UDIM resolution returned an incomplete tile-path pair.");
+        }
+        var result = new SilkUdimTile[values.Length / 2];
+        for (int index = 0; index < result.Length; index++)
+        {
+            string tile = values[index * 2];
+            string path = values[(index * 2) + 1];
+            if (!uint.TryParse(
+                    tile,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out uint number) ||
+                number < 1001 ||
+                number > 1999 ||
+                string.IsNullOrWhiteSpace(path))
+            {
+                throw new InvalidDataException(
+                    "Native UDIM resolution returned an invalid tile-path pair.");
+            }
+            result[index] = new SilkUdimTile(number, path);
+        }
+        return result;
+    }
+
+    private static SilkDecodedImage DecodeRgba8(
+        string asset,
+        bool convertSrgbToLinear,
+        NativeImageInfo info,
+        Span<byte> errorBytes,
+        byte* error,
+        NativeErrorBuffer errorBuffer)
+    {
+        byte[] pixels = new byte[checked((int)(info.Width * info.Height * 4))];
+        fixed (byte* pixelBytes = pixels)
+        {
+            errorBuffer = new NativeErrorBuffer(error, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = DecodeImageRgba8(
+                asset,
+                convertSrgbToLinear ? 1u : 0u,
+                ref info,
+                pixelBytes,
+                (nuint)pixels.Length,
+                ref errorBuffer);
+            ThrowIfFailed(asset, status, errorBytes, errorBuffer);
+        }
+        return new SilkDecodedImage(info.Width, info.Height, pixels);
+    }
+
+    private static SilkDecodedImage DecodeRgba32Float(
+        string asset,
+        bool convertSrgbToLinear,
+        ref NativeImageInfo info,
+        Span<byte> errorBytes,
+        byte* error)
+    {
+        NativeErrorBuffer errorBuffer = new(error, (nuint)errorBytes.Length);
+        OpenUsdNativeStatus status = DecodeImageRgba32Float(
+            asset,
+            convertSrgbToLinear ? 1u : 0u,
+            ref info,
+            null,
+            0,
+            ref errorBuffer);
+        if (status != OpenUsdNativeStatus.BufferTooSmall)
+        {
+            ThrowIfFailed(asset, status, errorBytes, errorBuffer);
+        }
+        float[] values = new float[checked((int)(info.Width * info.Height * 4))];
+        fixed (float* pixels = values)
+        {
+            errorBuffer = new NativeErrorBuffer(error, (nuint)errorBytes.Length);
+            status = DecodeImageRgba32Float(
+                asset,
+                convertSrgbToLinear ? 1u : 0u,
+                ref info,
+                pixels,
+                checked((nuint)values.Length * (nuint)sizeof(float)),
+                ref errorBuffer);
+            ThrowIfFailed(asset, status, errorBytes, errorBuffer);
+        }
+        byte[] bytes = MemoryMarshal.AsBytes(values.AsSpan()).ToArray();
+        return new SilkDecodedImage(
+            info.Width,
+            info.Height,
+            bytes,
+            SilkTextureFormat.Rgba32Float);
     }
 
     private static void ThrowIfFailed(
@@ -108,6 +218,19 @@ internal static unsafe partial class SilkNativeImageDecoder
         uint convertSrgbToLinear,
         ref NativeImageInfo info,
         byte* rgba,
+        nuint rgbaSize,
+        ref NativeErrorBuffer error);
+
+    [LibraryImport(
+        OpenUsdNativeContract.LibraryName,
+        EntryPoint = "openusd_decode_image_rgba32f",
+        StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial OpenUsdNativeStatus DecodeImageRgba32Float(
+        string assetPath,
+        uint convertSrgbToLinear,
+        ref NativeImageInfo info,
+        float* rgba,
         nuint rgbaSize,
         ref NativeErrorBuffer error);
 }

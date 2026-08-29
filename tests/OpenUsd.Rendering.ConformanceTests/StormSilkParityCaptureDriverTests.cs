@@ -4,6 +4,7 @@ using System.Buffers.Binary;
 using System.ComponentModel;
 using System.Globalization;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
@@ -1429,6 +1430,7 @@ def Xform "World"
         }
 
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(CountNonBlackPixels(image)).IsGreaterThan(100);
         await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
         await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
     }
@@ -1445,8 +1447,74 @@ def Xform "World"
         using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
         ParityImage image = CaptureSyntheticMixedTextureWrapSelfConsistency(device);
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(CountNonBlackPixels(image)).IsGreaterThan(100);
         await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
         await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+    }
+
+    [Test]
+    public async Task FloatTexturePreservesHdrBeforeScaleOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            image = CaptureSyntheticFloatTextureScaleSelfConsistency(device);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("float texture Vulkan self-consistency", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(CountNonBlackPixels(image)).IsGreaterThan(100);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+    }
+
+    [Test]
+    public async Task FloatTexturePreservesHdrBeforeScaleOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        ParityImage image = CaptureSyntheticFloatTextureScaleSelfConsistency(device);
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(CountNonBlackPixels(image)).IsGreaterThan(100);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+    }
+
+    [Test]
+    public async Task SparseUdimTilesAndFallbackRenderOnVulkan()
+    {
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await AssertSyntheticUdim(device);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("UDIM Vulkan self-consistency", exception.ToString());
+        }
+    }
+
+    [Test]
+    public async Task SparseUdimTilesAndFallbackRenderOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await AssertSyntheticUdim(device);
     }
 
     [Test]
@@ -2273,6 +2341,121 @@ def Xform "World"
                 : new SilkDecodedImage(1, 1, [20, 20, 20, 255]));
     }
 
+    private static ParityImage CaptureSyntheticFloatTextureScaleSelfConsistency(
+        ISilkGraphicsDevice device)
+    {
+        MaterialScalarSpec[] scalars =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [1.0f, 1.0f, 1.0f]),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialTextureSpec scaledHdr = new(
+            "float-hdr",
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Clamp,
+            SilkColorSpace.Raw,
+            [0.25f, 1.0f, 1.0f, 1.0f],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st");
+        MaterialTextureSpec reference = scaledHdr with
+        {
+            Asset = "float-reference",
+            Scale = [1, 1, 1, 1]
+        };
+
+        return CaptureSyntheticMaterialPair(
+            device,
+            CreateTexturedMaterialCommand("/Hdr", [scaledHdr], scalars),
+            CreateTexturedMaterialCommand("/Reference", [reference], scalars),
+            requireImagePlugins: false,
+            imageDecoder: static (asset, _) =>
+            {
+                float[] values = asset.EndsWith("hdr", StringComparison.Ordinal)
+                    ? [2.0f, 0.4f, 0.2f, 1.0f]
+                    : [0.5f, 0.4f, 0.2f, 1.0f];
+                return new SilkDecodedImage(
+                    1,
+                    1,
+                    MemoryMarshal.AsBytes(values.AsSpan()).ToArray(),
+                    SilkTextureFormat.Rgba32Float);
+            });
+    }
+
+    private static async Task AssertSyntheticUdim(ISilkGraphicsDevice device)
+    {
+        ParityImage tile = CaptureSyntheticUdimSelfConsistency(
+            device,
+            2.25f,
+            [0.0f, 0.0f, 1.0f]);
+        (byte tileMaxDelta, double tileMeanDelta) = CompareTranslatedHalves(tile);
+        await Assert.That(CountNonBlackPixels(tile)).IsGreaterThan(100);
+        await Assert.That(tileMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(tileMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        ParityImage fallback = CaptureSyntheticUdimSelfConsistency(
+            device,
+            1.25f,
+            [1.0f, 0.0f, 1.0f]);
+        (byte fallbackMaxDelta, double fallbackMeanDelta) = CompareTranslatedHalves(fallback);
+        await Assert.That(CountNonBlackPixels(fallback)).IsGreaterThan(100);
+        await Assert.That(fallbackMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(fallbackMeanDelta).IsLessThanOrEqualTo(0.500);
+    }
+
+    private static ParityImage CaptureSyntheticUdimSelfConsistency(
+        ISilkGraphicsDevice device,
+        float u,
+        float[] expectedColor)
+    {
+        MaterialScalarSpec[] referenceScalars =
+        [
+            new(SilkMaterialParameter.DiffuseColor, expectedColor),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] texturedScalars =
+        [
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        float[] textureCoordinates =
+        [
+            u, 0.5f,
+            u, 0.5f,
+            u, 0.5f,
+            u, 0.5f,
+        ];
+        return CaptureSyntheticMaterialPair(
+            device,
+            CreateMaterialCommandWithScalars(
+                "/Repeat",
+                SilkSurfaceKind.PreviewSurface,
+                referenceScalars),
+            CreateTexturedMaterialCommand(
+                "/Candidate",
+                "tiles.<UDIM>.png",
+                SilkMaterialParameter.DiffuseColor,
+                SilkTextureWrap.Repeat,
+                SilkColorSpace.Raw,
+                [1, 1, 1, 1],
+                [0, 0, 0, 0],
+                [1, 0, 1, 1],
+                "st",
+                texturedScalars),
+            textureCoordinates,
+            requireImagePlugins: false,
+            imageDecoder: static (asset, _) => asset.Contains("1001", StringComparison.Ordinal)
+                ? new SilkDecodedImage(1, 1, [255, 0, 0, 255])
+                : new SilkDecodedImage(1, 1, [0, 0, 255, 255]),
+            udimResolver: static _ =>
+            [
+                new SilkUdimTile(1001, "tiles.1001.png"),
+                new SilkUdimTile(1003, "tiles.1003.png"),
+            ]);
+    }
+
     private static ParityImage CaptureSyntheticTextureColorSpaceSelfConsistency() =>
         CaptureSyntheticMaterialPair(
             CreateTexturedMaterialCommand(
@@ -2752,7 +2935,8 @@ def Xform "World"
         byte[] rightMaterial,
         ReadOnlySpan<float> textureCoordinates = default,
         bool requireImagePlugins = true,
-        Func<string, bool, SilkDecodedImage>? imageDecoder = null)
+        Func<string, bool, SilkDecodedImage>? imageDecoder = null,
+        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null)
     {
         if (requireImagePlugins)
         {
@@ -2778,7 +2962,8 @@ def Xform "World"
                     SilkGraphicsBackend.Metal => SilkShaderBinaryFormat.MetalLibrary,
                     _ => throw new ArgumentOutOfRangeException(nameof(device))
                 },
-                imageDecoder);
+                imageDecoder,
+                udimResolver);
         SilkMeshRendererConformance.Apply(
             renderer,
             revision: 1,
@@ -3619,6 +3804,20 @@ def Xform "World"
         }
 
         return ((byte)max, count == 0 ? 0 : (double)sum / count);
+    }
+
+    private static int CountNonBlackPixels(ParityImage image)
+    {
+        int count = 0;
+        ReadOnlySpan<byte> pixels = image.Rgba.Span;
+        for (int offset = 0; offset < pixels.Length; offset += ParityImage.BytesPerPixel)
+        {
+            if (pixels[offset] != 0 || pixels[offset + 1] != 0 || pixels[offset + 2] != 0)
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static TranslatedHalfDelta CompareTranslatedHalvesDetailed(ParityImage image)

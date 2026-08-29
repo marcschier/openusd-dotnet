@@ -36,7 +36,8 @@ public sealed partial class MetalSilkGraphicsDevice
                 GetNativeFormat(descriptor.Format),
                 descriptor.Width,
                 descriptor.Height,
-                false);
+                descriptor.MipLevelCount > 1);
+            nativeDescriptor.MipmapLevelCount = descriptor.MipLevelCount;
             nativeDescriptor.SampleCount = 1;
             nativeDescriptor.StorageMode = MTLStorageMode.Shared;
             MTLTextureUsage nativeUsage = MTLTextureUsage.Unknown;
@@ -91,20 +92,29 @@ public sealed partial class MetalSilkGraphicsDevice
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        descriptor.Validate();
+        descriptor.Validate(Capabilities);
         RegisterDependentObject();
         MTLSamplerDescriptor nativeDescriptor = default;
         MTLSamplerState sampler = default;
         bool success = false;
         try
         {
+            bool useAnisotropy = descriptor.MaxAnisotropy > 1f;
             nativeDescriptor = new MTLSamplerDescriptor
             {
                 MinFilter = GetFilter(descriptor.MinFilter),
                 MagFilter = GetFilter(descriptor.MagFilter),
+                // Metal defaults to NotMipmapped, so mirror the minification filter
+                // explicitly while preserving nearest-only float texture sampling.
+                MipFilter = descriptor.MinFilter == SilkSamplerFilter.Linear
+                    ? MTLSamplerMipFilter.Linear
+                    : MTLSamplerMipFilter.Nearest,
                 SAddressMode = GetAddressMode(descriptor.AddressU),
                 TAddressMode = GetAddressMode(descriptor.AddressV),
-                RAddressMode = GetAddressMode(descriptor.AddressW)
+                RAddressMode = GetAddressMode(descriptor.AddressW),
+                MaxAnisotropy = useAnisotropy
+                    ? (ulong)MathF.Round(descriptor.MaxAnisotropy)
+                    : 1UL
             };
             sampler = _device.NewSamplerState(nativeDescriptor);
             if (sampler.NativePtr == 0)
@@ -433,23 +443,29 @@ public sealed partial class MetalSilkGraphicsDevice
                             throw new InvalidOperationException(
                                 "Could not create a Metal blit command encoder.");
                         }
-                        blitEncoder.CopyFromBuffer(
-                            upload,
-                            0,
-                            checked(
-                                (ulong)uploadTexture.Width *
-                                SilkTextureFormats.GetBytesPerPixel(uploadTexture.Format)),
-                            checked((ulong)command.Data!.Length),
-                            new MTLSize
-                            {
-                                width = uploadTexture.Width,
-                                height = uploadTexture.Height,
-                                depth = 1
-                            },
-                            uploadTexture.Texture,
-                            0,
-                            0,
-                            new MTLOrigin());
+                        MetalMipCopyPlan[] uploadPlans = MetalMipCopyPlan.Create(
+                            uploadTexture.Width,
+                            uploadTexture.Height,
+                            uploadTexture.Format,
+                            uploadTexture.MipLevelCount);
+                        foreach (MetalMipCopyPlan uploadPlan in uploadPlans)
+                        {
+                            blitEncoder.CopyFromBuffer(
+                                upload,
+                                uploadPlan.SourceOffset,
+                                uploadPlan.SourceBytesPerRow,
+                                uploadPlan.SourceBytesPerImage,
+                                new MTLSize
+                                {
+                                    width = uploadPlan.Width,
+                                    height = uploadPlan.Height,
+                                    depth = 1
+                                },
+                                uploadTexture.Texture,
+                                0,
+                                uploadPlan.DestinationLevel,
+                                new MTLOrigin());
+                        }
                         blitEncoder.EndEncoding();
                         blitEncoder.Dispose();
                         break;
@@ -1262,10 +1278,11 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
             throw new InvalidOperationException(
                 "UploadTexture requires a color or sampled texture with CopyDestination usage.");
         }
-        int requiredLength = checked(
-            (int)(metalTexture.Width *
-                metalTexture.Height *
-                SilkTextureFormats.GetBytesPerPixel(metalTexture.Format)));
+        int requiredLength = SilkMipChainLayout.GetTotalByteSize(
+            metalTexture.Width,
+            metalTexture.Height,
+            metalTexture.Format,
+            metalTexture.MipLevelCount);
         if (source.Length != requiredLength)
         {
             throw new ArgumentException(
@@ -2357,5 +2374,52 @@ internal sealed class MetalSubmissionCompletion(
         {
             _failureNotified = true;
         }
+    }
+}
+
+/// <summary>
+/// Describes one <c>MTLBlitCommandEncoder.CopyFromBuffer</c> call needed to upload a single mip
+/// level from a renderer-neutral packed chain (see <see cref="SilkMipChainLayout"/>). This type
+/// holds no native handles and is not <see cref="SupportedOSPlatformAttribute"/>-gated, so it is
+/// fully testable without macOS or a Metal device, mirroring the existing
+/// <see cref="MetalPickCopyPlan"/> portable-contract pattern for pick copies.
+/// </summary>
+internal readonly record struct MetalMipCopyPlan(
+    ulong SourceOffset,
+    ulong SourceBytesPerRow,
+    ulong SourceBytesPerImage,
+    ulong Width,
+    ulong Height,
+    ulong DestinationLevel)
+{
+    /// <summary>
+    /// Builds one plan per mip level of <paramref name="mipLevelCount"/>, in ascending level
+    /// order, from the same packed layout that <see cref="SilkMipChainLayout.Create"/> defines
+    /// for the upload source buffer.
+    /// </summary>
+    internal static MetalMipCopyPlan[] Create(
+        uint baseWidth,
+        uint baseHeight,
+        SilkTextureFormat format,
+        uint mipLevelCount)
+    {
+        SilkMipLevelLayout[] levels = SilkMipChainLayout.Create(
+            baseWidth,
+            baseHeight,
+            format,
+            mipLevelCount);
+        var plans = new MetalMipCopyPlan[levels.Length];
+        for (int index = 0; index < levels.Length; index++)
+        {
+            SilkMipLevelLayout level = levels[index];
+            plans[index] = new MetalMipCopyPlan(
+                checked((ulong)level.Offset),
+                checked((ulong)level.RowPitch),
+                checked((ulong)level.Size),
+                level.Width,
+                level.Height,
+                level.Level);
+        }
+        return plans;
     }
 }

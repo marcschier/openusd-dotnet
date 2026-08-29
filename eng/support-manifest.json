@@ -1,0 +1,995 @@
+{
+  "$schemaVersion": 1,
+  "version": "0.12.1-alpha",
+  "generatedDocPath": "docs/support-manifest.md",
+  "statusTerms": {
+    "implemented": "Production source and focused tests exist",
+    "workflow-gated": "A repository workflow defines required automated execution",
+    "compile-only": "The host compiles the path but does not execute it in the ordinary CI job",
+    "pending-hosted-proof": "Source/contracts exist, but current docs still mark hosted execution pending",
+    "implemented-not-gated": "Source exists, but no accepted automated reference gate proves the behavior",
+    "excluded": "Deliberately outside the locked runtime or project scope",
+    "unreachable": "A closed, unavailable, or incompatible upstream path cannot be implemented here",
+    "not-supported": "The current API rejects or does not expose the capability"
+  },
+  "areas": [
+    {
+      "id": "native-abi",
+      "title": "Native ABI capabilities",
+      "description": "Each entry maps a C macro from native/openusd_dotnet/include/openusd_dotnet.h to its managed-side status and evidence.",
+      "entries": [
+        {
+          "id": "string-list-v2",
+          "nativeCapability": "OPENUSD_CAPABILITY_STRING_LIST_V2",
+          "description": "String list v2 bulk protocol",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/NativeStringListPackingTests.cs",
+            "tests/OpenUsd.Tests/NativeStringListMutationTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "guarded-status-exports",
+          "nativeCapability": "OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS",
+          "description": "Guarded openusd_status export symbols",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Interop.Tests/NativeContractTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "shade-connected-sources",
+          "nativeCapability": "OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES",
+          "description": "UsdShade connected-source bulk query",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/ShadeConnectedSourceValidationTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "shared-stage-access",
+          "nativeCapability": "OPENUSD_CAPABILITY_SHARED_STAGE_ACCESS",
+          "description": "Shared render-source stage access token",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SharedStageSoakTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "world-bounds-query",
+          "nativeCapability": "OPENUSD_CAPABILITY_WORLD_BOUNDS_QUERY",
+          "description": "World-space bounding-box query",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdBounds3dTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "variant-set-names",
+          "nativeCapability": "OPENUSD_CAPABILITY_VARIANT_SET_NAMES",
+          "description": "Variant set name enumeration",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/SchemaFacadeSurfaceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "composed-direct-payload-arcs",
+          "nativeCapability": "OPENUSD_CAPABILITY_COMPOSED_DIRECT_PAYLOAD_ARCS",
+          "description": "Composed direct payload-arc list bulk protocol",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/DetachedValueTypeCoverageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "world-transform-query",
+          "nativeCapability": "OPENUSD_CAPABILITY_WORLD_TRANSFORM_QUERY",
+          "description": "World-space transform query",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdGeomWorldTransformContractTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "camera-state-query",
+          "nativeCapability": "OPENUSD_CAPABILITY_CAMERA_STATE_QUERY",
+          "description": "UsdGeomCamera authored-state query",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdGeomCameraStateTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "pcp-prim-index-query",
+          "nativeCapability": "OPENUSD_CAPABILITY_PCP_PRIM_INDEX_QUERY",
+          "description": "Pcp prim-index node and error inspection",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/DetachedRecordEqualityContractTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "ts-spline-query",
+          "nativeCapability": "OPENUSD_CAPABILITY_TS_SPLINE_QUERY",
+          "description": "Ts double-valued spline knot and evaluation query",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/DetachedValueTypeCoverageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "usd-validation-query",
+          "nativeCapability": "OPENUSD_CAPABILITY_USD_VALIDATION_QUERY",
+          "description": "UsdValidation registry and stage/prim validation",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdShadeValidationTests.cs",
+            "tests/OpenUsd.Tests/UsdSkelValidationTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "usdgeom-schema-complete",
+          "nativeCapability": "OPENUSD_CAPABILITY_USDGEOM_SCHEMA_COMPLETE",
+          "description": "Full UsdGeom data-schema surface including subset, curves, points, point instancer, implicits, and tet mesh",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdGeometryValueTests.cs",
+            "tests/OpenUsd.Tests/SchemaFacadeSurfaceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "usd-physics-schema",
+          "nativeCapability": "OPENUSD_CAPABILITY_USD_PHYSICS_SCHEMA",
+          "description": "UsdPhysics authoring schema surface",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdPhysicsValueTests.cs",
+            "tests/OpenUsd.Physics.Tests/UsdPhysicsContractsTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "usd-shade-skel",
+          "nativeCapability": "OPENUSD_CAPABILITY_USD_SHADE_SKEL",
+          "description": "UsdSkel and extended UsdShade coverage",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdSkelValidationTests.cs",
+            "tests/OpenUsd.Tests/SchemaFacadeSurfaceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "schema-facades-vol-render-media-proc-ui",
+          "nativeCapability": "OPENUSD_CAPABILITY_SCHEMA_FACADES_VOL_RENDER_MEDIA_PROC_UI",
+          "description": "UsdVol, UsdRender, UsdMedia, UsdProc, and UsdUI schema facades",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/SchemaFacadeSurfaceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "inspection-v2",
+          "nativeCapability": "OPENUSD_CAPABILITY_INSPECTION_V2",
+          "description": "Stage inspection v2 snapshot protocol",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/InspectionSnapshotRecordTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "attribute-arrays-v2",
+          "nativeCapability": "OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2",
+          "description": "Contiguous typed attribute-array v2 protocol",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/DetachedValueTypeCoverageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "bounded-stage-inspection",
+          "nativeCapability": "OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION",
+          "description": "Bounded stage statistics and diagnostics",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/StageStatisticsAnalyzerTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "session-overlay",
+          "nativeCapability": "OPENUSD_CAPABILITY_SESSION_OVERLAY",
+          "description": "Session-layer overlay for transient edits",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdSessionOverlayTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "physics-bake",
+          "nativeCapability": "OPENUSD_CAPABILITY_PHYSICS_BAKE",
+          "description": "Physics bake export to USD layer",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Physics.Tests/Baking"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "ocio-display-transform",
+          "nativeCapability": "OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM",
+          "description": "CPU capture/export OCIO display transform",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkOcioProcessorTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "image-decode-rgba32f",
+          "nativeCapability": "OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F",
+          "description": "Hio image decode to RGBA32F for HDR texture binding",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/tests/native_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/StormSilkParityCaptureDriverTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "udim-tile-resolution",
+          "nativeCapability": "OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION",
+          "description": "Resolver-aware UDIM tile atlas resolution",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/tests/native_probe.cpp",
+            "tests/OpenUsd.NativeProbe/Program.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        }
+      ]
+    },
+    {
+      "id": "distribution",
+      "title": "Distribution and stability",
+      "description": "Package publication, source-build, and MCP distribution gates.",
+      "entries": [
+        {
+          "id": "nuget-publish",
+          "description": "Published to NuGet.org via OIDC trusted publishing (27 package IDs)",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["nuget.yml", "release.yml"],
+          "evidenceWorkflowJobs": {
+            "nuget.yml": ["promote"],
+            "release.yml": ["publish"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Package.Tests/PublicApiBaselineTests.cs",
+            "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "source-build",
+          "description": "Full source build with dotnet build OpenUsd.slnx",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["ci.yml"],
+          "evidenceWorkflowJobs": {"ci.yml": ["build-test"]},
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "mcp-tool",
+          "description": "OpenUsd.Mcp.Tool net10.0 .NET tool; command openusd-mcp",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["ci.yml", "release.yml"],
+          "evidenceWorkflowJobs": {
+            "ci.yml": ["build-test"],
+            "release.yml": ["ci"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Mcp.Tests/OpenUsdMcpToolsTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        }
+      ]
+    },
+    {
+      "id": "target-frameworks",
+      "title": "Target frameworks",
+      "description": "Managed target frameworks and native deployment modes covered by repository workflows.",
+      "entries": [
+        {
+          "id": "managed-libs-net8",
+          "description": "net8.0 packable managed libraries",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["ci.yml"],
+          "evidenceWorkflowJobs": {"ci.yml": ["build-test"]},
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "managed-libs-net9",
+          "description": "net9.0 packable managed libraries",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["ci.yml"],
+          "evidenceWorkflowJobs": {"ci.yml": ["build-test"]},
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "managed-libs-net10",
+          "description": "net10.0 packable managed libraries",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["ci.yml"],
+          "evidenceWorkflowJobs": {"ci.yml": ["build-test"]},
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "nativeaot-trim",
+          "description": "Trim and single-file analyzer coverage plus net10.0 NativeAOT smoke execution on supported RIDs",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["ci.yml"],
+          "evidenceWorkflowJobs": {"ci.yml": ["aot-smoke"]},
+          "evidenceTests": [
+            "tests/OpenUsd.NativeProbe",
+            "tests/OpenUsd.SilkProbe"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "viewer-desktop-net10",
+          "description": "Viewer desktop application (net10.0 only)",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "viewer-distribution.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation", "macos-arm64"],
+            "viewer-distribution.yml": ["viewer-distribution"]
+          },
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        }
+      ]
+    },
+    {
+      "id": "data-authoring",
+      "title": "Data and authoring",
+      "description": "Core stage, composition, value, notification, and scheduler behavior.",
+      "entries": [
+        {
+          "id": "stage-open",
+          "description": "Stage create/open/masked open, file-backed stages and population masks",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdStageChangeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "stage-save-reload",
+          "description": "Save, reload, and export; root save plus stage/layer export paths",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdStageChangeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "layer-stack",
+          "description": "Layer stack and edit targets; root, session, owned local layers",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdSessionOverlayTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "prim-lifecycle",
+          "description": "Prim define/override/class/remove, active/load/instance state",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/SchemaFacadeSurfaceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "typed-values",
+          "description": "Scalar, string, math, color, bulk array, and time-sample typed values",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdScalarValueCoverageTests.cs",
+            "tests/OpenUsd.Tests/DetachedValueTypeCoverageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "composition-arcs",
+          "description": "References, payloads, inherits, specializes, and variants",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/DetachedRecordEqualityContractTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "change-notifications",
+          "description": "Coalesced stage-change notifications",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdStageChangeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "ordered-scheduler",
+          "description": "Serialized stage ownership and bounded work scheduler",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdStageSchedulerDiagnosticsTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        }
+      ]
+    },
+    {
+      "id": "schema-facades",
+      "title": "Schema facades",
+      "description": "Managed projections over the enabled OpenUSD schema families and supporting libraries.",
+      "entries": [
+        {
+          "id": "usdgeom",
+          "description": "UsdGeom: Xform, Xformable, Imageable, Mesh, Camera, Subset, Curves, Points, PointInstancer, implicit surfaces, tet mesh, PrimvarsAPI, ModelAPI",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdGeometryValueTests.cs",
+            "tests/OpenUsd.Tests/SchemaFacadeSurfaceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "usdshade",
+          "description": "UsdShade: Material, Shader, NodeGraph, connectability, terminals, binding, Preview Surface, UV Texture",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/ShadeConnectedSourceValidationTests.cs",
+            "tests/OpenUsd.Tests/UsdShadeValidationTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "usdlux",
+          "description": "UsdLux: common light API, shaping, six concrete light types",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/SchemaFacadeSurfaceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "usdskel",
+          "description": "UsdSkel: Root, Skeleton, Animation, BlendShape, Binding, joint and binding data",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdSkelValidationTests.cs",
+            "tests/OpenUsd.Tests/SchemaFacadeSurfaceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "usdphysics",
+          "description": "UsdPhysics: Scene, body, collision, material, joints, limits/drives, filtering (authoring only)",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Physics.Tests/UsdPhysicsContractsTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "usdvol",
+          "description": "UsdVol: Volume, field assets, OpenVDBAsset schema, Field3DAsset; Vulkan single-density OpenVDB rendering gated",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/SchemaFacadeSurfaceTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkGraphicsTextureTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "pcp-inspection",
+          "description": "Pcp: detached prim-index node/error inspection (focused read-only)",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/DetachedRecordEqualityContractTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "ts-spline",
+          "description": "Ts: double-valued spline knots, tangents, extrapolation, evaluation (focused read-only)",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/DetachedValueTypeCoverageTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "usd-validation",
+          "description": "UsdValidation: registry enumeration and stage/prim validation results (focused read-only)",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Tests/UsdShadeValidationTests.cs",
+            "tests/OpenUsd.Tests/UsdSkelValidationTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "generated-bindings",
+          "description": "Complete generated bindings for every OpenUSD schema",
+          "status": "not-supported",
+          "exclusionReason": "Schema facades are intentionally focused rather than generated-complete."
+        }
+      ]
+    },
+    {
+      "id": "rendering",
+      "title": "Rendering backends",
+      "description": "Storm and hdSilk rendering paths, shader features, and hosted execution limits.",
+      "entries": [
+        {
+          "id": "storm-presentation",
+          "description": "Storm renderer: presentation via WGL/GLX/CGL, GPU picking, device-loss detection",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "ci.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl", "linux-presentation", "macos-arm64"],
+            "ci.yml": ["build-test"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/RenderBackendContractsTests.cs",
+            "tests/OpenUsd.Rendering.Tests/StormPickingTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "d3d12-offscreen",
+          "description": "D3D12 WARP offscreen rendering with Hydra/hdSilk pages, picking, and compute",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "ci.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl"],
+            "ci.yml": ["build-test"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/RenderBackendContractsTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMeshRendererTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
+          "id": "vulkan-offscreen",
+          "description": "Vulkan SwiftShader offscreen rendering with Hydra/hdSilk pages, picking, and compute",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "ci.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-vulkan-required", "linux-presentation"],
+            "ci.yml": ["build-test"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/RenderBackendContractsTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMeshRendererTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "metal-offscreen",
+          "description": "Metal offscreen rendering with Hydra/hdSilk pages, picking, and compute on macOS arm64",
+          "status": "pending-hosted-proof",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {"render.yml": ["macos-arm64"]},
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/MetalCompositionViewportPresenterTests.cs",
+            "tests/OpenUsd.Rendering.Tests/MetalPickingTests.cs"
+          ],
+          "evidencePlatforms": ["osx-arm64"]
+        },
+        {
+          "id": "storm-hdsilk-parity",
+          "description": "25-scene Storm/hdSilk parity capture: 22 hard gates at 1.000000 adjusted IoU; 3 measured ungated (MaterialX, shadows, subdivision)",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "windows-vulkan-required",
+              "linux-presentation",
+              "macos-arm64"
+            ]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.ConformanceTests/StormSilkParityCaptureDriverTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "preview-surface-textures",
+          "description": "UsdPreviewSurface map binding on all three RHIs through OpenUSD Hio: typed decode, ordinary-image mip chains with normal renormalization, 1-4 channel expansion, and missing-asset fallbacks",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "windows-vulkan-required",
+              "linux-presentation",
+              "macos-arm64"
+            ]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkGraphicsTextureTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMipChainTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "anisotropic-sampling",
+          "description": "Capability-negotiated anisotropic sampling: SilkGraphicsCapabilities.MaxSamplerAnisotropy advertises the device's real bounded maximum (1x when unsupported, e.g. a Vulkan device without samplerAnisotropy), SilkSamplerDescriptor.Validate rejects a request above it instead of clamping, and ordinary mipmapped material textures request min(device max, 8) while UDIM atlases, volume density, and nearest-only Rgba32Float sampling stay isotropic",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "windows-vulkan-required",
+              "linux-presentation",
+              "macos-arm64"
+            ]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12DeviceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VulkanDeviceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/MetalDeviceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "materialx-projection",
+          "description": "hdSilk MaterialX projection: ND_standard_surface base colour, emission, metalness, roughness, normal; constant, direct image, and arithmetic fold",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "windows-vulkan-required",
+              "linux-presentation",
+              "macos-arm64"
+            ]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialShaderCompilerTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "udim-textures",
+          "description": "Resolver-aware UDIM texture atlas with per-slot bounds, one-pixel gutters, standard tile numbering, and authored fallback values",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "windows-vulkan-required",
+              "linux-presentation"
+            ]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/StormSilkParityCaptureDriverTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "usdvol-vulkan",
+          "description": "UsdVol density rendering: single OpenVDBAsset density field, R32 3D texture, raymarch; gated for Vulkan only",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-vulkan-required", "linux-presentation"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkGraphicsTextureTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "cpu-skinning",
+          "description": "UsdSkel CPU skinning for the skinned-pennant parity scene",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "windows-vulkan-required",
+              "linux-presentation",
+              "macos-arm64"
+            ]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkDeformationRetentionTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "cpu-ocio-export",
+          "description": "CPU capture/export OCIO display transform via SilkOpenColorIoProcessor after readback",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkOcioProcessorTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "gpu-ocio-presentation",
+          "description": "OCIO final display/view/look correction for live GPU presentation via HdxColorCorrectionTask",
+          "status": "not-supported",
+          "exclusionReason": "hdSilk does not run the Hdx task graph and has no render-settings ABI for OCIO config names, LUT resources, or generated colour-correction shader code. CPU capture/export OCIO is supported through SilkOpenColorIoProcessor."
+        },
+        {
+          "id": "gpu-skinning",
+          "description": "GPU blend-shape deformation and GPU skinning",
+          "status": "not-supported",
+          "exclusionReason": "The mesh ABI and shader design required before this can become a backend gate are documented in docs/rendering.md. CPU blend-shape subset is implemented."
+        },
+        {
+          "id": "catmull-clark-subdivision",
+          "description": "Full Catmull-Clark/Loop/bilinear subdivision, creases, and primvar refinement",
+          "status": "not-supported",
+          "exclusionReason": "Not part of the next-alpha parity claim. subdivision-catmull-clark is registered, measured (0.931015 adjusted IoU), and not gated because Storm is not a usable offscreen reference."
+        },
+        {
+          "id": "vulkan-composition-hosted",
+          "description": "Vulkan external-memory composition on hosted Windows (VK_KHR_external_memory_win32/external_semaphore_win32)",
+          "status": "compile-only",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {"render.yml": ["windows-wgl"]},
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/VulkanCompositionSourceContractTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"],
+          "exclusionReason": "Hosted Windows has no system Vulkan ICD and SwiftShader does not implement VK_KHR_external_memory_win32 or VK_KHR_external_semaphore_win32. Records status: skipped artifact. Requires a GPU-equipped self-hosted runner (render-unblock-vulkan)."
+        },
+        {
+          "id": "vulkan-x11-wayland-import",
+          "description": "Vulkan external-image import on hosted Linux X11/Wayland compositors",
+          "status": "compile-only",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {"render.yml": ["linux-presentation"]},
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/VulkanCompositionSourceContractTests.cs"
+          ],
+          "evidencePlatforms": ["linux-x64"],
+          "exclusionReason": "Hosted Linux lavapipe reports 'supported image handles: (none)'; the compositor cannot import external Vulkan images. Records status: skipped artifact."
+        }
+      ]
+    },
+    {
+      "id": "picking-selection",
+      "title": "Picking and selection",
+      "description": "Backend picking identities, selection behavior, and known unsupported modes.",
+      "entries": [
+        {
+          "id": "primitive-picking",
+          "description": "Primitive picking on Storm, D3D12, and Vulkan backends",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "windows-vulkan-required",
+              "linux-presentation"
+            ]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/PickingContractsTests.cs",
+            "tests/OpenUsd.Rendering.Tests/StormPickingTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkPickingTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "primitive-picking-metal",
+          "description": "Primitive picking on Metal backend",
+          "status": "pending-hosted-proof",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {"render.yml": ["macos-arm64"]},
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/MetalPickingTests.cs"
+          ],
+          "evidencePlatforms": ["osx-arm64"]
+        },
+        {
+          "id": "face-identity",
+          "description": "Face identity picking on D3D12 and Vulkan backends",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "windows-vulkan-required",
+              "linux-presentation"
+            ]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkPickingTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "edge-point-picking",
+          "description": "Edge and point picking",
+          "status": "not-supported",
+          "exclusionReason": "Not exposed through the current picking API on any backend."
+        },
+        {
+          "id": "xray-selection",
+          "description": "X-ray (through-geometry) selection mode",
+          "status": "not-supported",
+          "exclusionReason": "Not exposed on any backend. Occlusion policy is visible-only for hdSilk backends; Storm uses its native highlight path."
+        }
+      ]
+    },
+    {
+      "id": "viewer",
+      "title": "Viewer features",
+      "description": "Interactive desktop inspection, playback, selection, and focused editing capabilities.",
+      "entries": [
+        {
+          "id": "file-open",
+          "description": "Open/drop .usd, .usda, .usdc, and .usdz files",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerDocumentModelTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "renderer-switching",
+          "description": "Renderer switching and fallback on supported platform/backend combinations",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerRenderBackendTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerSwitchingEvidenceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "timeline-playback",
+          "description": "Timeline playback and authored timing",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerTimelineModelTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "viewer-picking",
+          "description": "Picking and selection display in the Viewer",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerPickingTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "viewer-physics",
+          "description": "Physics authoring, bake, and deformation rendering in the Viewer",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Viewer.Tests/ViewerPhysicsAuthoringControllerTests.cs",
+            "tests/OpenUsd.Viewer.Tests/ViewerPhysicsDeformationRenderTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64"]
+        },
+        {
+          "id": "composition-tab",
+          "description": "Composition tab data (PcpPrimIndex) display in the Viewer UI",
+          "status": "not-supported",
+          "exclusionReason": "The PcpPrimIndex ABI and managed API are implemented, but the Viewer UI is pending."
+        },
+        {
+          "id": "viewer-dcc",
+          "description": "Full DCC authoring toolset in the Viewer",
+          "status": "not-supported",
+          "exclusionReason": "The Viewer is an inspector and focused editor, not a usdview clone or full DCC. Full DCC authoring is not a goal."
+        }
+      ]
+    },
+    {
+      "id": "excluded-unreachable",
+      "title": "Excluded and unreachable",
+      "description": "Deliberate product boundaries, unavailable proprietary systems, and unsupported integrations.",
+      "entries": [
+        {
+          "id": "omniverse-rtx",
+          "description": "NVIDIA Omniverse RTX, Carbonite, omni.ui, Kit, Nucleus, and OptiX",
+          "status": "unreachable",
+          "exclusionReason": "Closed NVIDIA platform pieces; not open standards this runtime can ship or reimplement."
+        },
+        {
+          "id": "cesium-fabric-path",
+          "description": "Cesium for Omniverse Fabric path via omni::fabric::StageReaderWriter",
+          "status": "unreachable",
+          "exclusionReason": "Bypasses Hydra and writes tiles through omni::fabric::StageReaderWriter; no open specification or headers available."
+        },
+        {
+          "id": "cesium-hydra-delegate",
+          "description": "Cesium Hydra delegate or scene index",
+          "status": "unreachable",
+          "exclusionReason": "No Cesium Hydra delegate exists in this repository or the locked dependencies."
+        },
+        {
+          "id": "usdview-python-repl",
+          "description": "usdview embedded Python REPL",
+          "status": "excluded",
+          "exclusionReason": "Requires Python. The locked native profile never enables Python."
+        },
+        {
+          "id": "usdview-python-plugin",
+          "description": "usdview Python plugin container (plugin dot py)",
+          "status": "excluded",
+          "exclusionReason": "Hard Python exclusion; same constraint as the usdview Python REPL."
+        },
+        {
+          "id": "embree-cpu-ray-tracing",
+          "description": "Embree CPU ray tracing",
+          "status": "excluded",
+          "exclusionReason": "Embree is disabled in the locked viewer-standard native profile."
+        },
+        {
+          "id": "prman",
+          "description": "RenderMan (prman)",
+          "status": "excluded",
+          "exclusionReason": "prman is disabled in the locked viewer-standard native profile."
+        },
+        {
+          "id": "mobile-browser-rids",
+          "description": "Mobile and browser runtime identifiers (iOS, Android, WASM)",
+          "status": "excluded",
+          "exclusionReason": "No runtime packages exist for mobile or browser targets. Only win-x64, linux-x64, and osx-arm64 are currently defined."
+        },
+        {
+          "id": "light-linking",
+          "description": "Light linking and instanced-shadow parity",
+          "status": "not-supported",
+          "exclusionReason": "Not implemented. No linked-light filtering or instanced-shadow parity on any backend."
+        },
+        {
+          "id": "path-tracing",
+          "description": "Path tracing",
+          "status": "excluded",
+          "exclusionReason": "Outside the next-alpha support claim. Would require a third-party Hydra render delegate (e.g., HdCycles) or Embree integration, neither of which is in scope."
+        },
+        {
+          "id": "third-party-hydra-delegates",
+          "description": "Arbitrary third-party Hydra render delegates",
+          "status": "excluded",
+          "exclusionReason": "Outside the next-alpha support claim. The viewer activates Storm or hdSilk only."
+        }
+      ]
+    }
+  ]
+}

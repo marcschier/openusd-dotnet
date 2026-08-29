@@ -192,6 +192,20 @@ public sealed class VulkanDeviceTests
     }
 
     [Test]
+    public async Task SwiftShaderUploadsMultiLevelMipChainAndPreservesBaseLevelReadback()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.MultiLevelTextureUploadPreservesBaseLevelReadback(device);
+    }
+
+    [Test]
     public async Task SwiftShaderRejectsCrossDeviceTextureUploads()
     {
         if (!OperatingSystem.IsWindows())
@@ -220,6 +234,23 @@ public sealed class VulkanDeviceTests
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
 
         await OffscreenRhiConformance.SamplerCreationAndDisposal(device);
+    }
+
+    [Test]
+    public async Task SwiftShaderAdvertisesAndHonorsAnisotropicSamplerCapability()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+
+        // SwiftShader may legitimately report samplerAnisotropy as unsupported (a 1x
+        // maximum); the shared helper asserts capability-honoring behavior either way
+        // without weakening the contract to "anisotropy is always available".
+        await OffscreenRhiConformance.AnisotropicSamplerCreationHonorsCapability(device);
     }
 
     [Test]

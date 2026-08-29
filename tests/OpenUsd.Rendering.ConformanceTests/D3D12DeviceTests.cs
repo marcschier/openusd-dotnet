@@ -617,6 +617,21 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
+    public async Task WarpUploadsMultiLevelMipChainAndPreservesBaseLevelReadback()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+
+        await OffscreenRhiConformance.MultiLevelTextureUploadPreservesBaseLevelReadback(device);
+    }
+
+    [Test]
     public async Task WarpRejectsCrossDeviceTextureUploads()
     {
         if (!OperatingSystem.IsWindows())
@@ -648,6 +663,24 @@ public sealed class D3D12DeviceTests
             D3D12SilkGraphicsDevice.Create(useWarp: true);
 
         await OffscreenRhiConformance.SamplerCreationAndDisposal(device);
+    }
+
+    [Test]
+    public async Task WarpAdvertisesAndHonorsAnisotropicSamplerCapability()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+
+        // D3D12_REQ_MAXANISOTROPY guarantees 16x on every Feature Level 11_0+ device,
+        // including WARP, so this backend should never report an unsupported/1x maximum.
+        await Assert.That(device.Capabilities.MaxSamplerAnisotropy).IsEqualTo(16f);
+        await OffscreenRhiConformance.AnisotropicSamplerCreationHonorsCapability(device);
     }
 
     [Test]

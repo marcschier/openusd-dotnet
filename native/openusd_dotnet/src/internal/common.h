@@ -55,6 +55,7 @@
 #include "pxr/usd/usd/stagePopulationMask.h"
 #include "pxr/usd/usd/specializes.h"
 #include "pxr/usd/usd/variantSets.h"
+#include "pxr/usd/usdShade/udimUtils.h"
 #include "pxr/usd/usdGeom/bboxCache.h"
 #include "pxr/usd/usdGeom/basisCurves.h"
 #include "pxr/usd/usdGeom/camera.h"
@@ -288,7 +289,9 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION |
     OPENUSD_CAPABILITY_SESSION_OVERLAY |
     OPENUSD_CAPABILITY_PHYSICS_BAKE |
-    OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM;
+    OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
+    OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F |
+    OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));

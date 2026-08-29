@@ -168,12 +168,34 @@ Mesh rendering and visible selection compositing are format-aware; picking and
 selection masks deliberately remain RGBA8 identity surfaces. Frame capture remains
 an explicit RGBA8 display-image contract.
 hdSilk now supports texture-backed `UsdPreviewSurface` map binding on all three RHIs by decoding
-resolved assets through OpenUSD Hio and uploading cached sampled RGBA8 textures. Missing and corrupt
+resolved assets through OpenUSD Hio. UNorm8/sRGB images use cached sampled RGBA8 textures; SNorm8,
+integer, half, float, and double images use explicitly converted RGBA32Float textures so HDR values
+are preserved. One- through four-channel expansion and RGB-only sRGB conversion are deterministic.
+Compressed Hio formats and non-finite channels are rejected with actionable diagnostics. Missing and corrupt
 assets use authored fallbacks with bounded stable diagnostics; failed loads are cached without poisoning
 the successful cache and can be explicitly retried. Unresolved and unsupported materials likewise retain
 default shading with distinct diagnostics. Every active texture slot binds its own cached sampler, preserving
 independent `wrapS` and `wrapT` state across base-colour, normal, roughness/metallic, emissive, and volume maps.
-UDIM expansion and colour-delta parity with Storm remain outside the current support claim.
+Ordinary (non-UDIM) material textures now upload a full CPU-generated mip chain instead of one level:
+a shared packed layout (mip 0 first, ascending, each tightly packed) is validated by every backend's
+upload path, and D3D12, Vulkan, and Metal each allocate, bind, and transition every requested level.
+The CPU box-filters Rgba8Unorm and Rgba32Float alike after decode/flip/scale-bias, averages alpha and
+scalar maps ordinarily, and renormalizes normal maps after averaging (falling back to straight-up on
+exact cancellation); base-level readback is unchanged. `<UDIM>` atlases remain single-level in this
+slice — their sparse per-tile gutter layout is not naively downsamplable. Anisotropic sampling is now
+capability-negotiated: `SilkGraphicsCapabilities.MaxSamplerAnisotropy` reports the device's actual
+bounded maximum (1x when unsupported, such as a Vulkan device with `samplerAnisotropy` disabled), and
+`SilkSamplerDescriptor.Validate` rejects a request above that maximum outright rather than silently
+clamping it. Ordinary (non-UDIM) mipmapped material textures sampled with a linear filter request
+`min(device max, 8)` when the device advertises anisotropy; `<UDIM>` atlases, single-level volume
+density textures, and nearest-only `Rgba32Float` sampling always stay isotropic regardless of device
+capability.
+Resolver-aware `<UDIM>` textures use bounded per-slot atlases with one-pixel gutters, standard tile
+numbering, and authored fallback values in sparse cells. Tile format/dimension mismatches and atlas
+spans above 256 cells are diagnosed and rejected. RGBA32Float sampling is nearest-only until
+cross-backend filter negotiation lands. Successful local files and resolved UDIM tiles are reloaded
+when their size or last-write timestamp changes; non-filesystem resolver assets use material
+dirtiness or explicit retry. Colour-delta parity with Storm remains outside the current support claim.
 It also supports a documented MaterialX projection plus generated-source paths for graphs outside that projection:
 `ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
 driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are
