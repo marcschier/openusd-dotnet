@@ -646,6 +646,27 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "anisotropic-sampling",
+          "description": "Capability-negotiated anisotropic sampling: SilkGraphicsCapabilities.MaxSamplerAnisotropy advertises the device's real bounded maximum (1x when unsupported, e.g. a Vulkan device without samplerAnisotropy), SilkSamplerDescriptor.Validate rejects a request above it instead of clamping, and ordinary mipmapped material textures request min(device max, 8) while UDIM atlases, volume density, and nearest-only Rgba32Float sampling stay isotropic",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "windows-vulkan-required",
+              "linux-presentation",
+              "macos-arm64"
+            ]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12DeviceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VulkanDeviceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/MetalDeviceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
           "id": "materialx-projection",
           "description": "hdSilk MaterialX projection: ND_standard_surface base colour, emission, metalness, roughness, normal; constant, direct image, and arithmetic fold",
           "status": "workflow-gated",

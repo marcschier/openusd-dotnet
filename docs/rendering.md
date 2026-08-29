@@ -575,6 +575,27 @@ Metal consume the tightly packed source directly; base-level readback and the ex
 volume-texture path are unchanged on every backend. `<UDIM>` atlases remain single-level in this slice:
 their sparse per-tile gutter/fallback layout cannot be naively downsampled, so atlas textures continue
 to allocate exactly one mip level regardless of tile resolution.
+Anisotropic sampling is capability-negotiated rather than assumed. `SilkGraphicsCapabilities` carries a
+backend-neutral `MaxSamplerAnisotropy` (defaulting to `1` so pre-existing callers keep their prior
+isotropic-only behaviour), and `SilkSamplerDescriptor` carries a validated trailing `MaxAnisotropy`
+(default `1`) that must be finite and at least `1`. `SilkSamplerDescriptor.Validate(capabilities)`
+explicitly rejects — rather than silently clamps — a request above the device's advertised maximum.
+D3D12 advertises `16` (the D3D11/12 `D3D12_REQ_MAXANISOTROPY` guarantee on every Feature Level 11_0+
+device, including WARP) and selects `Filter.Anisotropic` only when requested, preserving the prior
+point/linear filter mapping for 1x sampling. Vulkan queries `PhysicalDeviceFeatures.SamplerAnisotropy`
+and `PhysicalDeviceLimits.MaxSamplerAnisotropy` at device creation, enables the feature only when the
+physical device supports it, and advertises the real bounded maximum — including the legitimate `1`
+(unsupported) answer some software rasterizers such as SwiftShader may report; `AnisotropyEnable` and
+`MaxAnisotropy` on the native sampler are only set for a >1 request, and the feature is never requested
+of an unenabled device. Metal advertises `16`, the value Apple documents `MTLSamplerDescriptor
+.maxAnisotropy` as accepting on every device; no SharpMetal API in the current version exposes a
+narrower runtime query, so this is a conservative, API-guaranteed value rather than a probed one.
+The renderer requests anisotropy only for an ordinary (non-UDIM), linearly filtered, actually
+mipmapped (`MipLevelCount > 1`) material texture, bounded to `min(device max, 8)`; `<UDIM>` atlases,
+single-level volume-density textures, and nearest-only `Rgba32Float` sampling always stay isotropic.
+Because `MaxAnisotropy` is part of `SilkSamplerDescriptor`, it also differentiates the renderer's
+sampler cache, so isotropic and anisotropic requests for otherwise-identical sampler state never share
+a cached sampler object.
 `<UDIM>` assets are discovered in one resolver-aware native call, then packed into a bounded atlas
 per material slot. One-pixel gutters keep linear filtering inside each tile, sparse atlas cells
 contain the authored fallback, and shader-side tile selection uses the standard

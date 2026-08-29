@@ -398,6 +398,40 @@ internal static class OffscreenRhiConformance
             .IsEqualTo(SilkSamplerAddressMode.Repeat);
     }
 
+    /// <summary>
+    /// Proves the capability-negotiated anisotropy contract end to end against a real device:
+    /// the advertised maximum is always at least 1 (isotropic-only is a legitimate answer, not
+    /// a bug, for software rasterizers such as SwiftShader), an isotropic sampler always
+    /// succeeds, a sampler at exactly the advertised maximum succeeds whenever that maximum
+    /// exceeds 1, and a request one step above the advertised maximum is rejected outright
+    /// rather than silently clamped.
+    /// </summary>
+    internal static async Task AnisotropicSamplerCreationHonorsCapability(ISilkGraphicsDevice device)
+    {
+        float maxSupported = device.Capabilities.MaxSamplerAnisotropy;
+        await Assert.That(maxSupported).IsGreaterThanOrEqualTo(1f);
+
+        using ISilkGraphicsSampler isotropic = device.CreateSampler(SilkSamplerDescriptor.LinearClamp);
+        await Assert.That(isotropic.Descriptor.MaxAnisotropy).IsEqualTo(1f);
+
+        if (maxSupported > 1f)
+        {
+            SilkSamplerDescriptor atMax = SilkSamplerDescriptor.LinearClamp with
+            {
+                MaxAnisotropy = maxSupported
+            };
+            using ISilkGraphicsSampler anisotropic = device.CreateSampler(atMax);
+            await Assert.That(anisotropic.Descriptor.MaxAnisotropy).IsEqualTo(maxSupported);
+        }
+
+        SilkSamplerDescriptor aboveMax = SilkSamplerDescriptor.LinearClamp with
+        {
+            MaxAnisotropy = maxSupported + 1f
+        };
+        await Assert.That(() => device.CreateSampler(aboveMax))
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
     internal static async Task DrawsIndexedTriangle(
         ISilkGraphicsDevice device,
         SilkShaderBinaryFormat shaderFormat)

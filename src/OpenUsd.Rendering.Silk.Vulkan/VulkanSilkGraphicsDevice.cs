@@ -109,6 +109,14 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             api.GetPhysicalDeviceProperties(
                 physicalDevice,
                 out PhysicalDeviceProperties properties);
+            api.GetPhysicalDeviceFeatures(physicalDevice, out PhysicalDeviceFeatures supportedFeatures);
+            bool samplerAnisotropySupported = supportedFeatures.SamplerAnisotropy;
+            // SwiftShader and other conformant software devices may report SamplerAnisotropy
+            // without it, or with a bounded limit below the common 16x hardware ceiling; the
+            // capability always reflects the actual queried limit rather than assuming support.
+            float maxSamplerAnisotropy = samplerAnisotropySupported
+                ? MathF.Max(1f, properties.Limits.MaxSamplerAnisotropy)
+                : 1f;
             bool descriptorIndexingExtension =
                 SupportsDeviceExtension(api, physicalDevice, "VK_EXT_descriptor_indexing");
             bool descriptorIndexingIsCore = properties.ApiVersion >= Vk.Version12;
@@ -151,6 +159,13 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     DescriptorBindingVariableDescriptorCount =
                         descriptorIndexingFeatures.DescriptorBindingVariableDescriptorCount
                 };
+            // Only the features actually queried as supported are enabled; requesting an
+            // unsupported feature would fail device creation, and enabling an unsupported one
+            // would let a later sampler silently violate validation.
+            var enabledFeatures = new PhysicalDeviceFeatures
+            {
+                SamplerAnisotropy = samplerAnisotropySupported
+            };
             var deviceInfo = new DeviceCreateInfo
             {
                 SType = StructureType.DeviceCreateInfo,
@@ -160,7 +175,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 PpEnabledExtensionNames = (byte**)extensionNames.Handle,
                 PNext = enableDescriptorIndexing
                     ? &enabledDescriptorIndexingFeatures
-                    : null
+                    : null,
+                PEnabledFeatures = &enabledFeatures
             };
             ThrowIfFailed(
                 api.CreateDevice(physicalDevice, &deviceInfo, null, &device),
@@ -193,7 +209,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 DescriptorIndexedTextureTablesDiagnostic =
                     materialDescriptorTables is null
                         ? descriptorIndexedTextureTablesDiagnostic
-                        : null
+                        : null,
+                MaxSamplerAnisotropy = maxSamplerAnisotropy
             };
             return new VulkanSilkGraphicsDevice(
                 api,

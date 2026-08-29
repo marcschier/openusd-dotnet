@@ -356,6 +356,8 @@ OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.DeviceName.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.Equals(OpenUsd.Rendering.Silk.SilkGraphicsCapabilities other) -> bool
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.IsSoftware.get -> bool
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.IsSoftware.init -> void
+OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.MaxSamplerAnisotropy.get -> float
+OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.MaxSamplerAnisotropy.init -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SilkGraphicsCapabilities() -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SilkGraphicsCapabilities(string! DeviceName, string! ApiVersion, bool SupportsCompute, bool IsSoftware) -> void
 OpenUsd.Rendering.Silk.SilkGraphicsCapabilities.SupportsCompute.get -> bool
@@ -941,15 +943,18 @@ OpenUsd.Rendering.Silk.SilkSamplerDescriptor.AddressV.get -> OpenUsd.Rendering.S
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.AddressV.init -> void
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.AddressW.get -> OpenUsd.Rendering.Silk.SilkSamplerAddressMode
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.AddressW.init -> void
-OpenUsd.Rendering.Silk.SilkSamplerDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.SilkSamplerFilter MinFilter, out OpenUsd.Rendering.Silk.SilkSamplerFilter MagFilter, out OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressU, out OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressV, out OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressW) -> void
+OpenUsd.Rendering.Silk.SilkSamplerDescriptor.Deconstruct(out OpenUsd.Rendering.Silk.SilkSamplerFilter MinFilter, out OpenUsd.Rendering.Silk.SilkSamplerFilter MagFilter, out OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressU, out OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressV, out OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressW, out float MaxAnisotropy) -> void
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.Equals(OpenUsd.Rendering.Silk.SilkSamplerDescriptor other) -> bool
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.MagFilter.get -> OpenUsd.Rendering.Silk.SilkSamplerFilter
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.MagFilter.init -> void
+OpenUsd.Rendering.Silk.SilkSamplerDescriptor.MaxAnisotropy.get -> float
+OpenUsd.Rendering.Silk.SilkSamplerDescriptor.MaxAnisotropy.init -> void
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.MinFilter.get -> OpenUsd.Rendering.Silk.SilkSamplerFilter
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.MinFilter.init -> void
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.SilkSamplerDescriptor() -> void
-OpenUsd.Rendering.Silk.SilkSamplerDescriptor.SilkSamplerDescriptor(OpenUsd.Rendering.Silk.SilkSamplerFilter MinFilter, OpenUsd.Rendering.Silk.SilkSamplerFilter MagFilter, OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressU, OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressV, OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressW) -> void
+OpenUsd.Rendering.Silk.SilkSamplerDescriptor.SilkSamplerDescriptor(OpenUsd.Rendering.Silk.SilkSamplerFilter MinFilter, OpenUsd.Rendering.Silk.SilkSamplerFilter MagFilter, OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressU, OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressV, OpenUsd.Rendering.Silk.SilkSamplerAddressMode AddressW, float MaxAnisotropy = 1) -> void
 OpenUsd.Rendering.Silk.SilkSamplerDescriptor.Validate() -> void
+OpenUsd.Rendering.Silk.SilkSamplerDescriptor.Validate(OpenUsd.Rendering.Silk.SilkGraphicsCapabilities capabilities) -> void
 OpenUsd.Rendering.Silk.SilkSamplerFilter
 OpenUsd.Rendering.Silk.SilkSamplerFilter.Linear = 1 -> OpenUsd.Rendering.Silk.SilkSamplerFilter
 OpenUsd.Rendering.Silk.SilkSamplerFilter.Nearest = 0 -> OpenUsd.Rendering.Silk.SilkSamplerFilter

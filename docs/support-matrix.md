@@ -182,8 +182,14 @@ upload path, and D3D12, Vulkan, and Metal each allocate, bind, and transition ev
 The CPU box-filters Rgba8Unorm and Rgba32Float alike after decode/flip/scale-bias, averages alpha and
 scalar maps ordinarily, and renormalizes normal maps after averaging (falling back to straight-up on
 exact cancellation); base-level readback is unchanged. `<UDIM>` atlases remain single-level in this
-slice — their sparse per-tile gutter layout is not naively downsamplable — and anisotropic filtering
-remains outside the current support claim regardless of mip level count.
+slice — their sparse per-tile gutter layout is not naively downsamplable. Anisotropic sampling is now
+capability-negotiated: `SilkGraphicsCapabilities.MaxSamplerAnisotropy` reports the device's actual
+bounded maximum (1x when unsupported, such as a Vulkan device with `samplerAnisotropy` disabled), and
+`SilkSamplerDescriptor.Validate` rejects a request above that maximum outright rather than silently
+clamping it. Ordinary (non-UDIM) mipmapped material textures sampled with a linear filter request
+`min(device max, 8)` when the device advertises anisotropy; `<UDIM>` atlases, single-level volume
+density textures, and nearest-only `Rgba32Float` sampling always stay isotropic regardless of device
+capability.
 Resolver-aware `<UDIM>` textures use bounded per-slot atlases with one-pixel gutters, standard tile
 numbering, and authored fallback values in sparse cells. Tile format/dimension mismatches and atlas
 spans above 256 cells are diagnosed and rejected. RGBA32Float sampling is nearest-only until

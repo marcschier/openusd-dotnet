@@ -310,7 +310,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
     {
         ObjectDisposedException.ThrowIf(_device == null, this);
-        descriptor.Validate();
+        descriptor.Validate(Capabilities);
         RegisterDependentObject();
         ID3D12DescriptorHeap* heap = null;
         bool success = false;
@@ -326,13 +326,21 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 &heapDescription,
                 &heapId,
                 (void**)&heap));
+            bool useAnisotropy = descriptor.MaxAnisotropy > 1f;
             var nativeDescriptor = new SamplerDesc
             {
-                Filter = GetFilter(descriptor.MinFilter, descriptor.MagFilter),
+                // Anisotropic filtering replaces the min/mag/mip filter selection outright;
+                // 1x sampling keeps the existing point/linear combinations untouched.
+                Filter = useAnisotropy
+                    ? Filter.Anisotropic
+                    : GetFilter(descriptor.MinFilter, descriptor.MagFilter),
                 AddressU = GetAddressMode(descriptor.AddressU),
                 AddressV = GetAddressMode(descriptor.AddressV),
                 AddressW = GetAddressMode(descriptor.AddressW),
                 ComparisonFunc = ComparisonFunc.Always,
+                MaxAnisotropy = useAnisotropy
+                    ? (uint)MathF.Round(descriptor.MaxAnisotropy)
+                    : 1,
                 MinLOD = 0,
                 MaxLOD = float.MaxValue
             };

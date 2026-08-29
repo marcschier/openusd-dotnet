@@ -248,12 +248,13 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        descriptor.Validate();
+        descriptor.Validate(Capabilities);
         RegisterDependentObject();
         Sampler sampler = default;
         bool success = false;
         try
         {
+            bool useAnisotropy = descriptor.MaxAnisotropy > 1f;
             var createInfo = new SamplerCreateInfo
             {
                 SType = StructureType.SamplerCreateInfo,
@@ -267,7 +268,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 AddressModeW = GetAddressMode(descriptor.AddressW),
                 MinLod = 0,
                 MaxLod = Vk.LodClampNone,
-                MaxAnisotropy = 1,
+                // Never request AnisotropyEnable unless the logical device actually enabled the
+                // samplerAnisotropy feature; Capabilities.MaxSamplerAnisotropy already reflects
+                // that, so useAnisotropy can only be true when the feature is on.
+                AnisotropyEnable = useAnisotropy,
+                MaxAnisotropy = useAnisotropy ? descriptor.MaxAnisotropy : 1f,
                 BorderColor = BorderColor.FloatTransparentBlack
             };
             ThrowIfFailed(

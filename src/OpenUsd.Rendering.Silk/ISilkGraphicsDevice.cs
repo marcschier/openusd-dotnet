@@ -661,6 +661,13 @@ public readonly record struct SilkGraphicsCapabilities(
     /// Gets why descriptor-indexed material texture tables were unavailable, when they declined.
     /// </summary>
     public string? DescriptorIndexedTextureTablesDiagnostic { get; init; }
+
+    /// <summary>
+    /// Gets the maximum sampler anisotropy the device honors, in texel samples. The
+    /// backend-neutral default of <c>1</c> means anisotropic filtering is unavailable and every
+    /// caller that does not opt in keeps its prior isotropic-only behavior.
+    /// </summary>
+    public float MaxSamplerAnisotropy { get; init; } = 1f;
 }
 
 /// <summary>
@@ -928,7 +935,8 @@ public readonly record struct SilkSamplerDescriptor(
     SilkSamplerFilter MagFilter,
     SilkSamplerAddressMode AddressU,
     SilkSamplerAddressMode AddressV,
-    SilkSamplerAddressMode AddressW)
+    SilkSamplerAddressMode AddressW,
+    float MaxAnisotropy = 1f)
 {
     /// <summary>Gets a linear-filtered clamp-to-edge sampler.</summary>
     public static SilkSamplerDescriptor LinearClamp => new(
@@ -954,7 +962,7 @@ public readonly record struct SilkSamplerDescriptor(
         SilkSamplerAddressMode.Repeat,
         SilkSamplerAddressMode.Repeat);
 
-    /// <summary>Validates all descriptor enum values.</summary>
+    /// <summary>Validates all descriptor enum values and the anisotropy range.</summary>
     public void Validate()
     {
         if (!Enum.IsDefined(MinFilter))
@@ -976,6 +984,30 @@ public readonly record struct SilkSamplerDescriptor(
         if (!Enum.IsDefined(AddressW))
         {
             throw new ArgumentOutOfRangeException(nameof(AddressW));
+        }
+        if (!float.IsFinite(MaxAnisotropy) || MaxAnisotropy < 1f)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(MaxAnisotropy),
+                MaxAnisotropy,
+                "MaxAnisotropy must be a finite value of at least 1.");
+        }
+    }
+
+    /// <summary>
+    /// Validates the descriptor and rejects an anisotropy request the device capability does
+    /// not honor, rather than silently clamping it to a value the caller did not ask for.
+    /// </summary>
+    public void Validate(SilkGraphicsCapabilities capabilities)
+    {
+        Validate();
+        if (MaxAnisotropy > capabilities.MaxSamplerAnisotropy)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(capabilities),
+                capabilities.MaxSamplerAnisotropy,
+                $"The requested max anisotropy {MaxAnisotropy} exceeds the device's " +
+                $"{capabilities.MaxSamplerAnisotropy} capability.");
         }
     }
 }

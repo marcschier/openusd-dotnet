@@ -821,6 +821,355 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(resources.Diagnostics.Entries).IsEmpty();
     }
 
+    [Test]
+    [Arguments(0f)]
+    [Arguments(-1f)]
+    [Arguments(float.NaN)]
+    [Arguments(float.PositiveInfinity)]
+    [Arguments(float.NegativeInfinity)]
+    public async Task SamplerDescriptorValidateRejectsNonFiniteOrSubOneAnisotropy(float maxAnisotropy)
+    {
+        var descriptor = new SilkSamplerDescriptor(
+            SilkSamplerFilter.Linear,
+            SilkSamplerFilter.Linear,
+            SilkSamplerAddressMode.ClampToEdge,
+            SilkSamplerAddressMode.ClampToEdge,
+            SilkSamplerAddressMode.ClampToEdge,
+            maxAnisotropy);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => Task.Run(() => descriptor.Validate()));
+    }
+
+    [Test]
+    public async Task SamplerDescriptorValidateAcceptsAnisotropyAtOrAboveOne()
+    {
+        var oneX = new SilkSamplerDescriptor(
+            SilkSamplerFilter.Linear,
+            SilkSamplerFilter.Linear,
+            SilkSamplerAddressMode.ClampToEdge,
+            SilkSamplerAddressMode.ClampToEdge,
+            SilkSamplerAddressMode.ClampToEdge);
+        var sixteenX = oneX with { MaxAnisotropy = 16f };
+
+        oneX.Validate();
+        sixteenX.Validate();
+
+        await Assert.That(oneX.MaxAnisotropy).IsEqualTo(1f);
+        await Assert.That(sixteenX.MaxAnisotropy).IsEqualTo(16f);
+    }
+
+    [Test]
+    public async Task SamplerDescriptorValidateWithCapabilityRejectsRequestAboveDeviceMax()
+    {
+        var capabilities = new SilkGraphicsCapabilities(
+            "test",
+            "1.0",
+            SupportsCompute: false,
+            IsSoftware: true)
+        {
+            MaxSamplerAnisotropy = 4f,
+        };
+        var descriptor = new SilkSamplerDescriptor(
+            SilkSamplerFilter.Linear,
+            SilkSamplerFilter.Linear,
+            SilkSamplerAddressMode.ClampToEdge,
+            SilkSamplerAddressMode.ClampToEdge,
+            SilkSamplerAddressMode.ClampToEdge,
+            8f);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => Task.Run(() => descriptor.Validate(capabilities)));
+    }
+
+    [Test]
+    public async Task SamplerDescriptorValidateWithCapabilityAcceptsRequestAtOrBelowDeviceMax()
+    {
+        var capabilities = new SilkGraphicsCapabilities(
+            "test",
+            "1.0",
+            SupportsCompute: false,
+            IsSoftware: true)
+        {
+            MaxSamplerAnisotropy = 8f,
+        };
+        var atMax = new SilkSamplerDescriptor(
+            SilkSamplerFilter.Linear,
+            SilkSamplerFilter.Linear,
+            SilkSamplerAddressMode.ClampToEdge,
+            SilkSamplerAddressMode.ClampToEdge,
+            SilkSamplerAddressMode.ClampToEdge,
+            8f);
+        var belowMax = atMax with { MaxAnisotropy = 2f };
+
+        atMax.Validate(capabilities);
+        belowMax.Validate(capabilities);
+
+        await Assert.That(atMax.MaxAnisotropy).IsEqualTo(8f);
+        await Assert.That(belowMax.MaxAnisotropy).IsEqualTo(2f);
+    }
+
+    [Test]
+    public async Task SamplerDescriptorValidateWithDefaultCapabilityPreservesIsotropicOnlyDevices()
+    {
+        // The default capability (1x) is what every backend advertised before this slice; a
+        // descriptor asking for more than 1x must still be rejected against that default so
+        // existing callers that never opt in keep their prior isotropic-only behavior.
+        var capabilities = new SilkGraphicsCapabilities("test", "1.0", false, false);
+        var descriptor = new SilkSamplerDescriptor(
+            SilkSamplerFilter.Linear,
+            SilkSamplerFilter.Linear,
+            SilkSamplerAddressMode.ClampToEdge,
+            SilkSamplerAddressMode.ClampToEdge,
+            SilkSamplerAddressMode.ClampToEdge,
+            2f);
+
+        await Assert.That(capabilities.MaxSamplerAnisotropy).IsEqualTo(1f);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => Task.Run(() => descriptor.Validate(capabilities)));
+    }
+
+    [Test]
+    public async Task SamplerDescriptorsDifferingOnlyByAnisotropyAreDistinctCacheKeys()
+    {
+        var isotropic = SilkSamplerDescriptor.LinearClamp;
+        var anisotropic = isotropic with { MaxAnisotropy = 8f };
+
+        await Assert.That(isotropic).IsNotEqualTo(anisotropic);
+
+        var cache = new Dictionary<SilkSamplerDescriptor, int>
+        {
+            [isotropic] = 1,
+            [anisotropic] = 2,
+        };
+
+        await Assert.That(cache).Count().IsEqualTo(2);
+        await Assert.That(cache[isotropic]).IsEqualTo(1);
+        await Assert.That(cache[anisotropic]).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task BindMaterialTextureBoundsAnisotropyToDefaultWhenDeviceExceedsIt()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/AnisoHighCap",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    4,
+                    [1f, 1f, 1f, 1f],
+                    [0f, 0f, 0f, 0f],
+                    [1f, 1f, 1f, 1f],
+                    "aniso-high.png",
+                    "st"),
+            ]));
+        using var device = new TextureGraphicsDevice { MaxSamplerAnisotropy = 16f };
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(2, 2, new byte[2 * 2 * 4]));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        // Bounded default policy: min(device max, 8), even though the device advertises 16x.
+        await Assert.That(commands.SamplerBindings.Single().Descriptor.MaxAnisotropy)
+            .IsEqualTo(8f);
+    }
+
+    [Test]
+    public async Task BindMaterialTextureBoundsAnisotropyToDeviceMaxWhenBelowDefault()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/AnisoLowCap",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    4,
+                    [1f, 1f, 1f, 1f],
+                    [0f, 0f, 0f, 0f],
+                    [1f, 1f, 1f, 1f],
+                    "aniso-low.png",
+                    "st"),
+            ]));
+        using var device = new TextureGraphicsDevice { MaxSamplerAnisotropy = 4f };
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(2, 2, new byte[2 * 2 * 4]));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        await Assert.That(commands.SamplerBindings.Single().Descriptor.MaxAnisotropy)
+            .IsEqualTo(4f);
+    }
+
+    [Test]
+    public async Task BindMaterialTextureKeepsIsotropicSamplingWhenDeviceLacksAnisotropySupport()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/AnisoUnsupported",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    4,
+                    [1f, 1f, 1f, 1f],
+                    [0f, 0f, 0f, 0f],
+                    [1f, 1f, 1f, 1f],
+                    "aniso-unsupported.png",
+                    "st"),
+            ]));
+        // Default TextureGraphicsDevice capability (1x) mirrors every backend before this
+        // slice; a mipmapped, linearly filtered, non-UDIM texture must still stay isotropic.
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(2, 2, new byte[2 * 2 * 4]));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        await Assert.That(commands.SamplerBindings.Single().Descriptor.MaxAnisotropy)
+            .IsEqualTo(1f);
+    }
+
+    [Test]
+    public async Task BindMaterialTextureKeepsSingleMipTextureIsotropicEvenWithAnisotropySupport()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/AnisoSingleMip",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    4,
+                    [1f, 1f, 1f, 1f],
+                    [0f, 0f, 0f, 0f],
+                    [1f, 1f, 1f, 1f],
+                    "aniso-single-mip.png",
+                    "st"),
+            ]));
+        using var device = new TextureGraphicsDevice { MaxSamplerAnisotropy = 16f };
+        using var resources = new SilkSceneGpuResources(
+            device,
+            // A 1x1 image never produces more than a single mip level.
+            (_, _) => new SilkDecodedImage(1, 1, [255, 255, 255, 255]));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        await Assert.That(commands.SamplerBindings.Single().Descriptor.MaxAnisotropy)
+            .IsEqualTo(1f);
+    }
+
+    [Test]
+    public async Task BindMaterialTextureKeepsNearestFloatSamplingIsotropicEvenWithAnisotropySupport()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/AnisoFloat",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.EmissiveColor,
+                    SilkTextureWrap.Clamp,
+                    SilkTextureWrap.Clamp,
+                    SilkColorSpace.Raw,
+                    4,
+                    [1f, 1f, 1f, 1f],
+                    [0f, 0f, 0f, 0f],
+                    [0f, 0f, 0f, 1f],
+                    "aniso-float.exr",
+                    "st"),
+            ]));
+        float[] source =
+        [
+            1f, 2f, 3f, 1f,
+            4f, 5f, 6f, 1f,
+            7f, 8f, 9f, 1f,
+            10f, 11f, 12f, 1f,
+        ];
+        byte[] sourceBytes = MemoryMarshal.AsBytes(source.AsSpan()).ToArray();
+        using var device = new TextureGraphicsDevice { MaxSamplerAnisotropy = 16f };
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(2, 2, sourceBytes, SilkTextureFormat.Rgba32Float));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.EmissiveColor);
+
+        // Rgba32Float is always sampled with a Nearest filter; anisotropic filtering only
+        // applies to Linear-filtered sampling, so this must stay at 1x regardless of device
+        // capability or the real (>1) mip chain this HDR image generates.
+        await Assert.That(commands.SamplerBindings.Single().Descriptor.MaxAnisotropy)
+            .IsEqualTo(1f);
+    }
+
+    [Test]
+    public async Task BindMaterialTextureKeepsUdimAtlasIsotropicEvenWithAnisotropySupport()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/AnisoUdim",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    4,
+                    [1f, 1f, 1f, 1f],
+                    [0f, 0f, 0f, 0f],
+                    [1f, 0f, 1f, 1f],
+                    "aniso-tiles.<UDIM>.png",
+                    "st"),
+            ]));
+        using var device = new TextureGraphicsDevice { MaxSamplerAnisotropy = 16f };
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) => asset.Contains("1001", StringComparison.Ordinal)
+                ? new SilkDecodedImage(2, 1, [255, 0, 0, 255, 255, 0, 0, 255])
+                : new SilkDecodedImage(2, 1, [0, 0, 255, 255, 0, 0, 255, 255]),
+            _ =>
+            [
+                new SilkUdimTile(1001, "aniso-tiles.1001.png"),
+                new SilkUdimTile(1003, "aniso-tiles.1003.png"),
+            ]);
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        // UDIM atlases always stay single-level (gutter/fallback correctness), so they must
+        // stay isotropic even when the device advertises anisotropic filtering support.
+        await Assert.That(commands.SamplerBindings.Single().Descriptor.MaxAnisotropy)
+            .IsEqualTo(1f);
+    }
+
     private static SilkMaterialData CreateMissingMaterial(
         string path,
         float[] fallback) =>
@@ -1050,6 +1399,11 @@ public sealed class SilkMaterialCommandTests
     {
         internal List<SilkTextureFormat> CreatedTextureFormats { get; } = [];
         internal List<SilkTextureDescriptor> CreatedTextures { get; } = [];
+        internal List<SilkSamplerDescriptor> CreatedSamplers { get; } = [];
+
+        // Defaults to the behavior-preserving 1x capability so every existing test keeps
+        // exercising the "device does not advertise anisotropy" path unless a test opts in.
+        internal float MaxSamplerAnisotropy { get; set; } = 1f;
 
         public SilkGraphicsBackend Backend => SilkGraphicsBackend.D3D12;
 
@@ -1057,7 +1411,10 @@ public sealed class SilkMaterialCommandTests
             "Texture diagnostics test device",
             "test",
             SupportsCompute: false,
-            IsSoftware: true);
+            IsSoftware: true)
+        {
+            MaxSamplerAnisotropy = MaxSamplerAnisotropy,
+        };
 
         public ISilkGraphicsTexture CreateTexture2D(
             uint width,
@@ -1072,14 +1429,22 @@ public sealed class SilkMaterialCommandTests
         {
             CreatedTextureFormats.Add(descriptor.Format);
             CreatedTextures.Add(descriptor);
-            return new Texture(descriptor.Width, descriptor.Height, descriptor.Format);
+            return new Texture(
+                descriptor.Width,
+                descriptor.Height,
+                descriptor.Format,
+                descriptor.MipLevelCount);
         }
 
         public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage) =>
             new TextureGraphicsBuffer(size, usage);
 
-        public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor) =>
-            new TextureSampler(descriptor);
+        public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
+        {
+            descriptor.Validate(Capabilities);
+            CreatedSamplers.Add(descriptor);
+            return new TextureSampler(descriptor);
+        }
 
         public ISilkGraphicsShaderModule CreateShaderModule(SilkShaderModuleDescriptor descriptor) =>
             throw new NotSupportedException();
@@ -1132,7 +1497,8 @@ public sealed class SilkMaterialCommandTests
     private sealed class Texture(
         uint width,
         uint height,
-        SilkTextureFormat format) : ISilkGraphicsTexture
+        SilkTextureFormat format,
+        uint mipLevelCount = 1) : ISilkGraphicsTexture
     {
         public uint Width { get; } = width;
 
@@ -1142,7 +1508,7 @@ public sealed class SilkMaterialCommandTests
 
         public SilkTextureUsage Usage => SilkTextureUsage.Sampled;
 
-        public uint MipLevelCount => 1;
+        public uint MipLevelCount { get; } = mipLevelCount;
 
         public void ReadbackForTesting(Span<byte> destination) =>
             throw new NotSupportedException();

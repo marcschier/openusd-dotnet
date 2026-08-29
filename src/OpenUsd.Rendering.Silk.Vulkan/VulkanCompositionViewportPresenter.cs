@@ -1171,6 +1171,8 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
         using GlobalMemory extensionNames = SilkMarshal.StringArrayToMemory(
             requiredExtensions,
             NativeStringEncoding.UTF8);
+        _api.GetPhysicalDeviceFeatures(physicalDevice, out PhysicalDeviceFeatures supportedFeatures);
+        bool samplerAnisotropySupported = supportedFeatures.SamplerAnisotropy;
         float queuePriority = 1;
         var queueInfo = new DeviceQueueCreateInfo
         {
@@ -1179,13 +1181,21 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
             QueueCount = 1,
             PQueuePriorities = &queuePriority
         };
+        // Only the features actually queried as supported are enabled; requesting an
+        // unsupported feature would fail device creation, and enabling an unsupported one
+        // would let a later sampler silently violate validation.
+        var enabledFeatures = new PhysicalDeviceFeatures
+        {
+            SamplerAnisotropy = samplerAnisotropySupported
+        };
         var deviceInfo = new DeviceCreateInfo
         {
             SType = StructureType.DeviceCreateInfo,
             QueueCreateInfoCount = 1,
             PQueueCreateInfos = &queueInfo,
             EnabledExtensionCount = checked((uint)requiredExtensions.Length),
-            PpEnabledExtensionNames = (byte**)extensionNames.Handle
+            PpEnabledExtensionNames = (byte**)extensionNames.Handle,
+            PEnabledFeatures = &enabledFeatures
         };
         Device device = default;
         try
@@ -1239,6 +1249,9 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
             uint major = properties.ApiVersion >> 22;
             uint minor = (properties.ApiVersion >> 12) & 0x3ff;
             uint patch = properties.ApiVersion & 0xfff;
+            float maxSamplerAnisotropy = samplerAnisotropySupported
+                ? MathF.Max(1f, properties.Limits.MaxSamplerAnisotropy)
+                : 1f;
             _graphicsDevice = VulkanSilkGraphicsDevice.CreateBorrowed(
                 _api,
                 _instance,
@@ -1251,7 +1264,10 @@ internal sealed unsafe class VulkanCompositionContext : IDisposable
                     deviceName,
                     $"{major}.{minor}.{patch}",
                     SupportsCompute: true,
-                    IsSoftware: properties.DeviceType == PhysicalDeviceType.Cpu));
+                    IsSoftware: properties.DeviceType == PhysicalDeviceType.Cpu)
+                {
+                    MaxSamplerAnisotropy = maxSamplerAnisotropy
+                });
         }
         catch
         {

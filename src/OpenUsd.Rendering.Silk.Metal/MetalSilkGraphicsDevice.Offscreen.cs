@@ -92,13 +92,14 @@ public sealed partial class MetalSilkGraphicsDevice
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        descriptor.Validate();
+        descriptor.Validate(Capabilities);
         RegisterDependentObject();
         MTLSamplerDescriptor nativeDescriptor = default;
         MTLSamplerState sampler = default;
         bool success = false;
         try
         {
+            bool useAnisotropy = descriptor.MaxAnisotropy > 1f;
             nativeDescriptor = new MTLSamplerDescriptor
             {
                 MinFilter = GetFilter(descriptor.MinFilter),
@@ -110,7 +111,10 @@ public sealed partial class MetalSilkGraphicsDevice
                     : MTLSamplerMipFilter.Nearest,
                 SAddressMode = GetAddressMode(descriptor.AddressU),
                 TAddressMode = GetAddressMode(descriptor.AddressV),
-                RAddressMode = GetAddressMode(descriptor.AddressW)
+                RAddressMode = GetAddressMode(descriptor.AddressW),
+                MaxAnisotropy = useAnisotropy
+                    ? (ulong)MathF.Round(descriptor.MaxAnisotropy)
+                    : 1UL
             };
             sampler = _device.NewSamplerState(nativeDescriptor);
             if (sampler.NativePtr == 0)

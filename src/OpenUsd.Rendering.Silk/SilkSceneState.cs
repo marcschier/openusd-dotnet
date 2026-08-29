@@ -1492,6 +1492,10 @@ public sealed class SilkSceneGpuResources : IDisposable
     private const int DiagnosticCapacity = 128;
     private const int MaximumUdimAtlasCells = 256;
 
+    // A bounded default keeps ordinary material texture anisotropy from exceeding a
+    // reasonable, well-supported level even on devices that advertise a much higher ceiling.
+    private const float MaxMaterialAnisotropy = 8f;
+
     private readonly ISilkGraphicsDevice _device;
     private readonly Func<string, bool, SilkDecodedImage> _imageDecoder;
     private readonly Func<string, IReadOnlyList<SilkUdimTile>> _udimResolver;
@@ -1908,7 +1912,11 @@ public sealed class SilkSceneGpuResources : IDisposable
         commands.SetSampler(
             0,
             samplerBinding,
-            RequireSampler(texture, entry.Texture.Format, entry.IsUdim));
+            RequireSampler(
+                texture,
+                entry.Texture.Format,
+                entry.IsUdim,
+                entry.Texture.MipLevelCount));
         commands.SetTexture(0, textureBinding, entry.Texture);
     }
 
@@ -2522,7 +2530,8 @@ public sealed class SilkSceneGpuResources : IDisposable
     private ISilkGraphicsSampler RequireSampler(
         SilkMaterialTexture texture,
         SilkTextureFormat format,
-        bool isUdim = false)
+        bool isUdim = false,
+        uint mipLevelCount = 1)
     {
         SilkSamplerAddressMode addressU = isUdim
             ? SilkSamplerAddressMode.ClampToEdge
@@ -2533,12 +2542,25 @@ public sealed class SilkSceneGpuResources : IDisposable
         SilkSamplerFilter filter = format == SilkTextureFormat.Rgba32Float
             ? SilkSamplerFilter.Nearest
             : SilkSamplerFilter.Linear;
+        // Anisotropic filtering only helps a linearly filtered, actually mipmapped, ordinary
+        // (non-UDIM) material texture; UDIM atlases, single-level volume density textures, and
+        // nearest-only Rgba32Float sampling all fall through to the 1x descriptor default. The
+        // device capability is the hard ceiling: never request more than it advertises.
+        float maxAnisotropy = 1f;
+        if (!isUdim &&
+            mipLevelCount > 1 &&
+            filter == SilkSamplerFilter.Linear &&
+            _device.Capabilities.MaxSamplerAnisotropy > 1f)
+        {
+            maxAnisotropy = Math.Min(_device.Capabilities.MaxSamplerAnisotropy, MaxMaterialAnisotropy);
+        }
         var descriptor = new SilkSamplerDescriptor(
             filter,
             filter,
             addressU,
             addressV,
-            SilkSamplerAddressMode.ClampToEdge);
+            SilkSamplerAddressMode.ClampToEdge,
+            maxAnisotropy);
         if (_samplers.TryGetValue(descriptor, out ISilkGraphicsSampler? sampler))
         {
             return sampler;
