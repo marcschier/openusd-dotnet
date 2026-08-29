@@ -60,7 +60,7 @@ To consume the published packages instead, use one property for the matching ver
 
 ```xml
 <PropertyGroup>
-  <OpenUsdPackageVersion>0.12.1-alpha</OpenUsdPackageVersion>
+  <OpenUsdPackageVersion>0.12.2-alpha</OpenUsdPackageVersion>
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />
