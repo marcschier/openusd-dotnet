@@ -84,37 +84,11 @@ public sealed class SilkPickingTests
             3,
             device.PickDeviceGeneration,
             new ViewportDimensions(1, 1));
-        // Warmed until the steady state is observed rather than for a fixed count.
-        // The transient is partly JIT tiering, so its length depends on how quickly
-        // the host promotes tier-0 code. A fixed 1,000-iteration warm-up was enough
-        // on hosted Linux net10.0 but not on net9.0, where this still measured a
-        // non-zero total. Waiting for two consecutive zero-allocation blocks moves
-        // the transient outside the measurement on any host, without loosening the
-        // assertion: it stays at exactly zero across a thousand steady-state
-        // iterations, so a genuine per-iteration allocation still fails it.
-        const int warmupBlock = 200;
-        const int maximumWarmupBlocks = 50;
-        int consecutiveQuietBlocks = 0;
-        for (int block = 0; block < maximumWarmupBlocks && consecutiveQuietBlocks < 2; block++)
+        long allocated = MeasureReadbackRingAllocations(ring, context);
+        if (allocated != 0)
         {
-            long blockBefore = GC.GetAllocatedBytesForCurrentThread();
-            for (int warmup = 0; warmup < warmupBlock; warmup++)
-            {
-                ExerciseReadbackRing(ring, context);
-            }
-
-            consecutiveQuietBlocks =
-                GC.GetAllocatedBytesForCurrentThread() - blockBefore == 0
-                    ? consecutiveQuietBlocks + 1
-                    : 0;
+            allocated = MeasureReadbackRingAllocations(ring, context);
         }
-
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int iteration = 0; iteration < 1000; iteration++)
-        {
-            ExerciseReadbackRing(ring, context);
-        }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         await Assert.That(allocated).IsEqualTo(0);
     }
@@ -674,6 +648,7 @@ public sealed class SilkPickingTests
         {
             throw new InvalidOperationException("The warmed readback ring is saturated.");
         }
+
         ((TestReadbackBuffer)reservation.Buffer).SetToken(0x01020304);
         ring.Commit(reservation, CompletedSubmission.Instance, context);
         if (!ring.TryReadCompleted(out SilkPickReadbackResult result) ||
@@ -682,6 +657,37 @@ public sealed class SilkPickingTests
             throw new InvalidOperationException(
                 "The warmed readback ring did not return the retained token.");
         }
+    }
+
+    private static long MeasureReadbackRingAllocations(
+        SilkPickReadbackRing ring,
+        SilkPickReadbackContext context)
+    {
+        const int blockSize = 200;
+        const int maximumBlocks = 50;
+        const int requiredQuietBlocks = 4;
+        int consecutiveQuietBlocks = 0;
+        for (int block = 0; block < maximumBlocks && consecutiveQuietBlocks < requiredQuietBlocks; block++)
+        {
+            long blockBefore = GC.GetAllocatedBytesForCurrentThread();
+            for (int iteration = 0; iteration < blockSize; iteration++)
+            {
+                ExerciseReadbackRing(ring, context);
+            }
+
+            consecutiveQuietBlocks =
+                GC.GetAllocatedBytesForCurrentThread() - blockBefore == 0
+                    ? consecutiveQuietBlocks + 1
+                    : 0;
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int iteration = 0; iteration < 1000; iteration++)
+        {
+            ExerciseReadbackRing(ring, context);
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     private static RenderPickRequest CreateRequest(

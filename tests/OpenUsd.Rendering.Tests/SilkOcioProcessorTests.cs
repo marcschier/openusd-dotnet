@@ -13,9 +13,24 @@ public sealed class SilkOcioProcessorTests
             "..", "..", "..", "..", "..",
             "test-assets", "ocio-test-config.ocio"));
 
+    private static void RequireNativeRuntime()
+    {
+        try
+        {
+            _ = OpenUsdNativeRuntime.Capabilities;
+        }
+        catch (Exception exception) when (
+            exception is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            Skip.Test($"openusd_dotnet native runtime is unavailable: {exception.Message}");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+    }
+
     [Test]
     public async Task CreateProcessor_WithValidConfig_Succeeds()
     {
+        RequireNativeRuntime();
         await Assert.That(File.Exists(TestConfigPath)).IsTrue();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
@@ -30,6 +45,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task CreateProcessor_WithDefaults_Succeeds()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");
@@ -43,6 +59,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task CreateProcessor_WithNonAsciiConfigPath_Succeeds()
     {
+        RequireNativeRuntime();
         string directory = Path.Combine(
             Path.GetTempPath(),
             $"openusd-ocio-\u8272-{Guid.NewGuid():N}");
@@ -64,6 +81,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task CreateProcessor_WithInvalidConfigPath_ThrowsNativeException()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             "nonexistent/path.ocio",
             "linear");
@@ -75,6 +93,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task CreateProcessor_WithInvalidColorSpace_ThrowsNativeException()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "nonexistent_color_space");
@@ -86,6 +105,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task CreateProcessor_WithInvalidDisplay_ThrowsNativeException()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear",
@@ -99,6 +119,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task CreateProcessor_WithInvalidView_ThrowsNativeException()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear",
@@ -112,6 +133,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task Apply_WithBlackPixel_ProducesBlackOutput()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");
@@ -130,6 +152,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task Apply_AlphaIsPreserved()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");
@@ -149,6 +172,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task Apply_ExposureScalesRgbBeforeOcio()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");
@@ -173,6 +197,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task Apply_SourceDataUnchanged()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");
@@ -194,6 +219,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task Apply_WithInvalidSizes_ThrowsException()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");
@@ -209,6 +235,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task Apply_WithNonFiniteExposure_ThrowsException()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");
@@ -226,6 +253,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task Apply_WithOverflowingExposure_ThrowsException()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");
@@ -241,6 +269,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task Dispose_ThenApply_ThrowsObjectDisposed()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");
@@ -257,6 +286,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task DoubleDispose_DoesNotThrow()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");
@@ -320,6 +350,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task CreateProcessor_WithLooks_Succeeds()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear",
@@ -346,6 +377,7 @@ public sealed class SilkOcioProcessorTests
     [Test]
     public async Task Apply_WithNonFiniteSourceChannel_ThrowsException()
     {
+        RequireNativeRuntime();
         var transform = new SilkOpenColorIoDisplayTransform(
             TestConfigPath,
             "linear");

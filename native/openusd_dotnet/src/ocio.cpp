@@ -109,14 +109,16 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_create(
     openusd_ocio_processor** processor,
     openusd_error_buffer* error)
 {
-    ClearError(error);
+    // OUTER_ABI_GUARD
+    return Guard(error, [&]() -> openusd_status
+    {
+    // ABI_OUTPUT_INITIALIZATION
+    ResetAbiOutput(processor);
     if (processor == nullptr)
     {
         WriteError(error, "processor output pointer must not be null");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
-    *processor = nullptr;
-
     if (config_path == nullptr || config_path[0] == '\0')
     {
         WriteError(error, "config_path must not be null or empty");
@@ -184,6 +186,7 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_create(
         WriteError(error, ex.what());
         return OPENUSD_STATUS_NATIVE_ERROR;
     }
+    });
 }
 
 OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_apply_rgba16f_to_rgba8(
@@ -197,7 +200,14 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_apply_rgba16f_to_rgba8(
     size_t destination_size,
     openusd_error_buffer* error)
 {
-    ClearError(error);
+    // OUTER_ABI_GUARD
+    return Guard(error, [&]() -> openusd_status
+    {
+    // ABI_OUTPUT_INITIALIZATION
+    if (destination != nullptr && destination_size > 0)
+    {
+        std::memset(destination, 0, destination_size);
+    }
     if (processor == nullptr)
     {
         WriteError(error, "processor must not be null");
@@ -335,6 +345,7 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_apply_rgba16f_to_rgba8(
         WriteError(error, ex.what());
         return OPENUSD_STATUS_NATIVE_ERROR;
     }
+    });
 }
 
 OPENUSD_DOTNET_API void openusd_ocio_processor_release(
