@@ -63,6 +63,7 @@ deeper design or evidence documents only as needed.
 | --- | --- |
 | [Getting started](getting-started.md) | SDK, managed build, native staging, Viewer, samples, AOT |
 | [Support matrix](support-matrix.md) | Distribution, packages, frameworks, RIDs, backends, features |
+| [Executable support manifest](support-manifest.md) | Generated capability status and evidence index |
 | [Architecture](architecture.md) | Managed/native boundaries, ownership, scheduler, rendering layers |
 | [Programming model](programming-model.md) | Lifetimes, scheduler callbacks, cancellation, errors, paths, AOT |
 | [Data API](data-api.md) | Stages, layers, prims, values, composition, schemas, and helpers |

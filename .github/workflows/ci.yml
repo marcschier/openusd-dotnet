@@ -42,6 +42,8 @@ jobs:
         run: python eng/generate-interop.py --verify
       - name: Verify generated capability contract
         run: python eng/generate-capabilities.py --verify
+      - name: Verify support manifest
+        run: python eng/generate-support-manifest.py --verify
       - name: Verify checked release SBOM
         if: runner.os == 'Linux'
         shell: pwsh
