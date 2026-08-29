@@ -202,8 +202,11 @@ Mesh pipelines include the color format in their cache identity and can render i
 all three color-target formats. Selection masks and picking remain RGBA8 identity
 surfaces, while the fullscreen selection outline pipeline matches and blends into
 the visible color target's format. `SilkFrameCapture` remains an explicit display
-capture: it renders and returns tightly packed RGBA8 rather than exposing
-backend-specific HDR bytes.
+capture: it renders scene color into a linear RGBA16Float intermediate, then applies
+exposure and the requested output transform once while producing tightly
+packed RGBA8. Display-referred selection outlines are composited into that RGBA8 image
+after the output transform. Callers that need raw HDR data should use the typed RHI
+readback contract directly rather than treating display capture bytes as scene-linear values.
 
 ### hdSilk display output
 

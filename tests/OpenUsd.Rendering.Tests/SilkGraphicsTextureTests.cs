@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Runtime.InteropServices;
+
 using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Rendering.Tests;
@@ -172,6 +174,56 @@ public sealed class SilkGraphicsTextureTests
             descriptor.Validate);
 
         await Assert.That(exception.ParamName).IsEqualTo("Usage");
+    }
+
+    [Test]
+    public async Task DisplayConversionAppliesExposureAndReinhardAfterHdrRendering()
+    {
+        Half[] linear =
+        [
+            (Half)64,
+            (Half)32,
+            (Half)0,
+            (Half)0.5f
+        ];
+        byte[] source = new byte[linear.Length * sizeof(ushort)];
+        MemoryMarshal.AsBytes(linear.AsSpan()).CopyTo(source);
+        byte[] destination = new byte[4];
+
+        SilkDisplayConverter.ConvertRgba16FloatToRgba8(
+            source,
+            destination,
+            RenderOutputTransform.Reinhard,
+            exposure: -6);
+        SilkColor clear = SilkDisplayConverter.TransformColor(
+            new SilkColor(64, 32, 0, 0.5f),
+            RenderOutputTransform.Reinhard,
+            exposure: -6);
+
+        await Assert.That(destination).IsEquivalentTo(new byte[] { 128, 85, 0, 128 });
+        await Assert.That(clear).IsEqualTo(new SilkColor(0.5f, 1f / 3f, 0, 0.5f));
+    }
+
+    [Test]
+    public async Task DisplayConversionRejectsNonFiniteHdrChannels()
+    {
+        Half[] linear =
+        [
+            Half.PositiveInfinity,
+            (Half)0,
+            (Half)0,
+            (Half)1
+        ];
+        byte[] source = new byte[linear.Length * sizeof(ushort)];
+        MemoryMarshal.AsBytes(linear.AsSpan()).CopyTo(source);
+
+        await Assert.That(
+            () => SilkDisplayConverter.ConvertRgba16FloatToRgba8(
+                source,
+                new byte[4],
+                RenderOutputTransform.Identity,
+                exposure: 0))
+            .Throws<InvalidDataException>();
     }
 
     [Test]

@@ -163,23 +163,38 @@ public static class SilkFrameCapture
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
 
+        if (renderer is not SilkMeshRenderer silkRenderer)
+        {
+            return CaptureCustomRenderer(
+                renderer,
+                device,
+                width,
+                height,
+                renderSettings,
+                pageRevision);
+        }
+
+        using IDisposable captureLease = silkRenderer.AcquireDisplayCaptureLease();
         using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
-            SilkTextureDescriptor.DepthTarget(checked((uint)width), checked((uint)height)));
-        SilkMeshRenderResult result = renderer.Render(
+            SilkTextureDescriptor.SampledDepthTarget(
+                checked((uint)width),
+                checked((uint)height)));
+        SilkMeshRenderOptions options = CreateRenderOptions(renderSettings);
+        SilkMeshRenderResult result =
+            silkRenderer.RenderForDisplayCapture(color, depth, options);
+        return ReadbackFrame(
+            device,
+            silkRenderer,
             color,
             depth,
-            CreateRenderOptions(renderSettings));
-        return ReadbackFrame(
-            color,
             width,
             height,
+            renderSettings,
             result,
             pageRevision,
             commandCount: 0,
-            renderer is SilkMeshRenderer silkRenderer
-                ? silkRenderer.GpuResources.Diagnostics
-                : RenderDiagnosticsState.Empty);
+            silkRenderer.GpuResources.Diagnostics);
     }
 
     internal static SilkFrameCaptureResult CaptureCore(
@@ -192,25 +207,32 @@ public static class SilkFrameCapture
         double timeCode,
         CameraState camera)
     {
+        using IDisposable captureLease = renderer.AcquireDisplayCaptureLease();
         using ISilkGraphicsTexture color = CreateColorTarget(device, width, height);
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
-            SilkTextureDescriptor.DepthTarget(checked((uint)width), checked((uint)height)));
+            SilkTextureDescriptor.SampledDepthTarget(
+                checked((uint)width),
+                checked((uint)height)));
         using OpenUsdSilkPage page = session.Sync(
             width,
             height,
             timeCode,
             camera,
             renderSettings.Complexity);
-        SilkMeshRenderResult result = renderer.ApplyAndRender(
+        SilkMeshRenderResult result = renderer.ApplyAndRenderForDisplayCapture(
             page,
             color,
             depth,
             CreateRenderOptions(renderSettings));
 
         return ReadbackFrame(
+            device,
+            renderer,
             color,
+            depth,
             width,
             height,
+            renderSettings,
             result,
             page.Revision,
             page.CommandCount,
@@ -222,11 +244,9 @@ public static class SilkFrameCapture
         int width,
         int height) =>
         device.CreateTexture2D(
-            new SilkTextureDescriptor(
+            SilkTextureDescriptor.HdrColorTarget(
                 checked((uint)width),
-                checked((uint)height),
-                SilkTextureFormat.Rgba8Unorm,
-                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+                checked((uint)height)));
 
     private static SilkMeshRenderOptions CreateRenderOptions(RenderSettings renderSettings) =>
         new SilkMeshRenderOptions(
@@ -239,21 +259,49 @@ public static class SilkFrameCapture
             renderSettings.BackfaceCulling,
             renderSettings.UseSceneMaterials)
         {
+            OutputTransform = RenderOutputTransform.Identity,
+            Exposure = 0,
+        };
+
+    private static SilkMeshRenderOptions CreateDisplayRenderOptions(
+        RenderSettings renderSettings) =>
+        CreateRenderOptions(renderSettings) with
+        {
             OutputTransform = renderSettings.OutputTransform,
             Exposure = renderSettings.Exposure,
         };
 
     private static SilkFrameCaptureResult ReadbackFrame(
+        ISilkGraphicsDevice device,
+        SilkMeshRenderer renderer,
         ISilkGraphicsTexture color,
+        ISilkGraphicsTexture depth,
         int width,
         int height,
+        RenderSettings renderSettings,
         SilkMeshRenderResult result,
         ulong pageRevision,
         uint commandCount,
         RenderDiagnosticsState diagnostics)
     {
+        byte[] linearRgba16 = new byte[checked(width * height * 8)];
+        color.ReadbackForTesting(linearRgba16);
         byte[] rgba = new byte[checked(width * height * 4)];
-        color.ReadbackForTesting(rgba);
+        SilkDisplayConverter.ConvertRgba16FloatToRgba8(
+            linearRgba16,
+            rgba,
+            renderSettings.OutputTransform,
+            renderSettings.Exposure);
+        if (renderer.Selection.Items.Count != 0 &&
+            renderer.SelectionOutlineSettings.Enabled)
+        {
+            using ISilkGraphicsTexture display = CreateDisplayTarget(device, width, height);
+            UploadDisplayImage(device, display, rgba);
+            if (renderer.TryRenderDisplaySelectionOutline(display, depth))
+            {
+                display.ReadbackForTesting(rgba);
+            }
+        }
         return new SilkFrameCaptureResult(
             width,
             height,
@@ -262,5 +310,70 @@ public static class SilkFrameCapture
             pageRevision,
             commandCount,
             diagnostics);
+    }
+
+    private static SilkFrameCaptureResult CaptureCustomRenderer(
+        ISilkRenderTargetRenderer renderer,
+        ISilkGraphicsDevice device,
+        int width,
+        int height,
+        RenderSettings renderSettings,
+        ulong pageRevision)
+    {
+        using ISilkGraphicsTexture color = CreateLegacyColorTarget(device, width, height);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(
+                checked((uint)width),
+                checked((uint)height)));
+        SilkMeshRenderResult result = renderer.Render(
+            color,
+            depth,
+            CreateDisplayRenderOptions(renderSettings));
+        byte[] rgba = new byte[checked(width * height * 4)];
+        color.ReadbackForTesting(rgba);
+        return new SilkFrameCaptureResult(
+            width,
+            height,
+            rgba,
+            result,
+            pageRevision,
+            commandCount: 0,
+            RenderDiagnosticsState.Empty);
+    }
+
+    private static ISilkGraphicsTexture CreateLegacyColorTarget(
+        ISilkGraphicsDevice device,
+        int width,
+        int height) =>
+        device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                checked((uint)width),
+                checked((uint)height),
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget |
+                SilkTextureUsage.CopySource));
+
+    private static ISilkGraphicsTexture CreateDisplayTarget(
+        ISilkGraphicsDevice device,
+        int width,
+        int height) =>
+        device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                checked((uint)width),
+                checked((uint)height),
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget |
+                SilkTextureUsage.CopySource |
+                SilkTextureUsage.CopyDestination));
+
+    private static void UploadDisplayImage(
+        ISilkGraphicsDevice device,
+        ISilkGraphicsTexture display,
+        ReadOnlySpan<byte> rgba)
+    {
+        using ISilkGraphicsCommandList commands = device.CreateCommandList();
+        commands.UploadTexture(display, rgba);
+        using ISilkGraphicsSubmission submission = device.Submit(commands);
+        submission.Wait();
     }
 }

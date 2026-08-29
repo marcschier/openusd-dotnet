@@ -606,6 +606,21 @@ public sealed class SilkMeshRenderer :
         }
     }
 
+    internal IDisposable AcquireDisplayCaptureLease()
+    {
+        Monitor.Enter(_gate);
+        try
+        {
+            ThrowIfDisposed();
+            return new DisplayCaptureLease(_gate);
+        }
+        catch
+        {
+            Monitor.Exit(_gate);
+            throw;
+        }
+    }
+
     /// <summary>Renders retained data and services at most one queued pick pass.</summary>
     public SilkMeshRenderResult Render(
         ISilkGraphicsTexture colorTarget,
@@ -621,6 +636,74 @@ public sealed class SilkMeshRenderer :
                 depthTarget,
                 options ?? SilkMeshRenderOptions.Default,
                 pickBinding);
+        }
+    }
+
+    internal SilkMeshRenderResult ApplyAndRenderForDisplayCapture(
+        OpenUsdSilkPage page,
+        ISilkGraphicsTexture colorTarget,
+        ISilkGraphicsTexture depthTarget,
+        SilkMeshRenderOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            SilkSceneDelta delta = Scene.Apply(page);
+            ApplySceneDelta(delta);
+            return RenderCore(
+                colorTarget,
+                depthTarget,
+                options,
+                pickBinding: null,
+                renderSelectionOutline: false);
+        }
+    }
+
+    internal SilkMeshRenderResult RenderForDisplayCapture(
+        ISilkGraphicsTexture colorTarget,
+        ISilkGraphicsTexture depthTarget,
+        SilkMeshRenderOptions options)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            return RenderCore(
+                colorTarget,
+                depthTarget,
+                options,
+                pickBinding: null,
+                renderSelectionOutline: false);
+        }
+    }
+
+    internal bool TryRenderDisplaySelectionOutline(
+        ISilkGraphicsTexture colorTarget,
+        ISilkGraphicsTexture depthTarget)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            ValidateTargets(colorTarget, depthTarget);
+            if (!PrepareSelectionOutline(colorTarget, depthTarget))
+            {
+                return false;
+            }
+
+            using ISilkGraphicsCommandList commands = _device.CreateCommandList();
+            ISilkSelectionOutlineGraphicsCommandList selectionCommands =
+                commands as ISilkSelectionOutlineGraphicsCommandList ??
+                throw new InvalidOperationException(
+                    "A selection-outline-capable device must create " +
+                    "selection-outline-capable command lists.");
+            RecordSelectionOutline(
+                commands,
+                selectionCommands,
+                colorTarget,
+                depthTarget);
+            using ISilkGraphicsSubmission submission = _device.Submit(commands);
+            submission.Wait();
+            return true;
         }
     }
 
@@ -678,7 +761,8 @@ public sealed class SilkMeshRenderer :
         ISilkGraphicsTexture colorTarget,
         ISilkGraphicsTexture depthTarget,
         SilkMeshRenderOptions options,
-        SilkPickFrameBinding? pickBinding)
+        SilkPickFrameBinding? pickBinding,
+        bool renderSelectionOutline = true)
     {
         ValidateTargets(colorTarget, depthTarget);
         ValidateOptions(options);
@@ -688,10 +772,12 @@ public sealed class SilkMeshRenderer :
             Scene.Frame,
             options.OutputTransform,
             options.Exposure);
-        bool renderSelectionOutline = PrepareSelectionOutline(colorTarget, depthTarget);
+        bool shouldRenderSelectionOutline =
+            renderSelectionOutline &&
+            PrepareSelectionOutline(colorTarget, depthTarget);
         using ISilkGraphicsCommandList commands = _device.CreateCommandList();
         ISilkSelectionOutlineGraphicsCommandList? selectionCommands = null;
-        if (renderSelectionOutline)
+        if (shouldRenderSelectionOutline)
         {
             selectionCommands = commands as ISilkSelectionOutlineGraphicsCommandList ??
                 throw new InvalidOperationException(
@@ -771,7 +857,12 @@ public sealed class SilkMeshRenderer :
             }
         }
 
-        commands.ClearColor(colorTarget, options.ClearColor);
+        commands.ClearColor(
+            colorTarget,
+            SilkDisplayConverter.TransformColor(
+                options.ClearColor,
+                options.OutputTransform,
+                options.Exposure));
         commands.ClearDepth(depthTarget, options.ClearDepth);
         commands.BeginRendering(new SilkRenderingDescriptor(colorTarget, depthTarget));
         commands.SetViewport(new SilkViewport(
@@ -1729,6 +1820,20 @@ public sealed class SilkMeshRenderer :
         _selectionOutlineInfrastructureInitialized = false;
         _selectionOutlineDeviceGeneration = 0;
         _selectionOutlineColorFormat = default;
+    }
+
+    private sealed class DisplayCaptureLease(object gate) : IDisposable
+    {
+        private object? _gate = gate;
+
+        public void Dispose()
+        {
+            object? gate = Interlocked.Exchange(ref _gate, null);
+            if (gate is not null)
+            {
+                Monitor.Exit(gate);
+            }
+        }
     }
 
     private void ProcessPicking(

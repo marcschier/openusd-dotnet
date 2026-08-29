@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Numerics;
 using System.Runtime.Versioning;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
@@ -112,6 +113,99 @@ public sealed class D3D12SelectionOutlineTests
         await Assert.That(selected.SequenceEqual(baseline)).IsTrue();
         await Assert.That(renderer.SelectionOutlineDiagnostics.Status)
             .IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+    }
+
+    [Test]
+    public async Task WarpCaptureCompositesDisplayOutlineAfterToneMapping()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        const uint width = 48;
+        const uint height = 36;
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        using var renderer = new SilkMeshRenderer(device);
+        ApplyScene(
+            renderer,
+            width,
+            height,
+            CreateQuadCommand(1, "/Selected", -0.5f, 0.5f, 0.5f, -0.5f, 0.25f));
+        renderer.UpdateSelection(
+            new SelectionState(["/Selected"]),
+            new SilkSelectionOutlineSettings(
+                enabled: true,
+                new SilkColor(1, 0.55f, 0, 0.9f),
+                width: 2,
+                visibleOnly: true));
+
+        SilkFrameCaptureResult capture = SilkFrameCapture.CaptureRetained(
+            renderer,
+            device,
+            checked((int)width),
+            checked((int)height),
+            RenderSettings.PresentationDefault);
+        byte[] pixels = capture.Rgba.ToArray();
+
+        await Assert.That(renderer.SelectionOutlineDiagnostics.Status)
+            .IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+        AssertContainsStraightAlphaOrange(new byte[pixels.Length], pixels);
+    }
+
+    [Test]
+    public async Task WarpCaptureMatchesToneMappedPresentationClear()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        const uint width = 48;
+        const uint height = 36;
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = CreateColor(device, width, height);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.SampledDepthTarget(width, height));
+        ApplyScene(
+            renderer,
+            width,
+            height,
+            CreateQuadCommand(1, "/Center", -0.25f, 0.25f, 0.25f, -0.25f, 0.25f));
+        var settings = new RenderSettings(
+            1,
+            enableLighting: true,
+            enableShadows: false,
+            new Vector4(0.5f, 0.25f, 0.125f, 1),
+            backfaceCulling: true,
+            useSceneMaterials: true,
+            RenderComplexity.Low,
+            RenderOutputTransform.Reinhard,
+            exposure: -2);
+        var options = new SilkMeshRenderOptions(
+            new SilkColor(0.5f, 0.25f, 0.125f, 1),
+            1)
+        {
+            OutputTransform = settings.OutputTransform,
+            Exposure = settings.Exposure,
+        };
+
+        _ = renderer.Render(color, depth, options);
+        byte[] presented = ReadPixels(color);
+        SilkFrameCaptureResult capture = SilkFrameCapture.CaptureRetained(
+            renderer,
+            device,
+            checked((int)width),
+            checked((int)height),
+            settings);
+
+        await Assert.That(capture.Rgba.Span[..4].SequenceEqual(presented.AsSpan(0, 4)))
+            .IsTrue();
     }
 
     [Test]
