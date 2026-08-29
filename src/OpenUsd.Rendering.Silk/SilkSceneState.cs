@@ -1534,7 +1534,7 @@ public sealed class SilkSceneGpuResources : IDisposable
 
     /// <summary>Initializes GPU resource retention for one backend device.</summary>
     public SilkSceneGpuResources(ISilkGraphicsDevice device)
-        : this(device, SilkNativeImageDecoder.DecodeRgba8)
+        : this(device, SilkNativeImageDecoder.Decode)
     {
     }
 
@@ -1894,7 +1894,10 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
         (uint samplerBinding, uint textureBinding) =
             SilkBindingLayoutDescriptor.GetMaterialTextureBindings(parameter);
-        commands.SetSampler(0, samplerBinding, RequireSampler(texture));
+        commands.SetSampler(
+            0,
+            samplerBinding,
+            RequireSampler(texture, entry.Texture.Format));
         commands.SetTexture(0, textureBinding, entry.Texture);
     }
 
@@ -1923,7 +1926,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         commands.SetSampler(
             0,
             SilkBindingLayoutDescriptor.VolumeSamplerBinding,
-            RequireSampler(texture));
+            RequireSampler(texture, entry.Texture.Format));
         commands.SetTexture(
             0,
             SilkBindingLayoutDescriptor.VolumeDensityTextureBinding,
@@ -1998,8 +2001,9 @@ public sealed class SilkSceneGpuResources : IDisposable
             image = _imageDecoder(
                 texture.Asset,
                 effectiveColorSpace == SilkColorSpace.Srgb);
-            FlipRows(image.Pixels, image.Width, image.Height);
-            ApplyScaleBias(image.Pixels, texture);
+            ValidateDecodedImage(image);
+            FlipRows(image.Pixels, image.Width, image.Height, image.Format);
+            ApplyScaleBias(image.Pixels, image.Format, texture);
         }
         catch (FileNotFoundException exception)
         {
@@ -2063,7 +2067,13 @@ public sealed class SilkSceneGpuResources : IDisposable
         try
         {
             gpuTexture = _device.CreateTexture2D(
-                SilkTextureDescriptor.SampledRgba8(image.Width, image.Height));
+                new SilkTextureDescriptor(
+                    image.Width,
+                    image.Height,
+                    image.Format,
+                    SilkTextureUsage.Sampled |
+                        SilkTextureUsage.CopySource |
+                        SilkTextureUsage.CopyDestination));
             var entry = new TextureCacheEntry(gpuTexture, image.Pixels);
             cache.Add(key, entry);
             return entry;
@@ -2144,9 +2154,13 @@ public sealed class SilkSceneGpuResources : IDisposable
         return new SilkDecodedImage(1, 1, pixels);
     }
 
-    private static void FlipRows(byte[] pixels, uint width, uint height)
+    private static void FlipRows(
+        byte[] pixels,
+        uint width,
+        uint height,
+        SilkTextureFormat format)
     {
-        int stride = checked((int)width * 4);
+        int stride = checked((int)(width * SilkTextureFormats.GetBytesPerPixel(format)));
         byte[] row = new byte[stride];
         int last = checked((int)height) - 1;
         for (int y = 0; y < height / 2; y++)
@@ -2159,8 +2173,35 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
     }
 
-    private static void ApplyScaleBias(byte[] pixels, SilkMaterialTexture texture)
+    private static void ApplyScaleBias(
+        byte[] pixels,
+        SilkTextureFormat format,
+        SilkMaterialTexture texture)
     {
+        if (format == SilkTextureFormat.Rgba32Float)
+        {
+            Span<float> values = MemoryMarshal.Cast<byte, float>(pixels.AsSpan());
+            for (int offset = 0; offset < values.Length; offset += 4)
+            {
+                for (int component = 0; component < 4; component++)
+                {
+                    values[offset + component] =
+                        (values[offset + component] * texture.Scale[component]) +
+                        texture.Bias[component];
+                    if (!float.IsFinite(values[offset + component]))
+                    {
+                        throw new InvalidDataException(
+                            "Decoded texture scale and bias produced a non-finite channel.");
+                    }
+                }
+            }
+            return;
+        }
+        if (format != SilkTextureFormat.Rgba8Unorm)
+        {
+            throw new InvalidDataException(
+                $"Decoded material texture format {format} does not support scale and bias.");
+        }
         for (int offset = 0; offset < pixels.Length; offset += 4)
         {
             for (int component = 0; component < 4; component++)
@@ -2170,6 +2211,30 @@ public sealed class SilkSceneGpuResources : IDisposable
                 pixels[offset + component] =
                     (byte)Math.Clamp(MathF.Round(value * 255), 0, 255);
             }
+        }
+    }
+
+    private static void ValidateDecodedImage(SilkDecodedImage image)
+    {
+        if (image.Width == 0 || image.Height == 0)
+        {
+            throw new InvalidDataException("Decoded texture dimensions must be non-zero.");
+        }
+        if (image.Format is not (
+            SilkTextureFormat.Rgba8Unorm or
+            SilkTextureFormat.Rgba32Float))
+        {
+            throw new InvalidDataException(
+                $"Decoded material texture format {image.Format} is unsupported.");
+        }
+        int expectedLength = checked(
+            (int)(image.Width *
+                image.Height *
+                SilkTextureFormats.GetBytesPerPixel(image.Format)));
+        if (image.Pixels.Length != expectedLength)
+        {
+            throw new InvalidDataException(
+                $"Decoded texture contains {image.Pixels.Length} bytes; expected {expectedLength}.");
         }
     }
 
@@ -2185,13 +2250,18 @@ public sealed class SilkSceneGpuResources : IDisposable
             _ => throw new ArgumentOutOfRangeException(nameof(texture))
         };
 
-    private ISilkGraphicsSampler RequireSampler(SilkMaterialTexture texture)
+    private ISilkGraphicsSampler RequireSampler(
+        SilkMaterialTexture texture,
+        SilkTextureFormat format)
     {
         SilkSamplerAddressMode addressU = GetAddressMode(texture.WrapS);
         SilkSamplerAddressMode addressV = GetAddressMode(texture.WrapT);
+        SilkSamplerFilter filter = format == SilkTextureFormat.Rgba32Float
+            ? SilkSamplerFilter.Nearest
+            : SilkSamplerFilter.Linear;
         var descriptor = new SilkSamplerDescriptor(
-            SilkSamplerFilter.Linear,
-            SilkSamplerFilter.Linear,
+            filter,
+            filter,
             addressU,
             addressV,
             SilkSamplerAddressMode.ClampToEdge);

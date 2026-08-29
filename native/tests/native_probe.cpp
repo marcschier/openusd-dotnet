@@ -11,6 +11,7 @@
 #include <pxr/base/gf/vec3d.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/tf/errorMark.h>
+#include <pxr/imaging/hio/image.h>
 #include <pxr/usd/pcp/composeSite.h>
 #include <pxr/usd/pcp/errors.h>
 #include <pxr/usd/sdf/layer.h>
@@ -3939,7 +3940,82 @@ bool VerifyImageDecode(
                 linear[offset + component] != rgb[offset + component];
         }
     }
-    return hasColoredPixel && conversionChangedPixel;
+    if (!hasColoredPixel || !conversionChangedPixel)
+    {
+        return false;
+    }
+
+    const std::filesystem::path floatPath =
+        std::filesystem::path(rgbPath).parent_path() / "native-image-float.exr";
+    const std::array<float, 8> floatSource{
+        2.0f, 0.5f, 0.25f, 1.0f,
+        4.0f, 0.25f, 0.125f, 0.5f};
+    HioImageSharedPtr writer = HioImage::OpenForWriting(floatPath.string());
+    if (!writer)
+    {
+        return false;
+    }
+    HioImage::StorageSpec writeStorage;
+    writeStorage.width = 2;
+    writeStorage.height = 1;
+    writeStorage.depth = 1;
+    writeStorage.format = HioFormatFloat32Vec4;
+    writeStorage.flipped = false;
+    writeStorage.data = const_cast<float*>(floatSource.data());
+    if (!writer->Write(writeStorage))
+    {
+        return false;
+    }
+    writer.reset();
+
+    openusd_image_info floatInfo{
+        sizeof(openusd_image_info),
+        OPENUSD_IMAGE_INFO_VERSION,
+        17,
+        19};
+    if (openusd_decode_image_rgba32f(
+            floatPath.string().c_str(),
+            0,
+            &floatInfo,
+            nullptr,
+            0,
+            error) != OPENUSD_STATUS_BUFFER_TOO_SMALL ||
+        floatInfo.width != 2 ||
+        floatInfo.height != 1)
+    {
+        std::filesystem::remove(floatPath);
+        return false;
+    }
+    std::array<float, 8> floatDestination{};
+    std::array<float, 7> undersized{};
+    undersized.fill(-17.0f);
+    if (openusd_decode_image_rgba32f(
+            floatPath.string().c_str(),
+            0,
+            &floatInfo,
+            undersized.data(),
+            undersized.size() * sizeof(float),
+            error) != OPENUSD_STATUS_BUFFER_TOO_SMALL ||
+        !std::all_of(
+            undersized.begin(),
+            undersized.end(),
+            [](float value) { return value == -17.0f; }) ||
+        openusd_decode_image_rgba32f(
+            floatPath.string().c_str(),
+            0,
+            &floatInfo,
+            floatDestination.data(),
+            floatDestination.size() * sizeof(float),
+            error) != OPENUSD_STATUS_OK)
+    {
+        std::filesystem::remove(floatPath);
+        return false;
+    }
+    std::filesystem::remove(floatPath);
+    return std::equal(
+        floatSource.begin(),
+        floatSource.end(),
+        floatDestination.begin());
 }
 
 bool VerifyOcioDisplayTransform(const char* configPath)
@@ -4065,7 +4141,8 @@ int main(int argc, char** argv)
           OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION |
           OPENUSD_CAPABILITY_SESSION_OVERLAY |
           OPENUSD_CAPABILITY_PHYSICS_BAKE |
-          OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM)) !=
+          OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
+          OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F)) !=
             (OPENUSD_CAPABILITY_STRING_LIST_V2 |
              OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
              OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES |
@@ -4087,7 +4164,8 @@ int main(int argc, char** argv)
              OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION |
              OPENUSD_CAPABILITY_SESSION_OVERLAY |
              OPENUSD_CAPABILITY_PHYSICS_BAKE |
-             OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM))
+             OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
+             OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F))
     {
         std::cerr << "Unexpected ABI version.\n";
         return 3;
@@ -4194,6 +4272,7 @@ int main(int argc, char** argv)
         return 111;
     }
     std::cout << "RGBA8 image decode passed.\n";
+    std::cout << "RGBA32F image decode passed.\n";
 
     openusd_stage* stage = nullptr;
     status = openusd_stage_open(argv[2], &stage, &error);

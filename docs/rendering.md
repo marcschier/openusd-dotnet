@@ -547,8 +547,15 @@ Backends differ in what they must keep alive, and the difference is deliberate:
   layout.
 
 The checked mesh shader samples the declared UsdPreviewSurface map permutations. hdSilk decodes resolved
-texture assets through OpenUSD Hio, uploads one cached RGBA8 texture per
-material/asset/colour-space/parameter identity, and reuses backend samplers keyed by wrap/filter state.
+texture assets through OpenUSD Hio. One- through four-channel UNorm8 and sRGB inputs retain the compact
+RGBA8 upload path. SNorm8, 16- and 32-bit integer, half, float, and double inputs are converted explicitly
+from their declared Hio source format and uploaded as RGBA32Float, preserving floating-point values outside
+`[0,1]`. One channel expands to RGB with opaque alpha; two channels expand luminance plus alpha; three
+channels gain opaque alpha. Requested sRGB conversion affects RGB only. Non-finite source values and
+compressed Hio formats are rejected with diagnostics rather than reinterpreted or silently quantized.
+Textures are cached per material/asset/colour-space/parameter identity, and backend samplers are reused by
+wrap/filter state. RGBA32Float textures use nearest filtering because linear filtering for that format is
+not portable across the supported RHIs; explicit filter negotiation remains outside the current claim.
 Base-colour, normal, roughness/metallic, emissive, and volume-density textures each bind an independent
 sampler slot, so simultaneously active maps preserve their own `wrapS` and `wrapT` values rather than
 letting the final texture bound to a draw overwrite every map's address mode.

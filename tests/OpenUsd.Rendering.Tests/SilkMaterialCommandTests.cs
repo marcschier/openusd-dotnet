@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Text;
 using OpenUsd.Rendering.Silk;
 
@@ -477,6 +478,63 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    public async Task FloatTextureDecodePreservesHdrValuesAndAppliesScaleBias()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Hdr",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.EmissiveColor,
+                    SilkTextureWrap.Clamp,
+                    SilkTextureWrap.Clamp,
+                    SilkColorSpace.Raw,
+                    4,
+                    [2f, 1f, 0.5f, 1f],
+                    [0.5f, 0.25f, 0f, 0f],
+                    [0f, 0f, 0f, 1f],
+                    "emissive.exr",
+                    "st"),
+            ]));
+        float[] source =
+        [
+            1f, 2f, 3f, 1f,
+            4f, 5f, 6f, 1f,
+            7f, 8f, 9f, 1f,
+            10f, 11f, 12f, 1f,
+        ];
+        byte[] sourceBytes = MemoryMarshal.AsBytes(source.AsSpan()).ToArray();
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(
+                2,
+                2,
+                sourceBytes,
+                SilkTextureFormat.Rgba32Float));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(
+            commands,
+            material,
+            SilkMaterialParameter.EmissiveColor);
+
+        await Assert.That(device.CreatedTextureFormats)
+            .Contains(SilkTextureFormat.Rgba32Float);
+        float[] uploaded = MemoryMarshal.Cast<byte, float>(commands.Uploads.Single()).ToArray();
+        await Assert.That(uploaded)
+            .IsEquivalentTo(
+            [
+                14.5f, 8.25f, 4.5f, 1f,
+                20.5f, 11.25f, 6f, 1f,
+                2.5f, 2.25f, 1.5f, 1f,
+                8.5f, 5.25f, 3f, 1f,
+            ]);
+    }
+
+    [Test]
     public async Task UnresolvedAndUnsupportedMaterialsUseDistinctDiagnostics()
     {
         using var device = new TextureGraphicsDevice();
@@ -872,6 +930,8 @@ public sealed class SilkMaterialCommandTests
 
     private sealed class TextureGraphicsDevice : ISilkGraphicsDevice
     {
+        internal List<SilkTextureFormat> CreatedTextureFormats { get; } = [];
+
         public SilkGraphicsBackend Backend => SilkGraphicsBackend.D3D12;
 
         public SilkGraphicsCapabilities Capabilities => new(
@@ -883,11 +943,17 @@ public sealed class SilkMaterialCommandTests
         public ISilkGraphicsTexture CreateTexture2D(
             uint width,
             uint height,
-            SilkTextureFormat format = SilkTextureFormat.Rgba8Unorm) =>
-            new Texture(width, height, format);
+            SilkTextureFormat format = SilkTextureFormat.Rgba8Unorm)
+        {
+            CreatedTextureFormats.Add(format);
+            return new Texture(width, height, format);
+        }
 
-        public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor) =>
-            new Texture(descriptor.Width, descriptor.Height, descriptor.Format);
+        public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor)
+        {
+            CreatedTextureFormats.Add(descriptor.Format);
+            return new Texture(descriptor.Width, descriptor.Height, descriptor.Format);
+        }
 
         public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage) =>
             new TextureGraphicsBuffer(size, usage);

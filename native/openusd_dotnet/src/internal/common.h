@@ -288,7 +288,8 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION |
     OPENUSD_CAPABILITY_SESSION_OVERLAY |
     OPENUSD_CAPABILITY_PHYSICS_BAKE |
-    OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM;
+    OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
+    OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));

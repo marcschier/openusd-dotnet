@@ -284,6 +284,7 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_SESSION_OVERLAY (UINT64_C(1) << 19)
 #define OPENUSD_CAPABILITY_PHYSICS_BAKE (UINT64_C(1) << 20)
 #define OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM (UINT64_C(1) << 21)
+#define OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F (UINT64_C(1) << 22)
 
 typedef struct openusd_ocio_processor openusd_ocio_processor;
 
@@ -830,6 +831,14 @@ OPENUSD_DOTNET_API openusd_status openusd_decode_image_rgba8(
     uint32_t convert_srgb_to_linear,
     openusd_image_info* info,
     uint8_t* rgba,
+    size_t rgba_size,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_decode_image_rgba32f(
+    const char* asset_path,
+    uint32_t convert_srgb_to_linear,
+    openusd_image_info* info,
+    float* rgba,
     size_t rgba_size,
     openusd_error_buffer* error);
 

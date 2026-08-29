@@ -77,7 +77,8 @@ Copy-Item ([System.IO.Path]::GetFullPath($StagePath)) $stagedStage -Force
 $stagedImageFixtures = @(
     'test-assets/mcp-monkey-car-city-textures/asphalt_roughness.jpg',
     'test-assets/mcp-monkey-car-city-textures/asphalt_diffuse.jpg',
-    'test-assets/native-image-gray-alpha.png'
+    'test-assets/native-image-gray-alpha.png',
+    'test-assets/ocio-test-config.ocio'
 ) | ForEach-Object {
     $source = Join-Path $repoRoot $_
     $target = Join-Path $publishRoot ([System.IO.Path]::GetFileName($source))

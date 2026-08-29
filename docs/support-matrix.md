@@ -168,12 +168,16 @@ Mesh rendering and visible selection compositing are format-aware; picking and
 selection masks deliberately remain RGBA8 identity surfaces. Frame capture remains
 an explicit RGBA8 display-image contract.
 hdSilk now supports texture-backed `UsdPreviewSurface` map binding on all three RHIs by decoding
-resolved assets through OpenUSD Hio and uploading cached sampled RGBA8 textures. Missing and corrupt
+resolved assets through OpenUSD Hio. UNorm8/sRGB images use cached sampled RGBA8 textures; SNorm8,
+integer, half, float, and double images use explicitly converted RGBA32Float textures so HDR values
+are preserved. One- through four-channel expansion and RGB-only sRGB conversion are deterministic.
+Compressed Hio formats and non-finite channels are rejected with actionable diagnostics. Missing and corrupt
 assets use authored fallbacks with bounded stable diagnostics; failed loads are cached without poisoning
 the successful cache and can be explicitly retried. Unresolved and unsupported materials likewise retain
 default shading with distinct diagnostics. Every active texture slot binds its own cached sampler, preserving
 independent `wrapS` and `wrapT` state across base-colour, normal, roughness/metallic, emissive, and volume maps.
-UDIM expansion and colour-delta parity with Storm remain outside the current support claim.
+RGBA32Float sampling is nearest-only until cross-backend filter negotiation lands. UDIM expansion and
+colour-delta parity with Storm remain outside the current support claim.
 It also supports a documented MaterialX projection plus generated-source paths for graphs outside that projection:
 `ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
 driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are
