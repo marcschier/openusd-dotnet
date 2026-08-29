@@ -23,7 +23,7 @@
     "properties": [
       {
         "name": "openusd:input:Directory.Packages.props:sha256",
-        "value": "4032376363638a8d0780517e371955c9dcbe83381e33d5f7399359e51f97be9f"
+        "value": "d4e8a9824d198313bbd7ae208ed0f776ead7d7b20f264a273ab6e9920c3a9549"
       },
       {
         "name": "openusd:input:eng/cesium.lock.json:sha256",
@@ -933,8 +933,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia",
       "name": "Avalonia",
-      "version": "12.1.0",
-      "purl": "pkg:nuget/Avalonia@12.1.0",
+      "version": "12.1.1",
+      "purl": "pkg:nuget/Avalonia@12.1.1",
       "properties": [
         {
           "name": "openusd:source",
@@ -946,8 +946,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia.Desktop",
       "name": "Avalonia.Desktop",
-      "version": "12.1.0",
-      "purl": "pkg:nuget/Avalonia.Desktop@12.1.0",
+      "version": "12.1.1",
+      "purl": "pkg:nuget/Avalonia.Desktop@12.1.1",
       "properties": [
         {
           "name": "openusd:source",
@@ -959,8 +959,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia.Fonts.Inter",
       "name": "Avalonia.Fonts.Inter",
-      "version": "12.1.0",
-      "purl": "pkg:nuget/Avalonia.Fonts.Inter@12.1.0",
+      "version": "12.1.1",
+      "purl": "pkg:nuget/Avalonia.Fonts.Inter@12.1.1",
       "properties": [
         {
           "name": "openusd:source",
@@ -972,8 +972,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia.Themes.Fluent",
       "name": "Avalonia.Themes.Fluent",
-      "version": "12.1.0",
-      "purl": "pkg:nuget/Avalonia.Themes.Fluent@12.1.0",
+      "version": "12.1.1",
+      "purl": "pkg:nuget/Avalonia.Themes.Fluent@12.1.1",
       "properties": [
         {
           "name": "openusd:source",
@@ -985,8 +985,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia.Wayland",
       "name": "Avalonia.Wayland",
-      "version": "12.1.0",
-      "purl": "pkg:nuget/Avalonia.Wayland@12.1.0",
+      "version": "12.1.1",
+      "purl": "pkg:nuget/Avalonia.Wayland@12.1.1",
       "properties": [
         {
           "name": "openusd:source",
@@ -1024,8 +1024,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.Direct3D.DXC",
       "name": "Microsoft.Direct3D.DXC",
-      "version": "1.8.2505.32",
-      "purl": "pkg:nuget/Microsoft.Direct3D.DXC@1.8.2505.32",
+      "version": "1.9.2607.13",
+      "purl": "pkg:nuget/Microsoft.Direct3D.DXC@1.9.2607.13",
       "properties": [
         {
           "name": "openusd:source",
@@ -1050,8 +1050,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.SourceLink.GitHub",
       "name": "Microsoft.SourceLink.GitHub",
-      "version": "10.0.301",
-      "purl": "pkg:nuget/Microsoft.SourceLink.GitHub@10.0.301",
+      "version": "10.0.400",
+      "purl": "pkg:nuget/Microsoft.SourceLink.GitHub@10.0.400",
       "properties": [
         {
           "name": "openusd:source",
@@ -1063,8 +1063,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.Testing.Extensions.CodeCoverage",
       "name": "Microsoft.Testing.Extensions.CodeCoverage",
-      "version": "18.9.0",
-      "purl": "pkg:nuget/Microsoft.Testing.Extensions.CodeCoverage@18.9.0",
+      "version": "18.10.0",
+      "purl": "pkg:nuget/Microsoft.Testing.Extensions.CodeCoverage@18.10.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1089,8 +1089,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Nerdbank.GitVersioning",
       "name": "Nerdbank.GitVersioning",
-      "version": "3.10.91",
-      "purl": "pkg:nuget/Nerdbank.GitVersioning@3.10.91",
+      "version": "3.10.94",
+      "purl": "pkg:nuget/Nerdbank.GitVersioning@3.10.94",
       "properties": [
         {
           "name": "openusd:source",
@@ -1102,8 +1102,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Roslynator.Analyzers",
       "name": "Roslynator.Analyzers",
-      "version": "4.15.0",
-      "purl": "pkg:nuget/Roslynator.Analyzers@4.15.0",
+      "version": "5.0.0",
+      "purl": "pkg:nuget/Roslynator.Analyzers@5.0.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1115,8 +1115,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Roslynator.Formatting.Analyzers",
       "name": "Roslynator.Formatting.Analyzers",
-      "version": "4.15.0",
-      "purl": "pkg:nuget/Roslynator.Formatting.Analyzers@4.15.0",
+      "version": "5.0.0",
+      "purl": "pkg:nuget/Roslynator.Formatting.Analyzers@5.0.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1245,8 +1245,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:TUnit",
       "name": "TUnit",
-      "version": "1.59.0",
-      "purl": "pkg:nuget/TUnit@1.59.0",
+      "version": "1.65.68",
+      "purl": "pkg:nuget/TUnit@1.65.68",
       "properties": [
         {
           "name": "openusd:source",

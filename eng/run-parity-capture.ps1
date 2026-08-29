@@ -542,6 +542,8 @@ try
         'DisplayColorReachesPixelsForImplicitSurfacesAndMeshes',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
+        'HdSilkDomeAmbientPreservesAuthoredColorIntensityAndExposure',
+        'ChasePresentationRetainsHighlightsOnD3D12',
         'SilkWireframeDrawModeDivergesFromSmoothShadedPixelsOnD3D12',
         'SilkFrameCaptureReturnsDimensionsAndNonTrivialPixels',
         'SilkFrameCaptureRendersEveryFrameFromTheSameSession',
@@ -555,6 +557,7 @@ try
         'CuratedSceneParityClaimsAreStructured',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
+        'HdSilkDomeAmbientPreservesAuthoredColorIntensityAndExposure',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnMetal')
     $linuxGlxTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
@@ -562,6 +565,8 @@ try
         'CuratedSceneParityClaimsAreStructured',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
+        'HdSilkDomeAmbientPreservesAuthoredColorIntensityAndExposure',
+        'ChasePresentationRetainsHighlightsOnVulkan',
         'MaterialXStandardSurfaceMatchesPreviewSelfConsistencyOnVulkan',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnVulkan',
         'TextureWrapModesMatchRepeatWithinUnitUvRangeOnVulkan',
