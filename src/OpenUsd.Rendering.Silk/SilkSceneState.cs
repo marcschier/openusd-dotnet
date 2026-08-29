@@ -1522,12 +1522,18 @@ public sealed class SilkSceneGpuResources : IDisposable
     private sealed record TextureCacheEntry(
         ISilkGraphicsTexture Texture,
         byte[] Pixels,
-        bool IsUdim = false)
+        bool IsUdim = false,
+        TextureDependency[]? Dependencies = null)
     {
         internal bool Uploaded { get; set; }
     }
 
     private readonly record struct VolumeTextureInfo(uint Width, uint Height, uint Depth);
+
+    private readonly record struct TextureDependency(
+        string Asset,
+        long Length,
+        DateTime LastWriteTimeUtc);
 
     private readonly record struct TextureCacheKey(
         string MaterialPath,
@@ -1993,7 +1999,12 @@ public sealed class SilkSceneGpuResources : IDisposable
             texture.Parameter);
         if (_textures.TryGetValue(key, out TextureCacheEntry? entry))
         {
-            return entry;
+            if (!DependenciesChanged(entry.Dependencies))
+            {
+                return entry;
+            }
+            _textures.Remove(key);
+            entry.Texture.Dispose();
         }
         if (_failedTextures.TryGetValue(key, out entry))
         {
@@ -2001,10 +2012,11 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
 
         SilkDecodedImage image;
+        string[] dependencies = [texture.Asset];
         try
         {
             image = texture.Asset.Contains("<UDIM>", StringComparison.Ordinal)
-                ? CreateUdimAtlas(texture, effectiveColorSpace)
+                ? CreateUdimAtlas(texture, effectiveColorSpace, out dependencies)
                 : DecodeMaterialImage(texture.Asset, texture, effectiveColorSpace);
         }
         catch (FileNotFoundException exception)
@@ -2038,7 +2050,8 @@ public sealed class SilkSceneGpuResources : IDisposable
             key,
             image,
             _textures,
-            texture.Asset.Contains("<UDIM>", StringComparison.Ordinal));
+            texture.Asset.Contains("<UDIM>", StringComparison.Ordinal),
+            dependencies);
     }
 
     private TextureCacheEntry CreateFailedTexture(
@@ -2068,7 +2081,8 @@ public sealed class SilkSceneGpuResources : IDisposable
         TextureCacheKey key,
         SilkDecodedImage image,
         Dictionary<TextureCacheKey, TextureCacheEntry> cache,
-        bool isUdim = false)
+        bool isUdim = false,
+        IReadOnlyList<string>? dependencies = null)
     {
         ISilkGraphicsTexture? gpuTexture = null;
         try
@@ -2081,7 +2095,11 @@ public sealed class SilkSceneGpuResources : IDisposable
                     SilkTextureUsage.Sampled |
                         SilkTextureUsage.CopySource |
                         SilkTextureUsage.CopyDestination));
-            var entry = new TextureCacheEntry(gpuTexture, image.Pixels, isUdim);
+            var entry = new TextureCacheEntry(
+                gpuTexture,
+                image.Pixels,
+                isUdim,
+                CaptureDependencies(dependencies));
             cache.Add(key, entry);
             return entry;
         }
@@ -2108,7 +2126,8 @@ public sealed class SilkSceneGpuResources : IDisposable
 
     private SilkDecodedImage CreateUdimAtlas(
         SilkMaterialTexture texture,
-        SilkColorSpace effectiveColorSpace)
+        SilkColorSpace effectiveColorSpace,
+        out string[] dependencies)
     {
         IReadOnlyList<SilkUdimTile> tiles = _udimResolver(texture.Asset);
         if (tiles.Count == 0)
@@ -2117,6 +2136,7 @@ public sealed class SilkSceneGpuResources : IDisposable
                 $"UDIM texture '{texture.Asset}' resolved no tiles.",
                 texture.Asset);
         }
+        dependencies = tiles.Select(static tile => tile.Asset).ToArray();
 
         SilkDecodedImage[] images = new SilkDecodedImage[tiles.Count];
         int minU = int.MaxValue;
@@ -2186,6 +2206,47 @@ public sealed class SilkSceneGpuResources : IDisposable
             checked((uint)atlasHeight),
             pixels,
             first.Format);
+    }
+
+    private static TextureDependency[] CaptureDependencies(
+        IReadOnlyList<string>? dependencies)
+    {
+        if (dependencies is null || dependencies.Count == 0)
+        {
+            return [];
+        }
+        var result = new List<TextureDependency>(dependencies.Count);
+        foreach (string asset in dependencies)
+        {
+            var file = new FileInfo(asset);
+            if (file.Exists)
+            {
+                result.Add(new TextureDependency(
+                    asset,
+                    file.Length,
+                    file.LastWriteTimeUtc));
+            }
+        }
+        return result.ToArray();
+    }
+
+    private static bool DependenciesChanged(TextureDependency[]? dependencies)
+    {
+        if (dependencies is null)
+        {
+            return false;
+        }
+        foreach (TextureDependency dependency in dependencies)
+        {
+            var file = new FileInfo(dependency.Asset);
+            if (!file.Exists ||
+                file.Length != dependency.Length ||
+                file.LastWriteTimeUtc != dependency.LastWriteTimeUtc)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static byte[] CreateFallbackPixel(

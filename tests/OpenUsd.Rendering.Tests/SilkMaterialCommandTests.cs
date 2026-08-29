@@ -381,6 +381,65 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    public async Task ChangedLocalTextureIsDecodedAndUploadedAgain()
+    {
+        string asset = Path.GetTempFileName();
+        try
+        {
+            SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+                "/World/Materials/Reload",
+                SilkSurfaceKind.PreviewSurface,
+                scalars: [],
+                textures:
+                [
+                    new TextureSpec(
+                        SilkMaterialParameter.DiffuseColor,
+                        SilkTextureWrap.Repeat,
+                        SilkTextureWrap.Repeat,
+                        SilkColorSpace.Raw,
+                        ComponentCount: 4,
+                        Scale: [1f, 1f, 1f, 1f],
+                        Bias: [0f, 0f, 0f, 0f],
+                        Fallback: [1f, 0f, 1f, 1f],
+                        Asset: asset,
+                        UvPrimvar: "st"),
+                ]));
+            int attempts = 0;
+            using var device = new TextureGraphicsDevice();
+            using var resources = new SilkSceneGpuResources(
+                device,
+                (_, _) =>
+                {
+                    attempts++;
+                    return new SilkDecodedImage(
+                        1,
+                        1,
+                        [checked((byte)attempts), 0, 0, 255]);
+                });
+            using var commands = new TextureCommandList();
+
+            resources.UploadMaterialTexture(
+                commands,
+                material,
+                SilkMaterialParameter.DiffuseColor);
+            await File.WriteAllTextAsync(asset, "changed-size");
+            File.SetLastWriteTimeUtc(asset, DateTime.UtcNow.AddMinutes(1));
+            resources.UploadMaterialTexture(
+                commands,
+                material,
+                SilkMaterialParameter.DiffuseColor);
+
+            await Assert.That(attempts).IsEqualTo(2);
+            await Assert.That(commands.Uploads.Select(upload => upload[0]))
+                .IsEquivalentTo(new byte[] { 1, 2 });
+        }
+        finally
+        {
+            File.Delete(asset);
+        }
+    }
+
+    [Test]
     public async Task CorruptTextureProducesDecodeDiagnostic()
     {
         SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(

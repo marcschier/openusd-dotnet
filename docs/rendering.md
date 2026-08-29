@@ -568,6 +568,10 @@ Including the material identity prevents one material's scale, bias, or authored
 into another material that references the same asset. Texture upload is recorded before the rendering
 scope so all draw paths can bind every declared sampler/texture slot without relying on backend defaults;
 dirty material updates clear the retained texture cache rather than reusing stale assets.
+Successful local-file cache entries also retain file size and last-write fingerprints. A later draw
+invalidates and re-decodes only the entries whose source file or resolved UDIM tile changed; URI and
+other resolver-backed assets continue to use material dirtiness or explicit failed-texture retry
+because they do not expose portable filesystem metadata.
 
 `SilkSceneGpuResources.Diagnostics` returns a deterministic snapshot of at most 128 deduplicated
 material and texture warnings. Unresolved relationships and unsupported surface networks retain flat

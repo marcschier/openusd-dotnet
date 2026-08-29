@@ -179,8 +179,9 @@ independent `wrapS` and `wrapT` state across base-colour, normal, roughness/meta
 Resolver-aware `<UDIM>` textures use bounded per-slot atlases with one-pixel gutters, standard tile
 numbering, and authored fallback values in sparse cells. Tile format/dimension mismatches and atlas
 spans above 256 cells are diagnosed and rejected. RGBA32Float sampling is nearest-only until
-cross-backend filter negotiation lands. Colour-delta parity with Storm remains outside the current
-support claim.
+cross-backend filter negotiation lands. Successful local files and resolved UDIM tiles are reloaded
+when their size or last-write timestamp changes; non-filesystem resolver assets use material
+dirtiness or explicit retry. Colour-delta parity with Storm remains outside the current support claim.
 It also supports a documented MaterialX projection plus generated-source paths for graphs outside that projection:
 `ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
 driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are
