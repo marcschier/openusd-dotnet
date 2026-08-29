@@ -77,19 +77,6 @@ inline void WriteError(openusd_error_buffer* error, const char* message)
     error->data[copy] = '\0';
 }
 
-inline void ClearError(openusd_error_buffer* error)
-{
-    if (error == nullptr)
-    {
-        return;
-    }
-    error->required = 0;
-    if (error->data != nullptr && error->capacity != 0)
-    {
-        error->data[0] = '\0';
-    }
-}
-
 }  // namespace
 
 struct openusd_ocio_processor
