@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 11u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 12u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 5u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -132,10 +132,11 @@ extern "C" {
 /// lights are evaluated in eye space by the managed renderer after applying
 /// the current view matrix.
 ///
-/// FRAME v9 appends after clip_planes:
-///   uint32 light_count (0..4 direct lights)
+/// FRAME v9 appends after clip_planes. ABI v12 expands the fixed direct-light
+/// table from four to eight entries without changing an entry's layout:
+///   uint32 light_count (0..8 direct lights)
 ///   uint32 reserved[3] (0)
-///   repeated 4 times:
+///   repeated 8 times:
 ///     uint32 light_type (OPENUSD_SILK_LIGHT_*)
 ///     uint32 shadow_enabled (diagnostic only)
 ///     float shape_x
@@ -245,7 +246,7 @@ extern "C" {
 #define OPENUSD_SILK_COMMAND_MESH_REMOVE 3u
 #define OPENUSD_SILK_COMMAND_MATERIAL_UPSERT 4u
 #define OPENUSD_SILK_COMMAND_MATERIAL_REMOVE 5u
-#define OPENUSD_SILK_MAX_FRAME_LIGHTS 4u
+#define OPENUSD_SILK_MAX_FRAME_LIGHTS 8u
 #define OPENUSD_SILK_LIGHT_DISTANT 1u
 #define OPENUSD_SILK_LIGHT_SPHERE 2u
 #define OPENUSD_SILK_LIGHT_RECT 3u

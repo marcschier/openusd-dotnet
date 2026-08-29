@@ -331,7 +331,7 @@
               "name": "lightPositionType",
               "type": {
                 "kind": "array",
-                "elementCount": 4,
+                "elementCount": 8,
                 "elementType": {
                   "kind": "vector",
                   "elementCount": 4,
@@ -343,7 +343,7 @@
               },
               "layout": {
                 "offset": 224,
-                "size": 64,
+                "size": 128,
                 "elementStride": 16,
                 "matrixStride": null
               }
@@ -352,28 +352,7 @@
               "name": "lightDirectionRadius",
               "type": {
                 "kind": "array",
-                "elementCount": 4,
-                "elementType": {
-                  "kind": "vector",
-                  "elementCount": 4,
-                  "elementType": {
-                    "kind": "scalar",
-                    "scalarType": "float32"
-                  }
-                }
-              },
-              "layout": {
-                "offset": 288,
-                "size": 64,
-                "elementStride": 16,
-                "matrixStride": null
-              }
-            },
-            {
-              "name": "lightColorIntensity",
-              "type": {
-                "kind": "array",
-                "elementCount": 4,
+                "elementCount": 8,
                 "elementType": {
                   "kind": "vector",
                   "elementCount": 4,
@@ -385,37 +364,16 @@
               },
               "layout": {
                 "offset": 352,
-                "size": 64,
+                "size": 128,
                 "elementStride": 16,
                 "matrixStride": null
               }
             },
             {
-              "name": "lightControls",
+              "name": "lightColorIntensity",
               "type": {
                 "kind": "array",
-                "elementCount": 4,
-                "elementType": {
-                  "kind": "vector",
-                  "elementCount": 4,
-                  "elementType": {
-                    "kind": "scalar",
-                    "scalarType": "float32"
-                  }
-                }
-              },
-              "layout": {
-                "offset": 416,
-                "size": 64,
-                "elementStride": 16,
-                "matrixStride": null
-              }
-            },
-            {
-              "name": "lightTangentShapeX",
-              "type": {
-                "kind": "array",
-                "elementCount": 4,
+                "elementCount": 8,
                 "elementType": {
                   "kind": "vector",
                   "elementCount": 4,
@@ -427,16 +385,16 @@
               },
               "layout": {
                 "offset": 480,
-                "size": 64,
+                "size": 128,
                 "elementStride": 16,
                 "matrixStride": null
               }
             },
             {
-              "name": "lightBitangentShapeY",
+              "name": "lightControls",
               "type": {
                 "kind": "array",
-                "elementCount": 4,
+                "elementCount": 8,
                 "elementType": {
                   "kind": "vector",
                   "elementCount": 4,
@@ -447,8 +405,50 @@
                 }
               },
               "layout": {
-                "offset": 544,
-                "size": 64,
+                "offset": 608,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightTangentShapeX",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 736,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightBitangentShapeY",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 864,
+                "size": 128,
                 "elementStride": 16,
                 "matrixStride": null
               }
@@ -465,7 +465,7 @@
                 }
               },
               "layout": {
-                "offset": 608,
+                "offset": 992,
                 "size": 64,
                 "elementStride": 0,
                 "matrixStride": 16,
@@ -474,7 +474,7 @@
             }
           ]
         },
-        "elementStride": 672,
+        "elementStride": 1056,
         "size": null
       },
       "vulkanLayout": {
@@ -563,7 +563,7 @@
               "name": "lightPositionType",
               "type": {
                 "kind": "array",
-                "elementCount": 4,
+                "elementCount": 8,
                 "elementType": {
                   "kind": "vector",
                   "elementCount": 4,
@@ -575,7 +575,7 @@
               },
               "layout": {
                 "offset": 224,
-                "size": 64,
+                "size": 128,
                 "elementStride": 16,
                 "matrixStride": null
               }
@@ -584,28 +584,7 @@
               "name": "lightDirectionRadius",
               "type": {
                 "kind": "array",
-                "elementCount": 4,
-                "elementType": {
-                  "kind": "vector",
-                  "elementCount": 4,
-                  "elementType": {
-                    "kind": "scalar",
-                    "scalarType": "float32"
-                  }
-                }
-              },
-              "layout": {
-                "offset": 288,
-                "size": 64,
-                "elementStride": 16,
-                "matrixStride": null
-              }
-            },
-            {
-              "name": "lightColorIntensity",
-              "type": {
-                "kind": "array",
-                "elementCount": 4,
+                "elementCount": 8,
                 "elementType": {
                   "kind": "vector",
                   "elementCount": 4,
@@ -617,37 +596,16 @@
               },
               "layout": {
                 "offset": 352,
-                "size": 64,
+                "size": 128,
                 "elementStride": 16,
                 "matrixStride": null
               }
             },
             {
-              "name": "lightControls",
+              "name": "lightColorIntensity",
               "type": {
                 "kind": "array",
-                "elementCount": 4,
-                "elementType": {
-                  "kind": "vector",
-                  "elementCount": 4,
-                  "elementType": {
-                    "kind": "scalar",
-                    "scalarType": "float32"
-                  }
-                }
-              },
-              "layout": {
-                "offset": 416,
-                "size": 64,
-                "elementStride": 16,
-                "matrixStride": null
-              }
-            },
-            {
-              "name": "lightTangentShapeX",
-              "type": {
-                "kind": "array",
-                "elementCount": 4,
+                "elementCount": 8,
                 "elementType": {
                   "kind": "vector",
                   "elementCount": 4,
@@ -659,16 +617,16 @@
               },
               "layout": {
                 "offset": 480,
-                "size": 64,
+                "size": 128,
                 "elementStride": 16,
                 "matrixStride": null
               }
             },
             {
-              "name": "lightBitangentShapeY",
+              "name": "lightControls",
               "type": {
                 "kind": "array",
-                "elementCount": 4,
+                "elementCount": 8,
                 "elementType": {
                   "kind": "vector",
                   "elementCount": 4,
@@ -679,8 +637,50 @@
                 }
               },
               "layout": {
-                "offset": 544,
-                "size": 64,
+                "offset": 608,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightTangentShapeX",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 736,
+                "size": 128,
+                "elementStride": 16,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "lightBitangentShapeY",
+              "type": {
+                "kind": "array",
+                "elementCount": 8,
+                "elementType": {
+                  "kind": "vector",
+                  "elementCount": 4,
+                  "elementType": {
+                    "kind": "scalar",
+                    "scalarType": "float32"
+                  }
+                }
+              },
+              "layout": {
+                "offset": 864,
+                "size": 128,
                 "elementStride": 16,
                 "matrixStride": null
               }
@@ -697,7 +697,7 @@
                 }
               },
               "layout": {
-                "offset": 608,
+                "offset": 992,
                 "size": 64,
                 "elementStride": 0,
                 "matrixStride": 16,
@@ -706,7 +706,7 @@
             }
           ]
         },
-        "elementStride": 672,
+        "elementStride": 1056,
         "size": null
       }
     }

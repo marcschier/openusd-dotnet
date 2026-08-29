@@ -55,7 +55,7 @@ struct ParsedAttribute
     float firstValue = 0.0F;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 5);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 11);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 12);
 
 openusd_render_camera AutomaticCamera()
 {

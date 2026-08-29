@@ -72,12 +72,12 @@ struct FrameParameters
     uint4 clipPlaneCount;
     float4 clipPlanes[8];
     float4 ambientLight;
-    float4 lightPositionType[4];
-    float4 lightDirectionRadius[4];
-    float4 lightColorIntensity[4];
-    float4 lightControls[4];
-    float4 lightTangentShapeX[4];
-    float4 lightBitangentShapeY[4];
+    float4 lightPositionType[8];
+    float4 lightDirectionRadius[8];
+    float4 lightColorIntensity[8];
+    float4 lightControls[8];
+    float4 lightTangentShapeX[8];
+    float4 lightBitangentShapeY[8];
     float4x4 eyeToWorld;
 };
 
@@ -360,7 +360,7 @@ float4 FRAGMENT_ENTRY_POINT(
     bool hasSceneLighting =
         frame.ambientLight.w > 0.5 ||
         dot(frame.ambientLight.rgb, frame.ambientLight.rgb) > 0.0;
-    uint lightCount = min((uint)frame.ambientLight.w, 4u);
+    uint lightCount = min((uint)frame.ambientLight.w, 8u);
     float3 sceneEye = normalize(mul(frame.eyeToWorld, float4(eye, 0.0)).xyz);
     float3 worldPosition = mul(frame.eyeToWorld, float4(input.eyePosition, 1.0)).xyz;
     float3 color = diffuseColor * surface.lightColorAmbient.a;

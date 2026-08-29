@@ -1030,11 +1030,11 @@ still carries the full mesh payload and transform; later records keep the same f
 the geometry, material-path, and attribute counts to zero and reuse instance zero's retained
 geometry, material path, and attributes.
 
-Page ABI v9 extended `FRAME` with a fixed four-entry light table and ambient vector. Lights are
-frame-local rather than material-local: the managed renderer converts world-space light transforms to
-eye space alongside the camera, and every draw path already binds slot 8. Keeping light data there
-avoids widening `SceneParameters`, which remains pinned at 80 bytes and mirrored by the instance
-table.
+Page ABI v9 extended `FRAME` with a fixed light table and ambient vector; page ABI v12 expands
+that bounded table from four to eight direct lights. Lights are frame-local rather than
+material-local: the managed renderer converts world-space light transforms to eye space alongside
+the camera, and every draw path already binds slot 8. Keeping light data there avoids widening
+`SceneParameters`, which remains pinned at 80 bytes and mirrored by the instance table.
 
 Page ABI v4 adds the vertex attribute table and the material binding, and is the transport every material
 feature depends on. Each `MESH_UPSERT` carries `attribute_count` entries of `(semantic, component_count,

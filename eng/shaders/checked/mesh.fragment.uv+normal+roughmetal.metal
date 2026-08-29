@@ -39,23 +39,18 @@ struct _Array_natural_vectorx3Cfloatx2C4x3E8_0
     array<packed_float4, int(8)> data_1;
 };
 
-struct _Array_natural_vectorx3Cfloatx2C4x3E4_0
-{
-    array<packed_float4, int(4)> data_2;
-};
-
 struct FrameParameters_natural_0
 {
     _MatrixStorage_float4x4natural_0 clipToEye_0;
     packed_uint4 clipPlaneCount_0;
     _Array_natural_vectorx3Cfloatx2C4x3E8_0 clipPlanes_0;
     packed_float4 ambientLight_0;
-    _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightPositionType_0;
-    _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightDirectionRadius_0;
-    _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightColorIntensity_0;
-    _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightControls_0;
-    _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightTangentShapeX_0;
-    _Array_natural_vectorx3Cfloatx2C4x3E4_0 lightBitangentShapeY_0;
+    _Array_natural_vectorx3Cfloatx2C4x3E8_0 lightPositionType_0;
+    _Array_natural_vectorx3Cfloatx2C4x3E8_0 lightDirectionRadius_0;
+    _Array_natural_vectorx3Cfloatx2C4x3E8_0 lightColorIntensity_0;
+    _Array_natural_vectorx3Cfloatx2C4x3E8_0 lightControls_0;
+    _Array_natural_vectorx3Cfloatx2C4x3E8_0 lightTangentShapeX_0;
+    _Array_natural_vectorx3Cfloatx2C4x3E8_0 lightBitangentShapeY_0;
     _MatrixStorage_float4x4natural_0 eyeToWorld_0;
 };
 
@@ -213,7 +208,7 @@ struct KernelContext_0
         float3 _S26 = _S24.xyz;
         hasSceneLighting_0 = (dot(_S26, _S26)) > 0.0f;
     }
-    uint _S27 = min(uint(_S25), 4U);
+    uint _S27 = min(uint(_S25), 8U);
     matrix<float,int(4),int(4)>  _S28 = matrix<float,int(4),int(4)> (_S3->eyeToWorld_0.data_0[int(0)][int(0)], _S3->eyeToWorld_0.data_0[int(0)][int(1)], _S3->eyeToWorld_0.data_0[int(0)][int(2)], _S3->eyeToWorld_0.data_0[int(0)][int(3)], _S3->eyeToWorld_0.data_0[int(1)][int(0)], _S3->eyeToWorld_0.data_0[int(1)][int(1)], _S3->eyeToWorld_0.data_0[int(1)][int(2)], _S3->eyeToWorld_0.data_0[int(1)][int(3)], _S3->eyeToWorld_0.data_0[int(2)][int(0)], _S3->eyeToWorld_0.data_0[int(2)][int(1)], _S3->eyeToWorld_0.data_0[int(2)][int(2)], _S3->eyeToWorld_0.data_0[int(2)][int(3)], _S3->eyeToWorld_0.data_0[int(3)][int(0)], _S3->eyeToWorld_0.data_0[int(3)][int(1)], _S3->eyeToWorld_0.data_0[int(3)][int(2)], _S3->eyeToWorld_0.data_0[int(3)][int(3)]);
     float3 _S29 = normalize((((float4(_S14, 0.0f)) * (_S28))).xyz);
     float3 _S30 = (((float4(_S1.eyePosition_0, 1.0f)) * (_S28))).xyz;
@@ -256,7 +251,7 @@ struct KernelContext_0
         }
         else
         {
-            lightType_0 = (float4((&_S3->lightPositionType_0)->data_2[lightIndex_0]) ).w;
+            lightType_0 = (float4((&_S3->lightPositionType_0)->data_1[lightIndex_0]) ).w;
         }
         bool _S34;
         if(_S33)
@@ -274,7 +269,7 @@ struct KernelContext_0
         }
         else
         {
-            lightDirection_0 = normalize((float4((&_S3->lightDirectionRadius_0)->data_2[lightIndex_0]) ).xyz);
+            lightDirection_0 = normalize((float4((&_S3->lightDirectionRadius_0)->data_1[lightIndex_0]) ).xyz);
         }
         bool _S35;
         if(_S33)
@@ -292,7 +287,7 @@ struct KernelContext_0
         }
         else
         {
-            _S36 = (float4((&_S3->lightColorIntensity_0)->data_2[lightIndex_0]) ).w;
+            _S36 = (float4((&_S3->lightColorIntensity_0)->data_1[lightIndex_0]) ).w;
         }
         bool _S37;
         if(_S33)
@@ -309,7 +304,7 @@ struct KernelContext_0
         }
         else
         {
-            diffuseColor_0 = (float4((&_S3->lightColorIntensity_0)->data_2[lightIndex_0]) ).xyz;
+            diffuseColor_0 = (float4((&_S3->lightColorIntensity_0)->data_1[lightIndex_0]) ).xyz;
         }
         bool _S38;
         if(_S33)
@@ -327,7 +322,7 @@ struct KernelContext_0
         }
         else
         {
-            _S39 = (float4((&_S3->lightControls_0)->data_2[lightIndex_0]) ).x;
+            _S39 = (float4((&_S3->lightControls_0)->data_1[lightIndex_0]) ).x;
         }
         bool _S40;
         if(_S33)
@@ -345,7 +340,7 @@ struct KernelContext_0
         }
         else
         {
-            _S41 = (float4((&_S3->lightControls_0)->data_2[lightIndex_0]) ).y;
+            _S41 = (float4((&_S3->lightControls_0)->data_1[lightIndex_0]) ).y;
         }
         bool _S42;
         if(_S33)
@@ -363,7 +358,7 @@ struct KernelContext_0
         }
         else
         {
-            lightTangent_0 = normalize((float4((&_S3->lightTangentShapeX_0)->data_2[lightIndex_0]) ).xyz);
+            lightTangent_0 = normalize((float4((&_S3->lightTangentShapeX_0)->data_1[lightIndex_0]) ).xyz);
         }
         bool _S43;
         if(_S33)
@@ -381,7 +376,7 @@ struct KernelContext_0
         }
         else
         {
-            lightBitangent_0 = normalize((float4((&_S3->lightBitangentShapeY_0)->data_2[lightIndex_0]) ).xyz);
+            lightBitangent_0 = normalize((float4((&_S3->lightBitangentShapeY_0)->data_1[lightIndex_0]) ).xyz);
         }
         bool _S44;
         if(_S33)
@@ -399,7 +394,7 @@ struct KernelContext_0
         }
         else
         {
-            shapeX_0 = (float4((&_S3->lightTangentShapeX_0)->data_2[lightIndex_0]) ).w;
+            shapeX_0 = (float4((&_S3->lightTangentShapeX_0)->data_1[lightIndex_0]) ).w;
         }
         bool _S45;
         if(_S33)
@@ -417,7 +412,7 @@ struct KernelContext_0
         }
         else
         {
-            shapeY_0 = (float4((&_S3->lightBitangentShapeY_0)->data_2[lightIndex_0]) ).w;
+            shapeY_0 = (float4((&_S3->lightBitangentShapeY_0)->data_1[lightIndex_0]) ).w;
         }
         bool _S46;
         if(_S33)
@@ -435,7 +430,7 @@ struct KernelContext_0
         }
         else
         {
-            lightRadius_0 = (float4((&_S3->lightDirectionRadius_0)->data_2[lightIndex_0]) ).w;
+            lightRadius_0 = (float4((&_S3->lightDirectionRadius_0)->data_1[lightIndex_0]) ).w;
         }
         bool _S47;
         if(_S33)
@@ -521,7 +516,7 @@ struct KernelContext_0
             float sampleIntensity_1;
             if(lightType_0 >= 2.0f)
             {
-                float3 toLight_0 = (float4((&_S3->lightPositionType_0)->data_2[lightIndex_0]) ).xyz + sampleOffsets_0[sampleIndex_0] - _S30;
+                float3 toLight_0 = (float4((&_S3->lightPositionType_0)->data_1[lightIndex_0]) ).xyz + sampleOffsets_0[sampleIndex_0] - _S30;
                 float _S51 = max(dot(toLight_0, toLight_0), 0.00100000004749745f);
                 float3 sampleDirection_1 = toLight_0 * float3(rsqrt(_S51)) ;
                 float sampleIntensity_2 = sampleIntensity_0 / _S51;

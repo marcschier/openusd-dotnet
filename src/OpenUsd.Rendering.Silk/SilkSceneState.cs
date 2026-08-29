@@ -483,7 +483,7 @@ public sealed class SilkSceneState
 /// </summary>
 public sealed class SilkFrameState
 {
-    internal const int MaximumLights = 4;
+    internal const int MaximumLights = 8;
     private readonly double[] _view = new double[16];
     private readonly double[] _projection = new double[16];
     private readonly double[] _clipPlanes = new double[32];
@@ -626,7 +626,7 @@ internal readonly record struct SilkFrameLight(
 
 internal static class SilkFrameUniformWriter
 {
-    internal const int ByteSize = 672;
+    internal const int ByteSize = 1056;
 
     internal static void Write(
         SilkFrameState frame,
@@ -687,7 +687,7 @@ internal static class SilkFrameUniformWriter
         {
             WriteLight(destination, i, lights[i]);
         }
-        WriteMatrixTranspose(destination, 608, eyeToWorld);
+        WriteMatrixTranspose(destination, 992, eyeToWorld);
     }
 
     private static void WriteLight(
@@ -696,11 +696,11 @@ internal static class SilkFrameUniformWriter
         SilkFrameLight light)
     {
         int positionOffset = 224 + (index * 16);
-        int directionOffset = 288 + (index * 16);
-        int colorOffset = 352 + (index * 16);
-        int controlOffset = 416 + (index * 16);
-        int tangentOffset = 480 + (index * 16);
-        int bitangentOffset = 544 + (index * 16);
+        int directionOffset = 352 + (index * 16);
+        int colorOffset = 480 + (index * 16);
+        int controlOffset = 608 + (index * 16);
+        int tangentOffset = 736 + (index * 16);
+        int bitangentOffset = 864 + (index * 16);
         if (light.Type == 0)
         {
             WriteVector4(destination, positionOffset, 0, 0, 0, 0);

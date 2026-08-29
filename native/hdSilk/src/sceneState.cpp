@@ -300,6 +300,7 @@ void AppendFrame(
     }
 
     std::vector<HdSilkLightRecord> directLights;
+    size_t directLightCount = 0;
     float ambientColor[3] = {0.0f, 0.0f, 0.0f};
     float ambientIntensity = 0.0f;
     for (const HdSilkLightRecord& light : lights)
@@ -318,10 +319,19 @@ void AppendFrame(
             ambientIntensity = 1.0f;
             continue;
         }
+        ++directLightCount;
         if (directLights.size() < OPENUSD_SILK_MAX_FRAME_LIGHTS)
         {
             directLights.push_back(light);
         }
+    }
+    if (directLightCount > OPENUSD_SILK_MAX_FRAME_LIGHTS)
+    {
+        TF_WARN(
+            "hdSilk retained %zu of %zu direct lights; the page ABI limit is %u",
+            directLights.size(),
+            directLightCount,
+            OPENUSD_SILK_MAX_FRAME_LIGHTS);
     }
 
     AppendU32(payload, CheckedCount(directLights.size(), "frame light count"));

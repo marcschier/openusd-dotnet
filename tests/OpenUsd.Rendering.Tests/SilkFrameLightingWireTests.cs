@@ -8,12 +8,12 @@ using OpenUsd.Rendering.Silk;
 namespace OpenUsd.Rendering.Tests;
 
 /// <summary>
-/// Round-trips the page ABI 9 lighting variant of the frame command.
+/// Round-trips the page ABI 12 lighting variant of the frame command.
 /// </summary>
 /// <remarks>
 /// The frame command has three valid sizes: 272 bytes carrying only the
-/// viewport and matrices, 536 adding the clip plane table, and 1272 adding the
-/// light table and ambient term. Before these tests the 1272-byte variant had
+/// viewport and matrices, 536 adding the clip plane table, and 1976 adding the
+/// light table and ambient term. Before these tests the 1976-byte variant had
 /// no managed coverage at all -- every hand-written encoder in the repository
 /// builds a 272 or 536 byte frame, and the lighting layout was exercised only
 /// end to end through real hdSilk pages in the parity harness.
@@ -33,17 +33,17 @@ public sealed class SilkFrameLightingWireTests
 {
     private const int MinimumSize = 272;
     private const int ExtendedSize = 536;
-    private const int LightingSize = 1272;
+    private const int LightingSize = 1976;
     private const int LightCountOffset = ExtendedSize;
     private const int LightTableOffset = ExtendedSize + 16;
     private const int LightEntrySize = 176;
-    private const int MaximumLights = 4;
+    private const int MaximumLights = 8;
     private const int AmbientOffset = LightTableOffset + (MaximumLights * LightEntrySize);
 
     [Test]
     public async Task LightingFrameRoundTripsEveryLightFieldAtItsOwnIndex()
     {
-        byte[] page = CreateLightingFrame(lightCount: 3);
+        byte[] page = CreateLightingFrame(lightCount: 7);
 
         uint lightCount;
         uint[] types = new uint[MaximumLights];
@@ -80,7 +80,7 @@ public sealed class SilkFrameLightingWireTests
             }
         }
 
-        await Assert.That(lightCount).IsEqualTo(3u);
+        await Assert.That(lightCount).IsEqualTo(7u);
         for (int i = 0; i < MaximumLights; i++)
         {
             await Assert.That(types[i]).IsEqualTo((uint)(i + 1));
@@ -115,7 +115,7 @@ public sealed class SilkFrameLightingWireTests
             intensity = frame.AmbientIntensity;
         }
 
-        // The ambient term sits immediately after four full light entries, so
+        // The ambient term sits immediately after eight full light entries, so
         // reading it proves the light entry size and the table length at once.
         await Assert.That(red).IsEqualTo(0.25f);
         await Assert.That(green).IsEqualTo(0.5f);
@@ -161,7 +161,7 @@ public sealed class SilkFrameLightingWireTests
     [Test]
     public async Task LightingFrameRejectsALightCountAboveTheTableLength()
     {
-        byte[] page = CreateLightingFrame(lightCount: 5);
+        byte[] page = CreateLightingFrame(lightCount: 9);
 
         await Assert.That(() =>
             {

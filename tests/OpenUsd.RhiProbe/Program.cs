@@ -1232,7 +1232,7 @@ internal static class Program
     /// <c>FrameParameters</c> in <c>eng/shaders/sources/mesh.slang</c>. It grew
     /// when per-frame lighting and area-light bases moved <c>eyeToWorld</c>.
     /// </summary>
-    private const int FrameConstantsByteSize = 672;
+    private const int FrameConstantsByteSize = 1056;
 
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {
@@ -1241,16 +1241,16 @@ internal static class Program
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         var values = new byte[FrameConstantsByteSize];
         Span<float> floats = MemoryMarshal.Cast<byte, float>(values.AsSpan());
-        // clipToEye at 0 and eyeToWorld at 608 must both be identity; the zero
+        // clipToEye at 0 and eyeToWorld at 992 must both be identity; the zero
         // light block makes the shader fall back to the deterministic headlight.
         floats[0] = 1;
         floats[5] = 1;
         floats[10] = 1;
         floats[15] = 1;
-        floats[152] = 1;
-        floats[157] = 1;
-        floats[162] = 1;
-        floats[167] = 1;
+        floats[248] = 1;
+        floats[253] = 1;
+        floats[258] = 1;
+        floats[263] = 1;
         buffer.Write(values);
         return buffer;
     }

@@ -72,12 +72,12 @@ public readonly ref struct SilkFrameCommand
 {
     private const int MinimumSize = 272;
     private const int ExtendedSize = 536;
-    private const int LightingSize = 1272;
+    private const int LightingSize = 1976;
     private const int ClipPlaneOffset = MinimumSize + 8;
     private const int LightCountOffset = ExtendedSize;
     private const int LightTableOffset = ExtendedSize + 16;
     private const int LightEntrySize = 176;
-    private const int AmbientOffset = LightTableOffset + (4 * LightEntrySize);
+    private const int AmbientOffset = LightTableOffset + (8 * LightEntrySize);
     private readonly ReadOnlySpan<byte> _bytes;
 
     internal SilkFrameCommand(ReadOnlySpan<byte> bytes)
@@ -87,7 +87,7 @@ public readonly ref struct SilkFrameCommand
             bytes.Length != LightingSize)
         {
             throw new InvalidDataException(
-                "The frame command must be exactly 272, 536, or 1272 bytes.");
+                "The frame command must be exactly 272, 536, or 1976 bytes.");
         }
         if (bytes.Length >= ExtendedSize &&
             BinaryPrimitives.ReadUInt32LittleEndian(bytes[MinimumSize..(MinimumSize + 4)]) > 8)
@@ -95,7 +95,7 @@ public readonly ref struct SilkFrameCommand
             throw new InvalidDataException("The frame command clip plane count is invalid.");
         }
         if (bytes.Length == LightingSize &&
-            BinaryPrimitives.ReadUInt32LittleEndian(bytes[LightCountOffset..(LightCountOffset + 4)]) > 4)
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes[LightCountOffset..(LightCountOffset + 4)]) > 8)
         {
             throw new InvalidDataException("The frame command light count is invalid.");
         }
@@ -209,7 +209,7 @@ public readonly ref struct SilkFrameCommand
     private static void ValidateLight(int light)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(light);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(light, 4);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(light, 8);
     }
 
     private double ReadMatrixElement(int offset, int index)
