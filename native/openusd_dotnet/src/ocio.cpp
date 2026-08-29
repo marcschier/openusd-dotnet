@@ -1,6 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-#include "openusd_dotnet.h"
+#include "internal/common.h"
 
 #include <OpenColorIO/OpenColorIO.h>
 
