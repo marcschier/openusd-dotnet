@@ -2935,8 +2935,11 @@ public sealed class SilkSceneGpuResources : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_textures.Count == 0 && _failedTextures.Count == 0 && _volumeTextures.Count == 0)
         {
-            RemoveDiagnostics(static code =>
-                code == SilkRenderDiagnosticCodes.TextureBudgetExceeded);
+            if (_diagnostics.Count != 0)
+            {
+                RemoveDiagnostics(static code =>
+                    code == SilkRenderDiagnosticCodes.TextureBudgetExceeded);
+            }
             _textureUseClockBoundary = _textureUseClock;
             return;
         }
