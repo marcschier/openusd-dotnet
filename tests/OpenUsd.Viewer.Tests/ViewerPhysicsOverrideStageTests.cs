@@ -152,16 +152,11 @@ public sealed class ViewerPhysicsOverrideStageTests
         var stage = new ViewerPhysicsOverrideStage();
         var bindings = new PhysicsRenderBindingTable(4);
         var items = new PhysicsRenderTransformOverride[16];
-        _ = AllocationWarmup.UntilQuiet(
-            index => StageAndTake(stage, bindings, items, (ulong)index + 1));
+        long allocated = AllocationWarmup.MeasureQuiet(
+            index => StageAndTake(stage, bindings, items, (ulong)index + 1),
+            1000);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int index = 0; index < 1000; index++)
-        {
-            StageAndTake(stage, bindings, items, (ulong)index + 1);
-        }
-
-        await Assert.That(GC.GetAllocatedBytesForCurrentThread() - before).IsEqualTo(0L);
+        await Assert.That(allocated).IsEqualTo(0L);
     }
 
     private static void StageAndTake(
