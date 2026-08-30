@@ -1694,26 +1694,33 @@ def Xform "World"
             return;
         }
 
-        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
-        foreach (MaterialTextureSlotCase testCase in CreateMaterialTextureSlotCases().Where(
-            static value => value.Parameter is
-                SilkMaterialParameter.Opacity or SilkMaterialParameter.Occlusion))
+        try
         {
-            ParityImage neutral = CaptureSyntheticMaterialTextureSlotSelfConsistency(
-                device,
-                testCase,
-                testCase.NeutralFallback);
-            (byte neutralMax, double neutralMean) = CompareTranslatedHalves(neutral);
-            await Assert.That(neutralMax).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
-            await Assert.That(neutralMean).IsLessThanOrEqualTo(2.000);
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            foreach (MaterialTextureSlotCase testCase in CreateMaterialTextureSlotCases().Where(
+                static value => value.Parameter is
+                    SilkMaterialParameter.Opacity or SilkMaterialParameter.Occlusion))
+            {
+                ParityImage neutral = CaptureSyntheticMaterialTextureSlotSelfConsistency(
+                    device,
+                    testCase,
+                    testCase.NeutralFallback);
+                (byte neutralMax, double neutralMean) = CompareTranslatedHalves(neutral);
+                await Assert.That(neutralMax).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+                await Assert.That(neutralMean).IsLessThanOrEqualTo(2.000);
 
-            ParityImage divergent = CaptureSyntheticMaterialTextureSlotSelfConsistency(
-                device,
-                testCase,
-                testCase.DivergentFallback);
-            (byte divergentMax, _) = CompareTranslatedHalves(divergent);
-            await Assert.That(divergentMax)
-                .IsGreaterThan(MinimumMaterialTextureDivergenceChannelDelta);
+                ParityImage divergent = CaptureSyntheticMaterialTextureSlotSelfConsistency(
+                    device,
+                    testCase,
+                    testCase.DivergentFallback);
+                (byte divergentMax, _) = CompareTranslatedHalves(divergent);
+                await Assert.That(divergentMax)
+                    .IsGreaterThan(MinimumMaterialTextureDivergenceChannelDelta);
+            }
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("D3D12 WARP opacity and occlusion evidence", exception.ToString());
         }
     }
 
