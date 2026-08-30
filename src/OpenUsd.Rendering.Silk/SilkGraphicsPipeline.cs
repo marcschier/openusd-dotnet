@@ -165,7 +165,10 @@ public enum SilkShaderFeatures
     ClearcoatMap = 512,
 
     /// <summary>A clearcoat-roughness texture is bound.</summary>
-    ClearcoatRoughnessMap = 1024
+    ClearcoatRoughnessMap = 1024,
+
+    /// <summary>An index-of-refraction texture is bound.</summary>
+    IorMap = 2048
 }
 
 /// <summary>Stable mesh shader permutation identifier.</summary>
@@ -182,7 +185,8 @@ public readonly record struct SilkShaderPermutationId
         SilkShaderFeatures.OcclusionMap |
         SilkShaderFeatures.SpecularColorMap |
         SilkShaderFeatures.ClearcoatMap |
-        SilkShaderFeatures.ClearcoatRoughnessMap;
+        SilkShaderFeatures.ClearcoatRoughnessMap |
+        SilkShaderFeatures.IorMap;
     private const SilkShaderFeatures MapFeatures =
         SilkShaderFeatures.BaseColorMap |
         SilkShaderFeatures.NormalMap |
@@ -193,7 +197,8 @@ public readonly record struct SilkShaderPermutationId
         SilkShaderFeatures.OcclusionMap |
         SilkShaderFeatures.SpecularColorMap |
         SilkShaderFeatures.ClearcoatMap |
-        SilkShaderFeatures.ClearcoatRoughnessMap;
+        SilkShaderFeatures.ClearcoatRoughnessMap |
+        SilkShaderFeatures.IorMap;
 
     /// <summary>Initializes a manifest-valid mesh shader permutation.</summary>
     public SilkShaderPermutationId(SilkShaderFeatures features)
@@ -262,6 +267,10 @@ public readonly record struct SilkShaderPermutationId
                 slots,
                 SilkBindingLayoutDescriptor.ClearcoatRoughnessSamplerBinding,
                 SilkBindingLayoutDescriptor.ClearcoatRoughnessTextureBinding);
+            AddTextureSlots(
+                slots,
+                SilkBindingLayoutDescriptor.IorSamplerBinding,
+                SilkBindingLayoutDescriptor.IorTextureBinding);
         }
         AddTextureSlots(
             slots,
@@ -551,6 +560,8 @@ public readonly record struct SilkBindingLayoutDescriptor(
     internal const uint ClearcoatTextureBinding = 23;
     internal const uint ClearcoatRoughnessSamplerBinding = 24;
     internal const uint ClearcoatRoughnessTextureBinding = 25;
+    internal const uint IorSamplerBinding = 26;
+    internal const uint IorTextureBinding = 27;
 
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
@@ -636,6 +647,8 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 (ClearcoatSamplerBinding, ClearcoatTextureBinding),
             SilkMaterialParameter.ClearcoatRoughness =>
                 (ClearcoatRoughnessSamplerBinding, ClearcoatRoughnessTextureBinding),
+            SilkMaterialParameter.Ior =>
+                (IorSamplerBinding, IorTextureBinding),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(parameter),
                 parameter,
@@ -882,6 +895,16 @@ public enum SilkCullMode
     Back = 1
 }
 
+/// <summary>Color blending mode for a Silk graphics pipeline.</summary>
+public enum SilkBlendMode
+{
+    /// <summary>Replaces the destination color.</summary>
+    None = 0,
+
+    /// <summary>Composites straight-alpha source color over the destination.</summary>
+    StraightAlphaOver = 1
+}
+
 /// <summary>Describes a color/depth graphics pipeline.</summary>
 public readonly record struct SilkGraphicsPipelineDescriptor(
     ISilkGraphicsShaderProgram Program,
@@ -891,6 +914,12 @@ public readonly record struct SilkGraphicsPipelineDescriptor(
     SilkCullMode CullMode = SilkCullMode.None,
     SilkTopologyKind TopologyKind = SilkTopologyKind.TriangleList)
 {
+    /// <summary>Gets or initializes color blending.</summary>
+    public SilkBlendMode BlendMode { get; init; }
+
+    /// <summary>Gets or initializes whether fragments update depth.</summary>
+    public bool DepthWriteEnabled { get; init; } = true;
+
     /// <summary>Validates formats and vertex input.</summary>
     public void Validate()
     {
@@ -908,6 +937,10 @@ public readonly record struct SilkGraphicsPipelineDescriptor(
         if (CullMode is not (SilkCullMode.None or SilkCullMode.Back))
         {
             throw new ArgumentOutOfRangeException(nameof(CullMode));
+        }
+        if (BlendMode is not (SilkBlendMode.None or SilkBlendMode.StraightAlphaOver))
+        {
+            throw new ArgumentOutOfRangeException(nameof(BlendMode));
         }
         if (TopologyKind is not SilkTopologyKind.TriangleList and
             not SilkTopologyKind.LineList and
@@ -965,7 +998,26 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
         SilkCullMode cullMode = SilkCullMode.None,
-        SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList)
+        SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList) =>
+        GetOrCreateMeshPipelineWithState(
+            permutation,
+            vertexLayout,
+            colorFormat,
+            depthFormat,
+            cullMode,
+            topologyKind,
+            SilkBlendMode.None,
+            depthWriteEnabled: true);
+
+    internal ISilkGraphicsPipeline GetOrCreateMeshPipelineWithState(
+        SilkShaderPermutationId permutation,
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkTextureFormat colorFormat,
+        SilkTextureFormat depthFormat,
+        SilkCullMode cullMode,
+        SilkTopologyKind topologyKind,
+        SilkBlendMode blendMode,
+        bool depthWriteEnabled)
     {
         DeviceGenerationKey generation = ReadDeviceGeneration(_device);
         SilkShaderPermutationId canonical = permutation.CanonicalizeForPipeline();
@@ -976,6 +1028,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
             depthFormat,
             cullMode,
             topologyKind,
+            blendMode,
+            depthWriteEnabled,
             _shaderFormat,
             generation);
 
@@ -997,7 +1051,9 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
                     colorFormat,
                     depthFormat,
                     cullMode,
-                    topologyKind);
+                    topologyKind,
+                    blendMode,
+                    depthWriteEnabled);
                 _entries.Add(key, entry);
             }
 
@@ -1010,7 +1066,9 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
         SilkCullMode cullMode = SilkCullMode.None,
-        SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList)
+        SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList,
+        SilkBlendMode blendMode = SilkBlendMode.None,
+        bool depthWriteEnabled = true)
     {
         DeviceGenerationKey generation = ReadDeviceGeneration(_device);
         PipelineCacheKey key = new(
@@ -1020,6 +1078,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
             depthFormat,
             cullMode,
             topologyKind,
+            blendMode,
+            depthWriteEnabled,
             _shaderFormat,
             generation);
 
@@ -1041,7 +1101,9 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
                     colorFormat,
                     depthFormat,
                     cullMode,
-                    topologyKind);
+                    topologyKind,
+                    blendMode,
+                    depthWriteEnabled);
                 _entries.Add(key, entry);
             }
 
@@ -1056,7 +1118,9 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
         SilkCullMode cullMode = SilkCullMode.None,
-        SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList)
+        SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList,
+        SilkBlendMode blendMode = SilkBlendMode.None,
+        bool depthWriteEnabled = true)
     {
         materialProgram.Validate();
         DeviceGenerationKey generation = ReadDeviceGeneration(_device);
@@ -1067,6 +1131,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
             depthFormat,
             cullMode,
             topologyKind,
+            blendMode,
+            depthWriteEnabled,
             _shaderFormat,
             generation);
 
@@ -1087,7 +1153,9 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
                     colorFormat,
                     depthFormat,
                     cullMode,
-                    topologyKind);
+                    topologyKind,
+                    blendMode,
+                    depthWriteEnabled);
                 _entries.Add(key, entry);
             }
 
@@ -1117,7 +1185,9 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
         SilkCullMode cullMode,
-        SilkTopologyKind topologyKind)
+        SilkTopologyKind topologyKind,
+        SilkBlendMode blendMode,
+        bool depthWriteEnabled)
     {
         ISilkGraphicsShaderModule? vertexShader = null;
         ISilkGraphicsShaderModule? fragmentShader = null;
@@ -1141,7 +1211,11 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
                 colorFormat,
                 depthFormat,
                 cullMode,
-                topologyKind));
+                topologyKind)
+            {
+                BlendMode = blendMode,
+                DepthWriteEnabled = depthWriteEnabled,
+            });
             return new CachedPipelineEntry(
                 vertexShader,
                 fragmentShader,
@@ -1166,7 +1240,9 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
         SilkCullMode cullMode,
-        SilkTopologyKind topologyKind)
+        SilkTopologyKind topologyKind,
+        SilkBlendMode blendMode,
+        bool depthWriteEnabled)
     {
         ISilkGraphicsShaderModule? vertexShader = null;
         ISilkGraphicsShaderModule? fragmentShader = null;
@@ -1188,7 +1264,11 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
                 colorFormat,
                 depthFormat,
                 cullMode,
-                topologyKind));
+                topologyKind)
+            {
+                BlendMode = blendMode,
+                DepthWriteEnabled = depthWriteEnabled,
+            });
             return new CachedPipelineEntry(
                 vertexShader,
                 fragmentShader,
@@ -1259,6 +1339,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkTextureFormat DepthFormat,
         SilkCullMode CullMode,
         SilkTopologyKind TopologyKind,
+        SilkBlendMode BlendMode,
+        bool DepthWriteEnabled,
         SilkShaderBinaryFormat ShaderFormat,
         DeviceGenerationKey Generation);
 

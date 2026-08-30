@@ -1395,7 +1395,7 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
-    public async Task ClearcoatTexturesUseIndependentRuntimeAndUdimBits()
+    public async Task ClearcoatAndIorTexturesUseIndependentRuntimeAndUdimBits()
     {
         SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
             "/World/Materials/Clearcoat",
@@ -1409,19 +1409,24 @@ public sealed class SilkMaterialCommandTests
                     SilkTextureChannel.R),
                 ScalarTexture(
                     SilkMaterialParameter.ClearcoatRoughness,
-                    "clearcoat-roughness.<UDIM>.png",
+                    "clearcoat-roughness.png",
+                    SilkTextureChannel.R),
+                ScalarTexture(
+                    SilkMaterialParameter.Ior,
+                    "ior.<UDIM>.png",
                     SilkTextureChannel.R),
             ]));
 
         await Assert.That(material.GetTextureFeatures()).IsEqualTo(
             SilkShaderFeatures.Uv |
             SilkShaderFeatures.ClearcoatMap |
-            SilkShaderFeatures.ClearcoatRoughnessMap);
+            SilkShaderFeatures.ClearcoatRoughnessMap |
+            SilkShaderFeatures.IorMap);
 
         byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
         SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
-        await Assert.That(ReadSingle(constants, 128)).IsEqualTo(1537f);
-        await Assert.That(ReadSingle(constants, 132)).IsEqualTo(1024f);
+        await Assert.That(ReadSingle(constants, 128)).IsEqualTo(3585f);
+        await Assert.That(ReadSingle(constants, 132)).IsEqualTo(2048f);
     }
 
     [Test]
@@ -1437,6 +1442,7 @@ public sealed class SilkMaterialCommandTests
             (SilkMaterialParameter.Metallic, SilkTextureChannel.G, (byte)20),
             (SilkMaterialParameter.Occlusion, SilkTextureChannel.B, (byte)30),
             (SilkMaterialParameter.Opacity, SilkTextureChannel.A, (byte)40),
+            (SilkMaterialParameter.Ior, SilkTextureChannel.R, (byte)10),
         ];
         SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
             "/World/Materials/Swizzle",
@@ -1460,8 +1466,9 @@ public sealed class SilkMaterialCommandTests
                 .IsEquivalentTo(new byte[] { expected, expected, expected, expected });
         }
 
-        // One asset, four channels, four uploads: correctness over sharing a decode.
-        await Assert.That(commands.UploadCount).IsEqualTo(4);
+        // One asset, independently connected scalar inputs, one upload per input:
+        // correctness over sharing a decode.
+        await Assert.That(commands.UploadCount).IsEqualTo(5);
     }
 
     [Test]

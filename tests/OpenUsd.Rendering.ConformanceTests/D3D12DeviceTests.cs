@@ -23,14 +23,15 @@ public sealed class D3D12DeviceTests
             SilkShaderFeatures.OcclusionMap |
             SilkShaderFeatures.SpecularColorMap |
             SilkShaderFeatures.ClearcoatMap |
-            SilkShaderFeatures.ClearcoatRoughnessMap);
+            SilkShaderFeatures.ClearcoatRoughnessMap |
+            SilkShaderFeatures.IorMap);
         var plan = new D3D12RootBindingPlan(permutation.CreateMeshBindingLayout());
 
         await Assert.That(plan.RootParameterCount).IsEqualTo(6u);
         await Assert.That(plan.RootSignatureDwordCost).IsEqualTo(10u);
         await Assert.That(plan.RootSignatureDwordCost).IsLessThanOrEqualTo(64u);
-        await Assert.That(plan.SampledTextureCount).IsEqualTo(10u);
-        await Assert.That(plan.SamplerCount).IsEqualTo(10u);
+        await Assert.That(plan.SampledTextureCount).IsEqualTo(11u);
+        await Assert.That(plan.SamplerCount).IsEqualTo(11u);
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.MetallicTextureBinding,
@@ -38,7 +39,7 @@ public sealed class D3D12DeviceTests
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.NormalTextureBinding,
-            SilkBindingKind.SampledTexture)).IsEqualTo(9u);
+            SilkBindingKind.SampledTexture)).IsEqualTo(10u);
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.OpacityTextureBinding,
@@ -59,6 +60,10 @@ public sealed class D3D12DeviceTests
             0,
             SilkBindingLayoutDescriptor.ClearcoatRoughnessTextureBinding,
             SilkBindingKind.SampledTexture)).IsEqualTo(8u);
+        await Assert.That(plan.GetDescriptorOffset(
+            0,
+            SilkBindingLayoutDescriptor.IorTextureBinding,
+            SilkBindingKind.SampledTexture)).IsEqualTo(9u);
         await Assert.That(plan.GetRootParameter(
             0,
             SilkBindingLayoutDescriptor.BaseColorTextureBinding,
@@ -756,6 +761,23 @@ public sealed class D3D12DeviceTests
             D3D12SilkGraphicsDevice.Create(useWarp: true);
 
         await OffscreenRhiConformance.DrawsIndexedTriangle(
+            device,
+            SilkShaderBinaryFormat.Dxil);
+    }
+
+    [Test]
+    public async Task WarpCompositesStraightAlphaOverDestination()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+
+        await OffscreenRhiConformance.StraightAlphaPipelineCompositesOverDestination(
             device,
             SilkShaderBinaryFormat.Dxil);
     }

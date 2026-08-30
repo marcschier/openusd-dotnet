@@ -578,12 +578,18 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             {
                 SType = StructureType.PipelineDepthStencilStateCreateInfo,
                 DepthTestEnable = true,
-                DepthWriteEnable = true,
+                DepthWriteEnable = descriptor.DepthWriteEnabled,
                 DepthCompareOp = CompareOp.LessOrEqual
             };
             var colorAttachment = new PipelineColorBlendAttachmentState
             {
-                BlendEnable = false,
+                BlendEnable = descriptor.BlendMode == SilkBlendMode.StraightAlphaOver,
+                SrcColorBlendFactor = BlendFactor.SrcAlpha,
+                DstColorBlendFactor = BlendFactor.OneMinusSrcAlpha,
+                ColorBlendOp = BlendOp.Add,
+                SrcAlphaBlendFactor = BlendFactor.One,
+                DstAlphaBlendFactor = BlendFactor.OneMinusSrcAlpha,
+                AlphaBlendOp = BlendOp.Add,
                 ColorWriteMask = ColorComponentFlags.RBit |
                     ColorComponentFlags.GBit |
                     ColorComponentFlags.BBit |

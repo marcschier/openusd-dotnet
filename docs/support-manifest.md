@@ -118,6 +118,7 @@ Storm and hdSilk rendering paths, shader features, and hosted execution limits.
 | `storm-hdsilk-parity` | Workflow-gated |
 | `preview-surface-textures` | Workflow-gated |
 | `anisotropic-sampling` | Workflow-gated |
+| `preview-surface-transparency` | Workflow-gated |
 | `materialx-projection` | Workflow-gated |
 | `udim-textures` | Workflow-gated |
 | `usdvol-vulkan` | Workflow-gated |

@@ -244,7 +244,7 @@ both values, so changing only exposure or output transform updates the GPU block
 
 Mesh shader variants are addressed by `SilkShaderPermutationId`. Its public flags still identify the actual texture
 inputs (`basecolor`, `normal`, `roughmetal`, `metallic`, `emissive`, `opacity`, `occlusion`, `specularColor`,
-`clearcoat`, and `clearcoatRoughness`) and
+`clearcoat`, `clearcoatRoughness`, and `ior`) and
 reject maps without
 `uv`, but checked
 fragment artifacts no longer take their cross-product. Any non-normal map selects the bounded `uv+material` shader;
@@ -561,7 +561,7 @@ Textures are cached per material/asset/colour-space/parameter identity, and back
 wrap/filter state. RGBA32Float textures use nearest filtering because linear filtering for that format is
 not portable across the supported RHIs; explicit filter negotiation remains outside the current claim.
 Base-colour, normal, roughness, metallic, emissive, opacity, occlusion, specular-colour, clearcoat,
-clearcoat-roughness, and volume-density textures
+clearcoat-roughness, IOR, and volume-density textures
 each bind an
 independent
 sampler slot, so simultaneously active maps preserve their own `wrapS` and `wrapT` values rather than
@@ -599,7 +599,11 @@ Opacity and occlusion also use independent scalar slots. Opacity uses Vulkan bin
 (`s6`/`t5` on D3D12, Metal sampler 6 / texture 5), replaces the authored opacity, drives the existing
 `opacityThreshold` cutout, and is returned as surface alpha. Occlusion uses Vulkan bindings 18/19
 (`s7`/`t10` on D3D12, Metal sampler 7 / texture 10) and replaces the authored direct-light occlusion input.
-Transparent blending remains outside this claim; opacity currently provides cutout and output-alpha semantics.
+When `opacityThreshold` is zero, authored opacity below one and connected opacity textures use straight-alpha-over
+blending with depth testing enabled and depth writes disabled. Opaque and cutout meshes render first; transparent
+meshes then render back-to-front by their transformed origin, with stable path identity breaking equal-depth ties.
+That origin-based order is deterministic but is not per-triangle order-independent transparency, so intersecting
+transparent meshes and very large transparent meshes can still exhibit the usual sorted-alpha limitations.
 
 Specular colour uses an independent texture at Vulkan bindings 20/21 (`s8`/`t11` on D3D12, Metal sampler 8 /
 texture 11), and its sampled RGB replaces the authored constant. `useSpecularWorkflow` remains the uniform integer
@@ -608,6 +612,9 @@ selector defined by UsdPreviewSurface; it is not a texture-varying input.
 Clearcoat and clearcoat roughness use independent scalar textures at Vulkan bindings 22/23 and 24/25 respectively
 (`s9`/`t12` and `s10`/`t13` on D3D12, Metal samplers 9/10 and textures 12/13). Each sampled red channel replaces its
 authored constant. Both are data-valued inputs, so `auto` colour space resolves to raw rather than sRGB.
+
+IOR uses an independent scalar texture at Vulkan bindings 26/27 (`s11`/`t14` on D3D12, Metal sampler 11 /
+texture 14). Its sampled red channel replaces the authored constant and `auto` colour space resolves to raw.
 
 A packed occlusion/roughness/metallic file is authored as one `UsdUVTexture` prim with two or three
 output connections, which reaches the renderer as several entries naming one asset and different
@@ -618,7 +625,7 @@ selection comes first.
 
 The UDIM status bitmask in `SurfaceParameters.textureControls.y` uses the public texture-feature values:
 `2` base colour, `4` normal, `8` roughness, `16` emissive, `32` metallic, `64` opacity, `128` occlusion,
-`256` specular colour, `512` clearcoat, and `1024` clearcoat roughness.
+`256` specular colour, `512` clearcoat, `1024` clearcoat roughness, and `2048` IOR.
 Every scalar input has a separate slot, so each needs a separate bit; nothing aliases.
 Ordinary (non-UDIM) material textures upload a full packed mip chain rather than a single level. A
 shared backend-neutral layout stores mip 0 first, then ascending levels in order, each tightly packed

@@ -851,6 +851,9 @@ public sealed class SilkMeshRenderer :
         bool resolveSampledVolume(SilkMeshData mesh) =>
             options.UseSceneMaterials && IsSampledVolumeMesh(mesh);
 
+        bool resolveTransparent(SilkMeshData mesh) =>
+            options.UseSceneMaterials && IsTransparent(mesh);
+
         if (singleMesh is not null)
         {
             PrepareMaterialTextures(commands, singleMesh, resolveMaterialFeatures(singleMesh.Mesh));
@@ -866,12 +869,16 @@ public sealed class SilkMeshRenderer :
                 {
                     continue;
                 }
+                bool transparent = resolveTransparent(mesh.Mesh);
                 BatchKey key = new(
                     mesh.Geometry,
                     mesh.Mesh.MaterialPath,
                     resolveMaterialFeatures(mesh.Mesh),
                     resolveMaterialShaderIdentity(mesh.Mesh),
                     resolveSampledVolume(mesh.Mesh),
+                    transparent,
+                    transparent ? GetEyeDepth(mesh.Mesh, Scene.Frame) : 0,
+                    transparent ? mesh.Mesh.StableHash : 0,
                     resolveCullMode(mesh.Mesh),
                     mesh.Mesh.TopologyKind);
                 if (!_batches.TryGetValue(key, out List<SilkMeshGpuResource>? batch))
@@ -917,6 +924,7 @@ public sealed class SilkMeshRenderer :
                 ? GetMaterialShaderRequest(singleMesh.Mesh, features)
                 : null;
             SilkCullMode cullMode = resolveCullMode(singleMesh.Mesh);
+            bool transparent = resolveTransparent(singleMesh.Mesh);
             ISilkGraphicsPipeline pipeline = GetPipeline(
                 singleMesh,
                 features,
@@ -924,7 +932,8 @@ public sealed class SilkMeshRenderer :
                 cullMode,
                 singleMesh.Mesh.TopologyKind,
                 colorTarget.Format,
-                materialShader);
+                materialShader,
+                transparent);
             commands.SetGraphicsPipeline(pipeline);
             DisposePipelineLease(pipeline);
             boundPipeline = new PipelineKey(
@@ -932,6 +941,7 @@ public sealed class SilkMeshRenderer :
                 IsSampledVolumeMesh(singleMesh.Mesh),
                 cullMode,
                 singleMesh.Mesh.TopologyKind,
+                transparent,
                 singleMesh.VertexLayout.Stride,
                 GetPipelineShaderIdentity(materialShader));
             commands.SetVertexBuffer(singleMesh.VertexBuffer);
@@ -1066,6 +1076,7 @@ public sealed class SilkMeshRenderer :
             key.SampledVolume,
             key.CullMode,
             key.TopologyKind,
+            key.Transparent,
             mesh.VertexLayout.Stride,
             key.MaterialShaderIdentity);
         if (boundPipeline == next)
@@ -1082,7 +1093,8 @@ public sealed class SilkMeshRenderer :
             colorFormat,
             string.IsNullOrEmpty(key.MaterialShaderIdentity)
                 ? null
-                : GetMaterialShaderRequest(mesh.Mesh, key.Features));
+                : GetMaterialShaderRequest(mesh.Mesh, key.Features),
+            key.Transparent);
         commands.SetGraphicsPipeline(pipeline);
         DisposePipelineLease(pipeline);
         boundPipeline = next;
@@ -1108,7 +1120,25 @@ public sealed class SilkMeshRenderer :
 
     private static int CompareBatchKeys(BatchKey left, BatchKey right)
     {
-        int result = left.TopologyKind.CompareTo(right.TopologyKind);
+        int result = left.Transparent.CompareTo(right.Transparent);
+        if (result != 0)
+        {
+            return result;
+        }
+        if (left.Transparent)
+        {
+            result = left.EyeDepth.CompareTo(right.EyeDepth);
+            if (result != 0)
+            {
+                return result;
+            }
+            result = left.SortIdentity.CompareTo(right.SortIdentity);
+            if (result != 0)
+            {
+                return result;
+            }
+        }
+        result = left.TopologyKind.CompareTo(right.TopologyKind);
         if (result != 0)
         {
             return result;
@@ -1161,6 +1191,37 @@ public sealed class SilkMeshRenderer :
             _ => mesh.DoubleSided ? SilkCullMode.None : SilkCullMode.Back,
         };
 
+    private bool IsTransparent(SilkMeshData mesh)
+    {
+        SilkMaterialData? material = ResolveMaterial(mesh);
+        if (material is null)
+        {
+            return false;
+        }
+        ReadOnlySpan<float> threshold =
+            material.GetScalar(SilkMaterialParameter.OpacityThreshold);
+        if (!threshold.IsEmpty && threshold[0] > 0)
+        {
+            return false;
+        }
+        if (material.GetTexture(SilkMaterialParameter.Opacity) is not null)
+        {
+            return true;
+        }
+        ReadOnlySpan<float> opacity = material.GetScalar(SilkMaterialParameter.Opacity);
+        return !opacity.IsEmpty && opacity[0] < 1;
+    }
+
+    private static float GetEyeDepth(SilkMeshData mesh, SilkFrameState frame)
+    {
+        ReadOnlySpan<double> transform = mesh.Transform.Span;
+        ReadOnlySpan<double> view = frame.View.Span;
+        double x = transform[12];
+        double y = transform[13];
+        double z = transform[14];
+        return (float)((x * view[2]) + (y * view[6]) + (z * view[10]) + view[14]);
+    }
+
     // Lines and points carry no facing, so those batches always use the
     // unculled pipeline for their topology regardless of authored cull style.
     private ISilkGraphicsPipeline GetPipeline(
@@ -1170,7 +1231,8 @@ public sealed class SilkMeshRenderer :
         SilkCullMode cullMode,
         SilkTopologyKind topologyKind,
         SilkTextureFormat colorFormat,
-        SilkMaterialShaderRequest? materialShader = null)
+        SilkMaterialShaderRequest? materialShader = null,
+        bool transparent = false)
     {
         if (materialShader?.Status == SilkMaterialShaderStatus.Ready)
         {
@@ -1180,12 +1242,15 @@ public sealed class SilkMeshRenderer :
                 colorFormat,
                 SilkTextureFormat.D32Float,
                 cullMode,
-                topologyKind);
+                topologyKind,
+                transparent ? SilkBlendMode.StraightAlphaOver : SilkBlendMode.None,
+                depthWriteEnabled: !transparent);
         }
         if (features == SilkShaderFeatures.None &&
             !sampledVolume &&
             mesh.VertexLayout.Equals(SilkVertexLayoutDescriptor.PositionNormal) &&
-            colorFormat == SilkTextureFormat.Rgba8Unorm)
+            colorFormat == SilkTextureFormat.Rgba8Unorm &&
+            !transparent)
         {
             return topologyKind switch
             {
@@ -1204,15 +1269,19 @@ public sealed class SilkMeshRenderer :
                 colorFormat,
                 SilkTextureFormat.D32Float,
                 cullMode,
-                topologyKind);
+                topologyKind,
+                transparent ? SilkBlendMode.StraightAlphaOver : SilkBlendMode.None,
+                depthWriteEnabled: !transparent);
         }
-        return _pipelineCache.GetOrCreateMeshPipeline(
+        return _pipelineCache.GetOrCreateMeshPipelineWithState(
             new SilkShaderPermutationId(features),
             mesh.VertexLayout,
             colorFormat,
             SilkTextureFormat.D32Float,
             cullMode,
-            topologyKind);
+            topologyKind,
+            transparent ? SilkBlendMode.StraightAlphaOver : SilkBlendMode.None,
+            depthWriteEnabled: !transparent);
     }
 
     private static void DisposePipelineLease(ISilkGraphicsPipeline pipeline)
@@ -1327,6 +1396,7 @@ public sealed class SilkMeshRenderer :
         bindTexture(
             SilkMaterialParameter.ClearcoatRoughness,
             SilkShaderFeatures.ClearcoatRoughnessMap);
+        bindTexture(SilkMaterialParameter.Ior, SilkShaderFeatures.IorMap);
         if (material is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
         {
@@ -1369,7 +1439,8 @@ public sealed class SilkMeshRenderer :
                 SilkMaterialParameter.Occlusion or
                 SilkMaterialParameter.SpecularColor or
                 SilkMaterialParameter.Clearcoat or
-                SilkMaterialParameter.ClearcoatRoughness)
+                SilkMaterialParameter.ClearcoatRoughness or
+                SilkMaterialParameter.Ior)
             {
                 return texture.Parameter;
             }
@@ -1450,6 +1521,13 @@ public sealed class SilkMeshRenderer :
                 ResolveMaterial(mesh.Mesh)!,
                 SilkMaterialParameter.ClearcoatRoughness);
         }
+        if ((features & SilkShaderFeatures.IorMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.Ior);
+        }
         if (ResolveMaterial(mesh.Mesh) is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
         {
@@ -1463,6 +1541,9 @@ public sealed class SilkMeshRenderer :
         SilkShaderFeatures Features,
         string MaterialShaderIdentity,
         bool SampledVolume,
+        bool Transparent,
+        float EyeDepth,
+        ulong SortIdentity,
         SilkCullMode CullMode,
         SilkTopologyKind TopologyKind);
 
@@ -1471,6 +1552,7 @@ public sealed class SilkMeshRenderer :
         bool SampledVolume,
         SilkCullMode CullMode,
         SilkTopologyKind TopologyKind,
+        bool Transparent,
         uint VertexStride,
         string MaterialShaderIdentity);
 
