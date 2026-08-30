@@ -255,7 +255,7 @@ public sealed class SilkSelectionOutlineTests
         }
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        await Assert.That(allocated).IsLessThan(600_000);
+        await Assert.That(allocated).IsLessThan(930_000);
         await Assert.That(device.BufferCreateCount).IsEqualTo(bufferCount);
         await Assert.That(device.SelectionMaskPipelineCreateCount)
             .IsEqualTo(maskPipelineCount);

@@ -21,8 +21,8 @@ paths.
 > Package identities and public APIs may still change before 1.0.
 
 ```shell
-dotnet add package OpenUsd --version 0.12.1-alpha
-dotnet add package OpenUsd.Runtime.Core --version 0.12.1-alpha
+dotnet add package OpenUsd --version 0.12.2-alpha
+dotnet add package OpenUsd.Runtime.Core --version 0.12.2-alpha
 ```
 
 `OpenUsd.Runtime.Core` is the RID-agnostic metapackage for `win-x64`, `linux-x64`, and

@@ -303,7 +303,7 @@ public sealed class NativeAbiVersionTests
             .ToHashSet(StringComparer.Ordinal);
         MatchCollection definitions = Regex.Matches(
             implementation,
-            @"(?m)^openusd_status\s+(?<name>openusd_\w+)\s*\(",
+            @"(?m)^(?:OPENUSD_DOTNET_API\s+)?openusd_status\s+(?<name>openusd_\w+)\s*\(",
             RegexOptions.CultureInvariant);
 
         await Assert.That(definitions.Count)
@@ -492,7 +492,7 @@ public sealed class NativeAbiVersionTests
         ];
         MatchCollection definitions = Regex.Matches(
             implementation,
-            @"(?m)^openusd_status\s+(?<name>openusd_\w+)\s*\(",
+            @"(?m)^(?:OPENUSD_DOTNET_API\s+)?openusd_status\s+(?<name>openusd_\w+)\s*\(",
             RegexOptions.CultureInvariant);
         Dictionary<string, string> bodies = definitions
             .Cast<Match>()
@@ -611,7 +611,7 @@ public sealed class NativeAbiVersionTests
         await Assert.That(Regex.Count(
             managed,
             @"\bThrowIfFailedAndReleaseStringList\(",
-            RegexOptions.CultureInvariant)).IsEqualTo(13);
+            RegexOptions.CultureInvariant)).IsEqualTo(14);
         await Assert.That(Regex.Count(
             managed,
             @"\bThrowIfFailedAndReleasePayloadArcList\(",

@@ -544,8 +544,12 @@ try
         'SilkComplexityMediumChangesPointPage',
         'HdSilkDomeAmbientPreservesAuthoredColorIntensityAndExposure',
         'ChasePresentationRetainsHighlightsOnD3D12',
+        'FloatTexturePreservesHdrBeforeScaleOnD3D12',
+        'MixedTextureSlotWrapModesRemainIndependentOnD3D12',
+        'SparseUdimTilesAndFallbackRenderOnD3D12',
         'SilkWireframeDrawModeDivergesFromSmoothShadedPixelsOnD3D12',
         'SilkFrameCaptureReturnsDimensionsAndNonTrivialPixels',
+        'SilkFrameCaptureAppliesOcioDisplayTransform',
         'SilkFrameCaptureRendersEveryFrameFromTheSameSession',
         'SilkFrameCaptureRefusesToCaptureABlankFrameFromASynchronizedSession',
         'SilkFrameCaptureReturnsBlankFrameForEmptyUnsynchronizedSession',
@@ -575,8 +579,11 @@ try
         'SilkComplexityMediumChangesPointPage',
         'HdSilkDomeAmbientPreservesAuthoredColorIntensityAndExposure',
         'ChasePresentationRetainsHighlightsOnVulkan',
+        'FifthDirectLightContributesOnVulkan',
+        'FloatTexturePreservesHdrBeforeScaleOnVulkan',
         'MaterialXStandardSurfaceMatchesPreviewSelfConsistencyOnVulkan',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnVulkan',
+        'SparseUdimTilesAndFallbackRenderOnVulkan',
         'TextureWrapModesMatchRepeatWithinUnitUvRangeOnVulkan',
         'TextureWrapModesDivergeOutsideUnitUvRangeOnVulkan',
         'TextureAutoColorSpaceMatchesSrgbOnDiffuseTextureOnVulkan',
@@ -584,8 +591,6 @@ try
         'TextureScaleBiasFallbackMatchesEquivalentConstantOnVulkan',
         'TextureScaleBiasFallbackDivergesWhenBiasIsRemovedOnVulkan',
         'MixedTextureSlotWrapModesRemainIndependentOnVulkan',
-        'FloatTexturePreservesHdrBeforeScaleOnVulkan',
-        'SparseUdimTilesAndFallbackRenderOnVulkan',
         'NonDiffuseTextureSlotsMatchNeutralInputsOnVulkan',
         'NonDiffuseTextureSlotsDivergeFromNeutralInputsOnVulkan',
         'RemainingPreviewSurfaceConstantInputsMatchEquivalentMaterialsOnVulkan',
@@ -597,8 +602,7 @@ try
         'DiskLightEdgeOnMatchesUnlitSceneOnVulkan',
         'DiskLightFaceOnDivergesFromEdgeOnLightOnVulkan',
         'CylinderLightZeroLengthMatchesSphereLightOnVulkan',
-        'CylinderLightFullLengthDivergesFromSphereLightOnVulkan',
-        'FifthDirectLightContributesOnVulkan')
+        'CylinderLightFullLengthDivergesFromSphereLightOnVulkan')
     if ($Rid -eq 'win-x64')
     {
         & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `

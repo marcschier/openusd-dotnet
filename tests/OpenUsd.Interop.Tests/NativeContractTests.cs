@@ -43,6 +43,13 @@ public sealed class NativeContractTests
 
         // Physics bake: batched preview and transactional bake page authoring.
         await Assert.That(requiredCapabilities & 0x100000UL).IsEqualTo(0x100000UL);
+
+        // Extended direct lighting: four directional lights plus ambient contribution.
+        await Assert.That(requiredCapabilities & 0x200000UL).IsEqualTo(0x200000UL);
+
+        // Texture ingestion: float decode and UDIM tile resolution.
+        await Assert.That(requiredCapabilities & 0x400000UL).IsEqualTo(0x400000UL);
+        await Assert.That(requiredCapabilities & 0x800000UL).IsEqualTo(0x800000UL);
     }
 
     [Test]

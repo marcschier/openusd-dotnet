@@ -1715,24 +1715,31 @@ def Xform "World"
             return;
         }
 
-        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
-        foreach (MaterialTextureSlotCase testCase in CreateMaterialTextureSlotCases().Where(
-            value => parameters.Contains(value.Parameter)))
+        try
         {
-            ParityImage neutral = CaptureSyntheticMaterialTextureSlotSelfConsistency(
-                device,
-                testCase,
-                testCase.NeutralFallback);
-            (byte neutralMax, double neutralMean) = CompareTranslatedHalves(neutral);
-            await Assert.That(neutralMax).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
-            await Assert.That(neutralMean).IsLessThanOrEqualTo(2.000);
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            foreach (MaterialTextureSlotCase testCase in CreateMaterialTextureSlotCases().Where(
+                value => parameters.Contains(value.Parameter)))
+            {
+                ParityImage neutral = CaptureSyntheticMaterialTextureSlotSelfConsistency(
+                    device,
+                    testCase,
+                    testCase.NeutralFallback);
+                (byte neutralMax, double neutralMean) = CompareTranslatedHalves(neutral);
+                await Assert.That(neutralMax).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+                await Assert.That(neutralMean).IsLessThanOrEqualTo(2.000);
 
-            ParityImage divergent = CaptureSyntheticMaterialTextureSlotSelfConsistency(
-                device,
-                testCase,
-                testCase.DivergentFallback);
-            (byte divergentMax, _) = CompareTranslatedHalves(divergent);
-            await Assert.That(divergentMax).IsGreaterThan(testCase.MinimumDivergence);
+                ParityImage divergent = CaptureSyntheticMaterialTextureSlotSelfConsistency(
+                    device,
+                    testCase,
+                    testCase.DivergentFallback);
+                (byte divergentMax, _) = CompareTranslatedHalves(divergent);
+                await Assert.That(divergentMax).IsGreaterThan(testCase.MinimumDivergence);
+            }
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("D3D12 WARP material texture evidence", exception.ToString());
         }
     }
 
