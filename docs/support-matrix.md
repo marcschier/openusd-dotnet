@@ -175,7 +175,15 @@ Compressed Hio formats and non-finite channels are rejected with actionable diag
 assets use authored fallbacks with bounded stable diagnostics; failed loads are cached without poisoning
 the successful cache and can be explicitly retried. Unresolved and unsupported materials likewise retain
 default shading with distinct diagnostics. Every active texture slot binds its own cached sampler, preserving
-independent `wrapS` and `wrapT` state across base-colour, normal, roughness/metallic, emissive, and volume maps.
+independent `wrapS` and `wrapT` state across base-colour, normal, roughness, metallic, emissive, and volume maps.
+Every material texture entry carries the connected `UsdUVTexture` output port explicitly (page ABI v13
+`output_channel`, surfaced as `SilkMaterialTexture.Channel`), so hdSilk selects `r`, `g`, `b`, `a`, or `rgb`
+from authored data rather than from a fixed convention; unknown or width-incompatible output tokens are
+rejected with diagnostics. Scalar maps replicate the selected channel into every uploaded component after
+`scale`/`bias`, so `roughness` and `metallic` are fully independent inputs with independent feature bits,
+textures, samplers, bindings, and UDIM mask bits — a roughness-only material leaves metallic constant and a
+metallic-only material leaves roughness constant. A packed occlusion/roughness/metallic file feeding two
+inputs from two channels is decoded and uploaded once per channel.
 Ordinary (non-UDIM) material textures now upload a full CPU-generated mip chain instead of one level:
 a shared packed layout (mip 0 first, ascending, each tightly packed) is validated by every backend's
 upload path, and D3D12, Vulkan, and Metal each allocate, bind, and transition every requested level.
@@ -196,6 +204,21 @@ spans above 256 cells are diagnosed and rejected. RGBA32Float sampling is neares
 cross-backend filter negotiation lands. Successful local files and resolved UDIM tiles are reloaded
 when their size or last-write timestamp changes; non-filesystem resolver assets use material
 dirtiness or explicit retry. Colour-delta parity with Storm remains outside the current support claim.
+Texture cache residency is now bounded rather than unlimited: `SilkTextureResidencyOptions` exposes
+independently configurable, validated nonzero decoded-CPU and estimated-GPU byte budgets (512 MiB
+defaults), threaded through a dedicated `SilkSceneGpuResources`/`SilkMeshRenderer` constructor overload
+alongside the original device-only overload, with existing callers unaffected. Ordinary, UDIM,
+fallback, and volume entries are all tracked and evicted by a single deterministic least-recently-used
+policy with a stable creation-order tie-breaker, applied only from an internal, submission-safe trim
+point invoked after each relevant graphics submission has completed — never while unsubmitted or
+in-flight commands may still use a retained texture — and only against entries not referenced since the previous trim,
+so an over-budget working set rendered every frame is retained rather than decoded, uploaded, evicted,
+and re-decoded every frame; failed texture fallbacks are eligible for eviction only as a last resort.
+An entry that alone exceeds a budget is evicted (not retried in a loop) with a bounded
+`TextureBudgetExceeded` diagnostic, and the same diagnostic reports a pinned current-frame working set
+that alone stays over budget once no stale entry remains to evict. `SilkSceneGpuStatistics` reports
+current and peak decoded/GPU resident bytes, both configured budgets, the total cache entry count
+across every kind, and a cumulative eviction count.
 It also supports a documented MaterialX projection plus generated-source paths for graphs outside that projection:
 `ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
 driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are

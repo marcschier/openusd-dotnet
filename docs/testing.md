@@ -288,7 +288,7 @@ commit and artifact set.
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 11 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 13 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 Instance identity has dedicated coverage. One case serializes a point-instanced scene and
@@ -301,6 +301,14 @@ identities are retired, so a shrinking instancer emits exactly one removal per d
 Per-prim isolation is asserted as a skip rather than a throw: a record that fails validation must
 be omitted from the page and counted by the rejected-mesh counter while every valid sibling still
 serializes. This is what stops one malformed prim in a production asset from blanking a frame.
+
+Material connections are pinned by the same probe. Its stage wires `diffuseColor` to the
+`UsdUVTexture`'s `outputs:rgb` and `metallic` to that same prim's `outputs:b`, then requires two
+published texture entries naming one asset with `OPENUSD_SILK_TEXTURE_CHANNEL_RGB` and
+`OPENUSD_SILK_TEXTURE_CHANNEL_B` respectively. Nothing but the ABI 13 `output_channel` field can
+tell those two entries apart, so the case fails if the authored output token is dropped, guessed,
+or reconstructed from the asset path. The probe also enforces the channel/width pairing on every
+entry it parses.
 
 ## Physics package gates
 

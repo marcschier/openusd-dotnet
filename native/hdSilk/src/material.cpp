@@ -75,6 +75,12 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((mirror, "mirror"))
     ((raw, "raw"))
     ((sRGB, "sRGB"))
+    ((r, "r"))
+    ((g, "g"))
+    ((b, "b"))
+    ((a, "a"))
+    ((rgb, "rgb"))
+    ((out, "out"))
 );
 // clang-format on
 
@@ -284,6 +290,77 @@ const HdMaterialNode* _FindInputNode(
 bool _IsMaterialXImage(const HdMaterialNode& node)
 {
     return node.identifier.GetString().rfind("ND_image_", 0) == 0;
+}
+
+/// Resolves the connected output port of a texture node into the bounded wire
+/// channel enum. The token is authored data, not a guess: UsdUVTexture declares
+/// exactly the r/g/b/a/rgb outputs, and a MaterialX image node declares exactly
+/// one "out" port whose width is the input's width. Returns false, leaving
+/// *channel untouched, for any token this delegate does not model or any token
+/// that cannot drive an input of this width, so the caller can reject the entry
+/// with a diagnostic instead of publishing a channel nobody authored.
+bool _TryResolveOutputChannel(
+    const HdMaterialNode& texture,
+    const TfToken& outputName,
+    uint32_t componentCount,
+    uint32_t* channel)
+{
+    if (_IsMaterialXImage(texture))
+    {
+        if (outputName != _tokens->out)
+        {
+            return false;
+        }
+        // A MaterialX image node has a single output whose type already matches
+        // the input it feeds. A colour or vector image occupies rgb; a float
+        // image decodes into the red channel.
+        if (componentCount >= 3)
+        {
+            *channel = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
+            return true;
+        }
+        if (componentCount == 1)
+        {
+            *channel = OPENUSD_SILK_TEXTURE_CHANNEL_R;
+            return true;
+        }
+        return false;
+    }
+
+    if (outputName == _tokens->rgb)
+    {
+        if (componentCount < 3)
+        {
+            return false;
+        }
+        *channel = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
+        return true;
+    }
+    if (componentCount != 1)
+    {
+        return false;
+    }
+    if (outputName == _tokens->r)
+    {
+        *channel = OPENUSD_SILK_TEXTURE_CHANNEL_R;
+        return true;
+    }
+    if (outputName == _tokens->g)
+    {
+        *channel = OPENUSD_SILK_TEXTURE_CHANNEL_G;
+        return true;
+    }
+    if (outputName == _tokens->b)
+    {
+        *channel = OPENUSD_SILK_TEXTURE_CHANNEL_B;
+        return true;
+    }
+    if (outputName == _tokens->a)
+    {
+        *channel = OPENUSD_SILK_TEXTURE_CHANNEL_A;
+        return true;
+    }
+    return false;
 }
 
 bool _IdentifierHasPrefix(const HdMaterialNode& node, const char* prefix)
@@ -519,6 +596,7 @@ bool _EvaluateMaterialXConstant(
 bool _TryCreateTextureEntry(
     const HdMaterialNetwork& network,
     const HdMaterialNode& texture,
+    const TfToken& outputName,
     const _InputBinding& input,
     HdSilkMaterialTexture& entry)
 {
@@ -531,8 +609,20 @@ bool _TryCreateTextureEntry(
     {
         return false;
     }
+    uint32_t channel = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
+    if (!_TryResolveOutputChannel(texture, outputName, input.componentCount, &channel))
+    {
+        TF_WARN(
+            "hdSilk material input '%s' is connected to texture output '%s', which "
+            "cannot drive a %u-component input; leaving the input at its default.",
+            input.name.GetText(),
+            outputName.GetText(),
+            input.componentCount);
+        return false;
+    }
     entry.parameter = input.parameter;
     entry.componentCount = input.componentCount;
+    entry.outputChannel = channel;
     entry.wrapS = _ReadWrap(texture.parameters, _tokens->wrapS);
     entry.wrapT = _ReadWrap(texture.parameters, _tokens->wrapT);
     entry.sourceColorSpace = _ReadColorSpace(texture.parameters);
@@ -590,18 +680,31 @@ HdSilkMaterial::Resolve(
         record.surfaceKind = OPENUSD_SILK_SURFACE_MATERIALX_PROJECTED;
         for (const _InputBinding& input : _MaterialXStandardSurfaceInputs())
         {
-            const HdMaterialNode* upstream =
-                _FindInputNode(network, surface->path, input.name);
+            const HdMaterialRelationship* connection =
+                _FindInputConnection(network, surface->path, input.name);
+            const HdMaterialNode* upstream = connection == nullptr
+                ? nullptr
+                : _FindNode(network, connection->inputId);
             if (upstream != nullptr)
             {
                 const HdMaterialNode* texture = upstream;
+                TfToken outputName = connection->inputName;
                 if (upstream->identifier == _tokens->MtlxNormalMap)
                 {
-                    texture = _FindInputNode(network, upstream->path, _tokens->in);
+                    const HdMaterialRelationship* normalConnection =
+                        _FindInputConnection(network, upstream->path, _tokens->in);
+                    texture = normalConnection == nullptr
+                        ? nullptr
+                        : _FindNode(network, normalConnection->inputId);
+                    if (normalConnection != nullptr)
+                    {
+                        outputName = normalConnection->inputName;
+                    }
                 }
                 HdSilkMaterialTexture textureEntry;
                 if (texture != nullptr &&
-                    _TryCreateTextureEntry(network, *texture, input, textureEntry))
+                    _TryCreateTextureEntry(
+                        network, *texture, outputName, input, textureEntry))
                 {
                     record.textures.push_back(std::move(textureEntry));
                     continue;
@@ -685,6 +788,7 @@ HdSilkMaterial::Resolve(
         // constant, if any, is only a fallback the texture entry already
         // carries, so it must not also appear as a scalar.
         const HdMaterialNode* texture = nullptr;
+        TfToken outputName;
         for (const HdMaterialRelationship& relationship : network.relationships)
         {
             if (relationship.outputId != surface->path ||
@@ -698,6 +802,9 @@ HdSilkMaterial::Resolve(
                 upstream->identifier == _tokens->UsdUVTexture)
             {
                 texture = upstream;
+                // The output port the surface input is wired to is the only
+                // authored statement of which channel of the file drives it.
+                outputName = relationship.inputName;
             }
             break;
         }
@@ -714,9 +821,24 @@ HdSilkMaterial::Resolve(
                     input.name.GetText());
                 continue;
             }
+            uint32_t outputChannel = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
+            if (!_TryResolveOutputChannel(
+                    *texture, outputName, input.componentCount, &outputChannel))
+            {
+                TF_WARN(
+                    "hdSilk material '%s' input '%s' is connected to UsdUVTexture "
+                    "output '%s', which is not one of r, g, b, a, rgb or cannot "
+                    "drive a %u-component input; leaving the input at its default.",
+                    record.path.c_str(),
+                    input.name.GetText(),
+                    outputName.GetText(),
+                    input.componentCount);
+                continue;
+            }
             HdSilkMaterialTexture entry;
             entry.parameter = input.parameter;
             entry.componentCount = input.componentCount;
+            entry.outputChannel = outputChannel;
             entry.wrapS = _ReadWrap(texture->parameters, _tokens->wrapS);
             entry.wrapT = _ReadWrap(texture->parameters, _tokens->wrapT);
             entry.sourceColorSpace = _ReadColorSpace(texture->parameters);

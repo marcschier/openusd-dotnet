@@ -24,6 +24,9 @@
 #ifndef MAP_ROUGHNESS_METALLIC
 #define MAP_ROUGHNESS_METALLIC 0
 #endif
+#ifndef MAP_METALLIC
+#define MAP_METALLIC 0
+#endif
 #ifndef MAP_EMISSIVE
 #define MAP_EMISSIVE 0
 #endif
@@ -108,6 +111,10 @@ SamplerState normalSampler : register(s1);
 [[vk::binding(11, 0)]]
 SamplerState roughnessMetallicSampler : register(s2);
 #endif
+#if FRAGMENT_STAGE && MAP_METALLIC
+[[vk::binding(14, 0)]]
+SamplerState metallicSampler : register(s5);
+#endif
 #if FRAGMENT_STAGE && MAP_EMISSIVE
 [[vk::binding(12, 0)]]
 SamplerState emissiveSampler : register(s3);
@@ -127,6 +134,10 @@ Texture2D<float4> normalTexture : register(t1);
 #if FRAGMENT_STAGE && MAP_ROUGHNESS_METALLIC
 [[vk::binding(4, 0)]]
 Texture2D<float4> roughnessMetallicTexture : register(t2);
+#endif
+#if FRAGMENT_STAGE && MAP_METALLIC
+[[vk::binding(15, 0)]]
+Texture2D<float4> metallicTexture : register(t4);
 #endif
 #if FRAGMENT_STAGE && MAP_EMISSIVE
 [[vk::binding(5, 0)]]
@@ -365,13 +376,32 @@ float4 FRAGMENT_ENTRY_POINT(
         (shadingNormal * sampledNormal.z));
 #endif
 #if MAP_ROUGHNESS_METALLIC
-    float3 sampledRoughnessMetallic = SampleMaterialTexture(
-        roughnessMetallicTexture,
-        roughnessMetallicSampler,
-        input.texCoord,
-        ((uint)round(surface.reserved.w) & 4u) != 0).rgb;
-    roughness = clamp(roughness * sampledRoughnessMetallic.g, 0.01, 1.0);
-    metallic = saturate(metallic * sampledRoughnessMetallic.b);
+    // The managed texture cache replicates the connected UsdUVTexture output
+    // channel into every component before upload, so a scalar map is always read
+    // from .r whichever of r/g/b/a the material authored. The sampled value
+    // replaces the authored constant rather than modulating it: a connected input
+    // has no constant to modulate, and multiplying by the UsdPreviewSurface
+    // default silently halved roughness and zeroed metallic.
+    roughness = clamp(
+        SampleMaterialTexture(
+            roughnessMetallicTexture,
+            roughnessMetallicSampler,
+            input.texCoord,
+            ((uint)round(surface.reserved.w) & 4u) != 0).r,
+        0.01,
+        1.0);
+#endif
+#if MAP_METALLIC
+    // Metallic has its own texture, sampler and UDIM bit, so a roughness-only or
+    // metallic-only material never disturbs the other input. A packed
+    // occlusion/roughness/metallic file reaches here as two connections naming one
+    // asset and two channels, which resolves to two swizzled uploads.
+    metallic = saturate(
+        SampleMaterialTexture(
+            metallicTexture,
+            metallicSampler,
+            input.texCoord,
+            ((uint)round(surface.reserved.w) & 16u) != 0).r);
 #endif
 #if MAP_EMISSIVE
     emissiveColor = SampleMaterialTexture(

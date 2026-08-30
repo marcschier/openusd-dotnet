@@ -798,6 +798,34 @@ public enum SilkColorSpace : uint
 }
 
 /// <summary>
+/// The connected output port of a <c>UsdUVTexture</c>, which decides which channel
+/// of the sampled texel drives the bound surface input.
+/// </summary>
+/// <remarks>
+/// These are exactly the outputs <c>UsdUVTexture</c> declares: four single-channel
+/// outputs and one three-channel output. There is no unspecified value: hdSilk
+/// rejects a connection whose output it cannot resolve rather than publishing a
+/// channel nobody authored, so every entry on the wire names a real port.
+/// </remarks>
+public enum SilkTextureChannel : uint
+{
+    /// <summary>The <c>outputs:r</c> port.</summary>
+    R = 0,
+
+    /// <summary>The <c>outputs:g</c> port.</summary>
+    G = 1,
+
+    /// <summary>The <c>outputs:b</c> port.</summary>
+    B = 2,
+
+    /// <summary>The <c>outputs:a</c> port.</summary>
+    A = 3,
+
+    /// <summary>The three-channel <c>outputs:rgb</c> port.</summary>
+    Rgb = 4
+}
+
+/// <summary>
 /// One constant UsdPreviewSurface input carried with a material upsert.
 /// </summary>
 public readonly ref struct SilkMaterialScalarEntry
@@ -830,7 +858,7 @@ public readonly ref struct SilkMaterialScalarEntry
 /// </summary>
 public readonly ref struct SilkMaterialTextureEntry
 {
-    internal const int FixedSize = 76;
+    internal const int FixedSize = 80;
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly string _asset;
     private readonly string _uvPrimvar;
@@ -865,6 +893,13 @@ public readonly ref struct SilkMaterialTextureEntry
     /// <summary>Gets how many channels the bound input consumes.</summary>
     public int ComponentCount =>
         (int)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[24..28]);
+
+    /// <summary>
+    /// Gets the connected UsdUVTexture output port, which selects which channel of
+    /// the sampled texel drives the bound input.
+    /// </summary>
+    public SilkTextureChannel Channel =>
+        (SilkTextureChannel)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[76..80]);
 
     /// <summary>Gets one component of the multiply applied after sampling.</summary>
     public float GetScale(int component) => ReadVector(28, component);
@@ -1084,6 +1119,8 @@ public readonly ref struct SilkMaterialUpsertCommand
             BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 20, 4));
         uint components =
             BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 24, 4));
+        uint channel =
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 76, 4));
         if (assetLength == 0)
         {
             throw new InvalidDataException(
@@ -1093,6 +1130,21 @@ public readonly ref struct SilkMaterialUpsertCommand
         {
             throw new InvalidDataException(
                 "A material texture entry must consume one to four components.");
+        }
+        if (channel > (uint)SilkTextureChannel.Rgb)
+        {
+            throw new InvalidDataException(
+                "A material texture entry must name a known UsdUVTexture output channel.");
+        }
+        // The channel and the consumed width are two statements about the same
+        // connection, so a page that disagrees with itself is malformed rather
+        // than something to reconcile by preferring one field over the other.
+        bool isRgb = channel == (uint)SilkTextureChannel.Rgb;
+        if (isRgb ? components < 3 : components != 1)
+        {
+            throw new InvalidDataException(
+                "A material texture entry must select rgb for a colour or vector input " +
+                "and a single channel for a one-component input.");
         }
         long size = SilkMaterialTextureEntry.FixedSize + (long)assetLength + uvLength;
         if (offset + size > bytes.Length)

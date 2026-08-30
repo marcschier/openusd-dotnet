@@ -29,6 +29,13 @@
       ]
     },
     {
+      "name": "MAP_METALLIC",
+      "token": "metallic",
+      "requires": [
+        "HAS_UV"
+      ]
+    },
+    {
       "name": "MAP_EMISSIVE",
       "token": "emissive",
       "requires": [
@@ -40,7 +47,7 @@
     {
       "family": "mesh",
       "stage": "fragment",
-      "maxPermutations": 32
+      "maxPermutations": 64
     },
     {
       "family": "mesh",
@@ -114,6 +121,7 @@
         "MAP_BASE_COLOR",
         "MAP_NORMAL",
         "MAP_ROUGHNESS_METALLIC",
+        "MAP_METALLIC",
         "MAP_EMISSIVE"
       ],
       "resources": [
@@ -271,6 +279,34 @@
           },
           "vulkan": {
             "binding": 4,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_METALLIC",
+          "name": "metallicSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 5,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 14,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_METALLIC",
+          "name": "metallicTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 4,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 15,
             "set": 0
           }
         },

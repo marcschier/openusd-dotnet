@@ -123,6 +123,7 @@ Storm and hdSilk rendering paths, shader features, and hosted execution limits.
 | `usdvol-vulkan` | Workflow-gated |
 | `cpu-skinning` | Workflow-gated |
 | `cpu-ocio-export` | Implemented |
+| `texture-residency-budgets` | Implemented |
 | `gpu-ocio-presentation` | Not supported |
 | `gpu-skinning` | Not supported |
 | `catmull-clark-subdivision` | Not supported |

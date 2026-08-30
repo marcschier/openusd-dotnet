@@ -214,30 +214,12 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         }
     }
 
-    private static uint ToD3D12ShaderRegister(SilkBindingSlot slot)
-    {
-        if (slot.Kind == SilkBindingKind.Sampler)
-        {
-            return slot.Binding switch
-            {
-                1 => 0,
-                10 => 1,
-                11 => 2,
-                12 => 3,
-                13 => 4,
-                _ => slot.Binding
-            };
-        }
-        if (slot.Kind == SilkBindingKind.SampledTexture && slot.Binding >= 2)
-        {
-            if (slot.Binding == 9)
-            {
-                return slot.Binding;
-            }
-            return slot.Binding - 2;
-        }
-        return slot.Binding;
-    }
+    /// <summary>
+    /// Maps an abstract binding onto the HLSL register the checked shaders declare.
+    /// </summary>
+    /// <remarks>See <see cref="D3D12ShaderRegisters"/> for the table and its rationale.</remarks>
+    private static uint ToD3D12ShaderRegister(SilkBindingSlot slot) =>
+        D3D12ShaderRegisters.Map(slot);
 
     private void CreatePipelineState(
         SilkGraphicsPipelineDescriptor descriptor,

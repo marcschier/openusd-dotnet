@@ -739,6 +739,9 @@ bool TryCreateVolumeTexture(
     texture->wrapT = OPENUSD_SILK_WRAP_CLAMP;
     texture->sourceColorSpace = OPENUSD_SILK_COLOR_SPACE_RAW;
     texture->componentCount = 1;
+    // The cached field is a single-channel R32 density image, so its one channel
+    // is the red channel of the decoded texel.
+    texture->outputChannel = OPENUSD_SILK_TEXTURE_CHANNEL_R;
     texture->asset = cachePath.string();
     texture->uvPrimvar =
         std::to_string(width) + "," +

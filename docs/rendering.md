@@ -120,7 +120,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v8 and
-hdSilk session ABI v5; the hdSilk page ABI is v11. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v5; the hdSilk page ABI is v13. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -243,8 +243,11 @@ both values, so changing only exposure or output transform updates the GPU block
 ### hdSilk shader pipeline cache
 
 Mesh shader variants are addressed by `SilkShaderPermutationId`, whose flags mirror
-`eng/shaders/shader-manifest.json`: `uv`, `basecolor`, `normal`, `roughmetal`, and `emissive`. Map flags without `uv`
-are rejected because the manifest never emits those artifacts. The empty permutation keeps the historical
+`eng/shaders/shader-manifest.json`: `uv`, `basecolor`, `normal`, `roughmetal`, `metallic`, and `emissive`. Map flags
+without `uv` are rejected because the manifest never emits those artifacts. `roughmetal` and `metallic` are fully
+independent: `roughmetal` is the roughness slot (its name and its `SilkShaderFeatures.RoughnessMetallicMap = 8` value
+are kept for artifact and API stability), `metallic` is the metallic slot, and either may appear without the other, so
+a roughness-only material never binds anything to metallic and vice versa. The empty permutation keeps the historical
 `mesh.vertex` and `mesh.fragment` artifact names; non-empty names append manifest-ordered tokens joined with `+`.
 Fragment permutations use all feature bits. Vertex permutations use the subset that changes vertex output shape
 (`uv` and `normal`), so a base-color-only material resolves to `mesh.vertex.uv` plus the matching specialized
@@ -255,13 +258,14 @@ color and depth formats, shader binary format, and the optional pick/selection d
 If the generation changes, the cache discards old entries before creating a new pipeline, so a device-reset recovery
 cannot receive a stale pipeline. Entries are protected by one cache lock; concurrent callers either observe the existing
 entry or create exactly one new entry for a key. Cached pipelines are unbounded by design: the mesh family is limited by
-the checked manifest to 17 fragment permutations and 3 vertex permutations, multiplied by the small set of supported
+the checked manifest to 33 fragment permutations and 3 vertex permutations, multiplied by the small set of supported
 formats and layouts, so size-based eviction would add churn without bounding a real risk.
 
 MaterialX support deliberately reuses this finite mesh family. The native hdSilk resolver maps the supported
 `ND_standard_surface_surfaceshader` subset onto the existing PreviewSurface parameter ids and map bits instead of
-introducing node-specific shader variants. The budget is therefore unchanged: 17 checked fragment permutations and 3
-checked vertex permutations, with a hard manifest ceiling of 32 fragment and 8 vertex variants. A general graph
+introducing node-specific shader variants. The budget is therefore unchanged: 33 checked fragment permutations
+(the empty permutation plus every combination of the five map bits over `uv`) and 3 checked vertex permutations, with a
+hard manifest ceiling of 64 fragment and 8 vertex variants. A general graph
 cross-product is out of scope; arithmetic-only MaterialX choices are folded to constants by the resolver, and image or
 normal-map inputs select the existing `basecolor` or `normal` map bits.
 
@@ -556,9 +560,47 @@ compressed Hio formats are rejected with diagnostics rather than reinterpreted o
 Textures are cached per material/asset/colour-space/parameter identity, and backend samplers are reused by
 wrap/filter state. RGBA32Float textures use nearest filtering because linear filtering for that format is
 not portable across the supported RHIs; explicit filter negotiation remains outside the current claim.
-Base-colour, normal, roughness/metallic, emissive, and volume-density textures each bind an independent
+Base-colour, normal, roughness, metallic, emissive, and volume-density textures each bind an independent
 sampler slot, so simultaneously active maps preserve their own `wrapS` and `wrapT` values rather than
 letting the final texture bound to a draw overwrite every map's address mode.
+
+Every material texture entry carries the connected `UsdUVTexture` output port explicitly, as the ABI v13
+`output_channel` field surfaced by `SilkMaterialTextureEntry.Channel` and `SilkMaterialTexture.Channel`.
+The channel is authored data resolved by hdSilk from `HdMaterialRelationship::inputName`, not a
+convention: `outputs:rgb` drives a colour or vector input, and `outputs:r`, `outputs:g`, `outputs:b` or
+`outputs:a` drives a scalar one. A MaterialX image node's single `out` port resolves to `rgb` for a
+colour or vector input and to `r` for a scalar one, which is what its one decoded channel occupies. Any
+other output token, and any token whose width cannot drive the bound input, is rejected with a
+diagnostic and the input is left at its documented default; the wire never carries a guessed channel.
+
+During texture preparation the selected channel is honoured after decode and after `scale`/`bias`, which
+is the order `UsdUVTexture` defines: the sampled texel is scaled and biased first and the outputs expose
+channels of that result. For a scalar map the selected channel is then replicated into every component of
+the upload, so the fragment shader reads `.r` for any scalar map regardless of which channel was
+authored, and no per-parameter channel index has to travel in the surface constant block. The authored
+`fallback` is a float4 read through the same port, so a missing asset resolves to the same channel. `rgb`
+is a no-op, so base colour keeps the alpha it multiplies into opacity, and normal and emissive maps keep
+their full RGB.
+
+`roughness` and `metallic` are separate UsdPreviewSurface inputs with separate connections, so each has
+its own feature bit, its own decoded/uploaded texture, its own sampler, and its own binding pair:
+roughness keeps Vulkan bindings 11/4 (`s2`/`t2` on D3D12, Metal sampler 2 / texture 2) and metallic uses
+Vulkan bindings 14/15 (`s5`/`t4` on D3D12, Metal sampler 5 / texture 4). A roughness-only material leaves
+metallic at its authored constant and a metallic-only material leaves roughness at its authored constant;
+neither can disturb the other. A connected map's sampled value replaces the input rather than modulating
+it, because a connected input has no constant to modulate — multiplying by the UsdPreviewSurface default
+silently halved roughness and zeroed metallic.
+
+A packed occlusion/roughness/metallic file is authored as one `UsdUVTexture` prim with two or three
+output connections, which reaches the renderer as several entries naming one asset and different
+channels. Each entry is decoded, swizzled, and uploaded separately, keyed by material path, asset,
+colour space, parameter, and channel, so one file feeding two inputs currently costs two uploads. That is
+deliberate: sharing one decode across channels is an optimization, and correctness of the channel
+selection comes first.
+
+The UDIM status bitmask in `SurfaceParameters.reserved.w` has one bit per texture slot: `1` base colour,
+`2` normal, `4` roughness, `8` emissive, and `16` (`1 << 4`) metallic. Roughness and metallic have
+separate slots, so they need separate bits; nothing aliases.
 Ordinary (non-UDIM) material textures upload a full packed mip chain rather than a single level. A
 shared backend-neutral layout stores mip 0 first, then ascending levels in order, each tightly packed
 to `max(1, base >> level)`; `UploadTexture` validates the source against that layout's exact total byte
@@ -609,6 +651,37 @@ Successful local-file cache entries also retain file size and last-write fingerp
 invalidates and re-decodes only the entries whose source file or resolved UDIM tile changed; URI and
 other resolver-backed assets continue to use material dirtiness or explicit failed-texture retry
 because they do not expose portable filesystem metadata.
+
+Texture cache/residency is bounded rather than unlimited. `SilkTextureResidencyOptions` carries two
+independently configurable, validated nonzero `ulong` immutable budgets — a maximum decoded CPU byte
+count and a maximum estimated logical GPU byte count — both defaulting to 512 MiB and passed through a
+dedicated `SilkSceneGpuResources`/`SilkMeshRenderer` constructor overload alongside the original
+device-only overload, so existing callers are unaffected. Every ordinary, UDIM, fallback, and volume
+cache entry tracks its decoded byte count, its estimated GPU byte count (the uploaded logical
+mip/volume payload, not a backend allocation or alignment estimate), and a monotonically increasing
+last-use stamp, all rolled into `SilkSceneGpuStatistics`. Decoded CPU bytes are retained for the entry's
+full lifetime — they are released only by eviction, never immediately after upload — so the decoded CPU
+budget is a real, independently enforceable ceiling rather than one that only ever measures a near-zero
+residency between draws; peak decoded and peak GPU byte counters record the high-water marks reporting
+tools care about.
+
+Eviction is deterministic least-recently-used, with creation order as a stable tie-breaker, and runs
+only from an internal, submission-safe trim point that `SilkMeshRenderer` invokes after each relevant
+graphics submission's `Wait()` has returned — for both the single-mesh and grouped/instanced draw
+paths — never while unsubmitted or in-flight commands may still use a retained texture. Eviction also protects the
+current frame's working set: only entries not referenced since the previous trim are candidates, so an
+over-budget working set that is rendered every frame is retained rather than decoded, uploaded, evicted,
+and re-decoded on every single frame. On the very first trim, every entry touched while assembling that
+first frame is itself the pinned working set. If the pinned working set alone still exceeds a budget
+once no stale entry remains, eviction stops and a single bounded `TextureBudgetExceeded` diagnostic
+reports the violated budget(s), current bytes, and entry count instead of looping or thrashing. Failed
+texture fallbacks are eligible for eviction only as a last resort after every stale ordinary and volume
+candidate, since evicting a tiny fallback placeholder only forces its failed decode (and, for
+filesystem-backed assets, its failed file read) to repeat on the very next reference for no residency
+benefit; a failed fallback still referenced this frame is pinned like any other entry. A single stale
+entry that alone exceeds a budget is evicted rather than retried in a loop, and separately reports the
+bounded `TextureBudgetExceeded` diagnostic. Re-referencing an evicted texture re-decodes and re-uploads
+it like any other cache miss.
 
 `SilkSceneGpuResources.Diagnostics` returns a deterministic snapshot of at most 128 deduplicated
 material and texture warnings. Unresolved relationships and unsupported surface networks retain flat
@@ -1119,6 +1192,15 @@ feature depends on. Each `MESH_UPSERT` carries `attribute_count` entries of `(se
 interpolation, name, element_count, float data)`, plus a `material_binding_hash` and the authoritative bound
 `material_path`, empty when the mesh has no binding. Every fixed offset through `transform` is unchanged from
 v3; only the variable section moved, so the addition is structural rather than a re-layout.
+
+Page ABI v13 extends the `MATERIAL_UPSERT` texture entry with `output_channel`, the resolved output port of
+the connected `UsdUVTexture`. It sits at offset 76, immediately after `fallback` and before the asset bytes,
+so every existing fixed offset is unchanged and only the variable section moved. The field is required, not
+optional: a consumer cannot infer which channel of a shared file feeds which input, and two inputs connected
+to different outputs of one texture prim are otherwise indistinguishable from two inputs connected to two
+separate prims. A scalar input must carry a single-channel output and a colour or vector input must carry
+`OPENUSD_SILK_TEXTURE_CHANNEL_RGB`; any other pairing, and any output token hdSilk does not model, is
+rejected with a diagnostic rather than guessed at, both in the native serializer and in the managed parser.
 
 The table is how every per-vertex value other than position travels, so authored normals, texture coordinates
 and arbitrary primvars all use one mechanism and a new attribute needs no further ABI bump. Attribute data is

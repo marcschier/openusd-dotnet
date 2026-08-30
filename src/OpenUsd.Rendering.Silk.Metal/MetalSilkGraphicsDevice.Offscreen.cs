@@ -989,22 +989,14 @@ public sealed partial class MetalSilkGraphicsDevice
             ToMetalShaderResourceIndex(binding));
     }
 
+    /// <summary>
+    /// Maps an abstract binding onto the Metal argument index the checked shaders use.
+    /// </summary>
+    /// <remarks>
+    /// See <see cref="MetalShaderResourceIndices"/> for the table and its rationale.
+    /// </remarks>
     private static uint ToMetalShaderResourceIndex(MetalMaterialBinding binding) =>
-        binding.Kind switch
-        {
-            SilkBindingKind.SampledTexture when binding.Binding is >= 2 and <= 5 =>
-                binding.Binding - 2,
-            SilkBindingKind.Sampler => binding.Binding switch
-            {
-                1 => 0,
-                10 => 1,
-                11 => 2,
-                12 => 3,
-                13 => 4,
-                _ => binding.Binding
-            },
-            _ => binding.Binding
-        };
+        MetalShaderResourceIndices.Map(binding.Kind, binding.Binding);
 
     private static MTLCullMode ToMetalCullMode(SilkCullMode cullMode) =>
         cullMode switch

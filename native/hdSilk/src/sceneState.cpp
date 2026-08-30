@@ -784,6 +784,21 @@ void AppendMaterialUpsert(
             throw std::invalid_argument(
                 "An hdSilk material texture requires a resolved asset path.");
         }
+        if (texture.outputChannel > OPENUSD_SILK_TEXTURE_CHANNEL_RGB)
+        {
+            throw std::invalid_argument(
+                "An hdSilk material texture has an unresolved or unknown "
+                "UsdUVTexture output channel.");
+        }
+        const bool isRgbChannel =
+            texture.outputChannel == OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
+        if (isRgbChannel ? texture.componentCount < 3 : texture.componentCount != 1)
+        {
+            throw std::invalid_argument(
+                "An hdSilk material texture output channel must be rgb for a "
+                "colour or vector input and a single channel for a one-component "
+                "input.");
+        }
     }
 
     const uint32_t pathByteCount = CheckedCount(record.path.size(), "path byte count");
@@ -829,6 +844,7 @@ void AppendMaterialUpsert(
         {
             AppendF32(payload, texture.fallback[index]);
         }
+        AppendU32(payload, texture.outputChannel);
         AppendBytes(payload, texture.asset.data(), texture.asset.size());
         AppendBytes(payload, texture.uvPrimvar.data(), texture.uvPrimvar.size());
     }

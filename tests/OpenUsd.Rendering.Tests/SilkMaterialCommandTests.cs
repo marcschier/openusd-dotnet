@@ -1170,6 +1170,390 @@ public sealed class SilkMaterialCommandTests
             .IsEqualTo(1f);
     }
 
+    [Test]
+    public async Task RoughnessAndMetallicTexturesSelectIndependentFeatureBits()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/IndependentRoughMetal",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(SilkMaterialParameter.Roughness, "rough.png", SilkTextureChannel.R),
+                ScalarTexture(SilkMaterialParameter.Metallic, "metal.png", SilkTextureChannel.R),
+            ]));
+
+        await Assert.That(material.GetTextureFeatures()).IsEqualTo(
+            SilkShaderFeatures.Uv |
+            SilkShaderFeatures.RoughnessMetallicMap |
+            SilkShaderFeatures.MetallicMap);
+    }
+
+    [Test]
+    public async Task PackedRoughnessAndMetallicChannelsOfOneFileSelectBothFeatureBits()
+    {
+        // A packed occlusion/roughness/metallic file is authored as one UsdUVTexture
+        // prim with two output connections. The asset is identical; only the channel
+        // tells the two inputs apart, and both must still light their own bit.
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/PackedRoughMetal",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(SilkMaterialParameter.Roughness, "orm.png", SilkTextureChannel.G),
+                ScalarTexture(SilkMaterialParameter.Metallic, "orm.png", SilkTextureChannel.B),
+            ]));
+
+        await Assert.That(material.GetTextureFeatures()).IsEqualTo(
+            SilkShaderFeatures.Uv |
+            SilkShaderFeatures.RoughnessMetallicMap |
+            SilkShaderFeatures.MetallicMap);
+        await Assert.That(material.GetTexture(SilkMaterialParameter.Roughness)!.Channel)
+            .IsEqualTo(SilkTextureChannel.G);
+        await Assert.That(material.GetTexture(SilkMaterialParameter.Metallic)!.Channel)
+            .IsEqualTo(SilkTextureChannel.B);
+    }
+
+    [Test]
+    public async Task RoughnessOnlyTextureLeavesMetallicUntextured()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/RoughOnly",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [(SilkMaterialParameter.Metallic, [0.75f])],
+            textures:
+            [
+                ScalarTexture(SilkMaterialParameter.Roughness, "rough.png", SilkTextureChannel.G),
+            ]));
+
+        await Assert.That(material.GetTextureFeatures()).IsEqualTo(
+            SilkShaderFeatures.Uv | SilkShaderFeatures.RoughnessMetallicMap);
+
+        // The authored metallic constant survives untouched: a roughness texture must
+        // not consume, replace, or gate the other input.
+        byte[] constants = new byte[128];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+        await Assert.That(ReadSingle(constants, 48)).IsEqualTo(0.75f);
+    }
+
+    [Test]
+    public async Task MetallicOnlyTextureLeavesRoughnessUntextured()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/MetalOnly",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [(SilkMaterialParameter.Roughness, [0.125f])],
+            textures:
+            [
+                ScalarTexture(SilkMaterialParameter.Metallic, "metal.png", SilkTextureChannel.B),
+            ]));
+
+        await Assert.That(material.GetTextureFeatures()).IsEqualTo(
+            SilkShaderFeatures.Uv | SilkShaderFeatures.MetallicMap);
+
+        // The authored roughness constant survives untouched, which the previous
+        // shared-slot design could not do: it bound the metallic asset to the
+        // roughness slot and read roughness out of it.
+        byte[] constants = new byte[128];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+        await Assert.That(ReadSingle(constants, 52)).IsEqualTo(0.125f);
+    }
+
+    [Test]
+    public async Task UdimMaskGivesRoughnessAndMetallicSeparateBits()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/UdimRoughMetal",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(
+                    SilkMaterialParameter.Roughness, "rough.<UDIM>.png", SilkTextureChannel.G),
+                ScalarTexture(
+                    SilkMaterialParameter.Metallic, "metal.png", SilkTextureChannel.B),
+            ]));
+        SilkMaterialData metallicUdim = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/UdimMetalOnly",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(
+                    SilkMaterialParameter.Metallic, "metal.<UDIM>.png", SilkTextureChannel.B),
+            ]));
+
+        byte[] constants = new byte[128];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+        // Bit 4 is roughness alone and bit 16 is metallic alone; neither aliases the
+        // other, so a UDIM roughness beside an ordinary metallic sets only bit 4.
+        await Assert.That(ReadSingle(constants, 124)).IsEqualTo(4f);
+
+        SilkSurfaceUniformWriter.Write(metallicUdim, RenderHeadlight.Deterministic, constants);
+        await Assert.That(ReadSingle(constants, 124)).IsEqualTo(16f);
+    }
+
+    [Test]
+    public async Task ScalarTextureChannelsSwizzleIntoEveryComponentOfTheUpload()
+    {
+        // One multichannel image, four inputs, four different output channels. The
+        // decoded texel must reach the shader as the selected channel replicated into
+        // every component, which is what lets the shader read .r for any scalar map.
+        byte[] pixel = [10, 20, 30, 40];
+        (SilkMaterialParameter Parameter, SilkTextureChannel Channel, byte Expected)[] cases =
+        [
+            (SilkMaterialParameter.Roughness, SilkTextureChannel.R, (byte)10),
+            (SilkMaterialParameter.Metallic, SilkTextureChannel.G, (byte)20),
+            (SilkMaterialParameter.Occlusion, SilkTextureChannel.B, (byte)30),
+            (SilkMaterialParameter.Opacity, SilkTextureChannel.A, (byte)40),
+        ];
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Swizzle",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                .. cases.Select(entry =>
+                    ScalarTexture(entry.Parameter, "packed.png", entry.Channel)),
+            ]));
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(1, 1, [.. pixel]));
+        using var commands = new TextureCommandList();
+
+        foreach ((SilkMaterialParameter parameter, _, byte expected) in cases)
+        {
+            resources.UploadMaterialTexture(commands, material, parameter);
+            await Assert.That(commands.Uploads[^1][..4])
+                .IsEquivalentTo(new byte[] { expected, expected, expected, expected });
+        }
+
+        // One asset, four channels, four uploads: correctness over sharing a decode.
+        await Assert.That(commands.UploadCount).IsEqualTo(4);
+    }
+
+    [Test]
+    public async Task ColourTextureChannelKeepsEveryComponentOfTheUpload()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Colour",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "colour.png",
+                    UvPrimvar: "st",
+                    Channel: SilkTextureChannel.Rgb),
+            ]));
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(1, 1, [10, 20, 30, 40]));
+        using var commands = new TextureCommandList();
+
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        // rgb is not a swizzle: base colour keeps its own alpha, which the shader
+        // multiplies into opacity.
+        await Assert.That(commands.Uploads[0][..4])
+            .IsEquivalentTo(new byte[] { 10, 20, 30, 40 });
+    }
+
+    [Test]
+    public async Task ScalarTextureFallbackUsesTheSelectedChannelOfTheAuthoredFallback()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/FallbackChannel",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(SilkMaterialParameter.Metallic, "missing.png", SilkTextureChannel.B)
+                    with
+                    {
+                        Fallback = [0f, 0f, 1f, 1f],
+                    },
+            ]));
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) => throw new FileNotFoundException("missing", asset));
+        using var commands = new TextureCommandList();
+
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.Metallic);
+
+        // The authored fallback is a float4 read through the same output port, so the
+        // blue component -- not the red one -- is what the shader must see.
+        await Assert.That(commands.Uploads[0][..4])
+            .IsEquivalentTo(new byte[] { 255, 255, 255, 255 });
+    }
+
+    [Test]
+    public async Task RoughnessAndMetallicUploadAndBindTheirOwnSamplerAndTextureSlots()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/BoundRoughMetal",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(SilkMaterialParameter.Roughness, "rough.png", SilkTextureChannel.R)
+                    with
+                    {
+                        WrapS = SilkTextureWrap.Repeat,
+                        WrapT = SilkTextureWrap.Repeat,
+                    },
+                ScalarTexture(SilkMaterialParameter.Metallic, "metal.png", SilkTextureChannel.R)
+                    with
+                    {
+                        WrapS = SilkTextureWrap.Clamp,
+                        WrapT = SilkTextureWrap.Clamp,
+                    },
+            ]));
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) => new SilkDecodedImage(1, 1, [255, 255, 255, 255]));
+        using var commands = new TextureCommandList();
+
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.Roughness);
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.Metallic);
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.Roughness);
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.Metallic);
+
+        // Both textures were actually decoded/uploaded -- dropping either would leave
+        // only one entry here.
+        await Assert.That(commands.UploadCount).IsEqualTo(2);
+
+        // Roughness keeps slots 11/4 and metallic takes its own 14/15, so neither can
+        // overwrite the other's descriptor.
+        await Assert.That(commands.SamplerBindings.Select(binding => binding.Binding))
+            .IsEquivalentTo(new uint[] { 11, 14 });
+        await Assert.That(commands.TextureBindings).IsEquivalentTo(new uint[] { 4, 15 });
+
+        // Each sampler keeps its own authored wrap state rather than collapsing to a
+        // single shared descriptor.
+        await Assert.That(commands.SamplerBindings[0].Descriptor.AddressU)
+            .IsEqualTo(SilkSamplerAddressMode.Repeat);
+        await Assert.That(commands.SamplerBindings[1].Descriptor.AddressU)
+            .IsEqualTo(SilkSamplerAddressMode.ClampToEdge);
+    }
+
+    [Test]
+    public async Task PackedSameFileRoughnessAndMetallicBindTwoIndependentTextures()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/PackedBound",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(SilkMaterialParameter.Roughness, "orm.png", SilkTextureChannel.G),
+                ScalarTexture(SilkMaterialParameter.Metallic, "orm.png", SilkTextureChannel.B),
+            ]));
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(1, 1, [10, 20, 30, 40]));
+        using var commands = new TextureCommandList();
+
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.Roughness);
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.Metallic);
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.Roughness);
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.Metallic);
+
+        // One file, two channels: two swizzled uploads rather than one shared upload
+        // the shader would have to unpack by convention.
+        await Assert.That(commands.UploadCount).IsEqualTo(2);
+        await Assert.That(commands.Uploads[0][..4])
+            .IsEquivalentTo(new byte[] { 20, 20, 20, 20 });
+        await Assert.That(commands.Uploads[1][..4])
+            .IsEquivalentTo(new byte[] { 30, 30, 30, 30 });
+        await Assert.That(commands.TextureBindings).IsEquivalentTo(new uint[] { 4, 15 });
+    }
+
+    [Test]
+    public async Task MalformedTextureChannelsAreRejected()
+    {
+        byte[] unknownChannel = CreateMaterialUpsert(
+            "/World/Materials/UnknownChannel",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(SilkMaterialParameter.Roughness, "rough.png", SilkTextureChannel.R),
+            ]);
+        // The channel is the last fixed field of the entry, immediately before the
+        // asset bytes: 32 header + path + 80 - 4.
+        int channelOffset = 32 + "/World/Materials/UnknownChannel".Length + 76;
+        BinaryPrimitives.WriteUInt32LittleEndian(unknownChannel.AsSpan(channelOffset), 5);
+
+        byte[] rgbOnScalar = CreateMaterialUpsert(
+            "/World/Materials/RgbOnScalar",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(SilkMaterialParameter.Roughness, "rough.png", SilkTextureChannel.Rgb),
+            ]);
+        byte[] scalarOnColour = CreateMaterialUpsert(
+            "/World/Materials/ScalarOnColour",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "colour.png",
+                    UvPrimvar: "st",
+                    Channel: SilkTextureChannel.G),
+            ]);
+
+        await Assert.That(() => CopyMaterial(unknownChannel)).Throws<InvalidDataException>();
+        await Assert.That(() => CopyMaterial(rgbOnScalar)).Throws<InvalidDataException>();
+        await Assert.That(() => CopyMaterial(scalarOnColour)).Throws<InvalidDataException>();
+    }
+
+    private static float ReadSingle(byte[] constants, int offset) =>
+        BitConverter.Int32BitsToSingle(
+            BinaryPrimitives.ReadInt32LittleEndian(constants.AsSpan(offset, sizeof(float))));
+
+    private static TextureSpec ScalarTexture(
+        SilkMaterialParameter parameter,
+        string asset,
+        SilkTextureChannel channel) =>
+        new(
+            parameter,
+            SilkTextureWrap.Repeat,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            ComponentCount: 1,
+            Scale: [1f, 1f, 1f, 1f],
+            Bias: [0f, 0f, 0f, 0f],
+            Fallback: [0.5f, 0.5f, 0.5f, 1f],
+            Asset: asset,
+            UvPrimvar: "st",
+            Channel: channel);
+
+
     private static SilkMaterialData CreateMissingMaterial(
         string path,
         float[] fallback) =>
@@ -1212,7 +1596,18 @@ public sealed class SilkMaterialCommandTests
         float[] Bias,
         float[] Fallback,
         string Asset,
-        string UvPrimvar);
+        string UvPrimvar,
+        SilkTextureChannel? Channel = null)
+    {
+        /// <summary>
+        /// The channel a page must carry for this entry. Defaulted from the consumed
+        /// width so a test that does not care about channel selection still writes a
+        /// page hdSilk could have produced.
+        /// </summary>
+        internal SilkTextureChannel ResolvedChannel =>
+            Channel ??
+            (ComponentCount >= 3 ? SilkTextureChannel.Rgb : SilkTextureChannel.R);
+    }
 
     private static byte[] CreateMaterialUpsert(
         string path,
@@ -1264,6 +1659,7 @@ public sealed class SilkMaterialCommandTests
             {
                 payload.AddRange(BitConverter.GetBytes(value));
             }
+            payload.AddRange(BitConverter.GetBytes((uint)texture.ResolvedChannel));
             payload.AddRange(assetBytes);
             payload.AddRange(uvBytes);
         }

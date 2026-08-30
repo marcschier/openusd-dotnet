@@ -654,7 +654,9 @@ internal static partial class Program
                     }
                     for (int index = 0; index < material.TextureCount; index++)
                     {
-                        _ = material.GetTexture(index).Asset;
+                        SilkMaterialTextureEntry texture = material.GetTexture(index);
+                        _ = texture.Asset;
+                        _ = texture.Channel;
                     }
                     break;
                 case SilkCommandType.MaterialRemove:
