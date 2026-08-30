@@ -1068,7 +1068,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             BindMaterialDescriptorTables(
                                 nativeCommands,
                                 descriptorHeaps,
-                                pipeline.BindingLayout,
+                                pipeline,
                                 bindingsForDraw,
                                 materialHeaps);
                         }
@@ -1561,10 +1561,11 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     private void BindMaterialDescriptorTables(
         ID3D12GraphicsCommandList* commands,
         ID3D12DescriptorHeap** descriptorHeaps,
-        SilkBindingLayoutDescriptor layout,
+        D3D12SilkGraphicsPipeline pipeline,
         IReadOnlyList<D3D12MaterialBinding> bindings,
         List<nint> retainedHeaps)
     {
+        D3D12RootBindingPlan plan = pipeline.RootBindingPlan;
         bool hasStorageBinding = false;
         foreach (D3D12MaterialBinding binding in bindings)
         {
@@ -1575,25 +1576,14 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 commands,
                 descriptorHeaps,
                 descriptorTables,
-                layout,
+                plan,
                 bindings))
         {
             return;
         }
 
-        uint viewCount = 0;
-        uint samplerCount = 0;
-        foreach (D3D12MaterialBinding binding in bindings)
-        {
-            if (binding.Kind == SilkBindingKind.SampledTexture)
-            {
-                viewCount++;
-            }
-            else if (binding.Kind == SilkBindingKind.Sampler)
-            {
-                samplerCount++;
-            }
-        }
+        uint viewCount = plan.SampledTextureCount;
+        uint samplerCount = plan.SamplerCount;
         ID3D12DescriptorHeap* viewHeap =
             viewCount == 0 ? null : CreateShaderVisibleHeap(
                 DescriptorHeapType.CbvSrvUav,
@@ -1621,15 +1611,12 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             DescriptorHeapType.CbvSrvUav);
         uint samplerIncrement = _device->GetDescriptorHandleIncrementSize(
             DescriptorHeapType.Sampler);
-        uint viewIndex = 0;
-        uint samplerIndex = 0;
         foreach (D3D12MaterialBinding binding in bindings)
         {
-            // Root parameter zero is SceneParameters, so slot i lives at i + 1.
-            uint rootParameter = (uint)layout.RequireMaterialSlot(
+            uint rootParameter = plan.GetRootParameter(
                 0,
                 binding.Binding,
-                binding.Kind) + 1;
+                binding.Kind);
             if (binding.Kind == SilkBindingKind.StorageBuffer)
             {
                 commands->SetGraphicsRootShaderResourceView(
@@ -1639,36 +1626,44 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             }
             if (binding.Kind == SilkBindingKind.SampledTexture)
             {
+                uint descriptorOffset = plan.GetDescriptorOffset(
+                    0,
+                    binding.Binding,
+                    binding.Kind);
                 CpuDescriptorHandle destination = new(
                     viewHeap->GetCPUDescriptorHandleForHeapStart().Ptr +
-                    (viewIndex * viewIncrement));
+                    (descriptorOffset * viewIncrement));
                 _device->CopyDescriptorsSimple(
                     1,
                     destination,
                     binding.Texture!.ShaderResourceView,
                     DescriptorHeapType.CbvSrvUav);
-                commands->SetGraphicsRootDescriptorTable(
-                    rootParameter,
-                    new GpuDescriptorHandle(
-                        viewHeap->GetGPUDescriptorHandleForHeapStart().Ptr +
-                        (viewIndex * viewIncrement)));
-                viewIndex++;
                 continue;
             }
+            uint samplerOffset = plan.GetDescriptorOffset(
+                0,
+                binding.Binding,
+                binding.Kind);
             CpuDescriptorHandle samplerDestination = new(
                 samplerHeap->GetCPUDescriptorHandleForHeapStart().Ptr +
-                (samplerIndex * samplerIncrement));
+                (samplerOffset * samplerIncrement));
             _device->CopyDescriptorsSimple(
                 1,
                 samplerDestination,
                 binding.Sampler!.Heap->GetCPUDescriptorHandleForHeapStart(),
                 DescriptorHeapType.Sampler);
+        }
+        if (viewHeap != null)
+        {
             commands->SetGraphicsRootDescriptorTable(
-                rootParameter,
-                new GpuDescriptorHandle(
-                    samplerHeap->GetGPUDescriptorHandleForHeapStart().Ptr +
-                    (samplerIndex * samplerIncrement)));
-            samplerIndex++;
+                plan.SampledTextureRootParameter,
+                viewHeap->GetGPUDescriptorHandleForHeapStart());
+        }
+        if (samplerHeap != null)
+        {
+            commands->SetGraphicsRootDescriptorTable(
+                plan.SamplerRootParameter,
+                samplerHeap->GetGPUDescriptorHandleForHeapStart());
         }
     }
 
@@ -1691,7 +1686,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ID3D12GraphicsCommandList* commands,
         ID3D12DescriptorHeap** descriptorHeaps,
         D3D12DescriptorIndexedTextureTables descriptorTables,
-        SilkBindingLayoutDescriptor layout,
+        D3D12RootBindingPlan plan,
         IReadOnlyList<D3D12MaterialBinding> bindings)
     {
         if (bindings.Count == 0)
@@ -1699,35 +1694,60 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             return true;
         }
 
-        var handles = new GpuDescriptorHandle[bindings.Count];
-        for (int index = 0; index < bindings.Count; index++)
+        var textureSources = new CpuDescriptorHandle[plan.SampledTextureCount];
+        var samplerSources = new CpuDescriptorHandle[plan.SamplerCount];
+        int textureCount = 0;
+        int samplerCount = 0;
+        foreach (D3D12MaterialBinding binding in bindings)
         {
-            D3D12MaterialBinding binding = bindings[index];
-            bool copied = binding.Kind == SilkBindingKind.SampledTexture
-                ? descriptorTables.TryCopySampledTexture(
-                    binding.Texture!.ShaderResourceView,
-                    out handles[index])
-                : descriptorTables.TryCopySampler(
-                    binding.Sampler!.Heap->GetCPUDescriptorHandleForHeapStart(),
-                    out handles[index]);
-            if (!copied)
+            uint offset = plan.GetDescriptorOffset(0, binding.Binding, binding.Kind);
+            if (binding.Kind == SilkBindingKind.SampledTexture)
             {
-                return false;
+                textureSources[offset] = binding.Texture!.ShaderResourceView;
+                textureCount++;
             }
+            else
+            {
+                samplerSources[offset] =
+                    binding.Sampler!.Heap->GetCPUDescriptorHandleForHeapStart();
+                samplerCount++;
+            }
+        }
+        if (textureCount != textureSources.Length ||
+            samplerCount != samplerSources.Length)
+        {
+            return false;
+        }
+        GpuDescriptorHandle textureTable = default;
+        GpuDescriptorHandle samplerTable = default;
+        if (textureSources.Length != 0 &&
+            !descriptorTables.TryCopySampledTextures(
+                textureSources,
+                out textureTable))
+        {
+            return false;
+        }
+        if (samplerSources.Length != 0 &&
+            !descriptorTables.TryCopySamplers(
+                samplerSources,
+                out samplerTable))
+        {
+            return false;
         }
 
         uint heapCount = descriptorTables.FillDescriptorHeaps(descriptorHeaps);
         commands->SetDescriptorHeaps(heapCount, descriptorHeaps);
-        for (int index = 0; index < bindings.Count; index++)
+        if (textureSources.Length != 0)
         {
-            D3D12MaterialBinding binding = bindings[index];
-            uint rootParameter = (uint)layout.RequireMaterialSlot(
-                0,
-                binding.Binding,
-                binding.Kind) + 1;
             commands->SetGraphicsRootDescriptorTable(
-                rootParameter,
-                handles[index]);
+                plan.SampledTextureRootParameter,
+                textureTable);
+        }
+        if (samplerSources.Length != 0)
+        {
+            commands->SetGraphicsRootDescriptorTable(
+                plan.SamplerRootParameter,
+                samplerTable);
         }
         return true;
     }
