@@ -743,6 +743,15 @@
           "evidencePlatforms": ["win-x64", "linux-x64"]
         },
         {
+          "id": "texture-residency-budgets",
+          "description": "Bounded Silk texture cache residency: SilkTextureResidencyOptions carries independently configurable, validated nonzero decoded-CPU and estimated-GPU byte budgets (512 MiB defaults) threaded through a dedicated SilkSceneGpuResources/SilkMeshRenderer constructor overload alongside the original device-only overload; ordinary, UDIM, fallback, and volume entries are tracked and evicted by a single deterministic LRU policy with a stable creation-order tie-breaker from an internal submission-safe trim point invoked only after a graphics submission has completed, never while unsubmitted or in-flight commands may still use a retained texture, and only against entries not referenced since the previous trim so an over-budget working set rendered every frame is retained rather than re-decoded and re-evicted every frame, with failed texture fallbacks eligible for eviction only as a last resort; an entry that alone exceeds a budget is evicted once with a bounded diagnostic rather than looped on, and the same bounded diagnostic reports a pinned current-frame working set that alone stays over budget",
+          "status": "implemented",
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkTextureResidencyTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
           "id": "gpu-ocio-presentation",
           "description": "OCIO final display/view/look correction for live GPU presentation via HdxColorCorrectionTask",
           "status": "not-supported",

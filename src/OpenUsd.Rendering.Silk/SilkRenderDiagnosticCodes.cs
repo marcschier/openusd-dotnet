@@ -22,4 +22,14 @@ public static class SilkRenderDiagnosticCodes
 
     /// <summary>Additional diagnostics were omitted to keep the snapshot bounded.</summary>
     public const string CapacityExceeded = "OPENUSD_SILK_DIAGNOSTIC_CAPACITY_EXCEEDED";
+
+    /// <summary>
+    /// A configured decoded-CPU or estimated-GPU texture residency budget was violated. Reported
+    /// either when a single texture cache entry's own size alone exceeds a budget (the entry is
+    /// still evicted rather than retained past the trim point) or when the current frame's pinned
+    /// working set alone exceeds a budget with no stale entry left to evict (nothing is evicted,
+    /// since every remaining entry is still referenced by the frame(s) recorded since the
+    /// previous trim).
+    /// </summary>
+    public const string TextureBudgetExceeded = "OPENUSD_SILK_TEXTURE_BUDGET_EXCEEDED";
 }

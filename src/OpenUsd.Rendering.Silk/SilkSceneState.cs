@@ -1517,20 +1517,81 @@ public sealed class SilkSceneGpuResources : IDisposable
     private ulong _frameRevision = ulong.MaxValue;
     private RenderOutputTransform _frameOutputTransform = (RenderOutputTransform)(-1);
     private float _frameExposure = float.NaN;
+    private readonly SilkTextureResidencyOptions _residencyOptions;
+    private ulong _textureUseClock;
+    private ulong _textureEntrySequence;
+    // The _textureUseClock value as of the end of the previous TrimTextureResidency call. Entries
+    // last used at or before this boundary were not touched during the frame(s) recorded since
+    // that trim and are the only eviction candidates the next trim may consider; this is what
+    // protects the current-frame working set from decode/upload thrash. See TrimTextureResidency.
+    private ulong _textureUseClockBoundary;
+    private ulong _decodedTextureResidentBytes;
+    private ulong _gpuTextureResidentBytes;
+    private ulong _peakDecodedTextureResidentBytes;
+    private ulong _peakGpuTextureResidentBytes;
+    private ulong _textureEvictionCount;
     private bool _disposed;
 
     private readonly record struct SurfaceBuffer(
         ISilkGraphicsBuffer? Buffer,
         ulong MaterialHash);
 
-    private sealed record TextureCacheEntry(
-        ISilkGraphicsTexture Texture,
-        byte[] Pixels,
-        bool IsUdim = false,
-        TextureDependency[]? Dependencies = null)
+    /// <summary>
+    /// A retained texture and its decoded-CPU/GPU-resident accounting. <see cref="Pixels"/> stays
+    /// retained for the lifetime of the entry — it is only ever released by disposing the entry
+    /// itself through safe LRU eviction (<see cref="TrimTextureResidency"/>) — so the decoded CPU
+    /// byte budget in <see cref="SilkTextureResidencyOptions"/> is a real, independently
+    /// enforceable budget rather than one that only ever measures a near-zero residency between
+    /// draws.
+    /// </summary>
+    private sealed class TextureCacheEntry(
+        ISilkGraphicsTexture texture,
+        byte[] pixels,
+        ulong gpuBytes,
+        bool isUdim = false,
+        TextureDependency[]? dependencies = null)
     {
+        internal ISilkGraphicsTexture Texture { get; } = texture;
+
+        internal byte[] Pixels { get; } = pixels;
+
+        internal ulong GpuBytes { get; } = gpuBytes;
+
+        internal bool IsUdim { get; } = isUdim;
+
+        internal TextureDependency[]? Dependencies { get; } = dependencies;
+
         internal bool Uploaded { get; set; }
+
+        /// <summary>Gets the decoded CPU byte count retained by <see cref="Pixels"/>.</summary>
+        internal ulong DecodedBytes => checked((ulong)Pixels.Length);
+
+        /// <summary>Gets or sets the monotonically increasing stamp used for LRU ordering.</summary>
+        internal ulong LastUsedStamp { get; set; }
+
+        /// <summary>Gets the creation-order number used as a stable LRU tie-breaker.</summary>
+        internal ulong SequenceId { get; set; }
     }
+
+    private enum TextureCacheEntryKind
+    {
+        Ordinary,
+        Failed,
+        Volume,
+    }
+
+    /// <summary>
+    /// Identifies one eviction candidate found by <see cref="TryFindStaleEvictionCandidate"/>.
+    /// Exactly one of <see cref="OrdinaryKey"/> (for <see cref="TextureCacheEntryKind.Ordinary"/>
+    /// or <see cref="TextureCacheEntryKind.Failed"/>) or <see cref="VolumeKey"/> (for
+    /// <see cref="TextureCacheEntryKind.Volume"/>) identifies the owning dictionary's key; the
+    /// other is unused for that <see cref="Kind"/> and must not be read.
+    /// </summary>
+    private readonly record struct EvictionCandidate(
+        TextureCacheEntryKind Kind,
+        TextureCacheKey OrdinaryKey,
+        string? VolumeKey,
+        TextureCacheEntry Entry);
 
     private readonly record struct VolumeTextureInfo(uint Width, uint Height, uint Depth);
 
@@ -1551,16 +1612,43 @@ public sealed class SilkSceneGpuResources : IDisposable
     {
     }
 
+    /// <summary>
+    /// Initializes GPU resource retention for one backend device, with explicit decoded CPU and
+    /// estimated GPU texture cache residency budgets.
+    /// </summary>
+    /// <param name="device">The backend graphics device.</param>
+    /// <param name="residencyOptions">
+    /// The decoded CPU and estimated GPU texture cache residency budgets enforced by
+    /// <see cref="TrimTextureResidency"/>.
+    /// </param>
+    public SilkSceneGpuResources(ISilkGraphicsDevice device, SilkTextureResidencyOptions residencyOptions)
+        : this(
+            device,
+            SilkNativeImageDecoder.Decode,
+            SilkNativeImageDecoder.ResolveUdimTiles,
+            RequireResidencyOptions(residencyOptions))
+    {
+    }
+
+    private static SilkTextureResidencyOptions RequireResidencyOptions(
+        SilkTextureResidencyOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return options;
+    }
+
     internal SilkSceneGpuResources(
         ISilkGraphicsDevice device,
         Func<string, bool, SilkDecodedImage> imageDecoder,
-        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null)
+        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null,
+        SilkTextureResidencyOptions? residencyOptions = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(imageDecoder);
         _device = device;
         _imageDecoder = imageDecoder;
         _udimResolver = udimResolver ?? SilkNativeImageDecoder.ResolveUdimTiles;
+        _residencyOptions = residencyOptions ?? SilkTextureResidencyOptions.Default;
         SilkManagedDiagnostics.GpuSceneCreated();
     }
 
@@ -1621,7 +1709,15 @@ public sealed class SilkSceneGpuResources : IDisposable
         _uniformUploads,
         _bufferAllocationBytes,
         _bufferWriteBytes,
-        _textureUploadBytes);
+        _textureUploadBytes,
+        _decodedTextureResidentBytes,
+        _gpuTextureResidentBytes,
+        _peakDecodedTextureResidentBytes,
+        _peakGpuTextureResidentBytes,
+        _residencyOptions.MaxDecodedCpuBytes,
+        _residencyOptions.MaxGpuBytes,
+        _textures.Count + _failedTextures.Count + _volumeTextures.Count,
+        _textureEvictionCount);
 
     private ulong _geometryBuilds;
     private ulong _vertexUploads;
@@ -1699,9 +1795,8 @@ public sealed class SilkSceneGpuResources : IDisposable
         }
         if (delta.MaterialChanges != 0)
         {
-            ClearTextureCache();
+            RemoveChangedMaterialTextureCacheEntries(delta.ChangedMaterialPaths.Span);
             RemoveMaterialDiagnostics();
-            RemoveTextureDiagnostics();
         }
         else if (delta.MeshUpserts != 0 || delta.MeshRemovals != 0)
         {
@@ -2009,13 +2104,15 @@ public sealed class SilkSceneGpuResources : IDisposable
         {
             if (!DependenciesChanged(entry.Dependencies))
             {
+                TouchEntry(entry);
                 return entry;
             }
             _textures.Remove(key);
-            entry.Texture.Dispose();
+            DisposeEntry(entry);
         }
         if (_failedTextures.TryGetValue(key, out entry))
         {
+            TouchEntry(entry);
             return entry;
         }
 
@@ -2127,8 +2224,10 @@ public sealed class SilkSceneGpuResources : IDisposable
             var entry = new TextureCacheEntry(
                 gpuTexture,
                 pixels,
+                checked((ulong)pixels.Length),
                 isUdim,
                 CaptureDependencies(dependencies));
+            RegisterEntry(entry);
             cache.Add(key, entry);
             return entry;
         }
@@ -2366,6 +2465,7 @@ public sealed class SilkSceneGpuResources : IDisposable
     {
         if (_volumeTextures.TryGetValue(texture.Asset, out TextureCacheEntry? entry))
         {
+            TouchEntry(entry);
             return entry;
         }
         if (_device is not ISilkVolumeTextureGraphicsDevice volumeDevice)
@@ -2390,7 +2490,8 @@ public sealed class SilkSceneGpuResources : IDisposable
                 info.Height,
                 info.Depth,
                 SilkTextureFormat.R32Float);
-            entry = new TextureCacheEntry(gpuTexture, pixels);
+            entry = new TextureCacheEntry(gpuTexture, pixels, checked((ulong)pixels.Length));
+            RegisterEntry(entry);
             _volumeTextures.Add(texture.Asset, entry);
             return entry;
         }
@@ -2583,13 +2684,13 @@ public sealed class SilkSceneGpuResources : IDisposable
     {
         foreach (TextureCacheEntry entry in _textures.Values)
         {
-            entry.Texture.Dispose();
+            DisposeEntry(entry);
         }
         _textures.Clear();
         ClearFailedTextureCache();
         foreach (TextureCacheEntry entry in _volumeTextures.Values)
         {
-            entry.Texture.Dispose();
+            DisposeEntry(entry);
         }
         _volumeTextures.Clear();
     }
@@ -2598,9 +2699,60 @@ public sealed class SilkSceneGpuResources : IDisposable
     {
         foreach (TextureCacheEntry entry in _failedTextures.Values)
         {
-            entry.Texture.Dispose();
+            DisposeEntry(entry);
         }
         _failedTextures.Clear();
+    }
+
+    /// <summary>
+    /// Disposes the cached ordinary/UDIM/fallback texture entries belonging to materials this
+    /// delta changed, rather than the entire ordinary/UDIM/fallback texture cache, and
+    /// unconditionally disposes <i>every</i> retained volume density texture entry on any
+    /// material change. Editing one material's texture assignment must not force every other
+    /// still-resident material's decoded/uploaded texture work to be redone next frame, which
+    /// would defeat both the retained CPU budget (see <see cref="TextureCacheEntry.Pixels"/>) and
+    /// the frame working-set protection in <see cref="TrimTextureResidency"/>. Volume density
+    /// textures are keyed by asset path rather than material path (see
+    /// <see cref="_volumeTextures"/>), so they carry no material identity to prune selectively
+    /// by; there is no way to tell which, if any, volume texture belongs to a changed material,
+    /// so all of them are cleared and disposed here — the same coarse, whole-cache treatment
+    /// <see cref="ClearTextureCache"/> gives them. This also guarantees a volume texture is never
+    /// left stale after its owning material changes to reuse the same asset path with different
+    /// dimensions: <see cref="RequireVolumeTexture"/> keys purely on asset path, so without this
+    /// unconditional clear a dimension change alone could silently keep serving the old texture.
+    /// </summary>
+    private void RemoveChangedMaterialTextureCacheEntries(ReadOnlySpan<string> changedMaterialPaths)
+    {
+        if (changedMaterialPaths.Length == 0)
+        {
+            return;
+        }
+        var changed = new HashSet<string>(changedMaterialPaths.ToArray(), StringComparer.Ordinal);
+        RemoveMatchingTextureCacheEntries(_textures, changed);
+        RemoveMatchingTextureCacheEntries(_failedTextures, changed);
+        foreach (TextureCacheEntry entry in _volumeTextures.Values)
+        {
+            DisposeEntry(entry);
+        }
+        _volumeTextures.Clear();
+        foreach (string materialPath in changed)
+        {
+            RemoveTextureDiagnostics(materialPath);
+        }
+    }
+
+    private void RemoveMatchingTextureCacheEntries(
+        Dictionary<TextureCacheKey, TextureCacheEntry> cache,
+        HashSet<string> changedMaterialPaths)
+    {
+        foreach (TextureCacheKey key in cache.Keys
+            .Where(key => changedMaterialPaths.Contains(key.MaterialPath))
+            .ToArray())
+        {
+            TextureCacheEntry entry = cache[key];
+            cache.Remove(key);
+            DisposeEntry(entry);
+        }
     }
 
     private void PruneInactiveTextureFailures(SilkSceneState scene)
@@ -2628,10 +2780,274 @@ public sealed class SilkSceneGpuResources : IDisposable
         {
             TextureCacheEntry entry = _failedTextures[key];
             _failedTextures.Remove(key);
-            entry.Texture.Dispose();
+            DisposeEntry(entry);
             RemoveTextureDiagnostics(key.MaterialPath);
         }
     }
+
+    /// <summary>Records a freshly created entry's initial LRU stamp and residency accounting.</summary>
+    private void RegisterEntry(TextureCacheEntry entry)
+    {
+        entry.SequenceId = ++_textureEntrySequence;
+        entry.LastUsedStamp = ++_textureUseClock;
+        _decodedTextureResidentBytes = checked(_decodedTextureResidentBytes + entry.DecodedBytes);
+        _gpuTextureResidentBytes = checked(_gpuTextureResidentBytes + entry.GpuBytes);
+        if (_decodedTextureResidentBytes > _peakDecodedTextureResidentBytes)
+        {
+            _peakDecodedTextureResidentBytes = _decodedTextureResidentBytes;
+        }
+        if (_gpuTextureResidentBytes > _peakGpuTextureResidentBytes)
+        {
+            _peakGpuTextureResidentBytes = _gpuTextureResidentBytes;
+        }
+    }
+
+    /// <summary>
+    /// Bumps an existing entry's monotonically increasing last-use stamp on cache hit, marking it
+    /// part of the current frame's working set and pinning it against eviction until it is no
+    /// longer touched by a subsequent frame. See <see cref="TrimTextureResidency"/>.
+    /// </summary>
+    private void TouchEntry(TextureCacheEntry entry) => entry.LastUsedStamp = ++_textureUseClock;
+
+    /// <summary>
+    /// Disposes a texture cache entry's GPU texture and removes its residency accounting. The
+    /// caller must have already removed the entry from whichever cache dictionary owned it.
+    /// </summary>
+    private void DisposeEntry(TextureCacheEntry entry)
+    {
+        _decodedTextureResidentBytes = checked(_decodedTextureResidentBytes - entry.DecodedBytes);
+        _gpuTextureResidentBytes = checked(_gpuTextureResidentBytes - entry.GpuBytes);
+        entry.Texture.Dispose();
+    }
+
+    /// <summary>
+    /// Evicts least-recently-used ordinary, UDIM, fallback, and volume texture cache entries until
+    /// decoded CPU and estimated GPU-resident bytes are both within the configured
+    /// <see cref="SilkTextureResidencyOptions"/> budgets, or until only the current frame's
+    /// working set remains.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Safety contract:</b> the caller must guarantee that no command list which may still
+    /// reference a retained texture is unsubmitted, and that every graphics submission which used
+    /// a currently retained texture has already completed — i.e. its
+    /// <see cref="ISilkGraphicsSubmission.Wait"/> has returned — before calling this method.
+    /// Disposing a texture while a command list has merely recorded, but not yet submitted or
+    /// awaited, commands referencing it is unsafe on backends whose native resource release is
+    /// deferred behind a submission lease. <see cref="SilkMeshRenderer"/> only calls this
+    /// immediately after each relevant submission's <c>Wait()</c> has returned (both the
+    /// single-mesh and grouped/instanced draw paths). Tests may call this directly only when no
+    /// command list referencing scene textures is currently outstanding.
+    /// </para>
+    /// <para>
+    /// <b>Frame working-set protection:</b> only entries whose last-use stamp is at or before the
+    /// use-clock boundary recorded by the <i>preceding</i> call to this method are eviction
+    /// candidates; every entry touched since then — i.e. referenced while recording the frame(s)
+    /// since the last trim — is pinned and never evicted, no matter how far over budget the
+    /// working set is. This is what prevents an over-budget current working set from being
+    /// decoded, uploaded, evicted, and re-decoded every single frame: a texture referenced again
+    /// this frame simply stays resident. On the very first call, the boundary is the clock's
+    /// initial value, so every entry touched while assembling that first frame is itself the
+    /// pinned working set. If the pinned working set alone still exceeds either budget once no
+    /// stale candidate remains, eviction stops and a single bounded
+    /// <see cref="SilkRenderDiagnosticCodes.TextureBudgetExceeded"/> diagnostic reports the
+    /// violated budget(s), current bytes, and entry count rather than looping or thrashing.
+    /// Failed-fallback texture entries are eligible for eviction only as a last resort, after
+    /// every stale ordinary and volume candidate: evicting a tiny fallback placeholder only to
+    /// immediately repeat its failed decode (and, for filesystem-backed assets, its failed file
+    /// read) on the very next reference wastes work for no residency benefit. The use-clock
+    /// boundary always advances to the current clock value before this method returns, regardless
+    /// of whether eviction fully restored both budgets.
+    /// </para>
+    /// </remarks>
+    internal void TrimTextureResidency()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_textures.Count == 0 && _failedTextures.Count == 0 && _volumeTextures.Count == 0)
+        {
+            RemoveDiagnostics(static code =>
+                code == SilkRenderDiagnosticCodes.TextureBudgetExceeded);
+            _textureUseClockBoundary = _textureUseClock;
+            return;
+        }
+
+        ulong maxDecoded = _residencyOptions.MaxDecodedCpuBytes;
+        ulong maxGpu = _residencyOptions.MaxGpuBytes;
+        ulong staleBoundary = _textureUseClockBoundary;
+        while (IsOverBudget(maxDecoded, maxGpu))
+        {
+            if (!TryFindStaleEvictionCandidate(staleBoundary, out EvictionCandidate candidate))
+            {
+                EmitWorkingSetBudgetDiagnostic(maxDecoded, maxGpu);
+                break;
+            }
+
+            TextureCacheEntry victim = candidate.Entry;
+            // Capture sizes before disposal: DisposeEntry mutates the residency accounting that a
+            // diagnostic built from stale (post-disposal) totals would misreport.
+            ulong victimDecodedBytes = victim.DecodedBytes;
+            ulong victimGpuBytes = victim.GpuBytes;
+            bool oversizeAlone = victimDecodedBytes > maxDecoded || victimGpuBytes > maxGpu;
+            string identity = RemoveEvictionCandidate(candidate);
+            DisposeEntry(victim);
+            _textureEvictionCount++;
+
+            if (oversizeAlone)
+            {
+                AddDiagnostic(
+                    SilkRenderDiagnosticCodes.TextureBudgetExceeded,
+                    identity,
+                    RenderDiagnosticSeverity.Warning,
+                    $"A single texture cache entry ({victimDecodedBytes} decoded / " +
+                        $"{victimGpuBytes} GPU bytes) alone exceeded the configured residency " +
+                        $"budget (max {maxDecoded} decoded / {maxGpu} GPU bytes) and was evicted " +
+                        "rather than retained.");
+            }
+        }
+
+        if (!IsOverBudget(maxDecoded, maxGpu))
+        {
+            RemoveWorkingSetBudgetDiagnostic();
+        }
+        _textureUseClockBoundary = _textureUseClock;
+    }
+
+    private bool IsOverBudget(ulong maxDecoded, ulong maxGpu) =>
+        _decodedTextureResidentBytes > maxDecoded || _gpuTextureResidentBytes > maxGpu;
+
+    /// <summary>
+    /// Reports that the current frame's pinned working set alone violates one or both configured
+    /// residency budgets, with no stale entry left to evict. Identity is a fixed string so the
+    /// diagnostic stays a single bounded entry no matter how many frames repeat this condition;
+    /// because <see cref="AddDiagnostic"/> is a no-op once that fixed key is already present, the
+    /// previous emission is removed first so the byte totals and entry count in the message stay
+    /// current for as long as the working set remains over budget, rather than freezing at
+    /// whatever they were on the first over-budget frame.
+    /// </summary>
+    private void EmitWorkingSetBudgetDiagnostic(ulong maxDecoded, ulong maxGpu)
+    {
+        ulong decodedBytes = _decodedTextureResidentBytes;
+        ulong gpuBytes = _gpuTextureResidentBytes;
+        int entryCount = _textures.Count + _failedTextures.Count + _volumeTextures.Count;
+        var violated = new List<string>(2);
+        if (decodedBytes > maxDecoded)
+        {
+            violated.Add($"decoded CPU bytes {decodedBytes} exceed the {maxDecoded} byte budget");
+        }
+        if (gpuBytes > maxGpu)
+        {
+            violated.Add($"GPU bytes {gpuBytes} exceed the {maxGpu} byte budget");
+        }
+        RemoveWorkingSetBudgetDiagnostic();
+        AddDiagnostic(
+            SilkRenderDiagnosticCodes.TextureBudgetExceeded,
+            WorkingSetBudgetDiagnosticIdentity,
+            RenderDiagnosticSeverity.Warning,
+            $"The current-frame texture working set ({entryCount} entries) alone violates the " +
+                $"configured residency budget: {string.Join("; ", violated)}. No entry in the " +
+                "working set was evicted because every one is still referenced by the frame(s) " +
+                "recorded since the previous trim.");
+    }
+
+    private void RemoveWorkingSetBudgetDiagnostic() =>
+        _diagnostics.Remove(
+            string.Concat(SilkRenderDiagnosticCodes.TextureBudgetExceeded, "\0", WorkingSetBudgetDiagnosticIdentity));
+
+    private const string WorkingSetBudgetDiagnosticIdentity = "current-frame-working-set";
+
+    /// <summary>
+    /// Finds the least-recently-used eviction candidate among entries not touched since
+    /// <paramref name="staleBoundary"/>, preferring any stale ordinary or volume entry over a
+    /// stale failed-fallback entry regardless of relative age. Returns <see langword="false"/> if
+    /// no cache entry qualifies as stale, meaning every remaining entry is part of the pinned
+    /// current-frame working set.
+    /// </summary>
+    private bool TryFindStaleEvictionCandidate(ulong staleBoundary, out EvictionCandidate candidate)
+    {
+        TextureCacheEntry? best = null;
+        TextureCacheKey bestOrdinaryKey = default;
+        string? bestVolumeKey = null;
+        TextureCacheEntryKind bestKind = TextureCacheEntryKind.Ordinary;
+        foreach (KeyValuePair<TextureCacheKey, TextureCacheEntry> pair in _textures)
+        {
+            if (pair.Value.LastUsedStamp <= staleBoundary && IsOlder(pair.Value, best))
+            {
+                best = pair.Value;
+                bestOrdinaryKey = pair.Key;
+                bestKind = TextureCacheEntryKind.Ordinary;
+            }
+        }
+        foreach (KeyValuePair<string, TextureCacheEntry> pair in _volumeTextures)
+        {
+            if (pair.Value.LastUsedStamp <= staleBoundary && IsOlder(pair.Value, best))
+            {
+                best = pair.Value;
+                bestVolumeKey = pair.Key;
+                bestKind = TextureCacheEntryKind.Volume;
+            }
+        }
+        if (best is not null)
+        {
+            candidate = new EvictionCandidate(bestKind, bestOrdinaryKey, bestVolumeKey, best);
+            return true;
+        }
+
+        // Failed-fallback entries are eligible only as this last resort; see TrimTextureResidency.
+        TextureCacheEntry? bestFailed = null;
+        TextureCacheKey bestFailedKey = default;
+        foreach (KeyValuePair<TextureCacheKey, TextureCacheEntry> pair in _failedTextures)
+        {
+            if (pair.Value.LastUsedStamp <= staleBoundary && IsOlder(pair.Value, bestFailed))
+            {
+                bestFailed = pair.Value;
+                bestFailedKey = pair.Key;
+            }
+        }
+        if (bestFailed is not null)
+        {
+            candidate = new EvictionCandidate(TextureCacheEntryKind.Failed, bestFailedKey, null, bestFailed);
+            return true;
+        }
+
+        candidate = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Removes an eviction candidate from the cache dictionary it belongs to and returns its
+    /// stable diagnostic identity. Throws rather than substituting a placeholder key if a volume
+    /// candidate's key is somehow missing, since silently masking that invariant violation would
+    /// corrupt both cache bookkeeping and diagnostic identity.
+    /// </summary>
+    private string RemoveEvictionCandidate(EvictionCandidate candidate)
+    {
+        switch (candidate.Kind)
+        {
+            case TextureCacheEntryKind.Ordinary:
+                _textures.Remove(candidate.OrdinaryKey);
+                return string.Concat(candidate.OrdinaryKey.MaterialPath, "\0", candidate.OrdinaryKey.Asset);
+            case TextureCacheEntryKind.Failed:
+                _failedTextures.Remove(candidate.OrdinaryKey);
+                return string.Concat(candidate.OrdinaryKey.MaterialPath, "\0", candidate.OrdinaryKey.Asset);
+            case TextureCacheEntryKind.Volume:
+                string volumeAsset = candidate.VolumeKey ??
+                    throw new InvalidOperationException(
+                        "A volume eviction candidate must carry its owning cache key.");
+                _volumeTextures.Remove(volumeAsset);
+                return volumeAsset;
+            default:
+                throw new InvalidOperationException(
+                    $"Unrecognized texture cache eviction candidate kind '{candidate.Kind}'.");
+        }
+    }
+
+    // Ties on the last-use stamp cannot occur in practice, since every touch draws from one
+    // strictly increasing clock, but the creation-order sequence number is compared as a stable,
+    // deterministic secondary key so eviction order is never dependent on dictionary enumeration.
+    private static bool IsOlder(TextureCacheEntry candidate, TextureCacheEntry? current) =>
+        current is null ||
+        candidate.LastUsedStamp < current.LastUsedStamp ||
+        (candidate.LastUsedStamp == current.LastUsedStamp && candidate.SequenceId < current.SequenceId);
 
     private void AddDiagnostic(
         string code,
@@ -2666,6 +3082,7 @@ public sealed class SilkSceneGpuResources : IDisposable
             code is SilkRenderDiagnosticCodes.TextureAssetNotFound or
                 SilkRenderDiagnosticCodes.TextureDecodeFailed or
                 SilkRenderDiagnosticCodes.TextureFallbackUsed or
+                SilkRenderDiagnosticCodes.TextureBudgetExceeded or
                 SilkRenderDiagnosticCodes.CapacityExceeded);
     }
 
@@ -2688,9 +3105,10 @@ public sealed class SilkSceneGpuResources : IDisposable
     {
         foreach (string key in _diagnostics
             .Where(pair =>
-                pair.Value.Code is SilkRenderDiagnosticCodes.TextureAssetNotFound or
+                (pair.Value.Code is SilkRenderDiagnosticCodes.TextureAssetNotFound or
                     SilkRenderDiagnosticCodes.TextureDecodeFailed or
-                    SilkRenderDiagnosticCodes.TextureFallbackUsed &&
+                    SilkRenderDiagnosticCodes.TextureFallbackUsed or
+                    SilkRenderDiagnosticCodes.TextureBudgetExceeded) &&
                 pair.Key.StartsWith(
                     string.Concat(pair.Value.Code, "\0", materialPath, "\0"),
                     StringComparison.Ordinal))
@@ -3238,4 +3656,12 @@ public readonly record struct SilkSceneGpuStatistics(
     ulong UniformUploads,
     ulong BufferAllocationBytes,
     ulong BufferWriteBytes,
-    ulong TextureUploadBytes);
+    ulong TextureUploadBytes,
+    ulong TextureResidentDecodedBytes = 0,
+    ulong TextureResidentGpuBytes = 0,
+    ulong PeakTextureResidentDecodedBytes = 0,
+    ulong PeakTextureResidentGpuBytes = 0,
+    ulong MaxDecodedCpuTextureBytes = 0,
+    ulong MaxGpuTextureBytes = 0,
+    int TextureCacheEntryCount = 0,
+    ulong TextureEvictionCount = 0);

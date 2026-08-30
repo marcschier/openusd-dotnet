@@ -655,6 +655,7 @@ OpenUsd.Rendering.Silk.SilkMeshRenderer.SelectionOutlineCapabilities.get -> Open
 OpenUsd.Rendering.Silk.SilkMeshRenderer.SelectionOutlineDiagnostics.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineDiagnostics
 OpenUsd.Rendering.Silk.SilkMeshRenderer.SelectionOutlineSettings.get -> OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings!
 OpenUsd.Rendering.Silk.SilkMeshRenderer.SilkMeshRenderer(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
+OpenUsd.Rendering.Silk.SilkMeshRenderer.SilkMeshRenderer(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, OpenUsd.Rendering.Silk.SilkTextureResidencyOptions! textureResidencyOptions) -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderer.SyncAndRender(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! colorTarget, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! depthTarget, double timeCode, OpenUsd.Rendering.Silk.SilkMeshRenderOptions? options = null) -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
 OpenUsd.Rendering.Silk.SilkMeshRenderer.SyncAndRender(OpenUsd.Rendering.Silk.OpenUsdSilkSession! session, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! colorTarget, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! depthTarget, double timeCode, OpenUsd.Rendering.Silk.SilkPickFrameBinding pickBinding, OpenUsd.Rendering.Silk.SilkMeshRenderOptions? options = null) -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
 OpenUsd.Rendering.Silk.SilkMeshRenderer.UpdateSelection(OpenUsd.Rendering.SelectionState! selection, OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings? settings = null) -> void
@@ -921,6 +922,7 @@ const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.CapacityExceeded = "OPENU
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialUnresolved = "OPENUSD_SILK_MATERIAL_UNRESOLVED" -> string!
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialUnsupported = "OPENUSD_SILK_MATERIAL_UNSUPPORTED" -> string!
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureAssetNotFound = "OPENUSD_SILK_TEXTURE_ASSET_NOT_FOUND" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureBudgetExceeded = "OPENUSD_SILK_TEXTURE_BUDGET_EXCEEDED" -> string!
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureDecodeFailed = "OPENUSD_SILK_TEXTURE_DECODE_FAILED" -> string!
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TextureFallbackUsed = "OPENUSD_SILK_TEXTURE_FALLBACK_USED" -> string!
 OpenUsd.Rendering.Silk.SilkRenderingDescriptor
@@ -977,6 +979,7 @@ OpenUsd.Rendering.Silk.SilkSceneGpuResources.Meshes.get -> System.Collections.Ge
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Revision.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.RetryFailedTextures() -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.SilkSceneGpuResources(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device) -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuResources.SilkSceneGpuResources(OpenUsd.Rendering.Silk.ISilkGraphicsDevice! device, OpenUsd.Rendering.Silk.SilkTextureResidencyOptions! residencyOptions) -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.Statistics.get -> OpenUsd.Rendering.Silk.SilkSceneGpuStatistics
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.UpdateUniforms(OpenUsd.Rendering.Silk.SilkFrameState! frame) -> int
 OpenUsd.Rendering.Silk.SilkSceneGpuResources.UpdateUniforms(OpenUsd.Rendering.Silk.SilkFrameState! frame, OpenUsd.Rendering.Silk.SilkPhysicsTransformOverrides? overrides) -> int
@@ -985,16 +988,32 @@ OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.BufferAllocationBytes.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.BufferAllocationBytes.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.BufferWriteBytes.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.BufferWriteBytes.init -> void
-OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.Deconstruct(out int MeshCount, out ulong GeometryBuilds, out ulong VertexUploads, out ulong IndexUploads, out ulong UniformUploads, out ulong BufferAllocationBytes, out ulong BufferWriteBytes, out ulong TextureUploadBytes) -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.Deconstruct(out int MeshCount, out ulong GeometryBuilds, out ulong VertexUploads, out ulong IndexUploads, out ulong UniformUploads, out ulong BufferAllocationBytes, out ulong BufferWriteBytes, out ulong TextureUploadBytes, out ulong TextureResidentDecodedBytes, out ulong TextureResidentGpuBytes, out ulong PeakTextureResidentDecodedBytes, out ulong PeakTextureResidentGpuBytes, out ulong MaxDecodedCpuTextureBytes, out ulong MaxGpuTextureBytes, out int TextureCacheEntryCount, out ulong TextureEvictionCount) -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.Equals(OpenUsd.Rendering.Silk.SilkSceneGpuStatistics other) -> bool
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.GeometryBuilds.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.GeometryBuilds.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.IndexUploads.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.IndexUploads.init -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.MaxDecodedCpuTextureBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.MaxDecodedCpuTextureBytes.init -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.MaxGpuTextureBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.MaxGpuTextureBytes.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.MeshCount.get -> int
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.MeshCount.init -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.PeakTextureResidentDecodedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.PeakTextureResidentDecodedBytes.init -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.PeakTextureResidentGpuBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.PeakTextureResidentGpuBytes.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.SilkSceneGpuStatistics() -> void
-OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.SilkSceneGpuStatistics(int MeshCount, ulong GeometryBuilds, ulong VertexUploads, ulong IndexUploads, ulong UniformUploads, ulong BufferAllocationBytes, ulong BufferWriteBytes, ulong TextureUploadBytes) -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.SilkSceneGpuStatistics(int MeshCount, ulong GeometryBuilds, ulong VertexUploads, ulong IndexUploads, ulong UniformUploads, ulong BufferAllocationBytes, ulong BufferWriteBytes, ulong TextureUploadBytes, ulong TextureResidentDecodedBytes = 0, ulong TextureResidentGpuBytes = 0, ulong PeakTextureResidentDecodedBytes = 0, ulong PeakTextureResidentGpuBytes = 0, ulong MaxDecodedCpuTextureBytes = 0, ulong MaxGpuTextureBytes = 0, int TextureCacheEntryCount = 0, ulong TextureEvictionCount = 0) -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureCacheEntryCount.get -> int
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureCacheEntryCount.init -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureEvictionCount.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureEvictionCount.init -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureResidentDecodedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureResidentDecodedBytes.init -> void
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureResidentGpuBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureResidentGpuBytes.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureUploadBytes.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.TextureUploadBytes.init -> void
 OpenUsd.Rendering.Silk.SilkSceneGpuStatistics.UniformUploads.get -> ulong
@@ -1370,6 +1389,12 @@ OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.X.get -> uint
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.X.init -> void
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Y.get -> uint
 OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.Y.init -> void
+OpenUsd.Rendering.Silk.SilkTextureResidencyOptions
+const OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.DefaultMaxDecodedCpuBytes = 536870912 -> ulong
+const OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.DefaultMaxGpuBytes = 536870912 -> ulong
+OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.MaxDecodedCpuBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.MaxGpuBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.SilkTextureResidencyOptions(ulong maxDecodedCpuBytes = 536870912, ulong maxGpuBytes = 536870912) -> void
 OpenUsd.Rendering.Silk.SilkTextureUsage
 OpenUsd.Rendering.Silk.SilkTextureUsage.ColorRenderTarget = 2 -> OpenUsd.Rendering.Silk.SilkTextureUsage
 OpenUsd.Rendering.Silk.SilkTextureUsage.CopyDestination = 16 -> OpenUsd.Rendering.Silk.SilkTextureUsage
@@ -1662,6 +1687,7 @@ static OpenUsd.Rendering.Silk.SilkTextureDescriptor.operator !=(OpenUsd.Renderin
 static OpenUsd.Rendering.Silk.SilkTextureDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkTextureDescriptor left, OpenUsd.Rendering.Silk.SilkTextureDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.operator !=(OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate left, OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate right) -> bool
 static OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate.operator ==(OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate left, OpenUsd.Rendering.Silk.SilkTexturePixelCoordinate right) -> bool
+static OpenUsd.Rendering.Silk.SilkTextureResidencyOptions.Default.get -> OpenUsd.Rendering.Silk.SilkTextureResidencyOptions!
 static OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor left, OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor left, OpenUsd.Rendering.Silk.SilkVertexAttributeDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.PositionNormal.get -> OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor

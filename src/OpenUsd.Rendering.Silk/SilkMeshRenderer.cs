@@ -193,11 +193,38 @@ public sealed class SilkMeshRenderer :
     {
     }
 
+    /// <summary>
+    /// Initializes a retained renderer using checked shaders for the device backend, with
+    /// explicit decoded CPU and estimated GPU texture cache residency budgets.
+    /// </summary>
+    /// <param name="device">The backend graphics device.</param>
+    /// <param name="textureResidencyOptions">
+    /// The decoded CPU and estimated GPU texture cache residency budgets to enforce after each
+    /// completed submission.
+    /// </param>
+    public SilkMeshRenderer(ISilkGraphicsDevice device, SilkTextureResidencyOptions textureResidencyOptions)
+        : this(
+            device,
+            GetShaderFormat(device),
+            imageDecoder: null,
+            udimResolver: null,
+            RequireResidencyOptions(textureResidencyOptions))
+    {
+    }
+
+    private static SilkTextureResidencyOptions RequireResidencyOptions(
+        SilkTextureResidencyOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return options;
+    }
+
     internal SilkMeshRenderer(
         ISilkGraphicsDevice device,
         SilkShaderBinaryFormat shaderFormat,
         Func<string, bool, SilkDecodedImage>? imageDecoder = null,
-        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null)
+        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null,
+        SilkTextureResidencyOptions? textureResidencyOptions = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         _device = device;
@@ -206,8 +233,10 @@ public sealed class SilkMeshRenderer :
         _selectionOutlineDevice = device as ISilkSelectionOutlineGraphicsDevice;
         Scene = new SilkSceneState();
         GpuResources = imageDecoder is null
-            ? new SilkSceneGpuResources(device)
-            : new SilkSceneGpuResources(device, imageDecoder, udimResolver);
+            ? textureResidencyOptions is null
+                ? new SilkSceneGpuResources(device)
+                : new SilkSceneGpuResources(device, textureResidencyOptions)
+            : new SilkSceneGpuResources(device, imageDecoder, udimResolver, textureResidencyOptions);
 
         ISilkGraphicsShaderModule? vertexShader = null;
         ISilkGraphicsShaderModule? fragmentShader = null;
@@ -929,6 +958,11 @@ public sealed class SilkMeshRenderer :
 
             using ISilkGraphicsSubmission singleSubmission = _device.Submit(commands);
             singleSubmission.Wait();
+            // Safe: Wait() returning means no unsubmitted or in-flight execution referencing
+            // these textures remains, so completing this submission's lease makes disposing them
+            // safe even though `commands` itself is still alive in this `using` scope. See
+            // SilkSceneGpuResources.TrimTextureResidency.
+            GpuResources.TrimTextureResidency();
             if (pickBinding is { } singleBinding)
             {
                 ProcessPicking(colorTarget, singleBinding);
@@ -1008,6 +1042,11 @@ public sealed class SilkMeshRenderer :
 
         using ISilkGraphicsSubmission submission = _device.Submit(commands);
         submission.Wait();
+        // Safe: Wait() returning means no unsubmitted or in-flight execution referencing these
+        // textures remains, so completing this submission's lease makes disposing them safe even
+        // though `commands` itself is still alive in this `using` scope. See
+        // SilkSceneGpuResources.TrimTextureResidency.
+        GpuResources.TrimTextureResidency();
         if (pickBinding is { } binding)
         {
             ProcessPicking(colorTarget, binding);

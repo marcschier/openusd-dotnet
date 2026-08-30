@@ -196,6 +196,21 @@ spans above 256 cells are diagnosed and rejected. RGBA32Float sampling is neares
 cross-backend filter negotiation lands. Successful local files and resolved UDIM tiles are reloaded
 when their size or last-write timestamp changes; non-filesystem resolver assets use material
 dirtiness or explicit retry. Colour-delta parity with Storm remains outside the current support claim.
+Texture cache residency is now bounded rather than unlimited: `SilkTextureResidencyOptions` exposes
+independently configurable, validated nonzero decoded-CPU and estimated-GPU byte budgets (512 MiB
+defaults), threaded through a dedicated `SilkSceneGpuResources`/`SilkMeshRenderer` constructor overload
+alongside the original device-only overload, with existing callers unaffected. Ordinary, UDIM,
+fallback, and volume entries are all tracked and evicted by a single deterministic least-recently-used
+policy with a stable creation-order tie-breaker, applied only from an internal, submission-safe trim
+point invoked after each relevant graphics submission has completed — never while unsubmitted or
+in-flight commands may still use a retained texture — and only against entries not referenced since the previous trim,
+so an over-budget working set rendered every frame is retained rather than decoded, uploaded, evicted,
+and re-decoded every frame; failed texture fallbacks are eligible for eviction only as a last resort.
+An entry that alone exceeds a budget is evicted (not retried in a loop) with a bounded
+`TextureBudgetExceeded` diagnostic, and the same diagnostic reports a pinned current-frame working set
+that alone stays over budget once no stale entry remains to evict. `SilkSceneGpuStatistics` reports
+current and peak decoded/GPU resident bytes, both configured budgets, the total cache entry count
+across every kind, and a cumulative eviction count.
 It also supports a documented MaterialX projection plus generated-source paths for graphs outside that projection:
 `ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
 driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are

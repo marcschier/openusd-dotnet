@@ -610,6 +610,37 @@ invalidates and re-decodes only the entries whose source file or resolved UDIM t
 other resolver-backed assets continue to use material dirtiness or explicit failed-texture retry
 because they do not expose portable filesystem metadata.
 
+Texture cache/residency is bounded rather than unlimited. `SilkTextureResidencyOptions` carries two
+independently configurable, validated nonzero `ulong` immutable budgets — a maximum decoded CPU byte
+count and a maximum estimated logical GPU byte count — both defaulting to 512 MiB and passed through a
+dedicated `SilkSceneGpuResources`/`SilkMeshRenderer` constructor overload alongside the original
+device-only overload, so existing callers are unaffected. Every ordinary, UDIM, fallback, and volume
+cache entry tracks its decoded byte count, its estimated GPU byte count (the uploaded logical
+mip/volume payload, not a backend allocation or alignment estimate), and a monotonically increasing
+last-use stamp, all rolled into `SilkSceneGpuStatistics`. Decoded CPU bytes are retained for the entry's
+full lifetime — they are released only by eviction, never immediately after upload — so the decoded CPU
+budget is a real, independently enforceable ceiling rather than one that only ever measures a near-zero
+residency between draws; peak decoded and peak GPU byte counters record the high-water marks reporting
+tools care about.
+
+Eviction is deterministic least-recently-used, with creation order as a stable tie-breaker, and runs
+only from an internal, submission-safe trim point that `SilkMeshRenderer` invokes after each relevant
+graphics submission's `Wait()` has returned — for both the single-mesh and grouped/instanced draw
+paths — never while unsubmitted or in-flight commands may still use a retained texture. Eviction also protects the
+current frame's working set: only entries not referenced since the previous trim are candidates, so an
+over-budget working set that is rendered every frame is retained rather than decoded, uploaded, evicted,
+and re-decoded on every single frame. On the very first trim, every entry touched while assembling that
+first frame is itself the pinned working set. If the pinned working set alone still exceeds a budget
+once no stale entry remains, eviction stops and a single bounded `TextureBudgetExceeded` diagnostic
+reports the violated budget(s), current bytes, and entry count instead of looping or thrashing. Failed
+texture fallbacks are eligible for eviction only as a last resort after every stale ordinary and volume
+candidate, since evicting a tiny fallback placeholder only forces its failed decode (and, for
+filesystem-backed assets, its failed file read) to repeat on the very next reference for no residency
+benefit; a failed fallback still referenced this frame is pinned like any other entry. A single stale
+entry that alone exceeds a budget is evicted rather than retried in a loop, and separately reports the
+bounded `TextureBudgetExceeded` diagnostic. Re-referencing an evicted texture re-decodes and re-uploads
+it like any other cache miss.
+
 `SilkSceneGpuResources.Diagnostics` returns a deterministic snapshot of at most 128 deduplicated
 material and texture warnings. Unresolved relationships and unsupported surface networks retain flat
 display-colour/default shading and report distinct stable codes. Missing files and corrupt or unsupported
