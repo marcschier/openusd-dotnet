@@ -246,6 +246,23 @@ public sealed class MetalDeviceTests
 
     [Test]
     [SupportedOSPlatform("macos")]
+    public async Task CompositesStraightAlphaOverDestinationOnMacOS()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Skip.Test("This test is only applicable on macOS.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.StraightAlphaPipelineCompositesOverDestination(
+            device,
+            SilkShaderBinaryFormat.MetalLibrary);
+    }
+
+    [Test]
+    [SupportedOSPlatform("macos")]
     public async Task DrawsIdenticallyThroughAMaterialBindingLayoutOnMacOS()
     {
         if (!OperatingSystem.IsMacOS())

@@ -424,6 +424,62 @@ public sealed class SilkGraphicsPipelineTests
     }
 
     [Test]
+    public async Task PipelineCacheSeparatesTransparentDepthState()
+    {
+        using var device = new CountingPipelineDevice();
+        using var cache = new SilkGraphicsPipelineCache(
+            device,
+            SilkShaderBinaryFormat.Dxil);
+        var permutation = new SilkShaderPermutationId(
+            SilkShaderFeatures.Uv | SilkShaderFeatures.OpacityMap);
+
+        using ISilkGraphicsPipeline opaque = cache.GetOrCreateMeshPipelineWithState(
+            permutation,
+            SilkVertexLayoutDescriptor.PositionNormal,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.D32Float,
+            SilkCullMode.Back,
+            SilkTopologyKind.TriangleList,
+            SilkBlendMode.None,
+            depthWriteEnabled: true);
+        using ISilkGraphicsPipeline transparent = cache.GetOrCreateMeshPipelineWithState(
+            permutation,
+            SilkVertexLayoutDescriptor.PositionNormal,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.D32Float,
+            SilkCullMode.Back,
+            SilkTopologyKind.TriangleList,
+            SilkBlendMode.StraightAlphaOver,
+            depthWriteEnabled: false);
+
+        await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
+        await Assert.That(opaque.Descriptor.BlendMode).IsEqualTo(SilkBlendMode.None);
+        await Assert.That(opaque.Descriptor.DepthWriteEnabled).IsTrue();
+        await Assert.That(transparent.Descriptor.BlendMode)
+            .IsEqualTo(SilkBlendMode.StraightAlphaOver);
+        await Assert.That(transparent.Descriptor.DepthWriteEnabled).IsFalse();
+    }
+
+    [Test]
+    public async Task PipelineDescriptorRejectsUnknownBlendMode()
+    {
+        using var layout = new CountingBindingLayout(
+            SilkBindingLayoutDescriptor.SceneParameters);
+        using var program = new CountingShaderProgram(layout);
+        var descriptor = new SilkGraphicsPipelineDescriptor(
+            program,
+            SilkVertexLayoutDescriptor.PositionNormal,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.D32Float)
+        {
+            BlendMode = (SilkBlendMode)2,
+        };
+
+        await Assert.That(() => descriptor.Validate())
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
     public async Task CheckedPickAssetsExposeValidatedReflectionAndHashes()
     {
         SilkPickParametersReflection reflection =

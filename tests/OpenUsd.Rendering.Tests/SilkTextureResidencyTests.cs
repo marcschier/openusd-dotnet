@@ -969,6 +969,125 @@ public sealed class SilkTextureResidencyTests
             .IsEqualTo(1);
     }
 
+    [Test]
+    public async Task ScalarOpacityUsesStraightAlphaAndReadOnlyDepth()
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.SpirV);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(4, 4));
+        byte[] material = CreateMaterialUpsert(
+            "/World/Materials/Transparent",
+            SilkSurfaceKind.PreviewSurface,
+            [],
+            [(SilkMaterialParameter.Opacity, [0.5f])]);
+        byte[] mesh = CreateMeshUpsert(
+            "/World/Transparent", "/World/Materials/Transparent", primId: 7);
+        SilkSceneDelta delta = renderer.Scene.Apply(
+            Concat(CreateFrameCommand(4, 4), material, mesh), 3, 1);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+
+        _ = renderer.Render(color, depth);
+
+        SilkGraphicsPipelineDescriptor state = device.RecordedPipelineStates.Single();
+        await Assert.That(state.BlendMode).IsEqualTo(SilkBlendMode.StraightAlphaOver);
+        await Assert.That(state.DepthWriteEnabled).IsFalse();
+    }
+
+    [Test]
+    public async Task PositiveOpacityThresholdKeepsTexturedOpacityInCutoutPipeline()
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(
+            device,
+            SilkShaderBinaryFormat.SpirV,
+            imageDecoder: (_, _) => new SilkDecodedImage(2, 2, CreatePixels(2, 2)));
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(4, 4));
+        byte[] material = CreateMaterialUpsert(
+            "/World/Materials/Cutout",
+            SilkSurfaceKind.PreviewSurface,
+            [ScalarTexture(SilkMaterialParameter.Opacity, "opacity.png", SilkTextureChannel.R)],
+            [(SilkMaterialParameter.OpacityThreshold, [0.25f])]);
+        byte[] mesh = CreateMeshUpsert(
+            "/World/Cutout", "/World/Materials/Cutout", primId: 7);
+        SilkSceneDelta delta = renderer.Scene.Apply(
+            Concat(CreateFrameCommand(4, 4), material, mesh), 3, 1);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+
+        _ = renderer.Render(color, depth);
+
+        SilkGraphicsPipelineDescriptor state = device.RecordedPipelineStates.Single();
+        await Assert.That(state.BlendMode).IsEqualTo(SilkBlendMode.None);
+        await Assert.That(state.DepthWriteEnabled).IsTrue();
+    }
+
+    [Test]
+    public async Task OpaqueMeshesPrecedeTransparentMeshesSortedFarToNear()
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.SpirV);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(4, 4));
+        byte[] opaque = CreateMaterialUpsert(
+            "/World/Materials/Opaque",
+            SilkSurfaceKind.PreviewSurface,
+            [],
+            [(SilkMaterialParameter.Opacity, [1f])]);
+        byte[] transparent = CreateMaterialUpsert(
+            "/World/Materials/Transparent",
+            SilkSurfaceKind.PreviewSurface,
+            [],
+            [(SilkMaterialParameter.Opacity, [0.5f])]);
+        byte[] near = CreateMeshUpsert(
+            "/World/Near",
+            "/World/Materials/Transparent",
+            primId: 7,
+            transform: Translation(z: -1));
+        byte[] opaqueMiddle = CreateMeshUpsert(
+            "/World/Opaque",
+            "/World/Materials/Opaque",
+            primId: 8,
+            transform: Translation(z: -2));
+        byte[] far = CreateMeshUpsert(
+            "/World/Far",
+            "/World/Materials/Transparent",
+            primId: 9,
+            transform: Translation(z: -4));
+        SilkSceneDelta delta = renderer.Scene.Apply(
+            Concat(
+                CreateFrameCommand(4, 4),
+                opaque,
+                transparent,
+                near,
+                opaqueMiddle,
+                far),
+            6,
+            1);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+
+        _ = renderer.Render(color, depth);
+
+        await Assert.That(device.DrawDepths.Count).IsEqualTo(3);
+        await Assert.That(device.DrawDepths[0]).IsEqualTo(-.5f);
+        await Assert.That(device.DrawDepths[1]).IsEqualTo(-1.5f);
+        await Assert.That(device.DrawDepths[2]).IsEqualTo(0f);
+    }
+
+    private static double[] Translation(double z) =>
+    [
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, z, 1,
+    ];
+
     private static TextureSpec ScalarTexture(
         SilkMaterialParameter parameter,
         string asset,
@@ -1115,16 +1234,28 @@ public sealed class SilkTextureResidencyTests
     private static byte[] CreateMaterialUpsert(
         string path,
         SilkSurfaceKind kind,
-        TextureSpec[] textures)
+        TextureSpec[] textures,
+        (SilkMaterialParameter Parameter, float[] Values)[]? scalars = null)
     {
+        scalars ??= [];
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         List<byte> payload = [];
         payload.AddRange(BitConverter.GetBytes(SilkWireFormat.ComputeStableHash(path)));
         payload.AddRange(BitConverter.GetBytes((uint)pathBytes.Length));
         payload.AddRange(BitConverter.GetBytes((uint)kind));
-        payload.AddRange(BitConverter.GetBytes(0u));
+        payload.AddRange(BitConverter.GetBytes((uint)scalars.Length));
         payload.AddRange(BitConverter.GetBytes((uint)textures.Length));
         payload.AddRange(pathBytes);
+
+        foreach ((SilkMaterialParameter parameter, float[] values) in scalars)
+        {
+            payload.AddRange(BitConverter.GetBytes((uint)parameter));
+            payload.AddRange(BitConverter.GetBytes((uint)values.Length));
+            foreach (float value in values)
+            {
+                payload.AddRange(BitConverter.GetBytes(value));
+            }
+        }
 
         foreach (TextureSpec texture in textures)
         {
@@ -1169,7 +1300,11 @@ public sealed class SilkTextureResidencyTests
         return CreateCommand((uint)SilkCommandType.MaterialRemove, payload);
     }
 
-    private static byte[] CreateMeshUpsert(string pathValue, string materialPath, int primId)
+    private static byte[] CreateMeshUpsert(
+        string pathValue,
+        string materialPath,
+        int primId,
+        double[]? transform = null)
     {
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         byte[] material = Encoding.UTF8.GetBytes(materialPath);
@@ -1208,7 +1343,7 @@ public sealed class SilkTextureResidencyTests
         {
             BinaryPrimitives.WriteDoubleLittleEndian(
                 bytes.AsSpan(80 + (i * 8)),
-                i % 5 == 0 ? 1 : 0);
+                transform is null ? i % 5 == 0 ? 1 : 0 : transform[i]);
         }
         BinaryPrimitives.WriteUInt64LittleEndian(
             bytes.AsSpan(208),
@@ -1482,6 +1617,10 @@ public sealed class SilkTextureResidencyTests
         private RenderPipelineCommandList? _lastCommandList;
         private int _pendingSubmissions;
 
+        internal List<SilkGraphicsPipelineDescriptor> RecordedPipelineStates { get; } = [];
+
+        internal List<float> DrawDepths { get; } = [];
+
         /// <summary>
         /// Gets the count of texture disposals observed while a submission that may have
         /// referenced a retained texture had not yet completed its <c>Wait()</c>. This is the
@@ -1566,10 +1705,17 @@ public sealed class SilkTextureResidencyTests
 
         public ISilkGraphicsCommandList CreateCommandList()
         {
-            var commandList = new RenderPipelineCommandList();
+            var commandList = new RenderPipelineCommandList(this);
             _lastCommandList = commandList;
             return commandList;
         }
+
+        internal void RecordPipeline(SilkGraphicsPipelineDescriptor descriptor) =>
+            RecordedPipelineStates.Add(descriptor);
+
+        internal void RecordDraw(RenderPipelineBuffer uniformBuffer) =>
+            DrawDepths.Add(BinaryPrimitives.ReadSingleLittleEndian(
+                uniformBuffer.Data.AsSpan(11 * sizeof(float), sizeof(float))));
 
         public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList)
         {
@@ -1611,6 +1757,8 @@ public sealed class SilkTextureResidencyTests
         : SilkGraphicsBufferBase(size, usage)
     {
         private readonly byte[] _bytes = new byte[checked((int)size)];
+
+        internal byte[] Data => _bytes;
 
         public override void Write(ReadOnlySpan<byte> data, nuint offset = 0)
         {
@@ -1698,8 +1846,11 @@ public sealed class SilkTextureResidencyTests
         }
     }
 
-    private sealed class RenderPipelineCommandList : ISilkGraphicsCommandList
+    private sealed class RenderPipelineCommandList(RenderPipelineDevice device)
+        : ISilkGraphicsCommandList
     {
+        private RenderPipelineBuffer? _uniformBuffer;
+
         internal bool IsDisposed { get; private set; }
 
         public void UploadTexture(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
@@ -1720,6 +1871,7 @@ public sealed class SilkTextureResidencyTests
 
         public void SetGraphicsPipeline(ISilkGraphicsPipeline pipeline)
         {
+            device.RecordPipeline(pipeline.Descriptor);
         }
 
         public void SetViewport(SilkViewport viewport)
@@ -1740,6 +1892,10 @@ public sealed class SilkTextureResidencyTests
 
         public void SetUniformBuffer(uint setIndex, uint binding, ISilkGraphicsBuffer buffer)
         {
+            if (setIndex == 0 && binding == 0)
+            {
+                _uniformBuffer = (RenderPipelineBuffer)buffer;
+            }
         }
 
         public void SetTexture(uint setIndex, uint binding, ISilkGraphicsTexture texture)
@@ -1752,6 +1908,7 @@ public sealed class SilkTextureResidencyTests
 
         public void DrawIndexed(uint indexCount)
         {
+            device.RecordDraw(_uniformBuffer!);
         }
 
         public void DrawIndexedInstanced(uint indexCount, uint instanceCount)

@@ -280,7 +280,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 PRootSignature = rootSignature,
                 VS = new ShaderBytecode(vertexPointer, (nuint)vertexCode.Length),
                 PS = new ShaderBytecode(fragmentPointer, (nuint)fragmentCode.Length),
-                BlendState = CreateBlendState(),
+                BlendState = CreateBlendState(descriptor.BlendMode),
                 SampleMask = uint.MaxValue,
                 RasterizerState = new RasterizerDesc
                 {
@@ -292,7 +292,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 DepthStencilState = new DepthStencilDesc
                 {
                     DepthEnable = true,
-                    DepthWriteMask = DepthWriteMask.All,
+                    DepthWriteMask = descriptor.DepthWriteEnabled
+                        ? DepthWriteMask.All
+                        : DepthWriteMask.Zero,
                     DepthFunc = ComparisonFunc.LessEqual,
                     StencilEnable = false
                 },
@@ -320,7 +322,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         pipeline = nativePipeline;
     }
 
-    private static BlendDesc CreateBlendState()
+    private static BlendDesc CreateBlendState(SilkBlendMode blendMode)
     {
         var blend = new BlendDesc
         {
@@ -329,12 +331,21 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         };
         blend.RenderTarget[0] = new RenderTargetBlendDesc
         {
-            BlendEnable = false,
+            BlendEnable = blendMode == SilkBlendMode.StraightAlphaOver,
             LogicOpEnable = false,
+            SrcBlend = Blend.SrcAlpha,
+            DestBlend = Blend.InvSrcAlpha,
+            BlendOp = BlendOp.Add,
+            SrcBlendAlpha = Blend.One,
+            DestBlendAlpha = Blend.InvSrcAlpha,
+            BlendOpAlpha = BlendOp.Add,
             RenderTargetWriteMask = (byte)ColorWriteEnable.All
         };
         return blend;
     }
+
+    private static BlendDesc CreateBlendState() =>
+        CreateBlendState(SilkBlendMode.None);
 
     private static CullMode ToD3D12CullMode(SilkCullMode cullMode) =>
         cullMode switch

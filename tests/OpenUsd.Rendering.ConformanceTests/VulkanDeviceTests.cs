@@ -270,6 +270,16 @@ public sealed class VulkanDeviceTests
     }
 
     [Test]
+    public async Task VulkanCompositesStraightAlphaOverDestination()
+    {
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+
+        await OffscreenRhiConformance.StraightAlphaPipelineCompositesOverDestination(
+            device,
+            SilkShaderBinaryFormat.SpirV);
+    }
+
+    [Test]
     public async Task SwiftShaderDrawsIdenticallyThroughAMaterialBindingLayout()
     {
         if (!OperatingSystem.IsWindows())

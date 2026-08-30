@@ -671,6 +671,28 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "preview-surface-transparency",
+          "description": "UsdPreviewSurface straight-alpha opacity on D3D12, Vulkan, and Metal: opaque and threshold-cutout meshes write depth first, transparent scalar or textured opacity meshes retain depth testing without depth writes and render back-to-front by transformed mesh origin",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "windows-vulkan-required",
+              "linux-presentation",
+              "macos-arm64"
+            ]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.Tests/SilkGraphicsPipelineTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkTextureResidencyTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/D3D12DeviceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VulkanDeviceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/MetalDeviceTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
           "id": "materialx-projection",
           "description": "hdSilk MaterialX projection: ND_standard_surface base colour, emission, metalness, roughness, normal; constant, direct image, and arithmetic fold",
           "status": "workflow-gated",

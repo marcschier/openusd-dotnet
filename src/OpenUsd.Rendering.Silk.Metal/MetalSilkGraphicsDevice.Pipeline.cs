@@ -171,6 +171,16 @@ public sealed partial class MetalSilkGraphicsDevice
                     pipelineDescriptor.ColorAttachments.Object(0);
                 colorAttachment.PixelFormat =
                     GetNativeFormat(descriptor.ColorFormat);
+                colorAttachment.IsBlendingEnabled =
+                    descriptor.BlendMode == SilkBlendMode.StraightAlphaOver;
+                colorAttachment.RgbBlendOperation = MTLBlendOperation.Add;
+                colorAttachment.AlphaBlendOperation = MTLBlendOperation.Add;
+                colorAttachment.SourceRGBBlendFactor = MTLBlendFactor.SourceAlpha;
+                colorAttachment.DestinationRGBBlendFactor =
+                    MTLBlendFactor.OneMinusSourceAlpha;
+                colorAttachment.SourceAlphaBlendFactor = MTLBlendFactor.One;
+                colorAttachment.DestinationAlphaBlendFactor =
+                    MTLBlendFactor.OneMinusSourceAlpha;
                 pipelineDescriptor.DepthAttachmentPixelFormat =
                     MTLPixelFormat.Depth32Float;
 
@@ -185,7 +195,7 @@ public sealed partial class MetalSilkGraphicsDevice
                 }
 
                 depthDescriptor.DepthCompareFunction = MTLCompareFunction.LessEqual;
-                depthDescriptor.IsDepthWriteEnabled = true;
+                depthDescriptor.IsDepthWriteEnabled = descriptor.DepthWriteEnabled;
                 depthState = _device.NewDepthStencilState(depthDescriptor);
                 if (depthState.NativePtr == 0)
                 {

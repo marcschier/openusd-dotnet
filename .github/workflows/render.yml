@@ -304,6 +304,19 @@ jobs:
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/run-parity-capture.ps1 -Rid win-x64 -Configuration Release -StormGl Mesa
+      - name: Execute D3D12 transparent opacity conformance
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project -c Release -f net10.0
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/D3D12DeviceTests/WarpCompositesStraightAlphaOverDestination')
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -533,6 +546,13 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/VulkanCompositionPresentationTests/D3D11BridgeImportsPixelsAndReusesKeyedMutex')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VulkanDeviceTests/VulkanCompositesStraightAlphaOverDestination')
       - name: Execute ten required Avalonia hdSilk Vulkan processes
         if: >-
           steps.native-ready.outputs.ready == 'true' &&
@@ -963,6 +983,24 @@ jobs:
           artifacts/avalonia-vulkan-smoke/linux-x64
           '${{ steps.linux-vulkan-runtime.outputs.loader }}'
           '${{ steps.linux-vulkan-runtime.outputs.icd }}'
+      - name: Execute Linux Vulkan transparent opacity conformance
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.linux-vulkan.outputs.ready == 'true')
+        shell: pwsh
+        env:
+          VK_DRIVER_FILES: ${{ steps.linux-vulkan-runtime.outputs.icd }}
+          VK_ICD_FILENAMES: ${{ steps.linux-vulkan-runtime.outputs.icd }}
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project -c Release -f net10.0
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VulkanDeviceTests/VulkanCompositesStraightAlphaOverDestination')
       - name: Execute X11 Storm child switching gate
         if: steps.native-ready.outputs.ready == 'true'
         env:
@@ -1279,6 +1317,13 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/StormSilkParityCaptureDriverTests/MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnMetal')
+          ./eng/run-managed-tests.ps1 `
+            -Project $conformanceProject `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/MetalDeviceTests/CompositesStraightAlphaOverDestinationOnMacOS')
           ./eng/run-managed-tests.ps1 `
             -Project $viewerProject `
             -Framework net10.0 `

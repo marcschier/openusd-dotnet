@@ -599,7 +599,11 @@ Opacity and occlusion also use independent scalar slots. Opacity uses Vulkan bin
 (`s6`/`t5` on D3D12, Metal sampler 6 / texture 5), replaces the authored opacity, drives the existing
 `opacityThreshold` cutout, and is returned as surface alpha. Occlusion uses Vulkan bindings 18/19
 (`s7`/`t10` on D3D12, Metal sampler 7 / texture 10) and replaces the authored direct-light occlusion input.
-Transparent blending remains outside this claim; opacity currently provides cutout and output-alpha semantics.
+When `opacityThreshold` is zero, authored opacity below one and connected opacity textures use straight-alpha-over
+blending with depth testing enabled and depth writes disabled. Opaque and cutout meshes render first; transparent
+meshes then render back-to-front by their transformed origin, with stable path identity breaking equal-depth ties.
+That origin-based order is deterministic but is not per-triangle order-independent transparency, so intersecting
+transparent meshes and very large transparent meshes can still exhibit the usual sorted-alpha limitations.
 
 Specular colour uses an independent texture at Vulkan bindings 20/21 (`s8`/`t11` on D3D12, Metal sampler 8 /
 texture 11), and its sampled RGB replaces the authored constant. `useSpecularWorkflow` remains the uniform integer

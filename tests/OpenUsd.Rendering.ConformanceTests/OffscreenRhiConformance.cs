@@ -451,6 +451,28 @@ internal static class OffscreenRhiConformance
         await Assert.That(interior[3]).IsGreaterThanOrEqualTo((byte)240);
     }
 
+    internal static async Task StraightAlphaPipelineCompositesOverDestination(
+        ISilkGraphicsDevice device,
+        SilkShaderBinaryFormat shaderFormat)
+    {
+        const uint size = 64;
+        byte[] pixels = RenderCheckedTriangle(
+            device,
+            shaderFormat,
+            SilkBindingLayoutDescriptor.SceneParameters,
+            blendMode: SilkBlendMode.StraightAlphaOver,
+            displayAlpha: 0.5f,
+            clearColor: new SilkColor(0, 0, 1, 1));
+        byte[] interior = Pixel(pixels, size, 32, 32).ToArray();
+
+        await Assert.That(interior[0]).IsGreaterThanOrEqualTo((byte)110);
+        await Assert.That(interior[0]).IsLessThanOrEqualTo((byte)145);
+        await Assert.That(interior[1]).IsGreaterThanOrEqualTo((byte)110);
+        await Assert.That(interior[1]).IsLessThanOrEqualTo((byte)145);
+        await Assert.That(interior[2]).IsGreaterThanOrEqualTo((byte)240);
+        await Assert.That(interior[3]).IsGreaterThanOrEqualTo((byte)240);
+    }
+
     internal static async Task MaterialBindingLayoutDrawsIdenticallyToSceneParameters(
         ISilkGraphicsDevice device,
         SilkShaderBinaryFormat shaderFormat)
@@ -565,7 +587,10 @@ internal static class OffscreenRhiConformance
         ISilkGraphicsDevice device,
         SilkShaderBinaryFormat shaderFormat,
         SilkBindingLayoutDescriptor layout,
-        bool bindMaterialResources = false)
+        bool bindMaterialResources = false,
+        SilkBlendMode blendMode = SilkBlendMode.None,
+        float displayAlpha = 1,
+        SilkColor? clearColor = null)
     {
         const uint size = 64;
         using ISilkGraphicsTexture color = device.CreateTexture2D(
@@ -587,7 +612,11 @@ internal static class OffscreenRhiConformance
                 program,
                 SilkVertexLayoutDescriptor.PositionNormal,
                 SilkTextureFormat.Rgba8Unorm,
-                SilkTextureFormat.D32Float));
+                SilkTextureFormat.D32Float)
+            {
+                BlendMode = blendMode,
+                DepthWriteEnabled = blendMode == SilkBlendMode.None,
+            });
         using ISilkGraphicsBuffer vertices = device.CreateBuffer(
             72,
             SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
@@ -612,7 +641,7 @@ internal static class OffscreenRhiConformance
             0, 1, 0, 0,
             0, 0, 1, 0,
             0, 0, 0, 1,
-            1, 1, 1, 1
+            1, 1, 1, displayAlpha
         ]));
         ISilkGraphicsTexture? materialTexture = null;
         ISilkGraphicsSampler? materialSampler = null;
@@ -630,7 +659,7 @@ internal static class OffscreenRhiConformance
             }
 
             using ISilkGraphicsCommandList commands = device.CreateCommandList();
-            commands.ClearColor(color, new SilkColor(0, 0, 0, 1));
+            commands.ClearColor(color, clearColor ?? new SilkColor(0, 0, 0, 1));
             commands.ClearDepth(depth, 1);
             if (materialTexture is not null)
             {
