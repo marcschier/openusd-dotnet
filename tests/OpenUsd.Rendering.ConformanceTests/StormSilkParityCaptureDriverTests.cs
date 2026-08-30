@@ -4299,7 +4299,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_540, 1_460, 262_144)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_540, 1_460, 349_524)),
             },
             new ParityScene(
                 "primvar-st-facevarying-texture",
@@ -4316,7 +4316,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_668, 1_588, 262_144)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_668, 1_588, 349_524)),
             },
             new ParityScene(
                 "primvar-st-uniform-texture",
@@ -4333,7 +4333,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_668, 1_588, 262_144)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_668, 1_588, 349_524)),
             },
             new ParityScene(
                 "material-metallic-workflow",
