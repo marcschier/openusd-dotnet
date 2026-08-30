@@ -2,7 +2,7 @@
 
 # OpenUSD support manifest
 
-Executable support summary for `0.12.1-alpha`. Generated from `eng/support-manifest.json`; do not edit by hand. The
+Executable support summary for `0.12.2-alpha`. Generated from `eng/support-manifest.json`; do not edit by hand. The
 source manifest contains descriptions, evidence paths, platform claims, native ABI cross-references, and exclusion
 reasons. See [`docs/support-matrix.md`](support-matrix.md) for the full human-authored support matrix with narrative
 detail.
