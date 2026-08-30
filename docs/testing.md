@@ -1096,7 +1096,7 @@ points exactly as it once skipped draw-mode basis curves. Measuring Storm first
 showed an important constraint: with no authored widths, Storm treats the default
 point width as world-space and `parity-points-asymmetric.usda` covered 14589
 pixels, while a GPU point-list implementation covered 109. The admitted scene
-therefore authors constant `widths = [0.01]`; at that width Storm, D3D12 WARP,
+therefore authors constant `widths = [0.0001]`; at that width Storm, D3D12 WARP,
 and Vulkan SwiftShader all cover exactly **109** pixels.
 
 The gated result is adjusted IoU **1.000000** against a 0.436893 worst

@@ -4551,7 +4551,7 @@ def Xform "World"
                 GateReason:
                     "1.000000 correct adjusted IoU against a 0.436893 worst " +
                     "perturbation, a 0.563107 margin. The scene authors constant " +
-                    "width 0.01 because Storm's default point width is world-space " +
+                    "width 0.0001 because Storm's default point width is world-space " +
                     "and intentionally covers most of the frame; at this measured " +
                     "width both Storm and hdSilk rasterize one pixel per point.",
                 RecommendedMinimumAdjustedIou: 0.92,

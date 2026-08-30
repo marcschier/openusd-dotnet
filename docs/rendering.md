@@ -242,32 +242,29 @@ both values, so changing only exposure or output transform updates the GPU block
 
 ### hdSilk shader pipeline cache
 
-Mesh shader variants are addressed by `SilkShaderPermutationId`, whose flags mirror
-`eng/shaders/shader-manifest.json`: `uv`, `basecolor`, `normal`, `roughmetal`, `metallic`, and `emissive`. Map flags
-without `uv` are rejected because the manifest never emits those artifacts. `roughmetal` and `metallic` are fully
-independent: `roughmetal` is the roughness slot (its name and its `SilkShaderFeatures.RoughnessMetallicMap = 8` value
-are kept for artifact and API stability), `metallic` is the metallic slot, and either may appear without the other, so
-a roughness-only material never binds anything to metallic and vice versa. The empty permutation keeps the historical
-`mesh.vertex` and `mesh.fragment` artifact names; non-empty names append manifest-ordered tokens joined with `+`.
-Fragment permutations use all feature bits. Vertex permutations use the subset that changes vertex output shape
-(`uv` and `normal`), so a base-color-only material resolves to `mesh.vertex.uv` plus the matching specialized
-fragment shader.
+Mesh shader variants are addressed by `SilkShaderPermutationId`. Its public flags still identify the actual texture
+inputs (`basecolor`, `normal`, `roughmetal`, `metallic`, and `emissive`) and reject maps without `uv`, but checked
+fragment artifacts no longer take their cross-product. Any non-normal map selects the bounded `uv+material` shader;
+a normal map selects `uv+material+normal` because it also changes the vertex output shape. A runtime mask in the
+surface block controls which independently bound slots are sampled. `roughmetal` remains the roughness slot (its name
+and `SilkShaderFeatures.RoughnessMetallicMap = 8` value are kept for API stability), while `metallic` remains a
+separate slot. Missing slots receive an alias of one present texture only to keep every statically declared descriptor
+valid; the runtime mask prevents those aliases from being sampled.
 
 `SilkGraphicsPipelineCache` is per device and shader binary format. Its key contains the permutation id, vertex layout,
 color and depth formats, shader binary format, and the optional pick/selection device generation exposed by the RHI.
 If the generation changes, the cache discards old entries before creating a new pipeline, so a device-reset recovery
 cannot receive a stale pipeline. Entries are protected by one cache lock; concurrent callers either observe the existing
-entry or create exactly one new entry for a key. Cached pipelines are unbounded by design: the mesh family is limited by
-the checked manifest to 33 fragment permutations and 3 vertex permutations, multiplied by the small set of supported
-formats and layouts, so size-based eviction would add churn without bounding a real risk.
+entry or create exactly one new entry for a key. Actual map combinations are canonicalized to the same universal
+material pipeline identity when their vertex shape matches. The checked manifest is therefore bounded to 5 fragment
+permutations (including one generator-only dependency combination) and 3 vertex permutations, multiplied by the small
+set of supported formats and layouts.
 
 MaterialX support deliberately reuses this finite mesh family. The native hdSilk resolver maps the supported
-`ND_standard_surface_surfaceshader` subset onto the existing PreviewSurface parameter ids and map bits instead of
-introducing node-specific shader variants. The budget is therefore unchanged: 33 checked fragment permutations
-(the empty permutation plus every combination of the five map bits over `uv`) and 3 checked vertex permutations, with a
-hard manifest ceiling of 64 fragment and 8 vertex variants. A general graph
-cross-product is out of scope; arithmetic-only MaterialX choices are folded to constants by the resolver, and image or
-normal-map inputs select the existing `basecolor` or `normal` map bits.
+`ND_standard_surface_surfaceshader` subset onto the existing PreviewSurface parameter ids and runtime map bits instead
+of introducing node-specific shader variants. The hard manifest ceiling is 8 fragment and 8 vertex variants. A general
+graph cross-product is out of scope; arithmetic-only MaterialX choices are folded to constants by the resolver, and
+image or normal-map inputs select the universal material shader.
 
 The cache never compiles shaders. It creates shader modules only from embedded checked resources loaded through
 `SilkCheckedShaderAssets`. If an expected permutation resource is absent, loading throws an `InvalidDataException` that
@@ -579,8 +576,9 @@ channels of that result. For a scalar map the selected channel is then replicate
 the upload, so the fragment shader reads `.r` for any scalar map regardless of which channel was
 authored, and no per-parameter channel index has to travel in the surface constant block. The authored
 `fallback` is a float4 read through the same port, so a missing asset resolves to the same channel. `rgb`
-is a no-op, so base colour keeps the alpha it multiplies into opacity, and normal and emissive maps keep
-their full RGB.
+is a no-op, so base colour retains its source alpha in the decoded texture, while normal and emissive
+maps retain their full RGB. Preview Surface opacity is an independent input: a base-colour
+`outputs:rgb` connection never implicitly drives opacity from that retained alpha.
 
 `roughness` and `metallic` are separate UsdPreviewSurface inputs with separate connections, so each has
 its own feature bit, its own decoded/uploaded texture, its own sampler, and its own binding pair:
@@ -598,9 +596,9 @@ colour space, parameter, and channel, so one file feeding two inputs currently c
 deliberate: sharing one decode across channels is an optimization, and correctness of the channel
 selection comes first.
 
-The UDIM status bitmask in `SurfaceParameters.reserved.w` has one bit per texture slot: `1` base colour,
-`2` normal, `4` roughness, `8` emissive, and `16` (`1 << 4`) metallic. Roughness and metallic have
-separate slots, so they need separate bits; nothing aliases.
+The UDIM status bitmask in `SurfaceParameters.textureControls.y` uses the public texture-feature values:
+`2` base colour, `4` normal, `8` roughness, `16` emissive, and `32` metallic. Roughness and metallic
+have separate slots, so they need separate bits; nothing aliases.
 Ordinary (non-UDIM) material textures upload a full packed mip chain rather than a single level. A
 shared backend-neutral layout stores mip 0 first, then ascending levels in order, each tightly packed
 to `max(1, base >> level)`; `UploadTexture` validates the source against that layout's exact total byte
@@ -1228,7 +1226,7 @@ normal, so an authored zero or non-finite value never reaches the GPU.
 
 Points use the same command stream with additive `POINT_LIST` topology. The measured Storm rule is:
 without authored widths, `UsdGeomPoints` uses a world-space default width that can cover most of a
-parity frame; with constant width `0.01` in `parity-points-asymmetric.usda`, Storm, D3D12 WARP, and
+parity frame; with constant width `0.0001` in `parity-points-asymmetric.usda`, Storm, D3D12 WARP, and
 Vulkan SwiftShader all rasterize exactly one pixel per point. hdSilk currently supports that measured
 one-pixel point-list subset and does not implement wide point splats.
 

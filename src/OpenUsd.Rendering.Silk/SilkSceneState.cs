@@ -1988,7 +1988,14 @@ public sealed class SilkSceneGpuResources : IDisposable
     internal void BindMaterialTexture(
         ISilkGraphicsCommandList commands,
         SilkMaterialData material,
-        SilkMaterialParameter parameter)
+        SilkMaterialParameter parameter) =>
+        BindMaterialTexture(commands, material, parameter, parameter);
+
+    internal void BindMaterialTexture(
+        ISilkGraphicsCommandList commands,
+        SilkMaterialData material,
+        SilkMaterialParameter parameter,
+        SilkMaterialParameter bindingParameter)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(commands);
@@ -1997,7 +2004,7 @@ public sealed class SilkSceneGpuResources : IDisposable
             throw new InvalidDataException(
                 $"Material '{material.Path}' has no texture for {parameter}.");
         (uint samplerBinding, uint textureBinding) =
-            SilkBindingLayoutDescriptor.GetMaterialTextureBindings(parameter);
+            SilkBindingLayoutDescriptor.GetMaterialTextureBindings(bindingParameter);
         TextureCacheEntry entry = RequireTexture(material.Path, texture);
         if (!entry.Uploaded)
         {
@@ -2612,12 +2619,11 @@ public sealed class SilkSceneGpuResources : IDisposable
     /// UsdUVTexture applies <c>scale</c> and <c>bias</c> to the sampled texel and only
     /// then exposes the per-channel outputs, so this runs after
     /// <see cref="ApplyScaleBias"/> and reads the already-scaled value. Doing the
-    /// selection on the CPU keeps the surface constant block -- and therefore its
-    /// ABI -- unchanged: the alternative was a per-parameter channel index uniform
-    /// that every backend and every permutation would have to carry.
+    /// selection on the CPU avoids a per-parameter channel index in the surface
+    /// block that every backend and checked shader would otherwise have to carry.
     /// <see cref="SilkTextureChannel.Rgb"/> is a no-op, so colour and vector maps
-    /// (base colour, emissive, normal) keep their full RGBA, including the alpha
-    /// that base colour multiplies into opacity.
+    /// (base colour, emissive, normal) keep their full RGBA. Preview Surface
+    /// opacity remains an independent material input.
     /// </remarks>
     private static void ApplyOutputChannel(
         byte[] pixels,

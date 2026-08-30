@@ -1306,46 +1306,64 @@ public sealed class SilkMeshRenderer :
         SilkMeshGpuResource mesh,
         SilkShaderFeatures features)
     {
-        if ((features & SilkShaderFeatures.BaseColorMap) != 0)
-        {
-            GpuResources.BindMaterialTexture(
-                commands,
-                ResolveMaterial(mesh.Mesh)!,
-                SilkMaterialParameter.DiffuseColor);
-        }
+        SilkMaterialData? material = ResolveMaterial(mesh.Mesh);
+        SilkMaterialParameter alias = FindFirstMaterialTextureParameter(material, features);
+        bindTexture(SilkMaterialParameter.DiffuseColor, SilkShaderFeatures.BaseColorMap);
         if ((features & SilkShaderFeatures.NormalMap) != 0)
         {
             GpuResources.BindMaterialTexture(
                 commands,
-                ResolveMaterial(mesh.Mesh)!,
+                material!,
+                SilkMaterialParameter.Normal,
                 SilkMaterialParameter.Normal);
         }
-        if ((features & SilkShaderFeatures.RoughnessMetallicMap) != 0)
-        {
-            GpuResources.BindMaterialTexture(
-                commands,
-                ResolveMaterial(mesh.Mesh)!,
-                SilkMaterialParameter.Roughness);
-        }
-        if ((features & SilkShaderFeatures.MetallicMap) != 0)
-        {
-            GpuResources.BindMaterialTexture(
-                commands,
-                ResolveMaterial(mesh.Mesh)!,
-                SilkMaterialParameter.Metallic);
-        }
-        if ((features & SilkShaderFeatures.EmissiveMap) != 0)
-        {
-            GpuResources.BindMaterialTexture(
-                commands,
-                ResolveMaterial(mesh.Mesh)!,
-                SilkMaterialParameter.EmissiveColor);
-        }
-        if (ResolveMaterial(mesh.Mesh) is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
+        bindTexture(SilkMaterialParameter.Roughness, SilkShaderFeatures.RoughnessMetallicMap);
+        bindTexture(SilkMaterialParameter.Metallic, SilkShaderFeatures.MetallicMap);
+        bindTexture(SilkMaterialParameter.EmissiveColor, SilkShaderFeatures.EmissiveMap);
+        if (material is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
         {
             GpuResources.BindVolumeDensityTexture(commands, volumeMaterial);
         }
+
+        void bindTexture(SilkMaterialParameter bindingParameter, SilkShaderFeatures feature)
+        {
+            if ((features & ~SilkShaderFeatures.Uv) == 0)
+            {
+                return;
+            }
+            SilkMaterialParameter sourceParameter = (features & feature) != 0
+                ? bindingParameter
+                : alias;
+            GpuResources.BindMaterialTexture(
+                commands,
+                material!,
+                sourceParameter,
+                bindingParameter);
+        }
+    }
+
+    private static SilkMaterialParameter FindFirstMaterialTextureParameter(
+        SilkMaterialData? material,
+        SilkShaderFeatures features)
+    {
+        if (material is null || (features & ~SilkShaderFeatures.Uv) == 0)
+        {
+            return SilkMaterialParameter.DiffuseColor;
+        }
+        foreach (SilkMaterialTexture texture in material.Textures)
+        {
+            if (texture.Parameter is SilkMaterialParameter.DiffuseColor or
+                SilkMaterialParameter.Normal or
+                SilkMaterialParameter.Roughness or
+                SilkMaterialParameter.Metallic or
+                SilkMaterialParameter.EmissiveColor)
+            {
+                return texture.Parameter;
+            }
+        }
+        throw new InvalidDataException(
+            $"Material '{material.Path}' advertises texture features without a supported texture.");
     }
 
     private void PrepareMaterialTextures(

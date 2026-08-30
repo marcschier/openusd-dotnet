@@ -108,14 +108,14 @@ public sealed class BackendShaderRegisterConformanceTests
     private static Dictionary<
         string, (string RegisterClass, uint Register, uint Binding)> ReadCheckedMeshResources()
     {
-        // The permutation carrying every map bit is the only artifact that declares
-        // all of them at once, which is what makes a collision visible.
+        // The universal material shader with normal mapping declares every 2D slot
+        // at once, which is what makes a collision visible.
         string path = Path.Combine(
             FindRepositoryRoot(),
             "eng",
             "shaders",
             "checked",
-            "mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive.reflection.json");
+            "mesh.fragment.uv+material+normal.reflection.json");
         using JsonDocument reflection = JsonDocument.Parse(File.ReadAllBytes(path));
         Dictionary<string, (string RegisterClass, uint Register, uint Binding)> declared =
             new(StringComparer.Ordinal);

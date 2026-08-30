@@ -48,11 +48,11 @@ restrictions are enforced by the script and asserted by
 Mesh shader permutations are generated from the manifest-declared `featureBits`.
 Names are deterministic: the empty feature set keeps the base program name for
 compatibility, while feature variants append manifest-ordered tokens joined with
-`+`, for example `mesh.fragment.uv+basecolor+normal`. `MAP_*` bits require
-`HAS_UV`, so the mesh fragment family expands to 17 fetch-topology variants. The
+`+`, for example `mesh.fragment.uv+material+normal`. `MAP_*` bits require
+`HAS_UV`, so the mesh fragment family expands to five fetch-topology variants. The
 vertex family only varies on `HAS_UV` and `MAP_NORMAL`, so it expands to three
 variants because normal mapping requires UVs and is the only texture feature that
-changes vertex outputs. The manifest also declares hard budgets of 32 fragment
+changes vertex outputs. The manifest also declares hard budgets of 8 fragment
 and 8 vertex permutations for the mesh family; plan generation fails when an
 expanded family exceeds its budget. Arithmetic-only material choices remain
 uniforms and are intentionally not feature bits.

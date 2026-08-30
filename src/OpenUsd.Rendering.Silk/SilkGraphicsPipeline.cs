@@ -185,11 +185,11 @@ public readonly record struct SilkShaderPermutationId
 
     /// <summary>Gets the checked mesh vertex artifact stem.</summary>
     public string MeshVertexArtifactName =>
-        GetMeshArtifactName("mesh.vertex", Features & (SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap));
+        GetVertexArtifactName();
 
     /// <summary>Gets the checked mesh fragment artifact stem.</summary>
     public string MeshFragmentArtifactName =>
-        GetMeshArtifactName("mesh.fragment", Features);
+        GetFragmentArtifactName();
 
     internal SilkBindingLayoutDescriptor CreateMeshBindingLayout()
     {
@@ -199,32 +199,47 @@ public readonly record struct SilkShaderPermutationId
         }
 
         var slots = new List<SilkBindingSlot>();
-        AddTextureSlots(
-            slots,
-            SilkShaderFeatures.BaseColorMap,
-            SilkBindingLayoutDescriptor.BaseColorSamplerBinding,
-            SilkBindingLayoutDescriptor.BaseColorTextureBinding);
+        if ((Features & MapFeatures) != 0)
+        {
+            AddTextureSlots(
+                slots,
+                SilkBindingLayoutDescriptor.BaseColorSamplerBinding,
+                SilkBindingLayoutDescriptor.BaseColorTextureBinding);
+            AddTextureSlots(
+                slots,
+                SilkBindingLayoutDescriptor.RoughnessMetallicSamplerBinding,
+                SilkBindingLayoutDescriptor.RoughnessMetallicTextureBinding);
+            AddTextureSlots(
+                slots,
+                SilkBindingLayoutDescriptor.MetallicSamplerBinding,
+                SilkBindingLayoutDescriptor.MetallicTextureBinding);
+            AddTextureSlots(
+                slots,
+                SilkBindingLayoutDescriptor.EmissiveSamplerBinding,
+                SilkBindingLayoutDescriptor.EmissiveTextureBinding);
+        }
         AddTextureSlots(
             slots,
             SilkShaderFeatures.NormalMap,
             SilkBindingLayoutDescriptor.NormalSamplerBinding,
             SilkBindingLayoutDescriptor.NormalTextureBinding);
-        AddTextureSlots(
-            slots,
-            SilkShaderFeatures.RoughnessMetallicMap,
-            SilkBindingLayoutDescriptor.RoughnessMetallicSamplerBinding,
-            SilkBindingLayoutDescriptor.RoughnessMetallicTextureBinding);
-        AddTextureSlots(
-            slots,
-            SilkShaderFeatures.MetallicMap,
-            SilkBindingLayoutDescriptor.MetallicSamplerBinding,
-            SilkBindingLayoutDescriptor.MetallicTextureBinding);
-        AddTextureSlots(
-            slots,
-            SilkShaderFeatures.EmissiveMap,
-            SilkBindingLayoutDescriptor.EmissiveSamplerBinding,
-            SilkBindingLayoutDescriptor.EmissiveTextureBinding);
         return SilkBindingLayoutDescriptor.ForMaterial(slots);
+    }
+
+    internal SilkShaderPermutationId CanonicalizeForPipeline()
+    {
+        if ((Features & MapFeatures) == 0)
+        {
+            return this;
+        }
+
+        SilkShaderFeatures canonical =
+            SilkShaderFeatures.Uv | SilkShaderFeatures.BaseColorMap;
+        if ((Features & SilkShaderFeatures.NormalMap) != 0)
+        {
+            canonical |= SilkShaderFeatures.NormalMap;
+        }
+        return new SilkShaderPermutationId(canonical);
     }
 
     private static void ValidateFeatures(SilkShaderFeatures features)
@@ -242,23 +257,57 @@ public readonly record struct SilkShaderPermutationId
         }
     }
 
-    private static string GetMeshArtifactName(
-        string baseName,
-        SilkShaderFeatures features)
+    private string GetVertexArtifactName()
     {
-        if (features == SilkShaderFeatures.None)
+        const string baseName = "mesh.vertex";
+        if ((Features & SilkShaderFeatures.Uv) == 0)
         {
             return baseName;
         }
 
         var suffix = new StringBuilder();
-        AppendToken(suffix, features, SilkShaderFeatures.Uv, "uv");
-        AppendToken(suffix, features, SilkShaderFeatures.BaseColorMap, "basecolor");
-        AppendToken(suffix, features, SilkShaderFeatures.NormalMap, "normal");
-        AppendToken(suffix, features, SilkShaderFeatures.RoughnessMetallicMap, "roughmetal");
-        AppendToken(suffix, features, SilkShaderFeatures.MetallicMap, "metallic");
-        AppendToken(suffix, features, SilkShaderFeatures.EmissiveMap, "emissive");
+        AppendToken(suffix, Features, SilkShaderFeatures.Uv, "uv");
+        AppendToken(suffix, Features, SilkShaderFeatures.NormalMap, "normal");
         return $"{baseName}.{suffix}";
+    }
+
+    private string GetFragmentArtifactName()
+    {
+        const string baseName = "mesh.fragment";
+        if (Features == SilkShaderFeatures.None)
+        {
+            return baseName;
+        }
+
+        var suffix = new StringBuilder("uv");
+        if ((Features & MapFeatures) != 0)
+        {
+            suffix.Append("+material");
+        }
+        if ((Features & SilkShaderFeatures.NormalMap) != 0)
+        {
+            suffix.Append("+normal");
+        }
+        return $"{baseName}.{suffix}";
+    }
+
+    private static void AddTextureSlots(
+        List<SilkBindingSlot> slots,
+        uint samplerBinding,
+        uint textureBinding)
+    {
+        slots.Add(new SilkBindingSlot(
+            0,
+            samplerBinding,
+            SilkBindingKind.Sampler,
+            0,
+            SilkShaderStageVisibility.Fragment));
+        slots.Add(new SilkBindingSlot(
+            0,
+            textureBinding,
+            SilkBindingKind.SampledTexture,
+            0,
+            SilkShaderStageVisibility.Fragment));
     }
 
     private void AddTextureSlots(
@@ -272,18 +321,7 @@ public readonly record struct SilkShaderPermutationId
             return;
         }
 
-        slots.Add(new SilkBindingSlot(
-            0,
-            samplerBinding,
-            SilkBindingKind.Sampler,
-            0,
-            SilkShaderStageVisibility.Fragment));
-        slots.Add(new SilkBindingSlot(
-            0,
-            textureBinding,
-            SilkBindingKind.SampledTexture,
-            0,
-            SilkShaderStageVisibility.Fragment));
+        AddTextureSlots(slots, samplerBinding, textureBinding);
     }
 
     private static void AppendToken(
@@ -865,8 +903,9 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList)
     {
         DeviceGenerationKey generation = ReadDeviceGeneration(_device);
+        SilkShaderPermutationId canonical = permutation.CanonicalizeForPipeline();
         PipelineCacheKey key = new(
-            permutation,
+            canonical,
             CreateVertexLayoutKey(vertexLayout),
             colorFormat,
             depthFormat,
@@ -887,8 +926,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
             if (!_entries.TryGetValue(key, out CachedPipelineEntry? entry))
             {
                 entry = CreateEntry(
-                    permutation,
-                    permutation.CreateMeshBindingLayout(),
+                    canonical,
+                    canonical.CreateMeshBindingLayout(),
                     vertexLayout,
                     colorFormat,
                     depthFormat,

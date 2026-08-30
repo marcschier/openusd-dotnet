@@ -1210,8 +1210,9 @@ internal static class Program
     /// </summary>
     private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
     {
+        const int surfaceConstantsByteSize = 9 * 4 * sizeof(float);
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
-            128,
+            surfaceConstantsByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         buffer.Write(MemoryMarshal.AsBytes<float>(
         [
@@ -1222,6 +1223,7 @@ internal static class Program
             0, 0.01f, 0, 0,
             0, 0, 1, 1,
             1, 1, 1, 1,
+            0, 0, 0, 0,
             0, 0, 0, 0
         ]));
         return buffer;

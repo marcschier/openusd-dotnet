@@ -1183,7 +1183,7 @@ internal static class OffscreenRhiConformance
     private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
     {
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
-            128,
+            SilkSurfaceUniformWriter.ByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
         buffer.Write(MemoryMarshal.AsBytes<float>(
         [
@@ -1194,6 +1194,7 @@ internal static class OffscreenRhiConformance
             0, 0.01f, 0, 0,
             0, 0, 1, 1,
             1, 1, 1, 1,
+            0, 0, 0, 0,
             0, 0, 0, 0
         ]));
         return buffer;

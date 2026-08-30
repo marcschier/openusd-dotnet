@@ -15,20 +15,11 @@
 #ifndef FRAGMENT_STAGE
 #define FRAGMENT_STAGE 0
 #endif
-#ifndef MAP_BASE_COLOR
-#define MAP_BASE_COLOR 0
+#ifndef MAP_MATERIAL
+#define MAP_MATERIAL 0
 #endif
 #ifndef MAP_NORMAL
 #define MAP_NORMAL 0
-#endif
-#ifndef MAP_ROUGHNESS_METALLIC
-#define MAP_ROUGHNESS_METALLIC 0
-#endif
-#ifndef MAP_METALLIC
-#define MAP_METALLIC 0
-#endif
-#ifndef MAP_EMISSIVE
-#define MAP_EMISSIVE 0
 #endif
 #ifndef VOLUME_DENSITY_TEXTURES
 #define VOLUME_DENSITY_TEXTURES 0
@@ -99,7 +90,7 @@ struct InstanceParameters
 StructuredBuffer<InstanceParameters> instanceParameters : register(t6);
 #endif
 
-#if FRAGMENT_STAGE && MAP_BASE_COLOR
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(1, 0)]]
 SamplerState baseColorSampler : register(s0);
 #endif
@@ -107,15 +98,15 @@ SamplerState baseColorSampler : register(s0);
 [[vk::binding(10, 0)]]
 SamplerState normalSampler : register(s1);
 #endif
-#if FRAGMENT_STAGE && MAP_ROUGHNESS_METALLIC
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(11, 0)]]
 SamplerState roughnessMetallicSampler : register(s2);
 #endif
-#if FRAGMENT_STAGE && MAP_METALLIC
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(14, 0)]]
 SamplerState metallicSampler : register(s5);
 #endif
-#if FRAGMENT_STAGE && MAP_EMISSIVE
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(12, 0)]]
 SamplerState emissiveSampler : register(s3);
 #endif
@@ -123,7 +114,7 @@ SamplerState emissiveSampler : register(s3);
 [[vk::binding(13, 0)]]
 SamplerState volumeDensitySampler : register(s4);
 #endif
-#if FRAGMENT_STAGE && MAP_BASE_COLOR
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(2, 0)]]
 Texture2D<float4> baseColorTexture : register(t0);
 #endif
@@ -131,15 +122,15 @@ Texture2D<float4> baseColorTexture : register(t0);
 [[vk::binding(3, 0)]]
 Texture2D<float4> normalTexture : register(t1);
 #endif
-#if FRAGMENT_STAGE && MAP_ROUGHNESS_METALLIC
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(4, 0)]]
 Texture2D<float4> roughnessMetallicTexture : register(t2);
 #endif
-#if FRAGMENT_STAGE && MAP_METALLIC
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(15, 0)]]
 Texture2D<float4> metallicTexture : register(t4);
 #endif
-#if FRAGMENT_STAGE && MAP_EMISSIVE
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(5, 0)]]
 Texture2D<float4> emissiveTexture : register(t3);
 #endif
@@ -187,6 +178,7 @@ struct SurfaceParameters
     float4 lightDirectionIntensity;
     float4 lightColorAmbient;
     float4 reserved;
+    float4 textureControls;
 };
 
 [[vk::binding(7, 0)]]
@@ -351,15 +343,18 @@ float4 FRAGMENT_ENTRY_POINT(
     float metallic = saturate(surface.metallicRoughnessThresholdWorkflow.x);
     float roughness = clamp(surface.metallicRoughnessThresholdWorkflow.y, 0.01, 1.0);
     float3 shadingNormal = input.normal;
+    uint textureMask = (uint)round(surface.textureControls.x);
+    uint udimMask = (uint)round(surface.textureControls.y);
 
-#if MAP_BASE_COLOR
-    float4 sampledBaseColor = SampleMaterialTexture(
-        baseColorTexture,
-        baseColorSampler,
-        input.texCoord,
-        ((uint)round(surface.reserved.w) & 1u) != 0);
-    diffuseColor = sampledBaseColor.rgb;
-    opacity *= sampledBaseColor.a;
+#if MAP_MATERIAL
+    if ((textureMask & 2u) != 0)
+    {
+        diffuseColor = SampleMaterialTexture(
+            baseColorTexture,
+            baseColorSampler,
+            input.texCoord,
+            (udimMask & 2u) != 0).rgb;
+    }
 #endif
 #if MAP_NORMAL
     float3 sampledNormal =
@@ -367,7 +362,7 @@ float4 FRAGMENT_ENTRY_POINT(
             normalTexture,
             normalSampler,
             input.texCoord,
-            ((uint)round(surface.reserved.w) & 2u) != 0).xyz * 2.0 - 1.0;
+            (udimMask & 4u) != 0).xyz * 2.0 - 1.0;
     float3 tangent = normalize(input.tangent.xyz);
     float3 bitangent = cross(normalize(shadingNormal), tangent) * input.tangent.w;
     shadingNormal = normalize(
@@ -375,40 +370,45 @@ float4 FRAGMENT_ENTRY_POINT(
         (bitangent * sampledNormal.y) +
         (shadingNormal * sampledNormal.z));
 #endif
-#if MAP_ROUGHNESS_METALLIC
+#if MAP_MATERIAL
     // The managed texture cache replicates the connected UsdUVTexture output
     // channel into every component before upload, so a scalar map is always read
     // from .r whichever of r/g/b/a the material authored. The sampled value
     // replaces the authored constant rather than modulating it: a connected input
     // has no constant to modulate, and multiplying by the UsdPreviewSurface
     // default silently halved roughness and zeroed metallic.
-    roughness = clamp(
-        SampleMaterialTexture(
-            roughnessMetallicTexture,
-            roughnessMetallicSampler,
-            input.texCoord,
-            ((uint)round(surface.reserved.w) & 4u) != 0).r,
-        0.01,
-        1.0);
-#endif
-#if MAP_METALLIC
+    if ((textureMask & 8u) != 0)
+    {
+        roughness = clamp(
+            SampleMaterialTexture(
+                roughnessMetallicTexture,
+                roughnessMetallicSampler,
+                input.texCoord,
+                (udimMask & 8u) != 0).r,
+            0.01,
+            1.0);
+    }
     // Metallic has its own texture, sampler and UDIM bit, so a roughness-only or
     // metallic-only material never disturbs the other input. A packed
     // occlusion/roughness/metallic file reaches here as two connections naming one
     // asset and two channels, which resolves to two swizzled uploads.
-    metallic = saturate(
-        SampleMaterialTexture(
-            metallicTexture,
-            metallicSampler,
+    if ((textureMask & 32u) != 0)
+    {
+        metallic = saturate(
+            SampleMaterialTexture(
+                metallicTexture,
+                metallicSampler,
+                input.texCoord,
+                (udimMask & 32u) != 0).r);
+    }
+    if ((textureMask & 16u) != 0)
+    {
+        emissiveColor = SampleMaterialTexture(
+            emissiveTexture,
+            emissiveSampler,
             input.texCoord,
-            ((uint)round(surface.reserved.w) & 16u) != 0).r);
-#endif
-#if MAP_EMISSIVE
-    emissiveColor = SampleMaterialTexture(
-        emissiveTexture,
-        emissiveSampler,
-        input.texCoord,
-        ((uint)round(surface.reserved.w) & 8u) != 0).rgb;
+            (udimMask & 16u) != 0).rgb;
+    }
 #endif
 
     float opacityThreshold = surface.metallicRoughnessThresholdWorkflow.z;
