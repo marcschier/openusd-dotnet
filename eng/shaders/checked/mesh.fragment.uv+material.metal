@@ -70,9 +70,15 @@ struct KernelContext_0
     sampler opacitySampler_0;
     texture2d<float, access::sample> occlusionTexture_0;
     sampler occlusionSampler_0;
+    texture2d<float, access::sample> specularColorTexture_0;
+    sampler specularColorSampler_0;
+    texture2d<float, access::sample> clearcoatTexture_0;
+    sampler clearcoatSampler_0;
+    texture2d<float, access::sample> clearcoatRoughnessTexture_0;
+    sampler clearcoatRoughnessSampler_0;
 };
 
-[[fragment]] pixelOutput_0 fragmentMain_uv_material(pixelInput_0 _S1 [[stage_in]], bool isFrontFace_0 [[front_facing]], float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]], FrameParameters_natural_0 device* frameParameters_1 [[buffer(8)]], texture2d<float, access::sample> baseColorTexture_1 [[texture(0)]], sampler baseColorSampler_1 [[sampler(0)]], texture2d<float, access::sample> roughnessMetallicTexture_1 [[texture(2)]], sampler roughnessMetallicSampler_1 [[sampler(2)]], texture2d<float, access::sample> metallicTexture_1 [[texture(4)]], sampler metallicSampler_1 [[sampler(5)]], texture2d<float, access::sample> emissiveTexture_1 [[texture(3)]], sampler emissiveSampler_1 [[sampler(3)]], texture2d<float, access::sample> opacityTexture_1 [[texture(5)]], sampler opacitySampler_1 [[sampler(6)]], texture2d<float, access::sample> occlusionTexture_1 [[texture(10)]], sampler occlusionSampler_1 [[sampler(7)]])
+[[fragment]] pixelOutput_0 fragmentMain_uv_material(pixelInput_0 _S1 [[stage_in]], bool isFrontFace_0 [[front_facing]], float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]], FrameParameters_natural_0 device* frameParameters_1 [[buffer(8)]], texture2d<float, access::sample> baseColorTexture_1 [[texture(0)]], sampler baseColorSampler_1 [[sampler(0)]], texture2d<float, access::sample> roughnessMetallicTexture_1 [[texture(2)]], sampler roughnessMetallicSampler_1 [[sampler(2)]], texture2d<float, access::sample> metallicTexture_1 [[texture(4)]], sampler metallicSampler_1 [[sampler(5)]], texture2d<float, access::sample> emissiveTexture_1 [[texture(3)]], sampler emissiveSampler_1 [[sampler(3)]], texture2d<float, access::sample> opacityTexture_1 [[texture(5)]], sampler opacitySampler_1 [[sampler(6)]], texture2d<float, access::sample> occlusionTexture_1 [[texture(10)]], sampler occlusionSampler_1 [[sampler(7)]], texture2d<float, access::sample> specularColorTexture_1 [[texture(11)]], sampler specularColorSampler_1 [[sampler(8)]], texture2d<float, access::sample> clearcoatTexture_1 [[texture(12)]], sampler clearcoatSampler_1 [[sampler(9)]], texture2d<float, access::sample> clearcoatRoughnessTexture_1 [[texture(13)]], sampler clearcoatRoughnessSampler_1 [[sampler(10)]])
 {
     uint4 _S2;
     thread KernelContext_0 kernelContext_0;
@@ -90,6 +96,12 @@ struct KernelContext_0
     (&kernelContext_0)->opacitySampler_0 = opacitySampler_1;
     (&kernelContext_0)->occlusionTexture_0 = occlusionTexture_1;
     (&kernelContext_0)->occlusionSampler_0 = occlusionSampler_1;
+    (&kernelContext_0)->specularColorTexture_0 = specularColorTexture_1;
+    (&kernelContext_0)->specularColorSampler_0 = specularColorSampler_1;
+    (&kernelContext_0)->clearcoatTexture_0 = clearcoatTexture_1;
+    (&kernelContext_0)->clearcoatSampler_0 = clearcoatSampler_1;
+    (&kernelContext_0)->clearcoatRoughnessTexture_0 = clearcoatRoughnessTexture_1;
+    (&kernelContext_0)->clearcoatRoughnessSampler_0 = clearcoatRoughnessSampler_1;
     SurfaceParameters_natural_0 device* _S3 = surfaceParameters_1+int(0);
     FrameParameters_natural_0 device* _S4 = frameParameters_1+int(0);
     for(;;)
@@ -148,28 +160,32 @@ struct KernelContext_0
     float4 _S14 = float4(_S3->metallicRoughnessThresholdWorkflow_0) ;
     float _S15 = saturate(_S14.x);
     float _S16 = clamp(_S14.y, 0.00999999977648258f, 1.0f);
-    float4 _S17 = float4(_S3->textureControls_0) ;
-    uint textureMask_0 = uint(round(_S17.x));
-    uint udimMask_0 = uint(round(_S17.y));
+    float4 _S17 = float4(_S3->specularIor_0) ;
+    float3 _S18 = _S17.xyz;
+    float _S19 = _S8.x;
+    float _S20 = _S8.y;
+    float4 _S21 = float4(_S3->textureControls_0) ;
+    uint textureMask_0 = uint(round(_S21.x));
+    uint udimMask_0 = uint(round(_S21.y));
     bool hasSceneLighting_0;
-    float4 _S18;
+    float4 _S22;
     if((textureMask_0 & 2U) != 0U)
     {
-        bool _S19 = (udimMask_0 & 2U) != 0U;
+        bool _S23 = (udimMask_0 & 2U) != 0U;
         for(;;)
         {
-            if(!_S19)
+            if(!_S23)
             {
-                _S18 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), (_S1.texCoord_0)));
+                _S22 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), (_S1.texCoord_0)));
                 break;
             }
-            texture2d<float, access::sample> _S20 = (&kernelContext_0)->baseColorTexture_0;
+            texture2d<float, access::sample> _S24 = (&kernelContext_0)->baseColorTexture_0;
             thread uint atlasWidth_0;
             thread uint atlasHeight_0;
-            (*((&atlasWidth_0)) = (_S20).get_width(0)),(*((&atlasHeight_0)) = (_S20).get_height(0));
-            int3 _S21 = int3(int(0), int(0), int(0));
-            float4 metadata_0 = round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S21)).xy), uint(((_S21)).z))) * float4(255.0f) );
-            int2 _S22 = int2(metadata_0.zw);
+            (*((&atlasWidth_0)) = (_S24).get_width(0)),(*((&atlasHeight_0)) = (_S24).get_height(0));
+            int3 _S25 = int3(int(0), int(0), int(0));
+            float4 metadata_0 = round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S25)).xy), uint(((_S25)).z))) * float4(255.0f) );
+            int2 _S26 = int2(metadata_0.zw);
             int2 tile_0 = int2(floor(_S1.texCoord_0)) - int2(metadata_0.xy);
             if(any(tile_0 < (int2(int(0)) )))
             {
@@ -177,41 +193,41 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_0 >= _S22);
+                hasSceneLighting_0 = any(tile_0 >= _S26);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S23 = int3(int(min(1U, atlasWidth_0 - 1U)), int(0), int(0));
-                _S18 = (((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S23)).xy), uint(((_S23)).z)));
+                int3 _S27 = int3(int(min(1U, atlasWidth_0 - 1U)), int(0), int(0));
+                _S22 = (((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S27)).xy), uint(((_S27)).z)));
                 break;
             }
-            uint _S24 = atlasWidth_0 / uint(_S22.x);
-            float _S25 = float(_S24);
-            uint _S26 = (atlasHeight_0 - 1U) / uint(_S22.y);
-            float2 cellSize_0 = float2(_S25, float(_S26));
-            _S18 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), ((float2(tile_0) * cellSize_0 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_0 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_0), float(atlasHeight_0)))));
+            uint _S28 = atlasWidth_0 / uint(_S26.x);
+            float _S29 = float(_S28);
+            uint _S30 = (atlasHeight_0 - 1U) / uint(_S26.y);
+            float2 cellSize_0 = float2(_S29, float(_S30));
+            _S22 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), ((float2(tile_0) * cellSize_0 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_0 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_0), float(atlasHeight_0)))));
             break;
         }
-        diffuseColor_0 = _S18.xyz;
+        diffuseColor_0 = _S22.xyz;
     }
     float roughness_0;
     if((textureMask_0 & 8U) != 0U)
     {
-        bool _S27 = (udimMask_0 & 8U) != 0U;
+        bool _S31 = (udimMask_0 & 8U) != 0U;
         for(;;)
         {
-            if(!_S27)
+            if(!_S31)
             {
-                _S18 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), (_S1.texCoord_0)));
+                _S22 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), (_S1.texCoord_0)));
                 break;
             }
-            texture2d<float, access::sample> _S28 = (&kernelContext_0)->roughnessMetallicTexture_0;
+            texture2d<float, access::sample> _S32 = (&kernelContext_0)->roughnessMetallicTexture_0;
             thread uint atlasWidth_1;
             thread uint atlasHeight_1;
-            (*((&atlasWidth_1)) = (_S28).get_width(0)),(*((&atlasHeight_1)) = (_S28).get_height(0));
-            int3 _S29 = int3(int(0), int(0), int(0));
-            float4 metadata_1 = round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S29)).xy), uint(((_S29)).z))) * float4(255.0f) );
-            int2 _S30 = int2(metadata_1.zw);
+            (*((&atlasWidth_1)) = (_S32).get_width(0)),(*((&atlasHeight_1)) = (_S32).get_height(0));
+            int3 _S33 = int3(int(0), int(0), int(0));
+            float4 metadata_1 = round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S33)).xy), uint(((_S33)).z))) * float4(255.0f) );
+            int2 _S34 = int2(metadata_1.zw);
             int2 tile_1 = int2(floor(_S1.texCoord_0)) - int2(metadata_1.xy);
             if(any(tile_1 < (int2(int(0)) )))
             {
@@ -219,22 +235,22 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_1 >= _S30);
+                hasSceneLighting_0 = any(tile_1 >= _S34);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S31 = int3(int(min(1U, atlasWidth_1 - 1U)), int(0), int(0));
-                _S18 = (((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S31)).xy), uint(((_S31)).z)));
+                int3 _S35 = int3(int(min(1U, atlasWidth_1 - 1U)), int(0), int(0));
+                _S22 = (((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S35)).xy), uint(((_S35)).z)));
                 break;
             }
-            uint _S32 = atlasWidth_1 / uint(_S30.x);
-            float _S33 = float(_S32);
-            uint _S34 = (atlasHeight_1 - 1U) / uint(_S30.y);
-            float2 cellSize_1 = float2(_S33, float(_S34));
-            _S18 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), ((float2(tile_1) * cellSize_1 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_1 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_1), float(atlasHeight_1)))));
+            uint _S36 = atlasWidth_1 / uint(_S34.x);
+            float _S37 = float(_S36);
+            uint _S38 = (atlasHeight_1 - 1U) / uint(_S34.y);
+            float2 cellSize_1 = float2(_S37, float(_S38));
+            _S22 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), ((float2(tile_1) * cellSize_1 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_1 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_1), float(atlasHeight_1)))));
             break;
         }
-        roughness_0 = clamp(_S18.x, 0.00999999977648258f, 1.0f);
+        roughness_0 = clamp(_S22.x, 0.00999999977648258f, 1.0f);
     }
     else
     {
@@ -243,21 +259,21 @@ struct KernelContext_0
     float metallic_0;
     if((textureMask_0 & 32U) != 0U)
     {
-        bool _S35 = (udimMask_0 & 32U) != 0U;
+        bool _S39 = (udimMask_0 & 32U) != 0U;
         for(;;)
         {
-            if(!_S35)
+            if(!_S39)
             {
-                _S18 = (((&kernelContext_0)->metallicTexture_0).sample(((&kernelContext_0)->metallicSampler_0), (_S1.texCoord_0)));
+                _S22 = (((&kernelContext_0)->metallicTexture_0).sample(((&kernelContext_0)->metallicSampler_0), (_S1.texCoord_0)));
                 break;
             }
-            texture2d<float, access::sample> _S36 = (&kernelContext_0)->metallicTexture_0;
+            texture2d<float, access::sample> _S40 = (&kernelContext_0)->metallicTexture_0;
             thread uint atlasWidth_2;
             thread uint atlasHeight_2;
-            (*((&atlasWidth_2)) = (_S36).get_width(0)),(*((&atlasHeight_2)) = (_S36).get_height(0));
-            int3 _S37 = int3(int(0), int(0), int(0));
-            float4 metadata_2 = round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S37)).xy), uint(((_S37)).z))) * float4(255.0f) );
-            int2 _S38 = int2(metadata_2.zw);
+            (*((&atlasWidth_2)) = (_S40).get_width(0)),(*((&atlasHeight_2)) = (_S40).get_height(0));
+            int3 _S41 = int3(int(0), int(0), int(0));
+            float4 metadata_2 = round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S41)).xy), uint(((_S41)).z))) * float4(255.0f) );
+            int2 _S42 = int2(metadata_2.zw);
             int2 tile_2 = int2(floor(_S1.texCoord_0)) - int2(metadata_2.xy);
             if(any(tile_2 < (int2(int(0)) )))
             {
@@ -265,22 +281,22 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_2 >= _S38);
+                hasSceneLighting_0 = any(tile_2 >= _S42);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S39 = int3(int(min(1U, atlasWidth_2 - 1U)), int(0), int(0));
-                _S18 = (((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S39)).xy), uint(((_S39)).z)));
+                int3 _S43 = int3(int(min(1U, atlasWidth_2 - 1U)), int(0), int(0));
+                _S22 = (((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S43)).xy), uint(((_S43)).z)));
                 break;
             }
-            uint _S40 = atlasWidth_2 / uint(_S38.x);
-            float _S41 = float(_S40);
-            uint _S42 = (atlasHeight_2 - 1U) / uint(_S38.y);
-            float2 cellSize_2 = float2(_S41, float(_S42));
-            _S18 = (((&kernelContext_0)->metallicTexture_0).sample(((&kernelContext_0)->metallicSampler_0), ((float2(tile_2) * cellSize_2 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_2 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_2), float(atlasHeight_2)))));
+            uint _S44 = atlasWidth_2 / uint(_S42.x);
+            float _S45 = float(_S44);
+            uint _S46 = (atlasHeight_2 - 1U) / uint(_S42.y);
+            float2 cellSize_2 = float2(_S45, float(_S46));
+            _S22 = (((&kernelContext_0)->metallicTexture_0).sample(((&kernelContext_0)->metallicSampler_0), ((float2(tile_2) * cellSize_2 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_2 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_2), float(atlasHeight_2)))));
             break;
         }
-        metallic_0 = saturate(_S18.x);
+        metallic_0 = saturate(_S22.x);
     }
     else
     {
@@ -289,21 +305,21 @@ struct KernelContext_0
     float3 emissiveColor_0;
     if((textureMask_0 & 16U) != 0U)
     {
-        bool _S43 = (udimMask_0 & 16U) != 0U;
+        bool _S47 = (udimMask_0 & 16U) != 0U;
         for(;;)
         {
-            if(!_S43)
+            if(!_S47)
             {
-                _S18 = (((&kernelContext_0)->emissiveTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), (_S1.texCoord_0)));
+                _S22 = (((&kernelContext_0)->emissiveTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), (_S1.texCoord_0)));
                 break;
             }
-            texture2d<float, access::sample> _S44 = (&kernelContext_0)->emissiveTexture_0;
+            texture2d<float, access::sample> _S48 = (&kernelContext_0)->emissiveTexture_0;
             thread uint atlasWidth_3;
             thread uint atlasHeight_3;
-            (*((&atlasWidth_3)) = (_S44).get_width(0)),(*((&atlasHeight_3)) = (_S44).get_height(0));
-            int3 _S45 = int3(int(0), int(0), int(0));
-            float4 metadata_3 = round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S45)).xy), uint(((_S45)).z))) * float4(255.0f) );
-            int2 _S46 = int2(metadata_3.zw);
+            (*((&atlasWidth_3)) = (_S48).get_width(0)),(*((&atlasHeight_3)) = (_S48).get_height(0));
+            int3 _S49 = int3(int(0), int(0), int(0));
+            float4 metadata_3 = round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S49)).xy), uint(((_S49)).z))) * float4(255.0f) );
+            int2 _S50 = int2(metadata_3.zw);
             int2 tile_3 = int2(floor(_S1.texCoord_0)) - int2(metadata_3.xy);
             if(any(tile_3 < (int2(int(0)) )))
             {
@@ -311,22 +327,22 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_3 >= _S46);
+                hasSceneLighting_0 = any(tile_3 >= _S50);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S47 = int3(int(min(1U, atlasWidth_3 - 1U)), int(0), int(0));
-                _S18 = (((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S47)).xy), uint(((_S47)).z)));
+                int3 _S51 = int3(int(min(1U, atlasWidth_3 - 1U)), int(0), int(0));
+                _S22 = (((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S51)).xy), uint(((_S51)).z)));
                 break;
             }
-            uint _S48 = atlasWidth_3 / uint(_S46.x);
-            float _S49 = float(_S48);
-            uint _S50 = (atlasHeight_3 - 1U) / uint(_S46.y);
-            float2 cellSize_3 = float2(_S49, float(_S50));
-            _S18 = (((&kernelContext_0)->emissiveTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), ((float2(tile_3) * cellSize_3 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_3 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_3), float(atlasHeight_3)))));
+            uint _S52 = atlasWidth_3 / uint(_S50.x);
+            float _S53 = float(_S52);
+            uint _S54 = (atlasHeight_3 - 1U) / uint(_S50.y);
+            float2 cellSize_3 = float2(_S53, float(_S54));
+            _S22 = (((&kernelContext_0)->emissiveTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), ((float2(tile_3) * cellSize_3 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_3 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_3), float(atlasHeight_3)))));
             break;
         }
-        emissiveColor_0 = _S18.xyz;
+        emissiveColor_0 = _S22.xyz;
     }
     else
     {
@@ -334,21 +350,21 @@ struct KernelContext_0
     }
     if((textureMask_0 & 64U) != 0U)
     {
-        bool _S51 = (udimMask_0 & 64U) != 0U;
+        bool _S55 = (udimMask_0 & 64U) != 0U;
         for(;;)
         {
-            if(!_S51)
+            if(!_S55)
             {
-                _S18 = (((&kernelContext_0)->opacityTexture_0).sample(((&kernelContext_0)->opacitySampler_0), (_S1.texCoord_0)));
+                _S22 = (((&kernelContext_0)->opacityTexture_0).sample(((&kernelContext_0)->opacitySampler_0), (_S1.texCoord_0)));
                 break;
             }
-            texture2d<float, access::sample> _S52 = (&kernelContext_0)->opacityTexture_0;
+            texture2d<float, access::sample> _S56 = (&kernelContext_0)->opacityTexture_0;
             thread uint atlasWidth_4;
             thread uint atlasHeight_4;
-            (*((&atlasWidth_4)) = (_S52).get_width(0)),(*((&atlasHeight_4)) = (_S52).get_height(0));
-            int3 _S53 = int3(int(0), int(0), int(0));
-            float4 metadata_4 = round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S53)).xy), uint(((_S53)).z))) * float4(255.0f) );
-            int2 _S54 = int2(metadata_4.zw);
+            (*((&atlasWidth_4)) = (_S56).get_width(0)),(*((&atlasHeight_4)) = (_S56).get_height(0));
+            int3 _S57 = int3(int(0), int(0), int(0));
+            float4 metadata_4 = round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S57)).xy), uint(((_S57)).z))) * float4(255.0f) );
+            int2 _S58 = int2(metadata_4.zw);
             int2 tile_4 = int2(floor(_S1.texCoord_0)) - int2(metadata_4.xy);
             if(any(tile_4 < (int2(int(0)) )))
             {
@@ -356,41 +372,41 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_4 >= _S54);
+                hasSceneLighting_0 = any(tile_4 >= _S58);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S55 = int3(int(min(1U, atlasWidth_4 - 1U)), int(0), int(0));
-                _S18 = (((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S55)).xy), uint(((_S55)).z)));
+                int3 _S59 = int3(int(min(1U, atlasWidth_4 - 1U)), int(0), int(0));
+                _S22 = (((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S59)).xy), uint(((_S59)).z)));
                 break;
             }
-            uint _S56 = atlasWidth_4 / uint(_S54.x);
-            float _S57 = float(_S56);
-            uint _S58 = (atlasHeight_4 - 1U) / uint(_S54.y);
-            float2 cellSize_4 = float2(_S57, float(_S58));
-            _S18 = (((&kernelContext_0)->opacityTexture_0).sample(((&kernelContext_0)->opacitySampler_0), ((float2(tile_4) * cellSize_4 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_4 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_4), float(atlasHeight_4)))));
+            uint _S60 = atlasWidth_4 / uint(_S58.x);
+            float _S61 = float(_S60);
+            uint _S62 = (atlasHeight_4 - 1U) / uint(_S58.y);
+            float2 cellSize_4 = float2(_S61, float(_S62));
+            _S22 = (((&kernelContext_0)->opacityTexture_0).sample(((&kernelContext_0)->opacitySampler_0), ((float2(tile_4) * cellSize_4 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_4 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_4), float(atlasHeight_4)))));
             break;
         }
-        opacity_0 = saturate(_S18.x);
+        opacity_0 = saturate(_S22.x);
     }
     float occlusion_0;
     if((textureMask_0 & 128U) != 0U)
     {
-        bool _S59 = (udimMask_0 & 128U) != 0U;
+        bool _S63 = (udimMask_0 & 128U) != 0U;
         for(;;)
         {
-            if(!_S59)
+            if(!_S63)
             {
-                _S18 = (((&kernelContext_0)->occlusionTexture_0).sample(((&kernelContext_0)->occlusionSampler_0), (_S1.texCoord_0)));
+                _S22 = (((&kernelContext_0)->occlusionTexture_0).sample(((&kernelContext_0)->occlusionSampler_0), (_S1.texCoord_0)));
                 break;
             }
-            texture2d<float, access::sample> _S60 = (&kernelContext_0)->occlusionTexture_0;
+            texture2d<float, access::sample> _S64 = (&kernelContext_0)->occlusionTexture_0;
             thread uint atlasWidth_5;
             thread uint atlasHeight_5;
-            (*((&atlasWidth_5)) = (_S60).get_width(0)),(*((&atlasHeight_5)) = (_S60).get_height(0));
-            int3 _S61 = int3(int(0), int(0), int(0));
-            float4 metadata_5 = round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S61)).xy), uint(((_S61)).z))) * float4(255.0f) );
-            int2 _S62 = int2(metadata_5.zw);
+            (*((&atlasWidth_5)) = (_S64).get_width(0)),(*((&atlasHeight_5)) = (_S64).get_height(0));
+            int3 _S65 = int3(int(0), int(0), int(0));
+            float4 metadata_5 = round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S65)).xy), uint(((_S65)).z))) * float4(255.0f) );
+            int2 _S66 = int2(metadata_5.zw);
             int2 tile_5 = int2(floor(_S1.texCoord_0)) - int2(metadata_5.xy);
             if(any(tile_5 < (int2(int(0)) )))
             {
@@ -398,26 +414,164 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_5 >= _S62);
+                hasSceneLighting_0 = any(tile_5 >= _S66);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S63 = int3(int(min(1U, atlasWidth_5 - 1U)), int(0), int(0));
-                _S18 = (((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S63)).xy), uint(((_S63)).z)));
+                int3 _S67 = int3(int(min(1U, atlasWidth_5 - 1U)), int(0), int(0));
+                _S22 = (((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S67)).xy), uint(((_S67)).z)));
                 break;
             }
-            uint _S64 = atlasWidth_5 / uint(_S62.x);
-            float _S65 = float(_S64);
-            uint _S66 = (atlasHeight_5 - 1U) / uint(_S62.y);
-            float2 cellSize_5 = float2(_S65, float(_S66));
-            _S18 = (((&kernelContext_0)->occlusionTexture_0).sample(((&kernelContext_0)->occlusionSampler_0), ((float2(tile_5) * cellSize_5 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_5 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_5), float(atlasHeight_5)))));
+            uint _S68 = atlasWidth_5 / uint(_S66.x);
+            float _S69 = float(_S68);
+            uint _S70 = (atlasHeight_5 - 1U) / uint(_S66.y);
+            float2 cellSize_5 = float2(_S69, float(_S70));
+            _S22 = (((&kernelContext_0)->occlusionTexture_0).sample(((&kernelContext_0)->occlusionSampler_0), ((float2(tile_5) * cellSize_5 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_5 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_5), float(atlasHeight_5)))));
             break;
         }
-        occlusion_0 = saturate(_S18.x);
+        occlusion_0 = saturate(_S22.x);
     }
     else
     {
         occlusion_0 = _S11;
+    }
+    float3 specularColor_0;
+    if((textureMask_0 & 256U) != 0U)
+    {
+        bool _S71 = (udimMask_0 & 256U) != 0U;
+        for(;;)
+        {
+            if(!_S71)
+            {
+                _S22 = (((&kernelContext_0)->specularColorTexture_0).sample(((&kernelContext_0)->specularColorSampler_0), (_S1.texCoord_0)));
+                break;
+            }
+            texture2d<float, access::sample> _S72 = (&kernelContext_0)->specularColorTexture_0;
+            thread uint atlasWidth_6;
+            thread uint atlasHeight_6;
+            (*((&atlasWidth_6)) = (_S72).get_width(0)),(*((&atlasHeight_6)) = (_S72).get_height(0));
+            int3 _S73 = int3(int(0), int(0), int(0));
+            float4 metadata_6 = round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S73)).xy), uint(((_S73)).z))) * float4(255.0f) );
+            int2 _S74 = int2(metadata_6.zw);
+            int2 tile_6 = int2(floor(_S1.texCoord_0)) - int2(metadata_6.xy);
+            if(any(tile_6 < (int2(int(0)) )))
+            {
+                hasSceneLighting_0 = true;
+            }
+            else
+            {
+                hasSceneLighting_0 = any(tile_6 >= _S74);
+            }
+            if(hasSceneLighting_0)
+            {
+                int3 _S75 = int3(int(min(1U, atlasWidth_6 - 1U)), int(0), int(0));
+                _S22 = (((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S75)).xy), uint(((_S75)).z)));
+                break;
+            }
+            uint _S76 = atlasWidth_6 / uint(_S74.x);
+            float _S77 = float(_S76);
+            uint _S78 = (atlasHeight_6 - 1U) / uint(_S74.y);
+            float2 cellSize_6 = float2(_S77, float(_S78));
+            _S22 = (((&kernelContext_0)->specularColorTexture_0).sample(((&kernelContext_0)->specularColorSampler_0), ((float2(tile_6) * cellSize_6 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_6 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_6), float(atlasHeight_6)))));
+            break;
+        }
+        specularColor_0 = saturate(_S22.xyz);
+    }
+    else
+    {
+        specularColor_0 = _S18;
+    }
+    float clearcoatAmount_0;
+    if((textureMask_0 & 512U) != 0U)
+    {
+        bool _S79 = (udimMask_0 & 512U) != 0U;
+        for(;;)
+        {
+            if(!_S79)
+            {
+                _S22 = (((&kernelContext_0)->clearcoatTexture_0).sample(((&kernelContext_0)->clearcoatSampler_0), (_S1.texCoord_0)));
+                break;
+            }
+            texture2d<float, access::sample> _S80 = (&kernelContext_0)->clearcoatTexture_0;
+            thread uint atlasWidth_7;
+            thread uint atlasHeight_7;
+            (*((&atlasWidth_7)) = (_S80).get_width(0)),(*((&atlasHeight_7)) = (_S80).get_height(0));
+            int3 _S81 = int3(int(0), int(0), int(0));
+            float4 metadata_7 = round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S81)).xy), uint(((_S81)).z))) * float4(255.0f) );
+            int2 _S82 = int2(metadata_7.zw);
+            int2 tile_7 = int2(floor(_S1.texCoord_0)) - int2(metadata_7.xy);
+            if(any(tile_7 < (int2(int(0)) )))
+            {
+                hasSceneLighting_0 = true;
+            }
+            else
+            {
+                hasSceneLighting_0 = any(tile_7 >= _S82);
+            }
+            if(hasSceneLighting_0)
+            {
+                int3 _S83 = int3(int(min(1U, atlasWidth_7 - 1U)), int(0), int(0));
+                _S22 = (((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S83)).xy), uint(((_S83)).z)));
+                break;
+            }
+            uint _S84 = atlasWidth_7 / uint(_S82.x);
+            float _S85 = float(_S84);
+            uint _S86 = (atlasHeight_7 - 1U) / uint(_S82.y);
+            float2 cellSize_7 = float2(_S85, float(_S86));
+            _S22 = (((&kernelContext_0)->clearcoatTexture_0).sample(((&kernelContext_0)->clearcoatSampler_0), ((float2(tile_7) * cellSize_7 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_7 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_7), float(atlasHeight_7)))));
+            break;
+        }
+        clearcoatAmount_0 = saturate(_S22.x);
+    }
+    else
+    {
+        clearcoatAmount_0 = _S19;
+    }
+    float clearcoatRoughness_0;
+    if((textureMask_0 & 1024U) != 0U)
+    {
+        bool _S87 = (udimMask_0 & 1024U) != 0U;
+        for(;;)
+        {
+            if(!_S87)
+            {
+                _S22 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).sample(((&kernelContext_0)->clearcoatRoughnessSampler_0), (_S1.texCoord_0)));
+                break;
+            }
+            texture2d<float, access::sample> _S88 = (&kernelContext_0)->clearcoatRoughnessTexture_0;
+            thread uint atlasWidth_8;
+            thread uint atlasHeight_8;
+            (*((&atlasWidth_8)) = (_S88).get_width(0)),(*((&atlasHeight_8)) = (_S88).get_height(0));
+            int3 _S89 = int3(int(0), int(0), int(0));
+            float4 metadata_8 = round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S89)).xy), uint(((_S89)).z))) * float4(255.0f) );
+            int2 _S90 = int2(metadata_8.zw);
+            int2 tile_8 = int2(floor(_S1.texCoord_0)) - int2(metadata_8.xy);
+            if(any(tile_8 < (int2(int(0)) )))
+            {
+                hasSceneLighting_0 = true;
+            }
+            else
+            {
+                hasSceneLighting_0 = any(tile_8 >= _S90);
+            }
+            if(hasSceneLighting_0)
+            {
+                int3 _S91 = int3(int(min(1U, atlasWidth_8 - 1U)), int(0), int(0));
+                _S22 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S91)).xy), uint(((_S91)).z)));
+                break;
+            }
+            uint _S92 = atlasWidth_8 / uint(_S90.x);
+            float _S93 = float(_S92);
+            uint _S94 = (atlasHeight_8 - 1U) / uint(_S90.y);
+            float2 cellSize_8 = float2(_S93, float(_S94));
+            _S22 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).sample(((&kernelContext_0)->clearcoatRoughnessSampler_0), ((float2(tile_8) * cellSize_8 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_8 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_8), float(atlasHeight_8)))));
+            break;
+        }
+        clearcoatRoughness_0 = saturate(_S22.x);
+    }
+    else
+    {
+        clearcoatRoughness_0 = _S20;
     }
     float opacityThreshold_0 = _S14.z;
     if(opacityThreshold_0 > 0.0f)
@@ -434,14 +588,14 @@ struct KernelContext_0
     }
     float3 normal_1 = normalize(_S1.normal_0);
     float lengthSquared_0 = dot(_S1.eyePosition_0, _S1.eyePosition_0);
-    float3 _S67;
+    float3 _S95;
     if(lengthSquared_0 > 0.00100000004749745f)
     {
-        _S67 = - _S1.eyePosition_0 * float3(rsqrt(lengthSquared_0)) ;
+        _S95 = - _S1.eyePosition_0 * float3(rsqrt(lengthSquared_0)) ;
     }
     else
     {
-        _S67 = float3(0.0f, 0.0f, 1.0f);
+        _S95 = float3(0.0f, 0.0f, 1.0f);
     }
     float3 normal_2;
     if(isFrontFace_0)
@@ -452,60 +606,58 @@ struct KernelContext_0
     {
         normal_2 = - normal_1;
     }
-    float _S68 = saturate(abs(dot(normal_2, _S67)) + 0.00000999999974738f);
-    float _S69 = max(0.00100000004749745f, roughness_0);
-    float _S70 = _S8.x;
-    float _S71 = max(0.00100000004749745f, _S8.y);
-    float4 _S72 = float4(_S3->specularIor_0) ;
-    float _S73 = _S72.w;
-    float reflectanceRatio_0 = (1.0f - _S73) / (1.0f + _S73);
-    float3 _S74 = float3(3.14159274101257324f) ;
-    float3 diffuse_0 = diffuseColor_0 / _S74;
+    float _S96 = saturate(abs(dot(normal_2, _S95)) + 0.00000999999974738f);
+    float _S97 = max(0.00100000004749745f, roughness_0);
+    float _S98 = max(0.00100000004749745f, clearcoatRoughness_0);
+    float _S99 = _S17.w;
+    float reflectanceRatio_0 = (1.0f - _S99) / (1.0f + _S99);
+    float3 _S100 = float3(3.14159274101257324f) ;
+    float3 diffuse_0 = diffuseColor_0 / _S100;
     float3 normalIncidence_0;
     float3 grazingIncidence_0;
     float3 diffuse_1;
     if((_S14.w) >= 0.5f)
     {
-        float3 _S75 = float3(1.0f, 1.0f, 1.0f);
-        normalIncidence_0 = _S72.xyz;
-        grazingIncidence_0 = _S75;
+        float3 _S101 = float3(1.0f, 1.0f, 1.0f);
+        normalIncidence_0 = specularColor_0;
+        grazingIncidence_0 = _S101;
         diffuse_1 = diffuse_0;
     }
     else
     {
-        float3 _S76 = float3(metallic_0) ;
-        float3 specularTint_0 = mix(float3(1.0f, 1.0f, 1.0f), diffuseColor_0, _S76);
+        float3 _S102 = float3(metallic_0) ;
+        float3 specularTint_0 = mix(float3(1.0f, 1.0f, 1.0f), diffuseColor_0, _S102);
         float3 diffuse_2 = diffuse_0 * float3((1.0f - metallic_0)) ;
-        normalIncidence_0 = mix(float3((reflectanceRatio_0 * reflectanceRatio_0))  * specularTint_0, specularTint_0, _S76);
+        normalIncidence_0 = mix(float3((reflectanceRatio_0 * reflectanceRatio_0))  * specularTint_0, specularTint_0, _S102);
         grazingIncidence_0 = specularTint_0;
         diffuse_1 = diffuse_2;
     }
-    float4 _S77 = float4(_S4->ambientLight_0) ;
-    float _S78 = _S77.w;
-    if(_S78 > 0.5f)
+    float4 _S103 = float4(_S4->ambientLight_0) ;
+    float _S104 = _S103.w;
+    if(_S104 > 0.5f)
     {
         hasSceneLighting_0 = true;
     }
     else
     {
-        float3 _S79 = _S77.xyz;
-        hasSceneLighting_0 = (dot(_S79, _S79)) > 0.0f;
+        float3 _S105 = _S103.xyz;
+        hasSceneLighting_0 = (dot(_S105, _S105)) > 0.0f;
     }
-    uint _S80 = min(uint(_S78), 8U);
-    matrix<float,int(4),int(4)>  _S81 = matrix<float,int(4),int(4)> (_S4->eyeToWorld_0.data_0[int(0)][int(0)], _S4->eyeToWorld_0.data_0[int(0)][int(1)], _S4->eyeToWorld_0.data_0[int(0)][int(2)], _S4->eyeToWorld_0.data_0[int(0)][int(3)], _S4->eyeToWorld_0.data_0[int(1)][int(0)], _S4->eyeToWorld_0.data_0[int(1)][int(1)], _S4->eyeToWorld_0.data_0[int(1)][int(2)], _S4->eyeToWorld_0.data_0[int(1)][int(3)], _S4->eyeToWorld_0.data_0[int(2)][int(0)], _S4->eyeToWorld_0.data_0[int(2)][int(1)], _S4->eyeToWorld_0.data_0[int(2)][int(2)], _S4->eyeToWorld_0.data_0[int(2)][int(3)], _S4->eyeToWorld_0.data_0[int(3)][int(0)], _S4->eyeToWorld_0.data_0[int(3)][int(1)], _S4->eyeToWorld_0.data_0[int(3)][int(2)], _S4->eyeToWorld_0.data_0[int(3)][int(3)]);
-    float3 _S82 = normalize((((float4(_S67, 0.0f)) * (_S81))).xyz);
-    float3 _S83 = (((float4(_S1.eyePosition_0, 1.0f)) * (_S81))).xyz;
-    float4 _S84 = float4(_S3->lightColorAmbient_0) ;
-    float3 color_0 = diffuseColor_0 * float3(_S84.w)  + diffuseColor_0 * _S77.xyz;
-    bool _S85 = !hasSceneLighting_0;
+    uint _S106 = min(uint(_S104), 8U);
+    matrix<float,int(4),int(4)>  _S107 = matrix<float,int(4),int(4)> (_S4->eyeToWorld_0.data_0[int(0)][int(0)], _S4->eyeToWorld_0.data_0[int(0)][int(1)], _S4->eyeToWorld_0.data_0[int(0)][int(2)], _S4->eyeToWorld_0.data_0[int(0)][int(3)], _S4->eyeToWorld_0.data_0[int(1)][int(0)], _S4->eyeToWorld_0.data_0[int(1)][int(1)], _S4->eyeToWorld_0.data_0[int(1)][int(2)], _S4->eyeToWorld_0.data_0[int(1)][int(3)], _S4->eyeToWorld_0.data_0[int(2)][int(0)], _S4->eyeToWorld_0.data_0[int(2)][int(1)], _S4->eyeToWorld_0.data_0[int(2)][int(2)], _S4->eyeToWorld_0.data_0[int(2)][int(3)], _S4->eyeToWorld_0.data_0[int(3)][int(0)], _S4->eyeToWorld_0.data_0[int(3)][int(1)], _S4->eyeToWorld_0.data_0[int(3)][int(2)], _S4->eyeToWorld_0.data_0[int(3)][int(3)]);
+    float3 _S108 = normalize((((float4(_S95, 0.0f)) * (_S107))).xyz);
+    float3 _S109 = (((float4(_S1.eyePosition_0, 1.0f)) * (_S107))).xyz;
+    float4 _S110 = float4(_S3->lightColorAmbient_0) ;
+    float3 color_0 = diffuseColor_0 * float3(_S110.w)  + diffuseColor_0 * _S103.xyz;
+    bool _S111 = !hasSceneLighting_0;
     uint lightCount_0;
-    if(_S85)
+    if(_S111)
     {
         lightCount_0 = 1U;
     }
     else
     {
-        lightCount_0 = _S80;
+        lightCount_0 = _S106;
     }
     uint lightIndex_0 = 0U;
     float3 color_1 = color_0;
@@ -518,10 +670,10 @@ struct KernelContext_0
         {
             break;
         }
-        bool _S86 = lightIndex_0 == 0U;
-        if(_S86)
+        bool _S112 = lightIndex_0 == 0U;
+        if(_S112)
         {
-            hasSceneLighting_0 = _S85;
+            hasSceneLighting_0 = _S111;
         }
         else
         {
@@ -536,17 +688,17 @@ struct KernelContext_0
         {
             lightType_0 = (float4((&_S4->lightPositionType_0)->data_1[lightIndex_0]) ).w;
         }
-        bool _S87;
-        if(_S86)
+        bool _S113;
+        if(_S112)
         {
-            _S87 = _S85;
+            _S113 = _S111;
         }
         else
         {
-            _S87 = false;
+            _S113 = false;
         }
         float3 lightDirection_0;
-        if(_S87)
+        if(_S113)
         {
             lightDirection_0 = normalize((float4(_S3->lightDirectionIntensity_0) ).xyz);
         }
@@ -554,16 +706,16 @@ struct KernelContext_0
         {
             lightDirection_0 = normalize((float4((&_S4->lightDirectionRadius_0)->data_1[lightIndex_0]) ).xyz);
         }
-        bool _S88;
-        if(_S86)
+        bool _S114;
+        if(_S112)
         {
-            _S88 = _S85;
+            _S114 = _S111;
         }
         else
         {
-            _S88 = false;
+            _S114 = false;
         }
-        if(_S88)
+        if(_S114)
         {
             roughness_0 = (float4(_S3->lightDirectionIntensity_0) ).w;
         }
@@ -571,33 +723,33 @@ struct KernelContext_0
         {
             roughness_0 = (float4((&_S4->lightColorIntensity_0)->data_1[lightIndex_0]) ).w;
         }
-        bool _S89;
-        if(_S86)
+        bool _S115;
+        if(_S112)
         {
-            _S89 = _S85;
+            _S115 = _S111;
         }
         else
         {
-            _S89 = false;
+            _S115 = false;
         }
-        if(_S89)
+        if(_S115)
         {
-            diffuseColor_0 = _S84.xyz;
+            diffuseColor_0 = _S110.xyz;
         }
         else
         {
             diffuseColor_0 = (float4((&_S4->lightColorIntensity_0)->data_1[lightIndex_0]) ).xyz;
         }
-        bool _S90;
-        if(_S86)
+        bool _S116;
+        if(_S112)
         {
-            _S90 = _S85;
+            _S116 = _S111;
         }
         else
         {
-            _S90 = false;
+            _S116 = false;
         }
-        if(_S90)
+        if(_S116)
         {
             metallic_0 = 1.0f;
         }
@@ -605,35 +757,34 @@ struct KernelContext_0
         {
             metallic_0 = (float4((&_S4->lightControls_0)->data_1[lightIndex_0]) ).x;
         }
-        bool _S91;
-        if(_S86)
+        bool _S117;
+        if(_S112)
         {
-            _S91 = _S85;
+            _S117 = _S111;
         }
         else
         {
-            _S91 = false;
+            _S117 = false;
         }
-        float _S92;
-        if(_S91)
+        if(_S117)
         {
-            _S92 = 1.0f;
-        }
-        else
-        {
-            _S92 = (float4((&_S4->lightControls_0)->data_1[lightIndex_0]) ).y;
-        }
-        bool _S93;
-        if(_S86)
-        {
-            _S93 = _S85;
+            clearcoatRoughness_0 = 1.0f;
         }
         else
         {
-            _S93 = false;
+            clearcoatRoughness_0 = (float4((&_S4->lightControls_0)->data_1[lightIndex_0]) ).y;
+        }
+        bool _S118;
+        if(_S112)
+        {
+            _S118 = _S111;
+        }
+        else
+        {
+            _S118 = false;
         }
         float3 lightTangent_0;
-        if(_S93)
+        if(_S118)
         {
             lightTangent_0 = float3(1.0f, 0.0f, 0.0f);
         }
@@ -641,17 +792,17 @@ struct KernelContext_0
         {
             lightTangent_0 = normalize((float4((&_S4->lightTangentShapeX_0)->data_1[lightIndex_0]) ).xyz);
         }
-        bool _S94;
-        if(_S86)
+        bool _S119;
+        if(_S112)
         {
-            _S94 = _S85;
+            _S119 = _S111;
         }
         else
         {
-            _S94 = false;
+            _S119 = false;
         }
         float3 lightBitangent_0;
-        if(_S94)
+        if(_S119)
         {
             lightBitangent_0 = float3(0.0f, 1.0f, 0.0f);
         }
@@ -659,17 +810,17 @@ struct KernelContext_0
         {
             lightBitangent_0 = normalize((float4((&_S4->lightBitangentShapeY_0)->data_1[lightIndex_0]) ).xyz);
         }
-        bool _S95;
-        if(_S86)
+        bool _S120;
+        if(_S112)
         {
-            _S95 = _S85;
+            _S120 = _S111;
         }
         else
         {
-            _S95 = false;
+            _S120 = false;
         }
         float shapeX_0;
-        if(_S95)
+        if(_S120)
         {
             shapeX_0 = 0.0f;
         }
@@ -677,17 +828,17 @@ struct KernelContext_0
         {
             shapeX_0 = (float4((&_S4->lightTangentShapeX_0)->data_1[lightIndex_0]) ).w;
         }
-        bool _S96;
-        if(_S86)
+        bool _S121;
+        if(_S112)
         {
-            _S96 = _S85;
+            _S121 = _S111;
         }
         else
         {
-            _S96 = false;
+            _S121 = false;
         }
         float shapeY_0;
-        if(_S96)
+        if(_S121)
         {
             shapeY_0 = 0.0f;
         }
@@ -695,17 +846,17 @@ struct KernelContext_0
         {
             shapeY_0 = (float4((&_S4->lightBitangentShapeY_0)->data_1[lightIndex_0]) ).w;
         }
-        bool _S97;
-        if(_S86)
+        bool _S122;
+        if(_S112)
         {
-            _S97 = _S85;
+            _S122 = _S111;
         }
         else
         {
-            _S97 = false;
+            _S122 = false;
         }
         float lightRadius_0;
-        if(_S97)
+        if(_S122)
         {
             lightRadius_0 = 0.0f;
         }
@@ -713,31 +864,30 @@ struct KernelContext_0
         {
             lightRadius_0 = (float4((&_S4->lightDirectionRadius_0)->data_1[lightIndex_0]) ).w;
         }
-        bool _S98;
-        if(_S86)
+        bool _S123;
+        if(_S112)
         {
-            _S98 = _S85;
+            _S123 = _S111;
         }
         else
         {
-            _S98 = false;
+            _S123 = false;
         }
-        float3 _S99;
-        if(_S98)
+        if(_S123)
         {
-            _S99 = _S67;
+            specularColor_0 = _S95;
         }
         else
         {
-            _S99 = _S82;
+            specularColor_0 = _S108;
         }
         thread array<float3, int(5)> sampleOffsets_0;
-        float3 _S100 = float3(0.0f, 0.0f, 0.0f);
-        sampleOffsets_0[int(0)] = _S100;
-        sampleOffsets_0[int(1)] = _S100;
-        sampleOffsets_0[int(2)] = _S100;
-        sampleOffsets_0[int(3)] = _S100;
-        sampleOffsets_0[int(4)] = _S100;
+        float3 _S124 = float3(0.0f, 0.0f, 0.0f);
+        sampleOffsets_0[int(0)] = _S124;
+        sampleOffsets_0[int(1)] = _S124;
+        sampleOffsets_0[int(2)] = _S124;
+        sampleOffsets_0[int(3)] = _S124;
+        sampleOffsets_0[int(4)] = _S124;
         float sampleCount_0;
         if(lightType_0 == 3.0f)
         {
@@ -745,9 +895,9 @@ struct KernelContext_0
             float3 halfHeight_0 = lightBitangent_0 * float3((shapeY_0 * 0.5f)) ;
             sampleOffsets_0[int(1)] = halfWidth_0 + halfHeight_0;
             sampleOffsets_0[int(2)] = halfWidth_0 - halfHeight_0;
-            float3 _S101 = - halfWidth_0;
-            sampleOffsets_0[int(3)] = _S101 + halfHeight_0;
-            sampleOffsets_0[int(4)] = _S101 - halfHeight_0;
+            float3 _S125 = - halfWidth_0;
+            sampleOffsets_0[int(3)] = _S125 + halfHeight_0;
+            sampleOffsets_0[int(4)] = _S125 - halfHeight_0;
             sampleCount_0 = 5.0f;
         }
         else
@@ -797,10 +947,10 @@ struct KernelContext_0
             float sampleIntensity_1;
             if(lightType_0 >= 2.0f)
             {
-                float3 toLight_0 = (float4((&_S4->lightPositionType_0)->data_1[lightIndex_0]) ).xyz + sampleOffsets_0[sampleIndex_0] - _S83;
-                float _S102 = max(dot(toLight_0, toLight_0), 0.00100000004749745f);
-                float3 sampleDirection_1 = toLight_0 * float3(rsqrt(_S102)) ;
-                float sampleIntensity_2 = sampleIntensity_0 / _S102;
+                float3 toLight_0 = (float4((&_S4->lightPositionType_0)->data_1[lightIndex_0]) ).xyz + sampleOffsets_0[sampleIndex_0] - _S109;
+                float _S126 = max(dot(toLight_0, toLight_0), 0.00100000004749745f);
+                float3 sampleDirection_1 = toLight_0 * float3(rsqrt(_S126)) ;
+                float sampleIntensity_2 = sampleIntensity_0 / _S126;
                 if(lightType_0 == 4.0f)
                 {
                     emissionScale_0 = saturate(dot(lightDirection_0, - sampleDirection_1));
@@ -818,36 +968,36 @@ struct KernelContext_0
                 emissionScale_0 = 1.0f;
                 sampleIntensity_1 = sampleIntensity_0;
             }
-            float3 half_0 = normalize(sampleDirection_0 + _S99);
+            float3 half_0 = normalize(sampleDirection_0 + specularColor_0);
             float normalDotLight_0 = saturate(dot(normal_2, sampleDirection_0));
             float normalDotHalf_0 = saturate(dot(normal_2, half_0));
-            float3 _S103 = float3(pow(max(0.0f, 1.0f - saturate(dot(_S99, half_0))), 5.0f)) ;
-            float3 _S104 = mix(normalIncidence_0, grazingIncidence_0, _S103);
-            float3 directDiffuse_0 = diffuse_1 * (float3(1.0f)  - _S104);
-            float alpha_0 = _S69 * _S69;
+            float3 _S127 = float3(pow(max(0.0f, 1.0f - saturate(dot(specularColor_0, half_0))), 5.0f)) ;
+            float3 _S128 = mix(normalIncidence_0, grazingIncidence_0, _S127);
+            float3 directDiffuse_0 = diffuse_1 * (float3(1.0f)  - _S128);
+            float alpha_0 = _S97 * _S97;
             float alphaSquared_0 = alpha_0 * alpha_0;
-            float _S105 = normalDotHalf_0 * normalDotHalf_0;
-            float denominator_0 = _S105 * (alphaSquared_0 - 1.0f) + 1.0f;
+            float _S129 = normalDotHalf_0 * normalDotHalf_0;
+            float denominator_0 = _S129 * (alphaSquared_0 - 1.0f) + 1.0f;
             float k_0 = alpha_0 * 0.5f;
-            float _S106 = 1.0f - k_0;
-            float3 _S107 = float3((4.0f * normalDotLight_0 * _S68 + 0.00100000004749745f)) ;
-            float3 _S108 = _S104 * float3((_S68 / (_S68 * _S106 + k_0) * (normalDotLight_0 / (normalDotLight_0 * _S106 + k_0))))  * float3(((alphaSquared_0 + 0.00100000004749745f) / (denominator_0 * denominator_0 * 3.14159274101257324f)))  / _S107;
+            float _S130 = 1.0f - k_0;
+            float3 _S131 = float3((4.0f * normalDotLight_0 * _S96 + 0.00100000004749745f)) ;
+            float3 _S132 = _S128 * float3((_S96 / (_S96 * _S130 + k_0) * (normalDotLight_0 / (normalDotLight_0 * _S130 + k_0))))  * float3(((alphaSquared_0 + 0.00100000004749745f) / (denominator_0 * denominator_0 * 3.14159274101257324f)))  / _S131;
             float3 directSpecular_0;
-            if(_S70 > 0.0f)
+            if(clearcoatAmount_0 > 0.0f)
             {
-                float alpha_1 = _S71 * _S71;
+                float alpha_1 = _S98 * _S98;
                 float alphaSquared_1 = alpha_1 * alpha_1;
-                float denominator_1 = _S105 * (alphaSquared_1 - 1.0f) + 1.0f;
+                float denominator_1 = _S129 * (alphaSquared_1 - 1.0f) + 1.0f;
                 float k_1 = alpha_1 * 0.5f;
-                float _S109 = 1.0f - k_1;
-                directSpecular_0 = _S108 + float3(_S70)  * (mix(float3((reflectanceRatio_0 * reflectanceRatio_0)) , float3(1.0f, 1.0f, 1.0f), _S103) * float3((_S68 / (_S68 * _S109 + k_1) * (normalDotLight_0 / (normalDotLight_0 * _S109 + k_1))))  * float3(((alphaSquared_1 + 0.00100000004749745f) / (denominator_1 * denominator_1 * 3.14159274101257324f)))  / _S107);
+                float _S133 = 1.0f - k_1;
+                directSpecular_0 = _S132 + float3(clearcoatAmount_0)  * (mix(float3((reflectanceRatio_0 * reflectanceRatio_0)) , float3(1.0f, 1.0f, 1.0f), _S127) * float3((_S96 / (_S96 * _S133 + k_1) * (normalDotLight_0 / (normalDotLight_0 * _S133 + k_1))))  * float3(((alphaSquared_1 + 0.00100000004749745f) / (denominator_1 * denominator_1 * 3.14159274101257324f)))  / _S131);
             }
             else
             {
-                directSpecular_0 = _S108;
+                directSpecular_0 = _S132;
             }
-            float3 _S110 = diffuseColor_0 * float3(sampleIntensity_1) ;
-            color_2 = color_2 + float3((occlusion_0 * emissionScale_0 * normalDotLight_0))  * (directDiffuse_0 * float3(metallic_0)  * (_S110 * _S74) + directSpecular_0 * float3(_S92)  * _S110);
+            float3 _S134 = diffuseColor_0 * float3(sampleIntensity_1) ;
+            color_2 = color_2 + float3((occlusion_0 * emissionScale_0 * normalDotLight_0))  * (directDiffuse_0 * float3(metallic_0)  * (_S134 * _S100) + directSpecular_0 * float3(clearcoatRoughness_0)  * _S134);
             sampleIndex_0 = sampleIndex_0 + 1U;
         }
         lightIndex_0 = lightIndex_0 + 1U;
@@ -862,7 +1012,7 @@ struct KernelContext_0
     {
         color_1 = color_3;
     }
-    pixelOutput_0 _S111 = { float4(color_1, opacity_0) };
-    return _S111;
+    pixelOutput_0 _S135 = { float4(color_1, opacity_0) };
+    return _S135;
 }
 

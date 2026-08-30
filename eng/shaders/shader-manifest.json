@@ -344,6 +344,90 @@
         },
         {
           "feature": "MAP_MATERIAL",
+          "name": "specularColorSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 8,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 20,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "specularColorTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 11,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 21,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "clearcoatSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 22,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "clearcoatTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 12,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 23,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "clearcoatRoughnessSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 10,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 24,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "clearcoatRoughnessTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 13,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 25,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
           "name": "emissiveSampler",
           "access": "read",
           "d3d": {

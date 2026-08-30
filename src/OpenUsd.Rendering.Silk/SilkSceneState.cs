@@ -2698,7 +2698,8 @@ public sealed class SilkSceneGpuResources : IDisposable
             SilkColorSpace.Raw => SilkColorSpace.Raw,
             SilkColorSpace.Srgb => SilkColorSpace.Srgb,
             SilkColorSpace.Auto => texture.Parameter is SilkMaterialParameter.DiffuseColor or
-                SilkMaterialParameter.EmissiveColor
+                SilkMaterialParameter.EmissiveColor or
+                SilkMaterialParameter.SpecularColor
                     ? SilkColorSpace.Srgb
                     : SilkColorSpace.Raw,
             _ => throw new ArgumentOutOfRangeException(nameof(texture))

@@ -283,6 +283,18 @@ public sealed class SilkMaterialData
         {
             features |= SilkShaderFeatures.OcclusionMap;
         }
+        if (GetTexture(SilkMaterialParameter.SpecularColor) is not null)
+        {
+            features |= SilkShaderFeatures.SpecularColorMap;
+        }
+        if (GetTexture(SilkMaterialParameter.Clearcoat) is not null)
+        {
+            features |= SilkShaderFeatures.ClearcoatMap;
+        }
+        if (GetTexture(SilkMaterialParameter.ClearcoatRoughness) is not null)
+        {
+            features |= SilkShaderFeatures.ClearcoatRoughnessMap;
+        }
         return features == SilkShaderFeatures.None
             ? features
             : features | SilkShaderFeatures.Uv;

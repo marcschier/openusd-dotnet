@@ -42,6 +42,9 @@ internal static class D3D12ShaderRegisters
                 SilkBindingLayoutDescriptor.MetallicSamplerBinding => 5,
                 SilkBindingLayoutDescriptor.OpacitySamplerBinding => 6,
                 SilkBindingLayoutDescriptor.OcclusionSamplerBinding => 7,
+                SilkBindingLayoutDescriptor.SpecularColorSamplerBinding => 8,
+                SilkBindingLayoutDescriptor.ClearcoatSamplerBinding => 9,
+                SilkBindingLayoutDescriptor.ClearcoatRoughnessSamplerBinding => 10,
                 _ => slot.Binding
             };
         }
@@ -56,6 +59,9 @@ internal static class D3D12ShaderRegisters
                 SilkBindingLayoutDescriptor.MetallicTextureBinding => 4,
                 SilkBindingLayoutDescriptor.OpacityTextureBinding => 5,
                 SilkBindingLayoutDescriptor.OcclusionTextureBinding => 10,
+                SilkBindingLayoutDescriptor.SpecularColorTextureBinding => 11,
+                SilkBindingLayoutDescriptor.ClearcoatTextureBinding => 12,
+                SilkBindingLayoutDescriptor.ClearcoatRoughnessTextureBinding => 13,
                 SilkBindingLayoutDescriptor.VolumeDensityTextureBinding => 9,
                 _ => slot.Binding >= 2 ? slot.Binding - 2 : slot.Binding
             };
