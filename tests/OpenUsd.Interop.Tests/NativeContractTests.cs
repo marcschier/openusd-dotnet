@@ -22,7 +22,7 @@ public sealed class NativeContractTests
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
 
         await Assert.That(abiVersion).IsEqualTo(15U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x1FFFFFUL);
+        await Assert.That(requiredCapabilities).IsEqualTo(0xFFFFFFUL);
         await Assert.That(requiredCapabilities & 0xFFFUL).IsEqualTo(0xFFFUL);
         await Assert.That(requiredCapabilities & 0x1000UL).IsEqualTo(0x1000UL);
         await Assert.That(requiredCapabilities & 0x2000UL).IsEqualTo(0x2000UL);

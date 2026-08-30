@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 12u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 13u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 5u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -218,15 +218,30 @@ extern "C" {
 ///       28   16 float    scale[4]
 ///       44   16 float    bias[4]
 ///       60   16 float    fallback[4]
-///       76    * uint8    asset[asset_byte_count] (UTF-8, resolved, no NUL)
+///       76    4 uint32   output_channel (OPENUSD_SILK_TEXTURE_CHANNEL_*)
+///       80    * uint8    asset[asset_byte_count] (UTF-8, resolved, no NUL)
 ///        *    * uint8    uv_primvar[uv_primvar_byte_count] (UTF-8, no NUL)
+///
+/// ABI v13 adds output_channel. It is the resolved output port of the connected
+/// UsdUVTexture -- the "r", "g", "b", "a" or "rgb" token the surface input is
+/// wired to -- and it is required rather than optional: a consumer cannot infer
+/// which channel of a shared file feeds which input, and two inputs connected to
+/// different outputs of one texture prim are otherwise indistinguishable from two
+/// inputs connected to two separate prims. A scalar input (component_count 1) must
+/// carry a single-channel output and a colour or vector input (component_count 3
+/// or more) must carry OPENUSD_SILK_TEXTURE_CHANNEL_RGB; any other pairing, and
+/// any output token this delegate does not model, is rejected with a diagnostic
+/// rather than guessed at. Every other field keeps its ABI v5 offset, so only the
+/// variable section moved.
 ///
 /// Like the vertex attribute table, both tables are keyed by an explicit
 /// parameter id, so supporting a further UsdPreviewSurface input needs a new
 /// id rather than another ABI bump. A parameter appears in at most one table:
 /// the scalar table carries its authored constant, the texture table carries
 /// its connected UsdUVTexture, and a parameter present in neither is left at
-/// the consumer's documented UsdPreviewSurface default.
+/// the consumer's documented UsdPreviewSurface default. Two inputs may name the
+/// same asset with different output_channel values, which is exactly how a packed
+/// occlusion/roughness/metallic file is authored.
 ///
 /// surface_kind is OPENUSD_SILK_SURFACE_UNSUPPORTED when the bound network is
 /// not a UsdPreviewSurface. Such a material is still published, with empty
@@ -298,6 +313,18 @@ extern "C" {
 #define OPENUSD_SILK_COLOR_SPACE_AUTO 0u
 #define OPENUSD_SILK_COLOR_SPACE_RAW 1u
 #define OPENUSD_SILK_COLOR_SPACE_SRGB 2u
+
+/// Connected UsdUVTexture output ports, carried by the ABI v13 texture table.
+/// These are exactly the outputs UsdUVTexture declares: four single-channel
+/// outputs and one three-channel output. A MaterialX image node's single "out"
+/// port resolves to RGB for a colour or vector input and to R for a scalar input,
+/// which is what its one decoded channel occupies. There is no "unspecified"
+/// value: an entry whose output cannot be resolved is rejected, never published.
+#define OPENUSD_SILK_TEXTURE_CHANNEL_R 0u
+#define OPENUSD_SILK_TEXTURE_CHANNEL_G 1u
+#define OPENUSD_SILK_TEXTURE_CHANNEL_B 2u
+#define OPENUSD_SILK_TEXTURE_CHANNEL_A 3u
+#define OPENUSD_SILK_TEXTURE_CHANNEL_RGB 4u
 
 /// Vertex attribute semantics carried by the ABI v4 attribute table. CUSTOM
 /// means the entry is identified by its authored primvar name alone.

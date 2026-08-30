@@ -822,6 +822,160 @@ public sealed class SilkTextureResidencyTests
     }
 
     // ---------------------------------------------------------------------
+    // Integration: roughness and metallic textures are retained independently.
+    // ---------------------------------------------------------------------
+
+    [Test]
+    public async Task RenderingAMaterialWithRoughnessAndMetallicTexturesKeepsBothLive()
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(
+            device,
+            SilkShaderBinaryFormat.SpirV,
+            imageDecoder: (_, _) => new SilkDecodedImage(2, 2, CreatePixels(2, 2)),
+            udimResolver: null,
+            textureResidencyOptions: new SilkTextureResidencyOptions(
+                maxDecodedCpuBytes: 1024 * 1024,
+                maxGpuBytes: 1024 * 1024));
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(4, 4));
+
+        byte[] frame = CreateFrameCommand(4, 4);
+        byte[] material = CreateMaterialUpsert(
+            "/World/Materials/RoughMetal",
+            SilkSurfaceKind.PreviewSurface,
+            [
+                ScalarTexture(SilkMaterialParameter.Roughness, "rough.png", SilkTextureChannel.R),
+                ScalarTexture(SilkMaterialParameter.Metallic, "metal.png", SilkTextureChannel.R),
+            ]);
+        byte[] mesh = CreateMeshUpsert(
+            "/World/RoughMetal", "/World/Materials/RoughMetal", primId: 7);
+        SilkSceneDelta delta = renderer.Scene.Apply(Concat(frame, material, mesh), 3, 1);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+
+        _ = renderer.Render(color, depth);
+
+        // Two inputs, two assets, two decoded/uploaded material textures -- dropping
+        // either input must not silently collapse this back to one.
+        await Assert.That(device.LiveTextureCount(RenderPipelineDevice.MaterialTextureKind))
+            .IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task RenderingAPackedRoughnessMetallicFileRetainsOneEntryPerChannel()
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(
+            device,
+            SilkShaderBinaryFormat.SpirV,
+            imageDecoder: (_, _) => new SilkDecodedImage(2, 2, CreatePixels(2, 2)),
+            udimResolver: null,
+            textureResidencyOptions: new SilkTextureResidencyOptions(
+                maxDecodedCpuBytes: 1024 * 1024,
+                maxGpuBytes: 1024 * 1024));
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(4, 4));
+
+        byte[] frame = CreateFrameCommand(4, 4);
+        byte[] material = CreateMaterialUpsert(
+            "/World/Materials/PackedRoughMetal",
+            SilkSurfaceKind.PreviewSurface,
+            [
+                ScalarTexture(SilkMaterialParameter.Roughness, "orm.png", SilkTextureChannel.G),
+                ScalarTexture(SilkMaterialParameter.Metallic, "orm.png", SilkTextureChannel.B),
+            ]);
+        byte[] mesh = CreateMeshUpsert(
+            "/World/PackedRoughMetal", "/World/Materials/PackedRoughMetal", primId: 7);
+        SilkSceneDelta delta = renderer.Scene.Apply(Concat(frame, material, mesh), 3, 1);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+
+        _ = renderer.Render(color, depth);
+
+        // One packed file feeding two channels is two swizzled entries, so residency
+        // accounting must show both rather than one shared entry.
+        await Assert.That(device.LiveTextureCount(RenderPipelineDevice.MaterialTextureKind))
+            .IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task RenderingAMaterialWithOnlyARoughnessTextureRetainsOneTexture()
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(
+            device,
+            SilkShaderBinaryFormat.SpirV,
+            imageDecoder: (_, _) => new SilkDecodedImage(2, 2, CreatePixels(2, 2)),
+            udimResolver: null,
+            textureResidencyOptions: new SilkTextureResidencyOptions(
+                maxDecodedCpuBytes: 1024 * 1024,
+                maxGpuBytes: 1024 * 1024));
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(4, 4));
+
+        byte[] frame = CreateFrameCommand(4, 4);
+        byte[] material = CreateMaterialUpsert(
+            "/World/Materials/RoughOnly",
+            SilkSurfaceKind.PreviewSurface,
+            [ScalarTexture(SilkMaterialParameter.Roughness, "rough.png", SilkTextureChannel.G)]);
+        byte[] mesh = CreateMeshUpsert("/World/RoughOnly", "/World/Materials/RoughOnly", primId: 7);
+        SilkSceneDelta delta = renderer.Scene.Apply(Concat(frame, material, mesh), 3, 1);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+
+        _ = renderer.Render(color, depth);
+
+        // A roughness-only material binds and uploads exactly one texture: metallic is
+        // untextured and must not pull anything into residency.
+        await Assert.That(device.LiveTextureCount(RenderPipelineDevice.MaterialTextureKind))
+            .IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task RenderingAMaterialWithOnlyAMetallicTextureRetainsOneTexture()
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(
+            device,
+            SilkShaderBinaryFormat.SpirV,
+            imageDecoder: (_, _) => new SilkDecodedImage(2, 2, CreatePixels(2, 2)),
+            udimResolver: null,
+            textureResidencyOptions: new SilkTextureResidencyOptions(
+                maxDecodedCpuBytes: 1024 * 1024,
+                maxGpuBytes: 1024 * 1024));
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(4, 4));
+
+        byte[] frame = CreateFrameCommand(4, 4);
+        byte[] material = CreateMaterialUpsert(
+            "/World/Materials/MetalOnly",
+            SilkSurfaceKind.PreviewSurface,
+            [ScalarTexture(SilkMaterialParameter.Metallic, "metal.png", SilkTextureChannel.B)]);
+        byte[] mesh = CreateMeshUpsert("/World/MetalOnly", "/World/Materials/MetalOnly", primId: 7);
+        SilkSceneDelta delta = renderer.Scene.Apply(Concat(frame, material, mesh), 3, 1);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+
+        _ = renderer.Render(color, depth);
+
+        // The mirror case: a metallic-only material renders through the metallic slot
+        // alone, which the previous shared-slot design could not express.
+        await Assert.That(device.LiveTextureCount(RenderPipelineDevice.MaterialTextureKind))
+            .IsEqualTo(1);
+    }
+
+    private static TextureSpec ScalarTexture(
+        SilkMaterialParameter parameter,
+        string asset,
+        SilkTextureChannel channel) =>
+        new(parameter, asset, "st", ComponentCount: 1, Channel: channel);
+
+    // ---------------------------------------------------------------------
     // Integration: the renderer only trims after a submission has completed.
     // ---------------------------------------------------------------------
 
@@ -954,7 +1108,9 @@ public sealed class SilkTextureResidencyTests
     private readonly record struct TextureSpec(
         SilkMaterialParameter Parameter,
         string Asset,
-        string UvPrimvar = "st");
+        string UvPrimvar = "st",
+        int ComponentCount = 4,
+        SilkTextureChannel Channel = SilkTextureChannel.Rgb);
 
     private static byte[] CreateMaterialUpsert(
         string path,
@@ -980,7 +1136,7 @@ public sealed class SilkTextureResidencyTests
             payload.AddRange(BitConverter.GetBytes((uint)SilkColorSpace.Raw));
             payload.AddRange(BitConverter.GetBytes((uint)assetBytes.Length));
             payload.AddRange(BitConverter.GetBytes((uint)uvBytes.Length));
-            payload.AddRange(BitConverter.GetBytes(4u));
+            payload.AddRange(BitConverter.GetBytes((uint)texture.ComponentCount));
             for (int component = 0; component < 4; component++)
             {
                 payload.AddRange(BitConverter.GetBytes(1f));
@@ -993,6 +1149,7 @@ public sealed class SilkTextureResidencyTests
             {
                 payload.AddRange(BitConverter.GetBytes(component == 3 ? 1f : 0f));
             }
+            payload.AddRange(BitConverter.GetBytes((uint)texture.Channel));
             payload.AddRange(assetBytes);
             payload.AddRange(uvBytes);
         }

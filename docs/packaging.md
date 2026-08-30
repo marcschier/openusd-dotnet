@@ -102,7 +102,7 @@ packages for each supported RID:
   `win-x64` and `linux-x64` only. Consumers opt in by referencing `OpenUsd.Physics`, which depends
   on the RID-agnostic `OpenUsd.Runtime.Physics` metapackage.
 
-The package set requires project-owned data ABI version 15 and native capabilities `0x1FFFFF`.
+The package set requires project-owned data ABI version 15 and native capabilities `0xFFFFFF`.
 Package-only execution prints and verifies both values before exercising stage operations.
 The physics packages additionally require retained physics world ABI version 7 and physics
 extraction page ABI version 1, both recorded in `eng/openusd.lock.json` and embedded in each
@@ -514,7 +514,7 @@ its working directory, and successful output contains:
 ```text
 PACKAGE_EXECUTION_OK
 ABI=15
-CAPABILITIES=0x1FFFFF
+CAPABILITIES=0xFFFFFF
 INPUT_OPENED=true
 CAMERA_STATE_QUERY=true
 ROUNDTRIP_SAVED=true
@@ -699,7 +699,7 @@ native source and header files. Generated `native/build`, `native/install`,
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
 the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 15 and
-capabilities `0x1FFFFF`, Storm ABI 8, hdSilk session/page ABI 5/11, and Storm child
+capabilities `0xFFFFFF`, Storm ABI 8, hdSilk session/page ABI 5/13, and Storm child
 ABI 8. Metadata schema 3 records camera-state version 1, Storm-child navigation
 input version 2, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their

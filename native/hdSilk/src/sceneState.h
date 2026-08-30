@@ -108,6 +108,11 @@ struct HdSilkMaterialTexture
     uint32_t wrapT = 2;
     uint32_t sourceColorSpace = 0;
     uint32_t componentCount = 4;
+    // The connected output port (OPENUSD_SILK_TEXTURE_CHANNEL_*). Deliberately
+    // initialized outside the valid range so a producer that forgets to resolve
+    // the connection is rejected by wire validation instead of silently
+    // publishing the red channel.
+    uint32_t outputChannel = 0xFFFFFFFFu;
     float scale[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     float bias[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     float fallback[4] = {0.0f, 0.0f, 0.0f, 1.0f};

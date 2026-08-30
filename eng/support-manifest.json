@@ -627,7 +627,7 @@
         },
         {
           "id": "preview-surface-textures",
-          "description": "UsdPreviewSurface map binding on all three RHIs through OpenUSD Hio: typed decode, ordinary-image mip chains with normal renormalization, 1-4 channel expansion, and missing-asset fallbacks",
+          "description": "UsdPreviewSurface map binding on all three RHIs through OpenUSD Hio: typed decode, ordinary-image mip chains with normal renormalization, 1-4 channel expansion, missing-asset fallbacks, explicit connected UsdUVTexture output channels (r/g/b/a/rgb) honoured after scale/bias, and fully independent roughness and metallic inputs each with their own feature bit, texture, sampler, backend register, and UDIM mask bit",
           "status": "workflow-gated",
           "evidenceWorkflows": ["render.yml"],
           "evidenceWorkflowJobs": {
@@ -640,8 +640,11 @@
           },
           "evidenceTests": [
             "tests/OpenUsd.Rendering.Tests/SilkGraphicsTextureTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkGraphicsPipelineTests.cs",
             "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs",
-            "tests/OpenUsd.Rendering.Tests/SilkMipChainTests.cs"
+            "tests/OpenUsd.Rendering.Tests/SilkMipChainTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkTextureResidencyTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/BackendShaderRegisterConformanceTests.cs"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },

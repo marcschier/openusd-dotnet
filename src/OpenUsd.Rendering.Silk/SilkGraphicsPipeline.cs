@@ -132,11 +132,25 @@ public enum SilkShaderFeatures
     /// <summary>A normal texture is bound.</summary>
     NormalMap = 4,
 
-    /// <summary>A packed roughness/metallic texture is bound.</summary>
+    /// <summary>
+    /// A roughness texture is bound. The numeric value and the <c>roughmetal</c>
+    /// artifact token are kept for API and artifact stability, but the slot drives
+    /// roughness alone: metallic has its own <see cref="MetallicMap"/> bit, and the
+    /// two are fully independent. A packed occlusion/roughness/metallic file simply
+    /// sets both bits, because it reaches the renderer as two connections naming one
+    /// asset and two different UsdUVTexture output channels.
+    /// </summary>
     RoughnessMetallicMap = 8,
 
     /// <summary>An emissive texture is bound.</summary>
-    EmissiveMap = 16
+    EmissiveMap = 16,
+
+    /// <summary>
+    /// A metallic texture is bound. Independent of <see cref="RoughnessMetallicMap"/>
+    /// in both directions: a metallic-only material sets this bit alone, and a
+    /// roughness-only material never sets it, so neither input can disturb the other.
+    /// </summary>
+    MetallicMap = 32
 }
 
 /// <summary>Stable mesh shader permutation identifier.</summary>
@@ -147,12 +161,14 @@ public readonly record struct SilkShaderPermutationId
         SilkShaderFeatures.BaseColorMap |
         SilkShaderFeatures.NormalMap |
         SilkShaderFeatures.RoughnessMetallicMap |
-        SilkShaderFeatures.EmissiveMap;
+        SilkShaderFeatures.EmissiveMap |
+        SilkShaderFeatures.MetallicMap;
     private const SilkShaderFeatures MapFeatures =
         SilkShaderFeatures.BaseColorMap |
         SilkShaderFeatures.NormalMap |
         SilkShaderFeatures.RoughnessMetallicMap |
-        SilkShaderFeatures.EmissiveMap;
+        SilkShaderFeatures.EmissiveMap |
+        SilkShaderFeatures.MetallicMap;
 
     /// <summary>Initializes a manifest-valid mesh shader permutation.</summary>
     public SilkShaderPermutationId(SilkShaderFeatures features)
@@ -200,6 +216,11 @@ public readonly record struct SilkShaderPermutationId
             SilkBindingLayoutDescriptor.RoughnessMetallicTextureBinding);
         AddTextureSlots(
             slots,
+            SilkShaderFeatures.MetallicMap,
+            SilkBindingLayoutDescriptor.MetallicSamplerBinding,
+            SilkBindingLayoutDescriptor.MetallicTextureBinding);
+        AddTextureSlots(
+            slots,
             SilkShaderFeatures.EmissiveMap,
             SilkBindingLayoutDescriptor.EmissiveSamplerBinding,
             SilkBindingLayoutDescriptor.EmissiveTextureBinding);
@@ -235,6 +256,7 @@ public readonly record struct SilkShaderPermutationId
         AppendToken(suffix, features, SilkShaderFeatures.BaseColorMap, "basecolor");
         AppendToken(suffix, features, SilkShaderFeatures.NormalMap, "normal");
         AppendToken(suffix, features, SilkShaderFeatures.RoughnessMetallicMap, "roughmetal");
+        AppendToken(suffix, features, SilkShaderFeatures.MetallicMap, "metallic");
         AppendToken(suffix, features, SilkShaderFeatures.EmissiveMap, "emissive");
         return $"{baseName}.{suffix}";
     }
@@ -427,6 +449,16 @@ public readonly record struct SilkBindingLayoutDescriptor(
     internal const uint RoughnessMetallicTextureBinding = 4;
     internal const uint EmissiveTextureBinding = 5;
 
+    /// <summary>
+    /// The sampler for the metallic texture. Metallic has its own slot rather than
+    /// sharing the roughness slot, so a metallic-only material binds nothing to
+    /// roughness and vice versa.
+    /// </summary>
+    internal const uint MetallicSamplerBinding = 14;
+
+    /// <summary>The metallic texture. See <see cref="MetallicSamplerBinding"/>.</summary>
+    internal const uint MetallicTextureBinding = 15;
+
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
 
@@ -495,8 +527,10 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 (BaseColorSamplerBinding, BaseColorTextureBinding),
             SilkMaterialParameter.Normal =>
                 (NormalSamplerBinding, NormalTextureBinding),
-            SilkMaterialParameter.Roughness or SilkMaterialParameter.Metallic =>
+            SilkMaterialParameter.Roughness =>
                 (RoughnessMetallicSamplerBinding, RoughnessMetallicTextureBinding),
+            SilkMaterialParameter.Metallic =>
+                (MetallicSamplerBinding, MetallicTextureBinding),
             SilkMaterialParameter.EmissiveColor =>
                 (EmissiveSamplerBinding, EmissiveTextureBinding),
             _ => throw new ArgumentOutOfRangeException(

@@ -139,7 +139,6 @@ struct KernelContext_0
     }
     float4 _S12 = float4(surface_0.metallicRoughnessThresholdWorkflow_0) ;
     float metallic_0 = saturate(_S12.x);
-    float roughness_0 = clamp(_S12.y, 0.00999999977648258f, 1.0f);
     uint _S13 = uint(round(_S10.w));
     bool _S14 = (_S13 & 1U) != 0U;
     for(;;)
@@ -258,9 +257,7 @@ struct KernelContext_0
         _S3 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), ((float2(tile_2) * cellSize_2 + float2(1.5f, 2.5f) + fract(_S1.texCoord_0) * max(cellSize_2 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_2), float(atlasHeight_2)))));
         break;
     }
-    float3 sampledRoughnessMetallic_0 = _S3.xyz;
-    float roughness_1 = clamp(roughness_0 * sampledRoughnessMetallic_0.y, 0.00999999977648258f, 1.0f);
-    float metallic_1 = saturate(metallic_0 * sampledRoughnessMetallic_0.z);
+    float roughness_0 = clamp(_S3.x, 0.00999999977648258f, 1.0f);
     bool _S39 = (_S13 & 8U) != 0U;
     for(;;)
     {
@@ -332,7 +329,7 @@ struct KernelContext_0
         normal_2 = - normal_1;
     }
     float _S47 = saturate(abs(dot(normal_2, diffuseColor_0)) + 0.00000999999974738f);
-    float _S48 = max(0.00100000004749745f, roughness_1);
+    float _S48 = max(0.00100000004749745f, roughness_0);
     float _S49 = _S8.x;
     float _S50 = max(0.00100000004749745f, _S8.y);
     float4 _S51 = float4(surface_0.specularIor_0) ;
@@ -352,9 +349,9 @@ struct KernelContext_0
     }
     else
     {
-        float3 _S55 = float3(metallic_1) ;
+        float3 _S55 = float3(metallic_0) ;
         float3 specularTint_0 = mix(float3(1.0f, 1.0f, 1.0f), diffuseColor_1, _S55);
-        float3 diffuse_2 = diffuse_0 * float3((1.0f - metallic_1)) ;
+        float3 diffuse_2 = diffuse_0 * float3((1.0f - metallic_0)) ;
         normalIncidence_0 = mix(float3((reflectanceRatio_0 * reflectanceRatio_0))  * specularTint_0, specularTint_0, _S55);
         grazingIncidence_0 = specularTint_0;
         diffuse_1 = diffuse_2;

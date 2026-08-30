@@ -27,6 +27,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <unordered_set>
 #include <vector>
 
@@ -55,7 +56,7 @@ struct ParsedAttribute
     float firstValue = 0.0F;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 5);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 12);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 13);
 
 openusd_render_camera AutomaticCamera()
 {
@@ -147,6 +148,10 @@ struct ParsedPage
     std::string material_texture_asset;
     std::string material_texture_uv;
     uint32_t material_texture_parameter = 0;
+    // Every published texture entry as (parameter, output channel, asset), in
+    // wire order. The channel is what proves the authored UsdUVTexture output
+    // token survived resolution, which no other field can stand in for.
+    std::vector<std::tuple<uint32_t, uint32_t, std::string>> material_textures;
     std::vector<std::string> material_remove_paths;
     std::vector<ParsedAttribute> primvar_mesh_attributes;
     bool found_primvar_mesh = false;
@@ -603,28 +608,43 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             std::string textureAsset;
             std::string textureUv;
             uint32_t textureParameter = 0;
+            std::vector<std::tuple<uint32_t, uint32_t, std::string>> textures;
             for (uint32_t texture = 0; valid && texture < textureCount; ++texture)
             {
                 uint32_t parameter = 0;
                 uint32_t assetSize = 0;
                 uint32_t uvSize = 0;
+                uint32_t componentCount = 0;
+                uint32_t outputChannel = 0;
                 const size_t entry = offset + cursor;
                 valid = ReadValue(data, size, entry, &parameter) &&
                     ReadValue(data, size, entry + 16, &assetSize) &&
                     ReadValue(data, size, entry + 20, &uvSize) &&
-                    assetSize != 0;
-                if (valid && texture == 0)
+                    ReadValue(data, size, entry + 24, &componentCount) &&
+                    ReadValue(data, size, entry + 76, &outputChannel) &&
+                    assetSize != 0 &&
+                    outputChannel <= OPENUSD_SILK_TEXTURE_CHANNEL_RGB &&
+                    (outputChannel == OPENUSD_SILK_TEXTURE_CHANNEL_RGB
+                            ? componentCount == 3
+                            : componentCount == 1);
+                if (valid)
                 {
-                    textureParameter = parameter;
-                    textureAsset.assign(
-                        reinterpret_cast<const char*>(data + entry + 76),
+                    std::string asset(
+                        reinterpret_cast<const char*>(data + entry + 80),
                         assetSize);
-                    textureUv.assign(
-                        reinterpret_cast<const char*>(data + entry + 76 + assetSize),
-                        uvSize);
+                    if (texture == 0)
+                    {
+                        textureParameter = parameter;
+                        textureAsset = asset;
+                        textureUv.assign(
+                            reinterpret_cast<const char*>(
+                                data + entry + 80 + assetSize),
+                            uvSize);
+                    }
+                    textures.emplace_back(parameter, outputChannel, std::move(asset));
                 }
                 valid = valid &&
-                    AddSize(&cursor, 76) &&
+                    AddSize(&cursor, 80) &&
                     AddSize(&cursor, assetSize) &&
                     AddSize(&cursor, uvSize);
             }
@@ -660,6 +680,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 result.material_texture_asset = std::move(textureAsset);
                 result.material_texture_uv = std::move(textureUv);
                 result.material_texture_parameter = textureParameter;
+                result.material_textures = std::move(textures);
             }
         }
         else if (type == OPENUSD_SILK_COMMAND_MATERIAL_REMOVE)
@@ -1232,6 +1253,18 @@ bool AuthorSharedMaterial(openusd_stage* stage, openusd_error_buffer* error)
             "rgb",
             OPENUSD_SHADE_VALUE_FLOAT3,
             error) == OPENUSD_STATUS_OK &&
+        openusd_shade_create_output(
+            stage,
+            TextureShaderPath,
+            "b",
+            OPENUSD_SHADE_VALUE_FLOAT,
+            error) == OPENUSD_STATUS_OK &&
+        openusd_shade_create_input(
+            stage,
+            SurfaceShaderPath,
+            "metallic",
+            OPENUSD_SHADE_VALUE_FLOAT,
+            error) == OPENUSD_STATUS_OK &&
         openusd_shade_connect(
             stage,
             SurfaceShaderPath,
@@ -1239,6 +1272,18 @@ bool AuthorSharedMaterial(openusd_stage* stage, openusd_error_buffer* error)
             OPENUSD_SHADE_ATTRIBUTE_INPUT,
             TextureShaderPath,
             "rgb",
+            OPENUSD_SHADE_ATTRIBUTE_OUTPUT,
+            error) == OPENUSD_STATUS_OK &&
+        // The same texture prim also drives metallic, from a different output.
+        // Only the output token distinguishes the two connections, so this is
+        // what proves the token survives resolution rather than being inferred.
+        openusd_shade_connect(
+            stage,
+            SurfaceShaderPath,
+            "metallic",
+            OPENUSD_SHADE_ATTRIBUTE_INPUT,
+            TextureShaderPath,
+            "b",
             OPENUSD_SHADE_ATTRIBUTE_OUTPUT,
             error) == OPENUSD_STATUS_OK &&
         openusd_shade_material_create_surface_output(stage, MaterialPath, error) ==
@@ -1930,6 +1975,23 @@ int main(int argc, char** argv)
     // ABI v5: the bound UsdPreviewSurface must arrive resolved, and the mesh must
     // reference it by path. Asserting both together is what proves the material
     // Sprim, the binding, and the wire agree, rather than each in isolation.
+    // ABI v13 adds the connected output channel: diffuseColor and metallic are
+    // wired to two different outputs of the same UsdUVTexture prim, so nothing
+    // but the published channel can tell those two entries apart.
+    bool packedChannelsPublished = initial.material_textures.size() == 2;
+    if (packedChannelsPublished)
+    {
+        const auto& diffuseEntry = initial.material_textures[0];
+        const auto& metallicEntry = initial.material_textures[1];
+        packedChannelsPublished =
+            std::get<0>(diffuseEntry) == OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR &&
+            std::get<1>(diffuseEntry) == OPENUSD_SILK_TEXTURE_CHANNEL_RGB &&
+            std::get<0>(metallicEntry) == OPENUSD_SILK_MATERIAL_METALLIC &&
+            std::get<1>(metallicEntry) == OPENUSD_SILK_TEXTURE_CHANNEL_B &&
+            std::get<2>(diffuseEntry) == std::get<2>(metallicEntry) &&
+            std::get<2>(diffuseEntry).find(MaterialTextureAsset) !=
+                std::string::npos;
+    }
     if (!initial.material_valid ||
         !initial.found_material_upsert ||
         initial.material_upsert_count != 1 ||
@@ -1937,11 +1999,12 @@ int main(int argc, char** argv)
         initial.material_surface_kind != OPENUSD_SILK_SURFACE_PREVIEW_SURFACE ||
         initial.material_scalar_count != 1 ||
         initial.material_roughness != 0.375F ||
-        initial.material_texture_count != 1 ||
+        initial.material_texture_count != 2 ||
         initial.material_texture_parameter !=
             OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR ||
         initial.material_texture_asset.find(MaterialTextureAsset) ==
             std::string::npos ||
+        !packedChannelsPublished ||
         initial.shared_material_binding != MaterialPath)
     {
         openusd_silk_session_release(session);
@@ -1953,7 +2016,12 @@ int main(int argc, char** argv)
             << " roughness=" << initial.material_roughness
             << " textures=" << initial.material_texture_count
             << " asset='" << initial.material_texture_asset
-            << "' binding='" << initial.shared_material_binding << "'\n";
+            << "' channels=";
+        for (const auto& entry : initial.material_textures)
+        {
+            std::cerr << '(' << std::get<0>(entry) << ':' << std::get<1>(entry) << ')';
+        }
+        std::cerr << " binding='" << initial.shared_material_binding << "'\n";
         return 5;
     }
 

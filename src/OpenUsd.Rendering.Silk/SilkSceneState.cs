@@ -1604,7 +1604,8 @@ public sealed class SilkSceneGpuResources : IDisposable
         string MaterialPath,
         string Asset,
         SilkColorSpace ColorSpace,
-        SilkMaterialParameter Parameter);
+        SilkMaterialParameter Parameter,
+        SilkTextureChannel Channel);
 
     /// <summary>Initializes GPU resource retention for one backend device.</summary>
     public SilkSceneGpuResources(ISilkGraphicsDevice device)
@@ -1995,6 +1996,8 @@ public sealed class SilkSceneGpuResources : IDisposable
         SilkMaterialTexture texture = material.GetTexture(parameter) ??
             throw new InvalidDataException(
                 $"Material '{material.Path}' has no texture for {parameter}.");
+        (uint samplerBinding, uint textureBinding) =
+            SilkBindingLayoutDescriptor.GetMaterialTextureBindings(parameter);
         TextureCacheEntry entry = RequireTexture(material.Path, texture);
         if (!entry.Uploaded)
         {
@@ -2002,8 +2005,6 @@ public sealed class SilkSceneGpuResources : IDisposable
             _textureUploadBytes += checked((ulong)entry.Pixels.Length);
             entry.Uploaded = true;
         }
-        (uint samplerBinding, uint textureBinding) =
-            SilkBindingLayoutDescriptor.GetMaterialTextureBindings(parameter);
         commands.SetSampler(
             0,
             samplerBinding,
@@ -2095,11 +2096,16 @@ public sealed class SilkSceneGpuResources : IDisposable
         SilkMaterialTexture texture)
     {
         SilkColorSpace effectiveColorSpace = GetEffectiveColorSpace(texture);
+        // The channel is part of the identity: one packed occlusion/roughness/
+        // metallic file feeds two inputs from two different channels, and each
+        // needs its own swizzled copy. Two entries for one asset is the honest
+        // cost of that, and it never silently merges two different channels.
         var key = new TextureCacheKey(
             materialPath,
             texture.Asset,
             effectiveColorSpace,
-            texture.Parameter);
+            texture.Parameter,
+            texture.Channel);
         if (_textures.TryGetValue(key, out TextureCacheEntry? entry))
         {
             if (!DependenciesChanged(entry.Dependencies))
@@ -2249,6 +2255,7 @@ public sealed class SilkSceneGpuResources : IDisposable
         ValidateDecodedImage(image);
         FlipRows(image.Pixels, image.Width, image.Height, image.Format);
         ApplyScaleBias(image.Pixels, image.Format, texture);
+        ApplyOutputChannel(image.Pixels, image.Format, texture);
         return image;
     }
 
@@ -2397,7 +2404,9 @@ public sealed class SilkSceneGpuResources : IDisposable
                         "UDIM fallback scale and bias produced a non-finite channel.");
                 }
             }
-            return MemoryMarshal.AsBytes(values.AsSpan()).ToArray();
+            byte[] bytes = MemoryMarshal.AsBytes(values.AsSpan()).ToArray();
+            ApplyOutputChannel(bytes, format, texture);
+            return bytes;
         }
         return CreateFallbackImage(texture).Pixels;
     }
@@ -2529,6 +2538,9 @@ public sealed class SilkSceneGpuResources : IDisposable
             value = (value * texture.Scale[component]) + texture.Bias[component];
             pixels[component] = (byte)Math.Clamp(MathF.Round(value * 255), 0, 255);
         }
+        // The authored fallback is a float4 read through the same output port as the
+        // texel would have been, so the same channel selection applies to it.
+        ApplyOutputChannel(pixels, SilkTextureFormat.Rgba8Unorm, texture);
         return new SilkDecodedImage(1, 1, pixels);
     }
 
@@ -2589,6 +2601,64 @@ public sealed class SilkSceneGpuResources : IDisposable
                 pixels[offset + component] =
                     (byte)Math.Clamp(MathF.Round(value * 255), 0, 255);
             }
+        }
+    }
+
+    /// <summary>
+    /// Replicates the connected UsdUVTexture output channel into every component so
+    /// a scalar map is read from one canonical place by every shader permutation.
+    /// </summary>
+    /// <remarks>
+    /// UsdUVTexture applies <c>scale</c> and <c>bias</c> to the sampled texel and only
+    /// then exposes the per-channel outputs, so this runs after
+    /// <see cref="ApplyScaleBias"/> and reads the already-scaled value. Doing the
+    /// selection on the CPU keeps the surface constant block -- and therefore its
+    /// ABI -- unchanged: the alternative was a per-parameter channel index uniform
+    /// that every backend and every permutation would have to carry.
+    /// <see cref="SilkTextureChannel.Rgb"/> is a no-op, so colour and vector maps
+    /// (base colour, emissive, normal) keep their full RGBA, including the alpha
+    /// that base colour multiplies into opacity.
+    /// </remarks>
+    private static void ApplyOutputChannel(
+        byte[] pixels,
+        SilkTextureFormat format,
+        SilkMaterialTexture texture)
+    {
+        if (texture.Channel == SilkTextureChannel.Rgb)
+        {
+            return;
+        }
+        int source = (int)texture.Channel;
+        if (source is < 0 or > 3)
+        {
+            throw new InvalidDataException(
+                $"Material texture channel {texture.Channel} is not a known UsdUVTexture output.");
+        }
+        if (format == SilkTextureFormat.Rgba32Float)
+        {
+            Span<float> values = MemoryMarshal.Cast<byte, float>(pixels.AsSpan());
+            for (int offset = 0; offset < values.Length; offset += 4)
+            {
+                float selected = values[offset + source];
+                values[offset] = selected;
+                values[offset + 1] = selected;
+                values[offset + 2] = selected;
+                values[offset + 3] = selected;
+            }
+            return;
+        }
+        if (format != SilkTextureFormat.Rgba8Unorm)
+        {
+            throw new InvalidDataException(
+                $"Decoded material texture format {format} does not support channel selection.");
+        }
+        for (int offset = 0; offset < pixels.Length; offset += 4)
+        {
+            byte selected = pixels[offset + source];
+            pixels[offset] = selected;
+            pixels[offset + 1] = selected;
+            pixels[offset + 2] = selected;
+            pixels[offset + 3] = selected;
         }
     }
 

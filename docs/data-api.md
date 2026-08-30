@@ -909,14 +909,14 @@ without invoking managed callbacks from OpenUSD threads.
 Data ABI v15 preserves every v14 export and capability and adds explicit `color3f[]`,
 `bool[]`, `token[]`, and `string[]` attribute array accessors through
 `OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). The managed required mask is
-`0x1FFFFF`.
+`0xFFFFFF`.
 
 The additive `OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION` capability (`0x40000`)
 adds allocation-free prim-count and total-path-byte preflight before packed path
 materialization. `OPENUSD_CAPABILITY_SESSION_OVERLAY` (`0x80000`) adds the removable
 strongest-opinion session sublayer, and `OPENUSD_CAPABILITY_PHYSICS_BAKE` (`0x100000`)
 adds batched preview and transactional bake page authoring.
-Current managed startup requires the v15 `0x1FFFFF` mask and rejects
+Current managed startup requires the v15 `0xFFFFFF` mask and rejects
 older runtimes or runtimes missing required exports. Every status-returning
 export executes its complete body inside the common exception/TfError guard, so C++ exceptions and
 unconsumed OpenUSD diagnostics never cross C. Access-end alone performs its already-validated

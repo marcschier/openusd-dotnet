@@ -175,7 +175,15 @@ Compressed Hio formats and non-finite channels are rejected with actionable diag
 assets use authored fallbacks with bounded stable diagnostics; failed loads are cached without poisoning
 the successful cache and can be explicitly retried. Unresolved and unsupported materials likewise retain
 default shading with distinct diagnostics. Every active texture slot binds its own cached sampler, preserving
-independent `wrapS` and `wrapT` state across base-colour, normal, roughness/metallic, emissive, and volume maps.
+independent `wrapS` and `wrapT` state across base-colour, normal, roughness, metallic, emissive, and volume maps.
+Every material texture entry carries the connected `UsdUVTexture` output port explicitly (page ABI v13
+`output_channel`, surfaced as `SilkMaterialTexture.Channel`), so hdSilk selects `r`, `g`, `b`, `a`, or `rgb`
+from authored data rather than from a fixed convention; unknown or width-incompatible output tokens are
+rejected with diagnostics. Scalar maps replicate the selected channel into every uploaded component after
+`scale`/`bias`, so `roughness` and `metallic` are fully independent inputs with independent feature bits,
+textures, samplers, bindings, and UDIM mask bits — a roughness-only material leaves metallic constant and a
+metallic-only material leaves roughness constant. A packed occlusion/roughness/metallic file feeding two
+inputs from two channels is decoded and uploaded once per channel.
 Ordinary (non-UDIM) material textures now upload a full CPU-generated mip chain instead of one level:
 a shared packed layout (mip 0 first, ascending, each tightly packed) is validated by every backend's
 upload path, and D3D12, Vulkan, and Metal each allocate, bind, and transition every requested level.

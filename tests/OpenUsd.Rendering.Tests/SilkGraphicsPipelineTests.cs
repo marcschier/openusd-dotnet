@@ -176,7 +176,7 @@ public sealed class SilkGraphicsPipelineTests
             SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap
         ];
 
-        await Assert.That(fragmentFeatures.Length).IsEqualTo(17);
+        await Assert.That(fragmentFeatures.Length).IsEqualTo(33);
         foreach (SilkShaderFeatures features in fragmentFeatures)
         {
             var permutation = new SilkShaderPermutationId(features);
@@ -237,7 +237,31 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(() => new SilkShaderPermutationId(
             SilkShaderFeatures.BaseColorMap)).Throws<ArgumentException>();
         await Assert.That(() => new SilkShaderPermutationId(
-            (SilkShaderFeatures)32)).Throws<ArgumentOutOfRangeException>();
+            (SilkShaderFeatures)64)).Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    public async Task MeshPermutationIdsAcceptMetallicMapWithoutRoughnessMetallicMap()
+    {
+        // Metallic is a separate UsdPreviewSurface input with its own connection, so
+        // a metallic-only material must be a real permutation rather than something
+        // forced to borrow the roughness slot.
+        var permutation = new SilkShaderPermutationId(
+            SilkShaderFeatures.Uv | SilkShaderFeatures.MetallicMap);
+
+        await Assert.That(permutation.MeshFragmentArtifactName)
+            .IsEqualTo("mesh.fragment.uv+metallic");
+        SilkBindingLayoutDescriptor layout = permutation.CreateMeshBindingLayout();
+        await Assert.That(layout.MaterialSlots
+            .Where(slot => slot.Kind is SilkBindingKind.Sampler or SilkBindingKind.SampledTexture)
+            .Select(slot => (slot.Binding, slot.Kind))
+            .ToArray())
+            .IsEquivalentTo(
+            [
+                (14u, SilkBindingKind.Sampler),
+                (15u, SilkBindingKind.SampledTexture),
+            ]);
+        layout.Validate();
     }
 
     [Test]
@@ -267,6 +291,32 @@ public sealed class SilkGraphicsPipelineTests
             (12u, SilkBindingKind.Sampler),
             (5u, SilkBindingKind.SampledTexture),
         ]);
+    }
+
+    [Test]
+    public async Task MeshMetallicMapDeclaresItsOwnSamplerSlotBesideRoughness()
+    {
+        SilkBindingLayoutDescriptor layout = new SilkShaderPermutationId(
+            SilkShaderFeatures.Uv |
+            SilkShaderFeatures.RoughnessMetallicMap |
+            SilkShaderFeatures.MetallicMap)
+            .CreateMeshBindingLayout();
+
+        (uint Binding, SilkBindingKind Kind)[] materialBindings = layout.MaterialSlots
+            .Where(slot => slot.Kind is SilkBindingKind.Sampler or SilkBindingKind.SampledTexture)
+            .Select(slot => (slot.Binding, slot.Kind))
+            .ToArray();
+
+        // Roughness keeps its existing 11/4 bindings; metallic gets its own
+        // previously-unused 14/15 rather than aliasing an existing slot.
+        await Assert.That(materialBindings).IsEquivalentTo(
+        [
+            (11u, SilkBindingKind.Sampler),
+            (4u, SilkBindingKind.SampledTexture),
+            (14u, SilkBindingKind.Sampler),
+            (15u, SilkBindingKind.SampledTexture),
+        ]);
+        layout.Validate();
     }
 
     [Test]
@@ -569,6 +619,7 @@ public sealed class SilkGraphicsPipelineTests
             SilkShaderFeatures.BaseColorMap,
             SilkShaderFeatures.NormalMap,
             SilkShaderFeatures.RoughnessMetallicMap,
+            SilkShaderFeatures.MetallicMap,
             SilkShaderFeatures.EmissiveMap
         ];
         var features = new List<SilkShaderFeatures>
@@ -576,7 +627,7 @@ public sealed class SilkGraphicsPipelineTests
             SilkShaderFeatures.None,
             SilkShaderFeatures.Uv
         };
-        for (int mask = 1; mask < 16; mask++)
+        for (int mask = 1; mask < (1 << maps.Length); mask++)
         {
             SilkShaderFeatures value = SilkShaderFeatures.Uv;
             for (int bit = 0; bit < maps.Length; bit++)
@@ -586,6 +637,7 @@ public sealed class SilkGraphicsPipelineTests
                     value |= maps[bit];
                 }
             }
+
             features.Add(value);
         }
         return [.. features];

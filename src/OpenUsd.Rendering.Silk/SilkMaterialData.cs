@@ -32,6 +32,7 @@ public sealed class SilkMaterialTexture
         SilkTextureWrap wrapT,
         SilkColorSpace sourceColorSpace,
         int componentCount,
+        SilkTextureChannel channel,
         float[] scale,
         float[] bias,
         float[] fallback,
@@ -43,6 +44,7 @@ public sealed class SilkMaterialTexture
         WrapT = wrapT;
         SourceColorSpace = sourceColorSpace;
         ComponentCount = componentCount;
+        Channel = channel;
         Scale = scale;
         Bias = bias;
         Fallback = fallback;
@@ -64,6 +66,13 @@ public sealed class SilkMaterialTexture
 
     /// <summary>Gets how many channels the bound input consumes.</summary>
     public int ComponentCount { get; }
+
+    /// <summary>
+    /// Gets the connected UsdUVTexture output port. Two inputs driven by the same
+    /// file are told apart by this alone -- a packed occlusion/roughness/metallic
+    /// image is exactly one asset with two or three different output connections.
+    /// </summary>
+    public SilkTextureChannel Channel { get; }
 
     /// <summary>Gets the multiply applied after sampling.</summary>
     public IReadOnlyList<float> Scale { get; }
@@ -182,6 +191,7 @@ public sealed class SilkMaterialData
                 entry.WrapT,
                 entry.SourceColorSpace,
                 entry.ComponentCount,
+                entry.Channel,
                 scale,
                 bias,
                 fallback,
@@ -245,11 +255,22 @@ public sealed class SilkMaterialData
         {
             features |= SilkShaderFeatures.NormalMap;
         }
-        if (GetTexture(SilkMaterialParameter.Roughness) is not null ||
-            GetTexture(SilkMaterialParameter.Metallic) is not null)
+
+        // Roughness and metallic are separate UsdPreviewSurface inputs with
+        // separate connections, so each selects its own bit. A packed
+        // occlusion/roughness/metallic file reaches here as two entries naming one
+        // asset and two different output channels, and still resolves correctly
+        // because each entry carries the channel it was authored with.
+        if (GetTexture(SilkMaterialParameter.Roughness) is not null)
         {
             features |= SilkShaderFeatures.RoughnessMetallicMap;
         }
+
+        if (GetTexture(SilkMaterialParameter.Metallic) is not null)
+        {
+            features |= SilkShaderFeatures.MetallicMap;
+        }
+
         if (GetTexture(SilkMaterialParameter.EmissiveColor) is not null)
         {
             features |= SilkShaderFeatures.EmissiveMap;
@@ -263,7 +284,7 @@ public sealed class SilkMaterialData
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
-        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v2");
+        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v3");
         writer.Write(Path);
         writer.Write((uint)SurfaceKind);
         writer.Write(Scalars.Count);
@@ -286,6 +307,7 @@ public sealed class SilkMaterialData
             writer.Write((uint)texture.WrapT);
             writer.Write((uint)texture.SourceColorSpace);
             writer.Write(texture.ComponentCount);
+            writer.Write((uint)texture.Channel);
         }
         writer.Write(GeneratedFragmentSpirV.Length);
         writer.Write(GeneratedFragmentSpirV.Span);

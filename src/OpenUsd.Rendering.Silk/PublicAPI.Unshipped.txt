@@ -526,6 +526,7 @@ OpenUsd.Rendering.Silk.SilkMaterialShaderStatus.Ready = 1 -> OpenUsd.Rendering.S
 OpenUsd.Rendering.Silk.SilkMaterialTexture
 OpenUsd.Rendering.Silk.SilkMaterialTexture.Asset.get -> string!
 OpenUsd.Rendering.Silk.SilkMaterialTexture.Bias.get -> System.Collections.Generic.IReadOnlyList<float>!
+OpenUsd.Rendering.Silk.SilkMaterialTexture.Channel.get -> OpenUsd.Rendering.Silk.SilkTextureChannel
 OpenUsd.Rendering.Silk.SilkMaterialTexture.ComponentCount.get -> int
 OpenUsd.Rendering.Silk.SilkMaterialTexture.Fallback.get -> System.Collections.Generic.IReadOnlyList<float>!
 OpenUsd.Rendering.Silk.SilkMaterialTexture.Parameter.get -> OpenUsd.Rendering.Silk.SilkMaterialParameter
@@ -536,6 +537,7 @@ OpenUsd.Rendering.Silk.SilkMaterialTexture.WrapS.get -> OpenUsd.Rendering.Silk.S
 OpenUsd.Rendering.Silk.SilkMaterialTexture.WrapT.get -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.Asset.get -> string!
+OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.Channel.get -> OpenUsd.Rendering.Silk.SilkTextureChannel
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.ComponentCount.get -> int
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.GetBias(int component) -> float
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.GetFallback(int component) -> float
@@ -1289,6 +1291,7 @@ OpenUsd.Rendering.Silk.SilkShaderBinaryFormat.SpirV = 1 -> OpenUsd.Rendering.Sil
 OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.BaseColorMap = 2 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.EmissiveMap = 16 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.MetallicMap = 32 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.None = 0 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.NormalMap = 4 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.RoughnessMetallicMap = 8 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
@@ -1357,6 +1360,12 @@ OpenUsd.Rendering.Silk.SilkSurfaceKind.MaterialXProjected = 2 -> OpenUsd.Renderi
 OpenUsd.Rendering.Silk.SilkSurfaceKind.PreviewSurface = 1 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.Unsupported = 0 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
 OpenUsd.Rendering.Silk.SilkSurfaceKind.VolumeDensity = 4 -> OpenUsd.Rendering.Silk.SilkSurfaceKind
+OpenUsd.Rendering.Silk.SilkTextureChannel
+OpenUsd.Rendering.Silk.SilkTextureChannel.A = 3 -> OpenUsd.Rendering.Silk.SilkTextureChannel
+OpenUsd.Rendering.Silk.SilkTextureChannel.B = 2 -> OpenUsd.Rendering.Silk.SilkTextureChannel
+OpenUsd.Rendering.Silk.SilkTextureChannel.G = 1 -> OpenUsd.Rendering.Silk.SilkTextureChannel
+OpenUsd.Rendering.Silk.SilkTextureChannel.R = 0 -> OpenUsd.Rendering.Silk.SilkTextureChannel
+OpenUsd.Rendering.Silk.SilkTextureChannel.Rgb = 4 -> OpenUsd.Rendering.Silk.SilkTextureChannel
 OpenUsd.Rendering.Silk.SilkTextureDescriptor
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Deconstruct(out uint Width, out uint Height, out OpenUsd.Rendering.Silk.SilkTextureFormat Format, out OpenUsd.Rendering.Silk.SilkTextureUsage Usage, out uint MipLevelCount) -> void
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Equals(OpenUsd.Rendering.Silk.SilkTextureDescriptor other) -> bool
@@ -1476,7 +1485,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 12 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 13 -> uint
 const OpenUsd.Rendering.Silk.SilkPickTokenEncoding.ByteSize = 4 -> int
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MaximumWidth = 16 -> float
 const OpenUsd.Rendering.Silk.SilkSelectionOutlineSettings.MinimumWidth = 1 -> float

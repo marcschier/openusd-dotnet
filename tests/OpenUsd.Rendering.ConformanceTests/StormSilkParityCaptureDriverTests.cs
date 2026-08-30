@@ -29,6 +29,18 @@ public sealed class StormSilkParityCaptureDriverTests
     private const string VulkanSwiftShaderBackendName = "Vulkan SwiftShader";
     private const string MetalBackendName = "Metal";
     private const double ExactCuratedParityAdjustedIou = 1.0;
+
+    /// <summary>
+    /// Decoded bytes uploaded for the shared 256x256 <c>parity-texture-asymmetric.png</c>.
+    /// </summary>
+    /// <remarks>
+    /// The full packed mip chain, not just mip 0: 4 bytes per texel over levels 256..1 is
+    /// 349,524 bytes. The recorded measurement was 262,144 (mip 0 alone) from before ordinary
+    /// material textures started uploading a generated chain, and these scenes are the only
+    /// place the number appears, so it stayed stale until a run reached the budget assert.
+    /// </remarks>
+    private const ulong TexturedPennantMipChainBytes = 349_524;
+
     private static string OcioTestConfigPath => Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory,
         "..", "..", "..", "..", "..",
@@ -2206,7 +2218,8 @@ def Xform "World"
         float[] NeutralFallback,
         float[] DivergentFallback,
         MaterialScalarSpec[] LeftScalars,
-        MaterialScalarSpec[] RightScalars);
+        MaterialScalarSpec[] RightScalars,
+        SilkTextureChannel Channel = SilkTextureChannel.Rgb);
 
     private sealed record MaterialTextureSpec(
         string Asset,
@@ -2216,7 +2229,8 @@ def Xform "World"
         float[] Scale,
         float[] Bias,
         float[] Fallback,
-        string UvPrimvar);
+        string UvPrimvar,
+        SilkTextureChannel Channel = SilkTextureChannel.Rgb);
 
     private sealed record ConstantMaterialInputCase(
         string Name,
@@ -2590,10 +2604,16 @@ def Xform "World"
                 "texture-slot-roughness",
                 SilkMaterialParameter.Roughness,
                 SilkColorSpace.Raw,
-                [1, 1, 1, 1],
+                // A connected roughness input replaces the authored constant rather
+                // than modulating it, so the neutral fallback has to carry the same
+                // 0.92 the untextured half authors.
+                [1, 0.92f, 1, 1],
                 [1, 0.02f, 1, 1],
                 roughnessFocused,
-                roughnessFocused),
+                roughnessFocused,
+                // The fallback's green component is the authored roughness, which is
+                // now stated by the connection rather than assumed by the shader.
+                SilkTextureChannel.G),
             new(
                 "texture-slot-metallic",
                 SilkMaterialParameter.Metallic,
@@ -2601,7 +2621,8 @@ def Xform "World"
                 [1, 1, 0, 1],
                 [1, 1, 1, 1],
                 untexturedMetallic,
-                texturedMetallic),
+                texturedMetallic,
+                SilkTextureChannel.B),
             new(
                 "texture-slot-normal",
                 SilkMaterialParameter.Normal,
@@ -2794,7 +2815,8 @@ def Xform "World"
                 [0, 0, 0, 0],
                 fallback,
                 "st",
-                testCase.RightScalars));
+                testCase.RightScalars,
+                testCase.Channel));
 
     private static ParityImage CaptureSyntheticConstantMaterialInputSelfConsistency(
         ConstantMaterialInputCase testCase,
@@ -3416,7 +3438,8 @@ def Xform "World"
         ReadOnlySpan<float> bias,
         ReadOnlySpan<float> fallback,
         string uvPrimvar,
-        ReadOnlySpan<MaterialScalarSpec> scalars)
+        ReadOnlySpan<MaterialScalarSpec> scalars,
+        SilkTextureChannel channel = SilkTextureChannel.Rgb)
         => CreateTexturedMaterialCommand(
             path,
             [
@@ -3428,7 +3451,8 @@ def Xform "World"
                     scale.ToArray(),
                     bias.ToArray(),
                     fallback.ToArray(),
-                    uvPrimvar),
+                    uvPrimvar,
+                    channel),
             ],
             scalars);
 
@@ -3443,7 +3467,7 @@ def Xform "World"
         {
             textureByteCount = checked(
                 textureByteCount +
-                76 +
+                80 +
                 Encoding.UTF8.GetByteCount(texture.Asset) +
                 Encoding.UTF8.GetByteCount(texture.UvPrimvar));
         }
@@ -3473,13 +3497,18 @@ def Xform "World"
             BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 12), (uint)texture.ColorSpace);
             BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 16), (uint)assetBytes.Length);
             BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 20), (uint)uvBytes.Length);
-            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 24), 4);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(offset + 24),
+                texture.Channel == SilkTextureChannel.Rgb ? 3u : 1u);
             WriteVector4(bytes.AsSpan(offset + 28), texture.Scale);
             WriteVector4(bytes.AsSpan(offset + 44), texture.Bias);
             WriteVector4(bytes.AsSpan(offset + 60), texture.Fallback);
-            assetBytes.CopyTo(bytes.AsSpan(offset + 76));
-            uvBytes.CopyTo(bytes.AsSpan(offset + 76 + assetBytes.Length));
-            offset += 76 + assetBytes.Length + uvBytes.Length;
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(offset + 76),
+                (uint)texture.Channel);
+            assetBytes.CopyTo(bytes.AsSpan(offset + 80));
+            uvBytes.CopyTo(bytes.AsSpan(offset + 80 + assetBytes.Length));
+            offset += 80 + assetBytes.Length + uvBytes.Length;
         }
         int generatedOffset = offset;
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset), 0);
@@ -4282,7 +4311,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_412, 1_332, 262_144)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_412, 1_332, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "primvar-st-varying-texture",
@@ -4299,7 +4328,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_540, 1_460, 262_144)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_540, 1_460, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "primvar-st-facevarying-texture",
@@ -4316,7 +4345,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_668, 1_588, 262_144)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_668, 1_588, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "primvar-st-uniform-texture",
@@ -4333,7 +4362,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_668, 1_588, 262_144)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 1_668, 1_588, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "material-metallic-workflow",

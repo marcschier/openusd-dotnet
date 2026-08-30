@@ -1322,13 +1322,17 @@ public sealed class SilkMeshRenderer :
         }
         if ((features & SilkShaderFeatures.RoughnessMetallicMap) != 0)
         {
-            SilkMaterialData material = ResolveMaterial(mesh.Mesh)!;
             GpuResources.BindMaterialTexture(
                 commands,
-                material,
-                material.GetTexture(SilkMaterialParameter.Roughness) is not null
-                    ? SilkMaterialParameter.Roughness
-                    : SilkMaterialParameter.Metallic);
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.Roughness);
+        }
+        if ((features & SilkShaderFeatures.MetallicMap) != 0)
+        {
+            GpuResources.BindMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.Metallic);
         }
         if ((features & SilkShaderFeatures.EmissiveMap) != 0)
         {
@@ -1362,13 +1366,17 @@ public sealed class SilkMeshRenderer :
         }
         if ((features & SilkShaderFeatures.RoughnessMetallicMap) != 0)
         {
-            SilkMaterialData material = ResolveMaterial(mesh.Mesh)!;
             GpuResources.UploadMaterialTexture(
                 commands,
-                material,
-                material.GetTexture(SilkMaterialParameter.Roughness) is not null
-                    ? SilkMaterialParameter.Roughness
-                    : SilkMaterialParameter.Metallic);
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.Roughness);
+        }
+        if ((features & SilkShaderFeatures.MetallicMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.Metallic);
         }
         if ((features & SilkShaderFeatures.EmissiveMap) != 0)
         {

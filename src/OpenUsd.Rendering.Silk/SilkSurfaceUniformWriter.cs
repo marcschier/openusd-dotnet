@@ -117,17 +117,15 @@ internal static class SilkSurfaceUniformWriter
     private static float GetUdimMask(SilkMaterialData? material)
     {
         int mask = 0;
+        // Bit per texture slot, matching the shader's binding set exactly:
+        // 1 base colour, 2 normal, 4 roughness, 8 emissive, 16 metallic. Roughness
+        // and metallic have separate slots, so they need separate bits; nothing
+        // aliases.
         addUdimBit(SilkMaterialParameter.DiffuseColor, 1);
         addUdimBit(SilkMaterialParameter.Normal, 2);
-        if (material?.GetTexture(SilkMaterialParameter.Roughness) is not null)
-        {
-            addUdimBit(SilkMaterialParameter.Roughness, 4);
-        }
-        else
-        {
-            addUdimBit(SilkMaterialParameter.Metallic, 4);
-        }
+        addUdimBit(SilkMaterialParameter.Roughness, 4);
         addUdimBit(SilkMaterialParameter.EmissiveColor, 8);
+        addUdimBit(SilkMaterialParameter.Metallic, 16);
         return mask;
 
         void addUdimBit(SilkMaterialParameter parameter, int bit)

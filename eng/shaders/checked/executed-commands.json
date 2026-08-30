@@ -970,6 +970,127 @@
       }
     },
     {
+      "name": "mesh.fragment.uv+metallic",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_metallic",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+metallic.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+metallic.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+metallic.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+metallic.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+metallic.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+metallic.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+metallic.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+metallic.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+metallic"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+metallic.spv"
+          ]
+        }
+      }
+    },
+    {
       "name": "mesh.fragment.uv+emissive",
       "source": "eng/shaders/sources/mesh.slang",
       "entryPoint": "fragmentMain_uv_emissive",
@@ -1339,6 +1460,130 @@
       }
     },
     {
+      "name": "mesh.fragment.uv+basecolor+metallic",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_basecolor_metallic",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+metallic.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+metallic.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+metallic.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+metallic.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+metallic.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+metallic.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+metallic.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+metallic.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+basecolor+metallic"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+metallic.spv"
+          ]
+        }
+      }
+    },
+    {
       "name": "mesh.fragment.uv+basecolor+emissive",
       "source": "eng/shaders/sources/mesh.slang",
       "entryPoint": "fragmentMain_uv_basecolor_emissive",
@@ -1587,6 +1832,130 @@
       }
     },
     {
+      "name": "mesh.fragment.uv+normal+metallic",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_normal_metallic",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+metallic.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+metallic.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+metallic.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+metallic.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+metallic.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+metallic.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+metallic.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+metallic.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+normal+metallic"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+metallic.spv"
+          ]
+        }
+      }
+    },
+    {
       "name": "mesh.fragment.uv+normal+emissive",
       "source": "eng/shaders/sources/mesh.slang",
       "entryPoint": "fragmentMain_uv_normal_emissive",
@@ -1711,6 +2080,130 @@
       }
     },
     {
+      "name": "mesh.fragment.uv+roughmetal+metallic",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_roughmetal_metallic",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+metallic.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+roughmetal+metallic.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+metallic.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+roughmetal+metallic.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+metallic.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+roughmetal+metallic.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+roughmetal+metallic.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+metallic.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+roughmetal+metallic"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+metallic.spv"
+          ]
+        }
+      }
+    },
+    {
       "name": "mesh.fragment.uv+roughmetal+emissive",
       "source": "eng/shaders/sources/mesh.slang",
       "entryPoint": "fragmentMain_uv_roughmetal_emissive",
@@ -1830,6 +2323,130 @@
             "--target-env",
             "vulkan1.2",
             "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+emissive.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment.uv+metallic+emissive",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_metallic_emissive",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+metallic+emissive.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+metallic+emissive.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+metallic+emissive.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+metallic+emissive.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+metallic+emissive.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+metallic+emissive.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+metallic+emissive.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+metallic+emissive.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+metallic+emissive"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+metallic+emissive.spv"
           ]
         }
       }
@@ -1962,6 +2579,133 @@
       }
     },
     {
+      "name": "mesh.fragment.uv+basecolor+normal+metallic",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_basecolor_normal_metallic",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+metallic.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+metallic.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+metallic.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+metallic.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+metallic.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+metallic.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+metallic.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+metallic.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+basecolor+normal+metallic"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+metallic.spv"
+          ]
+        }
+      }
+    },
+    {
       "name": "mesh.fragment.uv+basecolor+normal+emissive",
       "source": "eng/shaders/sources/mesh.slang",
       "entryPoint": "fragmentMain_uv_basecolor_normal_emissive",
@@ -2084,6 +2828,133 @@
             "--target-env",
             "vulkan1.2",
             "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+emissive.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment.uv+basecolor+roughmetal+metallic",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_basecolor_roughmetal_metallic",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+roughmetal+metallic.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+roughmetal+metallic.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+roughmetal+metallic.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+roughmetal+metallic.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+roughmetal+metallic.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+roughmetal+metallic.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+roughmetal+metallic.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+roughmetal+metallic.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+basecolor+roughmetal+metallic"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+roughmetal+metallic.spv"
           ]
         }
       }
@@ -2216,6 +3087,260 @@
       }
     },
     {
+      "name": "mesh.fragment.uv+basecolor+metallic+emissive",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_basecolor_metallic_emissive",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+metallic+emissive.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+metallic+emissive.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+metallic+emissive.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+metallic+emissive.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+metallic+emissive.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+metallic+emissive.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+metallic+emissive.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+metallic+emissive.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+basecolor+metallic+emissive"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+metallic+emissive.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment.uv+normal+roughmetal+metallic",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_normal_roughmetal_metallic",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+metallic.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+roughmetal+metallic.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+metallic.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+roughmetal+metallic.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+metallic.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+roughmetal+metallic.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+roughmetal+metallic.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+metallic.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+normal+roughmetal+metallic"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+metallic.spv"
+          ]
+        }
+      }
+    },
+    {
       "name": "mesh.fragment.uv+normal+roughmetal+emissive",
       "source": "eng/shaders/sources/mesh.slang",
       "entryPoint": "fragmentMain_uv_normal_roughmetal_emissive",
@@ -2338,6 +3463,390 @@
             "--target-env",
             "vulkan1.2",
             "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+emissive.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment.uv+normal+metallic+emissive",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_normal_metallic_emissive",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+metallic+emissive.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+metallic+emissive.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+metallic+emissive.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+metallic+emissive.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+metallic+emissive.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+metallic+emissive.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+metallic+emissive.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+metallic+emissive.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+normal+metallic+emissive"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+metallic+emissive.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment.uv+roughmetal+metallic+emissive",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_roughmetal_metallic_emissive",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+metallic+emissive.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+roughmetal+metallic+emissive.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+metallic+emissive.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+roughmetal+metallic+emissive.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+metallic+emissive.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+roughmetal+metallic+emissive.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+roughmetal+metallic+emissive.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+metallic+emissive.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+roughmetal+metallic+emissive"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+roughmetal+metallic+emissive.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment.uv+basecolor+normal+roughmetal+metallic",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_basecolor_normal_roughmetal_metallic",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+metallic.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+roughmetal+metallic.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+metallic.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+roughmetal+metallic.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_roughmetal_metallic",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_roughmetal_metallic",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+metallic.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+roughmetal+metallic.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+roughmetal+metallic.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+metallic.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+basecolor+normal+roughmetal+metallic"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+metallic.spv"
           ]
         }
       }
@@ -2468,6 +3977,529 @@
             "--target-env",
             "vulkan1.2",
             "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+emissive.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment.uv+basecolor+normal+metallic+emissive",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_basecolor_normal_metallic_emissive",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+metallic+emissive.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+metallic+emissive.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+metallic+emissive.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+metallic+emissive.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+metallic+emissive.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+metallic+emissive.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+metallic+emissive.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+metallic+emissive.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+basecolor+normal+metallic+emissive"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+metallic+emissive.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment.uv+basecolor+roughmetal+metallic+emissive",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_basecolor_roughmetal_metallic_emissive",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+roughmetal+metallic+emissive.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+roughmetal+metallic+emissive.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+roughmetal+metallic+emissive.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+roughmetal+metallic+emissive.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+roughmetal+metallic+emissive.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+roughmetal+metallic+emissive.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+roughmetal+metallic+emissive.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+roughmetal+metallic+emissive.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+basecolor+roughmetal+metallic+emissive"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+roughmetal+metallic+emissive.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment.uv+normal+roughmetal+metallic+emissive",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_normal_roughmetal_metallic_emissive",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+metallic+emissive.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+roughmetal+metallic+emissive.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+metallic+emissive.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+roughmetal+metallic+emissive.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+metallic+emissive.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+roughmetal+metallic+emissive.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal+roughmetal+metallic+emissive.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+metallic+emissive.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+normal+roughmetal+metallic+emissive"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal+roughmetal+metallic+emissive.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "fragmentMain_uv_basecolor_normal_roughmetal_metallic_emissive",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "fragmentMain_uv_basecolor_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_ENTRY_POINT=fragmentMain_uv_basecolor_normal_roughmetal_metallic_emissive",
+            "-DFRAGMENT_STAGE=1",
+            "-DHAS_UV=1",
+            "-DMAP_BASE_COLOR=1",
+            "-DMAP_NORMAL=1",
+            "-DMAP_ROUGHNESS_METALLIC=1",
+            "-DMAP_METALLIC=1",
+            "-DMAP_EMISSIVE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.fragment.uv+basecolor+normal+roughmetal+metallic+emissive.spv"
           ]
         }
       }
