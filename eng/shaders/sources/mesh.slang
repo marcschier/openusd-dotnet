@@ -107,6 +107,14 @@ SamplerState roughnessMetallicSampler : register(s2);
 SamplerState metallicSampler : register(s5);
 #endif
 #if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(16, 0)]]
+SamplerState opacitySampler : register(s6);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(18, 0)]]
+SamplerState occlusionSampler : register(s7);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(12, 0)]]
 SamplerState emissiveSampler : register(s3);
 #endif
@@ -129,6 +137,14 @@ Texture2D<float4> roughnessMetallicTexture : register(t2);
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(15, 0)]]
 Texture2D<float4> metallicTexture : register(t4);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(17, 0)]]
+Texture2D<float4> opacityTexture : register(t5);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(19, 0)]]
+Texture2D<float4> occlusionTexture : register(t10);
 #endif
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(5, 0)]]
@@ -408,6 +424,24 @@ float4 FRAGMENT_ENTRY_POINT(
             emissiveSampler,
             input.texCoord,
             (udimMask & 16u) != 0).rgb;
+    }
+    if ((textureMask & 64u) != 0)
+    {
+        opacity = saturate(
+            SampleMaterialTexture(
+                opacityTexture,
+                opacitySampler,
+                input.texCoord,
+                (udimMask & 64u) != 0).r);
+    }
+    if ((textureMask & 128u) != 0)
+    {
+        occlusion = saturate(
+            SampleMaterialTexture(
+                occlusionTexture,
+                occlusionSampler,
+                input.texCoord,
+                (udimMask & 128u) != 0).r);
     }
 #endif
 

@@ -275,6 +275,14 @@ public sealed class SilkMaterialData
         {
             features |= SilkShaderFeatures.EmissiveMap;
         }
+        if (GetTexture(SilkMaterialParameter.Opacity) is not null)
+        {
+            features |= SilkShaderFeatures.OpacityMap;
+        }
+        if (GetTexture(SilkMaterialParameter.Occlusion) is not null)
+        {
+            features |= SilkShaderFeatures.OcclusionMap;
+        }
         return features == SilkShaderFeatures.None
             ? features
             : features | SilkShaderFeatures.Uv;

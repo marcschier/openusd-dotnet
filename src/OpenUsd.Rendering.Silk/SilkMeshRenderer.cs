@@ -1320,6 +1320,8 @@ public sealed class SilkMeshRenderer :
         bindTexture(SilkMaterialParameter.Roughness, SilkShaderFeatures.RoughnessMetallicMap);
         bindTexture(SilkMaterialParameter.Metallic, SilkShaderFeatures.MetallicMap);
         bindTexture(SilkMaterialParameter.EmissiveColor, SilkShaderFeatures.EmissiveMap);
+        bindTexture(SilkMaterialParameter.Opacity, SilkShaderFeatures.OpacityMap);
+        bindTexture(SilkMaterialParameter.Occlusion, SilkShaderFeatures.OcclusionMap);
         if (material is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
         {
@@ -1357,7 +1359,9 @@ public sealed class SilkMeshRenderer :
                 SilkMaterialParameter.Normal or
                 SilkMaterialParameter.Roughness or
                 SilkMaterialParameter.Metallic or
-                SilkMaterialParameter.EmissiveColor)
+                SilkMaterialParameter.EmissiveColor or
+                SilkMaterialParameter.Opacity or
+                SilkMaterialParameter.Occlusion)
             {
                 return texture.Parameter;
             }
@@ -1402,6 +1406,20 @@ public sealed class SilkMeshRenderer :
                 commands,
                 ResolveMaterial(mesh.Mesh)!,
                 SilkMaterialParameter.EmissiveColor);
+        }
+        if ((features & SilkShaderFeatures.OpacityMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.Opacity);
+        }
+        if ((features & SilkShaderFeatures.OcclusionMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.Occlusion);
         }
         if (ResolveMaterial(mesh.Mesh) is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)

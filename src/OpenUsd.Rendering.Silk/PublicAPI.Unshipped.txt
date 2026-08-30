@@ -1294,6 +1294,8 @@ OpenUsd.Rendering.Silk.SilkShaderFeatures.EmissiveMap = 16 -> OpenUsd.Rendering.
 OpenUsd.Rendering.Silk.SilkShaderFeatures.MetallicMap = 32 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.None = 0 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.NormalMap = 4 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.OcclusionMap = 128 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.OpacityMap = 64 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.RoughnessMetallicMap = 8 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.Uv = 1 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderModuleDescriptor

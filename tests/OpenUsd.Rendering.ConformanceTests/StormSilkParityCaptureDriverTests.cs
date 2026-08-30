@@ -1686,6 +1686,38 @@ def Xform "World"
     }
 
     [Test]
+    public async Task OpacityAndOcclusionTextureSlotsRenderIndependentlyOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("D3D12 WARP opacity and occlusion evidence only runs on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        foreach (MaterialTextureSlotCase testCase in CreateMaterialTextureSlotCases().Where(
+            static value => value.Parameter is
+                SilkMaterialParameter.Opacity or SilkMaterialParameter.Occlusion))
+        {
+            ParityImage neutral = CaptureSyntheticMaterialTextureSlotSelfConsistency(
+                device,
+                testCase,
+                testCase.NeutralFallback);
+            (byte neutralMax, double neutralMean) = CompareTranslatedHalves(neutral);
+            await Assert.That(neutralMax).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+            await Assert.That(neutralMean).IsLessThanOrEqualTo(2.000);
+
+            ParityImage divergent = CaptureSyntheticMaterialTextureSlotSelfConsistency(
+                device,
+                testCase,
+                testCase.DivergentFallback);
+            (byte divergentMax, _) = CompareTranslatedHalves(divergent);
+            await Assert.That(divergentMax)
+                .IsGreaterThan(MinimumMaterialTextureDivergenceChannelDelta);
+        }
+    }
+
+    [Test]
     public async Task RemainingPreviewSurfaceConstantInputsMatchEquivalentMaterialsOnVulkan()
     {
         var evidence = new List<string>();
@@ -2590,6 +2622,12 @@ def Xform "World"
             new(SilkMaterialParameter.SpecularColor, [1.0f, 1.0f, 1.0f]),
             new(SilkMaterialParameter.UseSpecularWorkflow, [1.0f]),
         ];
+        MaterialScalarSpec[] opacityCutout =
+        [
+            .. shadedDefaults,
+            new(SilkMaterialParameter.Opacity, [1.0f]),
+            new(SilkMaterialParameter.OpacityThreshold, [0.5f]),
+        ];
         return
         [
             new(
@@ -2631,6 +2669,24 @@ def Xform "World"
                 [1, 0.5f, 0.5f, 1],
                 shadedDefaults,
                 shadedDefaults),
+            new(
+                "texture-slot-opacity",
+                SilkMaterialParameter.Opacity,
+                SilkColorSpace.Raw,
+                [1, 1, 1, 1],
+                [1, 1, 1, 0],
+                opacityCutout,
+                opacityCutout,
+                SilkTextureChannel.A),
+            new(
+                "texture-slot-occlusion",
+                SilkMaterialParameter.Occlusion,
+                SilkColorSpace.Raw,
+                [1, 1, 1, 1],
+                [0, 1, 1, 1],
+                shadedDefaults,
+                shadedDefaults,
+                SilkTextureChannel.R),
         ];
     }
 
@@ -2805,6 +2861,29 @@ def Xform "World"
         float[] fallback) =>
         CaptureSyntheticMaterialPair(
             CreateMaterialCommandWithScalars("/Repeat", SilkSurfaceKind.PreviewSurface, testCase.LeftScalars),
+            CreateTexturedMaterialCommand(
+                "/Candidate",
+                MissingTextureAssetPath(),
+                testCase.Parameter,
+                SilkTextureWrap.Repeat,
+                testCase.ColorSpace,
+                [1, 1, 1, 1],
+                [0, 0, 0, 0],
+                fallback,
+                "st",
+                testCase.RightScalars,
+                testCase.Channel));
+
+    private static ParityImage CaptureSyntheticMaterialTextureSlotSelfConsistency(
+        ISilkGraphicsDevice device,
+        MaterialTextureSlotCase testCase,
+        float[] fallback) =>
+        CaptureSyntheticMaterialPair(
+            device,
+            CreateMaterialCommandWithScalars(
+                "/Repeat",
+                SilkSurfaceKind.PreviewSurface,
+                testCase.LeftScalars),
             CreateTexturedMaterialCommand(
                 "/Candidate",
                 MissingTextureAssetPath(),

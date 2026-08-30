@@ -129,6 +129,8 @@ internal static class SilkSurfaceUniformWriter
         addUdimBit(SilkMaterialParameter.Roughness, SilkShaderFeatures.RoughnessMetallicMap);
         addUdimBit(SilkMaterialParameter.EmissiveColor, SilkShaderFeatures.EmissiveMap);
         addUdimBit(SilkMaterialParameter.Metallic, SilkShaderFeatures.MetallicMap);
+        addUdimBit(SilkMaterialParameter.Opacity, SilkShaderFeatures.OpacityMap);
+        addUdimBit(SilkMaterialParameter.Occlusion, SilkShaderFeatures.OcclusionMap);
         return mask;
 
         void addUdimBit(SilkMaterialParameter parameter, SilkShaderFeatures feature)

@@ -18,14 +18,16 @@ public sealed class D3D12DeviceTests
             SilkShaderFeatures.NormalMap |
             SilkShaderFeatures.RoughnessMetallicMap |
             SilkShaderFeatures.EmissiveMap |
-            SilkShaderFeatures.MetallicMap);
+            SilkShaderFeatures.MetallicMap |
+            SilkShaderFeatures.OpacityMap |
+            SilkShaderFeatures.OcclusionMap);
         var plan = new D3D12RootBindingPlan(permutation.CreateMeshBindingLayout());
 
         await Assert.That(plan.RootParameterCount).IsEqualTo(6u);
         await Assert.That(plan.RootSignatureDwordCost).IsEqualTo(10u);
         await Assert.That(plan.RootSignatureDwordCost).IsLessThanOrEqualTo(64u);
-        await Assert.That(plan.SampledTextureCount).IsEqualTo(5u);
-        await Assert.That(plan.SamplerCount).IsEqualTo(5u);
+        await Assert.That(plan.SampledTextureCount).IsEqualTo(7u);
+        await Assert.That(plan.SamplerCount).IsEqualTo(7u);
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.MetallicTextureBinding,
@@ -33,7 +35,15 @@ public sealed class D3D12DeviceTests
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.NormalTextureBinding,
+            SilkBindingKind.SampledTexture)).IsEqualTo(6u);
+        await Assert.That(plan.GetDescriptorOffset(
+            0,
+            SilkBindingLayoutDescriptor.OpacityTextureBinding,
             SilkBindingKind.SampledTexture)).IsEqualTo(4u);
+        await Assert.That(plan.GetDescriptorOffset(
+            0,
+            SilkBindingLayoutDescriptor.OcclusionTextureBinding,
+            SilkBindingKind.SampledTexture)).IsEqualTo(5u);
         await Assert.That(plan.GetRootParameter(
             0,
             SilkBindingLayoutDescriptor.BaseColorTextureBinding,
