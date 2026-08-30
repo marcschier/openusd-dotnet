@@ -1,0 +1,3189 @@
+{
+  "$schemaVersion": 1,
+  "$generator": "eng/generate-schema-coverage.py",
+  "$comment": "Generated from the pinned OpenUSD schema registry. Do not hand edit; run python eng/generate-schema-coverage.py.",
+  "openUsd": {
+    "version": "26.05",
+    "tag": "v26.05",
+    "commit": "2095fafafd033fa23386d7ec6d58c7cc33974518"
+  },
+  "counts": {
+    "libraries": 10,
+    "schemas": 113,
+    "concreteTyped": 59,
+    "abstractTyped": 13,
+    "appliedApi": 38,
+    "nonAppliedApi": 3,
+    "ownProperties": 327,
+    "inheritedProperties": 471
+  },
+  "libraries": [
+    {
+      "name": "usdGeom",
+      "schemas": [
+        {
+          "typeName": "UsdGeomBasisCurves",
+          "schemaIdentifier": "BasisCurves",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomCurves"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 15,
+          "properties": [
+            {
+              "name": "basis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "type",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "wrap",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomBoundable",
+          "schemaIdentifier": "Boundable",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdGeomXformable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 4,
+          "properties": [
+            {
+              "name": "extent",
+              "type": "float3[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomCamera",
+          "schemaIdentifier": "Camera",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomXformable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 4,
+          "properties": [
+            {
+              "name": "clippingPlanes",
+              "type": "float4[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "clippingRange",
+              "type": "float2",
+              "kind": "attribute"
+            },
+            {
+              "name": "exposure",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "exposure:fStop",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "exposure:iso",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "exposure:responsivity",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "exposure:time",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "fStop",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "focalLength",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "focusDistance",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "horizontalAperture",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "horizontalApertureOffset",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "projection",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "shutter:close",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "shutter:open",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "stereoRole",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "verticalAperture",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "verticalApertureOffset",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomCapsule",
+          "schemaIdentifier": "Capsule",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "axis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "height",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "radius",
+              "type": "double",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomCapsule_1",
+          "schemaIdentifier": "Capsule_1",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "axis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "height",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "radiusBottom",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "radiusTop",
+              "type": "double",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomCone",
+          "schemaIdentifier": "Cone",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "axis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "height",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "radius",
+              "type": "double",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomCube",
+          "schemaIdentifier": "Cube",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "size",
+              "type": "double",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomCurves",
+          "schemaIdentifier": "Curves",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdGeomPointBased"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 13,
+          "properties": [
+            {
+              "name": "curveVertexCounts",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "widths",
+              "type": "float[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomCylinder",
+          "schemaIdentifier": "Cylinder",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "axis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "height",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "radius",
+              "type": "double",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomCylinder_1",
+          "schemaIdentifier": "Cylinder_1",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "axis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "height",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "radiusBottom",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "radiusTop",
+              "type": "double",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomGprim",
+          "schemaIdentifier": "Gprim",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdGeomBoundable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 5,
+          "properties": [
+            {
+              "name": "doubleSided",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "orientation",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "primvars:displayColor",
+              "type": "color3f[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "primvars:displayOpacity",
+              "type": "float[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomHermiteCurves",
+          "schemaIdentifier": "HermiteCurves",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomCurves"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 15,
+          "properties": [
+            {
+              "name": "tangents",
+              "type": "vector3f[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomImageable",
+          "schemaIdentifier": "Imageable",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "proxyPrim",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "purpose",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "visibility",
+              "type": "token",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomMesh",
+          "schemaIdentifier": "Mesh",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomPointBased"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 13,
+          "properties": [
+            {
+              "name": "cornerIndices",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "cornerSharpnesses",
+              "type": "float[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "creaseIndices",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "creaseLengths",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "creaseSharpnesses",
+              "type": "float[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "faceVaryingLinearInterpolation",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "faceVertexCounts",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "faceVertexIndices",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "holeIndices",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "interpolateBoundary",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "subdivisionScheme",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "triangleSubdivisionRule",
+              "type": "token",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomModelAPI",
+          "schemaIdentifier": "GeomModelAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "model:applyDrawMode",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "model:cardGeometry",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "model:cardTextureXNeg",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "model:cardTextureXPos",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "model:cardTextureYNeg",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "model:cardTextureYPos",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "model:cardTextureZNeg",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "model:cardTextureZPos",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "model:drawMode",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "model:drawModeColor",
+              "type": "float3",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomMotionAPI",
+          "schemaIdentifier": "MotionAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "motion:blurScale",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "motion:nonlinearSampleCount",
+              "type": "int",
+              "kind": "attribute"
+            },
+            {
+              "name": "motion:velocityScale",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomNurbsCurves",
+          "schemaIdentifier": "NurbsCurves",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomCurves"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 15,
+          "properties": [
+            {
+              "name": "knots",
+              "type": "double[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "order",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "pointWeights",
+              "type": "double[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "ranges",
+              "type": "double2[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomNurbsPatch",
+          "schemaIdentifier": "NurbsPatch",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomPointBased"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 13,
+          "properties": [
+            {
+              "name": "pointWeights",
+              "type": "double[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "trimCurve:counts",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "trimCurve:knots",
+              "type": "double[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "trimCurve:orders",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "trimCurve:points",
+              "type": "double3[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "trimCurve:ranges",
+              "type": "double2[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "trimCurve:vertexCounts",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "uForm",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "uKnots",
+              "type": "double[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "uOrder",
+              "type": "int",
+              "kind": "attribute"
+            },
+            {
+              "name": "uRange",
+              "type": "double2",
+              "kind": "attribute"
+            },
+            {
+              "name": "uVertexCount",
+              "type": "int",
+              "kind": "attribute"
+            },
+            {
+              "name": "vForm",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "vKnots",
+              "type": "double[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "vOrder",
+              "type": "int",
+              "kind": "attribute"
+            },
+            {
+              "name": "vRange",
+              "type": "double2",
+              "kind": "attribute"
+            },
+            {
+              "name": "vVertexCount",
+              "type": "int",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomPlane",
+          "schemaIdentifier": "Plane",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "axis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "length",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "width",
+              "type": "double",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomPointBased",
+          "schemaIdentifier": "PointBased",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "accelerations",
+              "type": "vector3f[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "normals",
+              "type": "normal3f[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "points",
+              "type": "point3f[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "velocities",
+              "type": "vector3f[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomPointInstancer",
+          "schemaIdentifier": "PointInstancer",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomBoundable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 5,
+          "properties": [
+            {
+              "name": "accelerations",
+              "type": "vector3f[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "angularVelocities",
+              "type": "vector3f[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "ids",
+              "type": "int64[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "invisibleIds",
+              "type": "int64[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "orientations",
+              "type": "quath[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "orientationsf",
+              "type": "quatf[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "positions",
+              "type": "point3f[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "protoIndices",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "prototypes",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "scales",
+              "type": "float3[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "velocities",
+              "type": "vector3f[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomPoints",
+          "schemaIdentifier": "Points",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomPointBased"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 13,
+          "properties": [
+            {
+              "name": "ids",
+              "type": "int64[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "widths",
+              "type": "float[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomPrimvarsAPI",
+          "schemaIdentifier": "PrimvarsAPI",
+          "schemaKind": "nonAppliedAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdGeomScope",
+          "schemaIdentifier": "Scope",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomImageable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 3,
+          "properties": []
+        },
+        {
+          "typeName": "UsdGeomSphere",
+          "schemaIdentifier": "Sphere",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "radius",
+              "type": "double",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomSubset",
+          "schemaIdentifier": "GeomSubset",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "elementType",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "familyName",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "indices",
+              "type": "int[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomTetMesh",
+          "schemaIdentifier": "TetMesh",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomPointBased"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 13,
+          "properties": [
+            {
+              "name": "surfaceFaceVertexIndices",
+              "type": "int3[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "tetVertexIndices",
+              "type": "int4[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomVisibilityAPI",
+          "schemaIdentifier": "VisibilityAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "guideVisibility",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "proxyVisibility",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "renderVisibility",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdGeomXform",
+          "schemaIdentifier": "Xform",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomXformable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 4,
+          "properties": []
+        },
+        {
+          "typeName": "UsdGeomXformCommonAPI",
+          "schemaIdentifier": "XformCommonAPI",
+          "schemaKind": "nonAppliedAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdGeomXformable",
+          "schemaIdentifier": "Xformable",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdGeomImageable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 3,
+          "properties": [
+            {
+              "name": "xformOpOrder",
+              "type": "token[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "usdShade",
+      "schemas": [
+        {
+          "typeName": "UsdShadeConnectableAPI",
+          "schemaIdentifier": "ConnectableAPI",
+          "schemaKind": "nonAppliedAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdShadeCoordSysAPI",
+          "schemaIdentifier": "CoordSysAPI",
+          "schemaKind": "multipleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "coordSys:__INSTANCE_NAME__:binding",
+              "type": "rel",
+              "kind": "relationship"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdShadeMaterial",
+          "schemaIdentifier": "Material",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdShadeNodeGraph"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "outputs:displacement",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "outputs:surface",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "outputs:volume",
+              "type": "token",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdShadeMaterialBindingAPI",
+          "schemaIdentifier": "MaterialBindingAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdShadeNodeDefAPI",
+          "schemaIdentifier": "NodeDefAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "info:id",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "info:implementationSource",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdShadeNodeGraph",
+          "schemaIdentifier": "NodeGraph",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdShadeShader",
+          "schemaIdentifier": "Shader",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [
+            "NodeDefAPI"
+          ],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        }
+      ]
+    },
+    {
+      "name": "usdLux",
+      "schemas": [
+        {
+          "typeName": "UsdLuxBoundableLightBase",
+          "schemaIdentifier": "BoundableLightBase",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdGeomBoundable"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 5,
+          "properties": []
+        },
+        {
+          "typeName": "UsdLuxCylinderLight",
+          "schemaIdentifier": "CylinderLight",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdLuxBoundableLightBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 6,
+          "properties": [
+            {
+              "name": "inputs:length",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:radius",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "treatAsLine",
+              "type": "bool",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxDiskLight",
+          "schemaIdentifier": "DiskLight",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdLuxBoundableLightBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 6,
+          "properties": [
+            {
+              "name": "inputs:radius",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxDistantLight",
+          "schemaIdentifier": "DistantLight",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdLuxNonboundableLightBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 6,
+          "properties": [
+            {
+              "name": "inputs:angle",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxDomeLight",
+          "schemaIdentifier": "DomeLight",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdLuxNonboundableLightBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 5,
+          "properties": [
+            {
+              "name": "guideRadius",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:texture:file",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:texture:format",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "portals",
+              "type": "rel",
+              "kind": "relationship"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxDomeLight_1",
+          "schemaIdentifier": "DomeLight_1",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdLuxNonboundableLightBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 5,
+          "properties": [
+            {
+              "name": "guideRadius",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:texture:file",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:texture:format",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "poleAxis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "portals",
+              "type": "rel",
+              "kind": "relationship"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxGeometryLight",
+          "schemaIdentifier": "GeometryLight",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdLuxNonboundableLightBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 5,
+          "properties": [
+            {
+              "name": "geometry",
+              "type": "rel",
+              "kind": "relationship"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxLightAPI",
+          "schemaIdentifier": "LightAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [
+            "CollectionAPI:lightLink",
+            "CollectionAPI:shadowLink"
+          ],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "collection:lightLink:includeRoot",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "collection:shadowLink:includeRoot",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "inputs:color",
+              "type": "color3f",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:colorTemperature",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:diffuse",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:enableColorTemperature",
+              "type": "bool",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:exposure",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:intensity",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:normalize",
+              "type": "bool",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:specular",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "light:filters",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "light:materialSyncMode",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "light:shaderId",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxLightFilter",
+          "schemaIdentifier": "LightFilter",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomXformable"
+          ],
+          "builtinApiSchemas": [
+            "CollectionAPI:filterLink"
+          ],
+          "inheritedPropertyCount": 4,
+          "properties": [
+            {
+              "name": "collection:filterLink:includeRoot",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "lightFilter:shaderId",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxLightListAPI",
+          "schemaIdentifier": "LightListAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "lightList",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "lightList:cacheBehavior",
+              "type": "token",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxListAPI",
+          "schemaIdentifier": "ListAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "lightList",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "lightList:cacheBehavior",
+              "type": "token",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxMeshLightAPI",
+          "schemaIdentifier": "MeshLightAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 2,
+          "properties": []
+        },
+        {
+          "typeName": "UsdLuxNonboundableLightBase",
+          "schemaIdentifier": "NonboundableLightBase",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdGeomXformable"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 4,
+          "properties": []
+        },
+        {
+          "typeName": "UsdLuxPluginLight",
+          "schemaIdentifier": "PluginLight",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomXformable"
+          ],
+          "builtinApiSchemas": [
+            "NodeDefAPI",
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 4,
+          "properties": []
+        },
+        {
+          "typeName": "UsdLuxPluginLightFilter",
+          "schemaIdentifier": "PluginLightFilter",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdLuxLightFilter"
+          ],
+          "builtinApiSchemas": [
+            "NodeDefAPI",
+            "CollectionAPI:filterLink"
+          ],
+          "inheritedPropertyCount": 6,
+          "properties": []
+        },
+        {
+          "typeName": "UsdLuxPortalLight",
+          "schemaIdentifier": "PortalLight",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdLuxBoundableLightBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 6,
+          "properties": [
+            {
+              "name": "inputs:height",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:width",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxRectLight",
+          "schemaIdentifier": "RectLight",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdLuxBoundableLightBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 6,
+          "properties": [
+            {
+              "name": "inputs:height",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:texture:file",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:width",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxShadowAPI",
+          "schemaIdentifier": "ShadowAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "inputs:shadow:color",
+              "type": "color3f",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:shadow:distance",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:shadow:enable",
+              "type": "bool",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:shadow:falloff",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:shadow:falloffGamma",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxShapingAPI",
+          "schemaIdentifier": "ShapingAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "inputs:shaping:cone:angle",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:shaping:cone:softness",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:shaping:focus",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:shaping:focusTint",
+              "type": "color3f",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:shaping:ies:angleScale",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:shaping:ies:file",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "inputs:shaping:ies:normalize",
+              "type": "bool",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxSphereLight",
+          "schemaIdentifier": "SphereLight",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdLuxBoundableLightBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 6,
+          "properties": [
+            {
+              "name": "inputs:radius",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "treatAsPoint",
+              "type": "bool",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdLuxVolumeLightAPI",
+          "schemaIdentifier": "VolumeLightAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [
+            "LightAPI"
+          ],
+          "inheritedPropertyCount": 2,
+          "properties": []
+        }
+      ]
+    },
+    {
+      "name": "usdSkel",
+      "schemas": [
+        {
+          "typeName": "UsdSkelAnimation",
+          "schemaIdentifier": "SkelAnimation",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "blendShapeWeights",
+              "type": "float[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "blendShapes",
+              "type": "token[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "joints",
+              "type": "token[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "rotations",
+              "type": "quatf[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "scales",
+              "type": "half3[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "translations",
+              "type": "float3[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdSkelBindingAPI",
+          "schemaIdentifier": "SkelBindingAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "primvars:skel:geomBindTransform",
+              "type": "matrix4d",
+              "kind": "attribute"
+            },
+            {
+              "name": "primvars:skel:jointIndices",
+              "type": "int[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "primvars:skel:jointWeights",
+              "type": "float[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "primvars:skel:skinningMethod",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "skel:animationSource",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "skel:blendShapeTargets",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "skel:blendShapes",
+              "type": "token[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "skel:joints",
+              "type": "token[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "skel:skeleton",
+              "type": "rel",
+              "kind": "relationship"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdSkelBlendShape",
+          "schemaIdentifier": "BlendShape",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "normalOffsets",
+              "type": "vector3f[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "offsets",
+              "type": "vector3f[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "pointIndices",
+              "type": "int[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdSkelRoot",
+          "schemaIdentifier": "SkelRoot",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomBoundable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 5,
+          "properties": []
+        },
+        {
+          "typeName": "UsdSkelSkeleton",
+          "schemaIdentifier": "Skeleton",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomBoundable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 5,
+          "properties": [
+            {
+              "name": "bindTransforms",
+              "type": "matrix4d[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "jointNames",
+              "type": "token[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "joints",
+              "type": "token[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "restTransforms",
+              "type": "matrix4d[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "usdVol",
+      "schemas": [
+        {
+          "typeName": "UsdVolField3DAsset",
+          "schemaIdentifier": "Field3DAsset",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdVolFieldAsset"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "fieldPurpose",
+              "type": "token",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdVolFieldAsset",
+          "schemaIdentifier": "FieldAsset",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdVolVolumeFieldAsset"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": []
+        },
+        {
+          "typeName": "UsdVolFieldBase",
+          "schemaIdentifier": "FieldBase",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdVolVolumeFieldBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 4,
+          "properties": []
+        },
+        {
+          "typeName": "UsdVolOpenVDBAsset",
+          "schemaIdentifier": "OpenVDBAsset",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdVolFieldAsset"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "fieldClass",
+              "type": "token",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdVolParticleField",
+          "schemaIdentifier": "ParticleField",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": []
+        },
+        {
+          "typeName": "UsdVolParticleField3DGaussianSplat",
+          "schemaIdentifier": "ParticleField3DGaussianSplat",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdVolParticleField"
+          ],
+          "builtinApiSchemas": [
+            "ParticleFieldPositionAttributeAPI",
+            "ParticleFieldOrientationAttributeAPI",
+            "ParticleFieldScaleAttributeAPI",
+            "ParticleFieldOpacityAttributeAPI",
+            "ParticleFieldKernelGaussianEllipsoidAPI",
+            "ParticleFieldSphericalHarmonicsAttributeAPI"
+          ],
+          "inheritedPropertyCount": 9,
+          "properties": [
+            {
+              "name": "projectionModeHint",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "sortingModeHint",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdVolParticleFieldKernelBaseAPI",
+          "schemaIdentifier": "ParticleFieldKernelBaseAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdVolParticleFieldKernelConstantSurfletAPI",
+          "schemaIdentifier": "ParticleFieldKernelConstantSurfletAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [
+            "ParticleFieldKernelBaseAPI"
+          ],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdVolParticleFieldKernelGaussianEllipsoidAPI",
+          "schemaIdentifier": "ParticleFieldKernelGaussianEllipsoidAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [
+            "ParticleFieldKernelBaseAPI"
+          ],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdVolParticleFieldKernelGaussianSurfletAPI",
+          "schemaIdentifier": "ParticleFieldKernelGaussianSurfletAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [
+            "ParticleFieldKernelBaseAPI"
+          ],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdVolParticleFieldOpacityAttributeAPI",
+          "schemaIdentifier": "ParticleFieldOpacityAttributeAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "opacities",
+              "type": "float[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "opacitiesh",
+              "type": "half[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdVolParticleFieldOrientationAttributeAPI",
+          "schemaIdentifier": "ParticleFieldOrientationAttributeAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "orientations",
+              "type": "quatf[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "orientationsh",
+              "type": "quath[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdVolParticleFieldPositionAttributeAPI",
+          "schemaIdentifier": "ParticleFieldPositionAttributeAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [
+            "ParticleFieldPositionBaseAPI"
+          ],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "positions",
+              "type": "point3f[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "positionsh",
+              "type": "point3h[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdVolParticleFieldPositionBaseAPI",
+          "schemaIdentifier": "ParticleFieldPositionBaseAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdVolParticleFieldRadianceBaseAPI",
+          "schemaIdentifier": "ParticleFieldRadianceBaseAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdVolParticleFieldScaleAttributeAPI",
+          "schemaIdentifier": "ParticleFieldScaleAttributeAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "scales",
+              "type": "float3[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "scalesh",
+              "type": "half3[]",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdVolParticleFieldSphericalHarmonicsAttributeAPI",
+          "schemaIdentifier": "ParticleFieldSphericalHarmonicsAttributeAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [
+            "ParticleFieldRadianceBaseAPI"
+          ],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "radiance:sphericalHarmonicsCoefficients",
+              "type": "float3[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "radiance:sphericalHarmonicsCoefficientsh",
+              "type": "half3[]",
+              "kind": "attribute"
+            },
+            {
+              "name": "radiance:sphericalHarmonicsDegree",
+              "type": "int",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdVolVolume",
+          "schemaIdentifier": "Volume",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomGprim"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 9,
+          "properties": []
+        },
+        {
+          "typeName": "UsdVolVolumeFieldAsset",
+          "schemaIdentifier": "VolumeFieldAsset",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdVolFieldBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 4,
+          "properties": [
+            {
+              "name": "fieldDataType",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "fieldIndex",
+              "type": "int",
+              "kind": "attribute"
+            },
+            {
+              "name": "fieldName",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "filePath",
+              "type": "asset",
+              "kind": "attribute"
+            },
+            {
+              "name": "vectorDataRoleHint",
+              "type": "token",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdVolVolumeFieldBase",
+          "schemaIdentifier": "VolumeFieldBase",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdGeomXformable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 4,
+          "properties": []
+        }
+      ]
+    },
+    {
+      "name": "usdRender",
+      "schemas": [
+        {
+          "typeName": "UsdRenderPass",
+          "schemaIdentifier": "RenderPass",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [
+            "CollectionAPI:renderVisibility",
+            "CollectionAPI:cameraVisibility",
+            "CollectionAPI:prune",
+            "CollectionAPI:matte"
+          ],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "collection:cameraVisibility:includeRoot",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "collection:renderVisibility:includeRoot",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "command",
+              "type": "string[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "fileName",
+              "type": "asset",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "inputPasses",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "passType",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "renderSource",
+              "type": "rel",
+              "kind": "relationship"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdRenderProduct",
+          "schemaIdentifier": "RenderProduct",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdRenderSettingsBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 8,
+          "properties": [
+            {
+              "name": "orderedVars",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "productName",
+              "type": "token",
+              "kind": "attribute"
+            },
+            {
+              "name": "productType",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdRenderSettings",
+          "schemaIdentifier": "RenderSettings",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdRenderSettingsBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 8,
+          "properties": [
+            {
+              "name": "includedPurposes",
+              "type": "token[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "materialBindingPurposes",
+              "type": "token[]",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "products",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "renderingColorSpace",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdRenderSettingsBase",
+          "schemaIdentifier": "RenderSettingsBase",
+          "schemaKind": "abstractTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "aspectRatioConformPolicy",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "camera",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "dataWindowNDC",
+              "type": "float4",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "disableDepthOfField",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "disableMotionBlur",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "instantaneousShutter",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "pixelAspectRatio",
+              "type": "float",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "resolution",
+              "type": "int2",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdRenderVar",
+          "schemaIdentifier": "RenderVar",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "dataType",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "sourceName",
+              "type": "string",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "sourceType",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "usdMedia",
+      "schemas": [
+        {
+          "typeName": "UsdMediaAssetPreviewsAPI",
+          "schemaIdentifier": "AssetPreviewsAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdMediaSpatialAudio",
+          "schemaIdentifier": "SpatialAudio",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomXformable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 4,
+          "properties": [
+            {
+              "name": "auralMode",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "endTime",
+              "type": "timecode",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "filePath",
+              "type": "asset",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "gain",
+              "type": "double",
+              "kind": "attribute"
+            },
+            {
+              "name": "mediaOffset",
+              "type": "double",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "playbackMode",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "startTime",
+              "type": "timecode",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "usdProc",
+      "schemas": [
+        {
+          "typeName": "UsdProcGenerativeProcedural",
+          "schemaIdentifier": "GenerativeProcedural",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomBoundable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 5,
+          "properties": [
+            {
+              "name": "proceduralSystem",
+              "type": "token",
+              "kind": "attribute"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "usdUI",
+      "schemas": [
+        {
+          "typeName": "UsdUIAccessibilityAPI",
+          "schemaIdentifier": "AccessibilityAPI",
+          "schemaKind": "multipleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "accessibility:__INSTANCE_NAME__:description",
+              "type": "string",
+              "kind": "attribute"
+            },
+            {
+              "name": "accessibility:__INSTANCE_NAME__:label",
+              "type": "string",
+              "kind": "attribute"
+            },
+            {
+              "name": "accessibility:__INSTANCE_NAME__:priority",
+              "type": "token",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdUIBackdrop",
+          "schemaIdentifier": "Backdrop",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "ui:description",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdUINodeGraphNodeAPI",
+          "schemaIdentifier": "NodeGraphNodeAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "ui:nodegraph:node:displayColor",
+              "type": "color3f",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "ui:nodegraph:node:docURI",
+              "type": "string",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "ui:nodegraph:node:expansionState",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "ui:nodegraph:node:icon",
+              "type": "asset",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "ui:nodegraph:node:pos",
+              "type": "float2",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "ui:nodegraph:node:size",
+              "type": "float2",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "ui:nodegraph:node:stackingOrder",
+              "type": "int",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdUISceneGraphPrimAPI",
+          "schemaIdentifier": "SceneGraphPrimAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "ui:displayGroup",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "ui:displayName",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "usdPhysics",
+      "schemas": [
+        {
+          "typeName": "UsdPhysicsArticulationRootAPI",
+          "schemaIdentifier": "PhysicsArticulationRootAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": []
+        },
+        {
+          "typeName": "UsdPhysicsCollisionAPI",
+          "schemaIdentifier": "PhysicsCollisionAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "physics:collisionEnabled",
+              "type": "bool",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:simulationOwner",
+              "type": "rel",
+              "kind": "relationship"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsCollisionGroup",
+          "schemaIdentifier": "PhysicsCollisionGroup",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [
+            "CollectionAPI:colliders"
+          ],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "physics:filteredGroups",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "physics:invertFilteredGroups",
+              "type": "bool",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:mergeGroup",
+              "type": "string",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsDistanceJoint",
+          "schemaIdentifier": "PhysicsDistanceJoint",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdPhysicsJoint"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 14,
+          "properties": [
+            {
+              "name": "physics:maxDistance",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:minDistance",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsDriveAPI",
+          "schemaIdentifier": "PhysicsDriveAPI",
+          "schemaKind": "multipleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "drive:__INSTANCE_NAME__:physics:damping",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "drive:__INSTANCE_NAME__:physics:maxForce",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "drive:__INSTANCE_NAME__:physics:stiffness",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "drive:__INSTANCE_NAME__:physics:targetPosition",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "drive:__INSTANCE_NAME__:physics:targetVelocity",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "drive:__INSTANCE_NAME__:physics:type",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsFilteredPairsAPI",
+          "schemaIdentifier": "PhysicsFilteredPairsAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "physics:filteredPairs",
+              "type": "rel",
+              "kind": "relationship"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsFixedJoint",
+          "schemaIdentifier": "PhysicsFixedJoint",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdPhysicsJoint"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 14,
+          "properties": []
+        },
+        {
+          "typeName": "UsdPhysicsJoint",
+          "schemaIdentifier": "PhysicsJoint",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdGeomImageable"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 3,
+          "properties": [
+            {
+              "name": "physics:body0",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "physics:body1",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "physics:breakForce",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:breakTorque",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:collisionEnabled",
+              "type": "bool",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:excludeFromArticulation",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "physics:jointEnabled",
+              "type": "bool",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:localPos0",
+              "type": "point3f",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:localPos1",
+              "type": "point3f",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:localRot0",
+              "type": "quatf",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:localRot1",
+              "type": "quatf",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsLimitAPI",
+          "schemaIdentifier": "PhysicsLimitAPI",
+          "schemaKind": "multipleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "limit:__INSTANCE_NAME__:physics:high",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "limit:__INSTANCE_NAME__:physics:low",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsMassAPI",
+          "schemaIdentifier": "PhysicsMassAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "physics:centerOfMass",
+              "type": "point3f",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:density",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:diagonalInertia",
+              "type": "float3",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:mass",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:principalAxes",
+              "type": "quatf",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsMaterialAPI",
+          "schemaIdentifier": "PhysicsMaterialAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "physics:density",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:dynamicFriction",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:restitution",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:staticFriction",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsMeshCollisionAPI",
+          "schemaIdentifier": "PhysicsMeshCollisionAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "physics:approximation",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsPrismaticJoint",
+          "schemaIdentifier": "PhysicsPrismaticJoint",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdPhysicsJoint"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 14,
+          "properties": [
+            {
+              "name": "physics:axis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "physics:lowerLimit",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:upperLimit",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsRevoluteJoint",
+          "schemaIdentifier": "PhysicsRevoluteJoint",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdPhysicsJoint"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 14,
+          "properties": [
+            {
+              "name": "physics:axis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "physics:lowerLimit",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:upperLimit",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsRigidBodyAPI",
+          "schemaIdentifier": "PhysicsRigidBodyAPI",
+          "schemaKind": "singleApplyAPI",
+          "bases": [
+            "UsdAPISchemaBase"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "physics:angularVelocity",
+              "type": "vector3f",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:kinematicEnabled",
+              "type": "bool",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:rigidBodyEnabled",
+              "type": "bool",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:simulationOwner",
+              "type": "rel",
+              "kind": "relationship"
+            },
+            {
+              "name": "physics:startsAsleep",
+              "type": "bool",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "physics:velocity",
+              "type": "vector3f",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsScene",
+          "schemaIdentifier": "PhysicsScene",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdTyped"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 0,
+          "properties": [
+            {
+              "name": "physics:gravityDirection",
+              "type": "vector3f",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:gravityMagnitude",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        },
+        {
+          "typeName": "UsdPhysicsSphericalJoint",
+          "schemaIdentifier": "PhysicsSphericalJoint",
+          "schemaKind": "concreteTyped",
+          "bases": [
+            "UsdPhysicsJoint"
+          ],
+          "builtinApiSchemas": [],
+          "inheritedPropertyCount": 14,
+          "properties": [
+            {
+              "name": "physics:axis",
+              "type": "token",
+              "kind": "attribute",
+              "variability": "uniform"
+            },
+            {
+              "name": "physics:coneAngle0Limit",
+              "type": "float",
+              "kind": "attribute"
+            },
+            {
+              "name": "physics:coneAngle1Limit",
+              "type": "float",
+              "kind": "attribute"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

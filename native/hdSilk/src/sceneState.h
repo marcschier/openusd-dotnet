@@ -116,6 +116,11 @@ struct HdSilkMaterialTexture
     float scale[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     float bias[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     float fallback[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    // The folded MaterialX place2d transform this texture reads its coordinates
+    // through, as the row-major affine (m00, m01, m10, m11, tx, ty). Resolved per
+    // texture so the material-wide reconciliation can tell agreement from
+    // divergence; only the reconciled material transform reaches the wire.
+    float uvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
     std::string asset;
     std::string uvPrimvar;
 };
@@ -127,6 +132,10 @@ struct HdSilkMaterialRecord
 {
     std::string path;
     uint32_t surfaceKind = 0;
+    // The single constant UV transform every texture of this material samples
+    // through, as the row-major affine (m00, m01, m10, m11, tx, ty). Identity
+    // unless a MaterialX place2d node with constant inputs was folded into it.
+    float uvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
     std::vector<HdSilkMaterialScalar> scalars;
     std::vector<HdSilkMaterialTexture> textures;
     std::vector<uint32_t> generatedFragmentSpirv;

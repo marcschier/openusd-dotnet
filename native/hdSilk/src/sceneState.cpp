@@ -801,6 +801,15 @@ void AppendMaterialUpsert(
         }
     }
 
+    for (size_t index = 0; index < 6; ++index)
+    {
+        if (!std::isfinite(record.uvTransform[index]))
+        {
+            throw std::invalid_argument(
+                "An hdSilk material UV transform must be finite.");
+        }
+    }
+
     const uint32_t pathByteCount = CheckedCount(record.path.size(), "path byte count");
     std::vector<uint8_t> payload;
     payload.reserve(24 + pathByteCount);
@@ -866,6 +875,10 @@ void AppendMaterialUpsert(
         payload,
         record.generatedFragmentMslSource.data(),
         record.generatedFragmentMslSource.size());
+    for (size_t index = 0; index < 6; ++index)
+    {
+        AppendF32(payload, record.uvTransform[index]);
+    }
 
     AppendCommand(buffer, OPENUSD_SILK_COMMAND_MATERIAL_UPSERT, payload);
 }

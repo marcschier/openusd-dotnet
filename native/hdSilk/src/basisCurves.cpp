@@ -17,6 +17,7 @@
 #include "pxr/imaging/hd/tokens.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -47,33 +48,182 @@ bool ExtractPoints(const VtValue& value, VtVec3fArray* out)
     return false;
 }
 
-bool ExtractConstantWidth(const VtValue& value, float* width)
+/// The UsdGeomCurves width fallback, used when no usable widths are authored.
+constexpr float DefaultCurveWidth = 1.0f;
+
+using CurveWidthInterpolation = HdSilkCurveWidthInterpolation;
+using CurveWidths = HdSilkCurveWidths;
+
+bool ExtractWidthValues(const VtValue& value, std::vector<float>* out)
 {
+    out->clear();
     if (value.IsEmpty())
     {
-        *width = 1.0f;
         return true;
     }
     if (value.IsHolding<float>())
     {
-        *width = value.UncheckedGet<float>();
+        out->push_back(value.UncheckedGet<float>());
+        return true;
+    }
+    if (value.IsHolding<double>())
+    {
+        out->push_back(static_cast<float>(value.UncheckedGet<double>()));
         return true;
     }
     if (value.IsHolding<VtFloatArray>())
     {
         const VtFloatArray& widths = value.UncheckedGet<VtFloatArray>();
-        if (widths.empty())
+        out->assign(widths.begin(), widths.end());
+        return true;
+    }
+    if (value.IsHolding<VtDoubleArray>())
+    {
+        const VtDoubleArray& widths = value.UncheckedGet<VtDoubleArray>();
+        out->reserve(widths.size());
+        for (double width : widths)
         {
-            *width = 1.0f;
-            return true;
+            out->push_back(static_cast<float>(width));
         }
-        if (widths.size() == 1)
+        return true;
+    }
+    return false;
+}
+
+/// Clamps authored widths onto the non-negative finite range USD defines for
+/// them. A non-finite width is rejected rather than clamped: it is authoring
+/// corruption, not a legitimate zero-width curve.
+bool SanitizeWidthValues(std::vector<float>* values)
+{
+    for (float& width : *values)
+    {
+        if (!std::isfinite(width))
         {
-            *width = widths.front();
+            return false;
+        }
+        width = std::max(width, 0.0f);
+    }
+    return true;
+}
+
+/// Reads the interpolation Hydra declares for the "widths" primvar. Curves that
+/// reach hdSilk through UsdImaging always declare one; the size-based inference
+/// below covers delegates that publish widths without a descriptor.
+bool FindAuthoredWidthInterpolation(
+    HdSceneDelegate* sceneDelegate,
+    const SdfPath& id,
+    CurveWidthInterpolation* interpolation)
+{
+    const HdInterpolation candidates[] = {
+        HdInterpolationConstant,
+        HdInterpolationUniform,
+        HdInterpolationVarying,
+        HdInterpolationVertex};
+    for (HdInterpolation candidate : candidates)
+    {
+        for (const HdPrimvarDescriptor& descriptor :
+            sceneDelegate->GetPrimvarDescriptors(id, candidate))
+        {
+            if (descriptor.name != HdTokens->widths)
+            {
+                continue;
+            }
+            if (candidate == HdInterpolationConstant)
+            {
+                *interpolation = CurveWidthInterpolation::Constant;
+            }
+            else if (candidate == HdInterpolationUniform)
+            {
+                *interpolation = CurveWidthInterpolation::Uniform;
+            }
+            else
+            {
+                *interpolation = CurveWidthInterpolation::Vertex;
+            }
             return true;
         }
     }
     return false;
+}
+
+size_t ExpectedWidthCount(
+    const HdBasisCurvesTopology& topology,
+    CurveWidthInterpolation interpolation)
+{
+    switch (interpolation)
+    {
+    case CurveWidthInterpolation::Uniform:
+        return topology.GetCurveVertexCounts().size();
+    case CurveWidthInterpolation::Vertex:
+        return topology.CalculateNeededNumberOfControlPoints();
+    case CurveWidthInterpolation::Constant:
+    default:
+        return 1;
+    }
+}
+
+/// Matches authored widths to an interpolation the emitted line list can
+/// resolve. The declared interpolation wins whenever its element count agrees
+/// with the topology; otherwise the count itself selects one, so a scene that
+/// authors a per-curve or per-point array without a usable descriptor still
+/// renders instead of disappearing.
+bool ResolveCurveWidths(
+    const HdBasisCurvesTopology& topology,
+    const std::vector<float>& authored,
+    bool hasDeclaredInterpolation,
+    CurveWidthInterpolation declaredInterpolation,
+    CurveWidths* out)
+{
+    if (authored.empty())
+    {
+        out->interpolation = CurveWidthInterpolation::Constant;
+        out->values.assign(1, DefaultCurveWidth);
+        return true;
+    }
+    if (hasDeclaredInterpolation &&
+        authored.size() == ExpectedWidthCount(topology, declaredInterpolation))
+    {
+        out->interpolation = declaredInterpolation;
+        out->values = authored;
+        return true;
+    }
+
+    const CurveWidthInterpolation inferred[] = {
+        CurveWidthInterpolation::Constant,
+        CurveWidthInterpolation::Uniform,
+        CurveWidthInterpolation::Vertex};
+    for (CurveWidthInterpolation candidate : inferred)
+    {
+        if (authored.size() == ExpectedWidthCount(topology, candidate))
+        {
+            out->interpolation = candidate;
+            out->values = authored;
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Resolves the authored width for one emitted line endpoint. Vertex and
+/// varying widths are indexed by the flattened control-point ordinal rather
+/// than by the resolved point index: that ordinal is exactly what
+/// CalculateNeededNumberOfControlPoints counts, so it stays correct for the
+/// indexed topologies Hydra may hand to a delegate.
+float ResolveWidthAt(
+    const CurveWidths& widths,
+    size_t curveIndex,
+    size_t controlPointOrdinal)
+{
+    switch (widths.interpolation)
+    {
+    case CurveWidthInterpolation::Uniform:
+        return widths.values[curveIndex];
+    case CurveWidthInterpolation::Vertex:
+        return widths.values[controlPointOrdinal];
+    case CurveWidthInterpolation::Constant:
+    default:
+        return widths.values.front();
+    }
 }
 
 bool ExtractDisplayColor(const VtValue& value, GfVec3f* color)
@@ -118,15 +268,43 @@ void AddEyeFacingNormals(HdSilkMeshRecord* record)
     record->attributes.push_back(std::move(normals));
 }
 
+/// Publishes the widths already resolved onto the emitted line vertices.
+/// Constant widths collapse to a single wire element so an unchanged
+/// constant-width scene keeps the payload it had before non-constant widths
+/// were supported.
+void AddResolvedWidths(
+    const CurveWidths& widths,
+    std::vector<float> emitted,
+    HdSilkMeshRecord* record)
+{
+    HdSilkMeshAttribute attribute;
+    attribute.name = HdTokens->widths.GetString();
+    attribute.semantic = OPENUSD_SILK_ATTRIBUTE_WIDTH;
+    attribute.componentCount = 1;
+    if (widths.interpolation == CurveWidthInterpolation::Constant)
+    {
+        attribute.interpolation = OPENUSD_SILK_INTERPOLATION_CONSTANT;
+        attribute.data.assign(1, widths.values.front());
+    }
+    else
+    {
+        attribute.interpolation = OPENUSD_SILK_INTERPOLATION_VERTEX;
+        attribute.data = std::move(emitted);
+    }
+    record->attributes.push_back(std::move(attribute));
+}
+
 bool BuildLinearSegmentedLineList(
     const HdBasisCurvesTopology& topology,
     const VtVec3fArray& points,
+    const CurveWidths& widths,
     HdSilkMeshRecord* record)
 {
     const VtIntArray& counts = topology.GetCurveVertexCounts();
     const VtIntArray& indices = topology.GetCurveIndices();
     const VtIntArray& invisibleCurves = topology.GetInvisibleCurves();
     const VtIntArray& invisiblePoints = topology.GetInvisiblePoints();
+    std::vector<float> emittedWidths;
 
     size_t vertexCursor = 0;
     uint32_t segmentIndex = 0;
@@ -196,13 +374,22 @@ bool BuildLinearSegmentedLineList(
             record->indices.insert(
                 record->indices.end(),
                 {base, base + 1});
+            emittedWidths.push_back(
+                ResolveWidthAt(widths, curveIndex, firstVertex));
+            emittedWidths.push_back(
+                ResolveWidthAt(widths, curveIndex, secondVertex));
             record->triangleSubprims.push_back(segmentIndex);
             ++segmentIndex;
         }
         vertexCursor += static_cast<size_t>(count);
     }
+    if (record->indices.empty())
+    {
+        return false;
+    }
     AddEyeFacingNormals(record);
-    return !record->indices.empty();
+    AddResolvedWidths(widths, std::move(emittedWidths), record);
+    return true;
 }
 }
 
@@ -304,11 +491,23 @@ HdSilkBasisCurves::Sync(
     }
     if (widthsDirty || topologyRefreshed)
     {
-        _widthSupported = ExtractConstantWidth(sceneDelegate->Get(id, HdTokens->widths), &_width);
-        if (!_widthSupported)
+        std::vector<float> authored;
+        CurveWidthInterpolation declared = CurveWidthInterpolation::Constant;
+        const bool hasDeclared =
+            FindAuthoredWidthInterpolation(sceneDelegate, id, &declared);
+        const bool extracted =
+            ExtractWidthValues(sceneDelegate->Get(id, HdTokens->widths), &authored) &&
+            SanitizeWidthValues(&authored) &&
+            ResolveCurveWidths(_topology, authored, hasDeclared, declared, &_widths);
+        if (!extracted)
         {
+            // Storm still rasterizes such a curve, so falling back to the
+            // UsdGeomCurves default width keeps the geometry rather than
+            // deleting the prim over unusable width data.
+            _widths.interpolation = CurveWidthInterpolation::Constant;
+            _widths.values.assign(1, DefaultCurveWidth);
             TF_WARN(
-                "hdSilk skipped basisCurves '%s': varying or unsupported widths are not supported",
+                "hdSilk used the default width for basisCurves '%s': authored widths are unusable for this topology",
                 id.GetText());
         }
     }
@@ -328,7 +527,7 @@ HdSilkBasisCurves::Sync(
 
     HdSilkRenderParam* silkRenderParam =
         static_cast<HdSilkRenderParam*>(renderParam);
-    if (!IsVisible() || !_topologySupported || !_widthSupported)
+    if (!IsVisible() || !_topologySupported)
     {
         silkRenderParam->GetSceneState().RemoveMesh(id.GetString());
         *dirtyBits = HdChangeTracker::Clean;
@@ -349,11 +548,15 @@ HdSilkBasisCurves::Sync(
         record.displayColor[2] = _displayColor[2];
 
         // Storm draws linear basis curves as one-pixel GL lines at the parity
-        // complexity used by hdSilk. Publishing line-list topology matches that
-        // behavior directly and intentionally ignores authored world-space
-        // widths, while the extracted width still gates unsupported varying
-        // width data above.
-        if (!BuildLinearSegmentedLineList(_topology, _points, &record))
+        // complexity used by hdSilk, so line-list topology matches its measured
+        // rasterization by construction and no backend has to widen a line.
+        // Authored widths therefore do not change the emitted line geometry;
+        // they are resolved onto the emitted vertices -- constant, uniform,
+        // varying, or vertex -- and published so a consumer sees the same
+        // per-vertex widths Hydra resolved. Before this resolution existed a
+        // non-constant width array deleted the whole prim, which is the one
+        // case where widths did change what was drawn: nothing at all.
+        if (!BuildLinearSegmentedLineList(_topology, _points, _widths, &record))
         {
             TF_WARN(
                 "hdSilk skipped basisCurves '%s': invalid or empty linear segmented topology",

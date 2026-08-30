@@ -17,8 +17,11 @@
 #include "pxr/usd/sdf/assetPath.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <map>
 #include <utility>
+#include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -33,6 +36,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((MtlxStandardSurface, "ND_standard_surface_surfaceshader"))
     ((MtlxSurfaceUnlit, "ND_surface_unlit"))
     ((MtlxNormalMap, "ND_normalmap"))
+    ((MtlxPlace2d, "ND_place2d_vector2"))
     ((diffuseColor, "diffuseColor"))
     ((base_color, "base_color"))
     ((emissiveColor, "emissiveColor"))
@@ -56,6 +60,10 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((texcoord, "texcoord"))
     ((varname, "varname"))
     ((geomprop, "geomprop"))
+    ((pivot, "pivot"))
+    ((rotate, "rotate"))
+    ((offset, "offset"))
+    ((operationorder, "operationorder"))
     ((in, "in"))
     ((in1, "in1"))
     ((in2, "in2"))
@@ -395,44 +403,30 @@ const HdMaterialNode* _FindSurface(const HdMaterialNetwork& network)
     return nullptr;
 }
 
-/// Resolves the UV primvar a texture reads, by following its st connection to a
-/// UsdPrimvarReader_float2 and taking that reader's varname.
-std::string _ResolveUvPrimvar(
-    const HdMaterialNetwork& network,
-    const SdfPath& texturePath)
+/// Reads the UV primvar a coordinate node names. UsdPrimvarReader_float2 authors
+/// varname; MaterialX geompropvalue authors geomprop. Returns an empty string
+/// when the node names neither, so the caller can keep looking rather than
+/// publish a primvar nobody authored.
+std::string _ReadPrimvarName(const HdMaterialNode& reader)
 {
-    for (const HdMaterialRelationship& relationship : network.relationships)
+    const auto varname = reader.parameters.find(_tokens->varname);
+    if (varname != reader.parameters.end() &&
+        varname->second.IsHolding<TfToken>())
     {
-        if (relationship.outputId != texturePath ||
-            (relationship.outputName != _tokens->st &&
-                relationship.outputName != _tokens->texcoord))
-        {
-            continue;
-        }
-        const HdMaterialNode* reader = _FindNode(network, relationship.inputId);
-        if (reader == nullptr)
-        {
-            continue;
-        }
-        const auto varname = reader->parameters.find(_tokens->varname);
-        if (varname != reader->parameters.end() &&
-            varname->second.IsHolding<TfToken>())
-        {
-            return varname->second.UncheckedGet<TfToken>().GetString();
-        }
-        if (varname != reader->parameters.end() &&
-            varname->second.IsHolding<std::string>())
-        {
-            return varname->second.UncheckedGet<std::string>();
-        }
-        const auto geomprop = reader->parameters.find(_tokens->geomprop);
-        if (geomprop != reader->parameters.end() &&
-            geomprop->second.IsHolding<std::string>())
-        {
-            return geomprop->second.UncheckedGet<std::string>();
-        }
+        return varname->second.UncheckedGet<TfToken>().GetString();
     }
-    return "st";
+    if (varname != reader.parameters.end() &&
+        varname->second.IsHolding<std::string>())
+    {
+        return varname->second.UncheckedGet<std::string>();
+    }
+    const auto geomprop = reader.parameters.find(_tokens->geomprop);
+    if (geomprop != reader.parameters.end() &&
+        geomprop->second.IsHolding<std::string>())
+    {
+        return geomprop->second.UncheckedGet<std::string>();
+    }
+    return std::string();
 }
 
 std::string _ResolveAssetPath(const std::map<TfToken, VtValue>& parameters)
@@ -474,6 +468,198 @@ bool _ReadParameterFloats(
     }
     _BroadcastFloats(out, count, componentCount);
     return true;
+}
+
+/// The identity affine, stored row-major as (m00, m01, m10, m11, tx, ty).
+const float _identityUvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+
+/// How a texture reads its coordinates: which primvar supplies them and the
+/// constant affine applied to them. `supported` is false when the graph does
+/// state a UV transform but one this projection cannot fold, which the caller
+/// must report rather than silently sample with untransformed coordinates.
+struct _UvBinding
+{
+    std::string primvar = "st";
+    float transform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    bool supported = true;
+    std::string unsupportedReason;
+};
+
+bool _UvTransformsEqual(const float (&left)[6], const float (&right)[6])
+{
+    for (size_t index = 0; index < 6; ++index)
+    {
+        if (left[index] != right[index])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool _IsIdentityUvTransform(const float (&transform)[6])
+{
+    return _UvTransformsEqual(transform, _identityUvTransform);
+}
+
+/// Reads one constant place2d input. A connected input is rejected rather than
+/// read from the node's authored fallback, because that fallback is not what the
+/// graph asks to be rendered.
+bool _ReadPlace2dInput(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& node,
+    const TfToken& name,
+    uint32_t componentCount,
+    const float (&fallback)[4],
+    float (&out)[4])
+{
+    if (_FindInputConnection(network, node.path, name) != nullptr)
+    {
+        return false;
+    }
+    if (!_ReadParameterFloats(node, name, componentCount, out))
+    {
+        for (uint32_t index = 0; index < 4; ++index)
+        {
+            out[index] = fallback[index];
+        }
+    }
+    return true;
+}
+
+/// Folds a MaterialX place2d node with constant inputs into one affine.
+///
+/// This reproduces NG_place2d_vector2 exactly rather than approximating it: SRT
+/// is (-pivot, divide by scale, rotate, -offset, +pivot) and TRS is (-pivot,
+/// -offset, rotate, divide by scale, +pivot), with rotate2d's clockwise matrix
+/// for a positive angle in degrees. Returns false, with a reason, for anything
+/// outside the projection so the caller can diagnose it.
+bool _TryFoldPlace2d(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& node,
+    float (&out)[6],
+    std::string* reason)
+{
+    const float zero[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    const float one[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    float pivot[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float scale[4] = {1.0f, 1.0f, 0.0f, 0.0f};
+    float rotate[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float offset[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float order[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (!_ReadPlace2dInput(network, node, _tokens->pivot, 2, zero, pivot) ||
+        !_ReadPlace2dInput(network, node, _tokens->scale, 2, one, scale) ||
+        !_ReadPlace2dInput(network, node, _tokens->rotate, 1, zero, rotate) ||
+        !_ReadPlace2dInput(network, node, _tokens->offset, 2, zero, offset) ||
+        !_ReadPlace2dInput(network, node, _tokens->operationorder, 1, zero, order))
+    {
+        *reason = "one of its inputs is connected rather than constant";
+        return false;
+    }
+    if (scale[0] == 0.0f || scale[1] == 0.0f)
+    {
+        *reason = "its scale has a zero component";
+        return false;
+    }
+    if (order[0] != 0.0f && order[0] != 1.0f)
+    {
+        *reason = "its operationorder is neither SRT nor TRS";
+        return false;
+    }
+
+    const float radians = rotate[0] * 0.01745329251994329577f;
+    const float sine = std::sin(radians);
+    const float cosine = std::cos(radians);
+    // rotate2d: (ca*x + sa*y, -sa*x + ca*y).
+    const float rotation[4] = {cosine, sine, -sine, cosine};
+    const float inverseScale[2] = {1.0f / scale[0], 1.0f / scale[1]};
+
+    float linear[4];
+    float pre[2];
+    if (order[0] == 0.0f)
+    {
+        // SRT: rotation * diag(1/scale), then -offset in rotated space.
+        linear[0] = rotation[0] * inverseScale[0];
+        linear[1] = rotation[1] * inverseScale[1];
+        linear[2] = rotation[2] * inverseScale[0];
+        linear[3] = rotation[3] * inverseScale[1];
+        pre[0] = pivot[0];
+        pre[1] = pivot[1];
+    }
+    else
+    {
+        // TRS: diag(1/scale) * rotation, with the offset removed before rotating.
+        linear[0] = inverseScale[0] * rotation[0];
+        linear[1] = inverseScale[0] * rotation[1];
+        linear[2] = inverseScale[1] * rotation[2];
+        linear[3] = inverseScale[1] * rotation[3];
+        pre[0] = pivot[0] + offset[0];
+        pre[1] = pivot[1] + offset[1];
+    }
+
+    out[0] = linear[0];
+    out[1] = linear[1];
+    out[2] = linear[2];
+    out[3] = linear[3];
+    out[4] = pivot[0] - ((linear[0] * pre[0]) + (linear[1] * pre[1]));
+    out[5] = pivot[1] - ((linear[2] * pre[0]) + (linear[3] * pre[1]));
+    if (order[0] == 0.0f)
+    {
+        out[4] -= offset[0];
+        out[5] -= offset[1];
+    }
+    return true;
+}
+
+/// Resolves how one texture reads its coordinates, following the texcoord/st
+/// connection through an optional MaterialX place2d node to the coordinate node
+/// that names the primvar.
+_UvBinding _ResolveUvBinding(
+    const HdMaterialNetwork& network,
+    const SdfPath& texturePath)
+{
+    _UvBinding binding;
+    for (const HdMaterialRelationship& relationship : network.relationships)
+    {
+        if (relationship.outputId != texturePath ||
+            (relationship.outputName != _tokens->st &&
+                relationship.outputName != _tokens->texcoord))
+        {
+            continue;
+        }
+        const HdMaterialNode* reader = _FindNode(network, relationship.inputId);
+        if (reader == nullptr)
+        {
+            continue;
+        }
+        if (reader->identifier == _tokens->MtlxPlace2d)
+        {
+            if (!_TryFoldPlace2d(
+                    network, *reader, binding.transform, &binding.unsupportedReason))
+            {
+                binding.supported = false;
+                return binding;
+            }
+            const HdMaterialNode* coordinate =
+                _FindInputNode(network, reader->path, _tokens->texcoord);
+            if (coordinate != nullptr)
+            {
+                const std::string name = _ReadPrimvarName(*coordinate);
+                if (!name.empty())
+                {
+                    binding.primvar = name;
+                }
+            }
+            return binding;
+        }
+        const std::string name = _ReadPrimvarName(*reader);
+        if (!name.empty())
+        {
+            binding.primvar = name;
+            return binding;
+        }
+    }
+    return binding;
 }
 
 bool _EvaluateMaterialXConstant(
@@ -631,8 +817,75 @@ bool _TryCreateTextureEntry(
     _ReadVector4(texture.parameters, _tokens->bias, entry.bias);
     _ReadVector4(texture.parameters, _tokens->fallback, entry.fallback);
     entry.asset = asset;
-    entry.uvPrimvar = _ResolveUvPrimvar(network, texture.path);
+    const _UvBinding uv = _ResolveUvBinding(network, texture.path);
+    if (!uv.supported)
+    {
+        TF_WARN(
+            "hdSilk material input '%s' reads a MaterialX place2d UV transform "
+            "this projection cannot fold because %s; leaving the input at its "
+            "default.",
+            input.name.GetText(),
+            uv.unsupportedReason.c_str());
+        return false;
+    }
+    entry.uvPrimvar = uv.primvar;
+    for (size_t index = 0; index < 6; ++index)
+    {
+        entry.uvTransform[index] = uv.transform[index];
+    }
     return true;
+}
+
+/// Settles the one UV transform this material publishes.
+///
+/// The renderer samples every texture of a material through a single coordinate
+/// stream -- one primvar and one transform -- so a material whose images ask for
+/// different transforms is outside the projection. The first texture in the
+/// fixed input order states the material transform; a later texture that asks
+/// for a different one is dropped with a diagnostic rather than sampled with a
+/// transform it did not author or silently stripped of the one it did.
+void _ReconcileUvTransforms(HdSilkMaterialRecord& record)
+{
+    if (record.textures.empty())
+    {
+        return;
+    }
+    for (size_t index = 0; index < 6; ++index)
+    {
+        record.uvTransform[index] = record.textures.front().uvTransform[index];
+    }
+    if (_IsIdentityUvTransform(record.uvTransform))
+    {
+        // Nothing to reconcile against unless some texture asks for a transform.
+        bool anyTransform = false;
+        for (const HdSilkMaterialTexture& texture : record.textures)
+        {
+            anyTransform = anyTransform || !_IsIdentityUvTransform(texture.uvTransform);
+        }
+        if (!anyTransform)
+        {
+            return;
+        }
+    }
+
+    std::vector<HdSilkMaterialTexture> kept;
+    kept.reserve(record.textures.size());
+    for (HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (_UvTransformsEqual(texture.uvTransform, record.uvTransform))
+        {
+            kept.push_back(std::move(texture));
+            continue;
+        }
+        TF_WARN(
+            "hdSilk material '%s' texture for parameter %u asks for a different "
+            "MaterialX UV transform than the material's first texture; hdSilk "
+            "carries one UV transform per material, so this input is left at its "
+            "default.",
+            record.path.c_str(),
+            texture.parameter);
+    }
+    record.textures = std::move(kept);
 }
 }
 
@@ -760,6 +1013,7 @@ HdSilkMaterial::Resolve(
             }
             record.scalars.push_back(scalar);
         }
+        _ReconcileUvTransforms(record);
         return record;
     }
 
@@ -847,7 +1101,23 @@ HdSilkMaterial::Resolve(
             _ReadVector4(texture->parameters, _tokens->bias, entry.bias);
             _ReadVector4(texture->parameters, _tokens->fallback, entry.fallback);
             entry.asset = asset;
-            entry.uvPrimvar = _ResolveUvPrimvar(network, texture->path);
+            const _UvBinding uv = _ResolveUvBinding(network, texture->path);
+            if (!uv.supported)
+            {
+                TF_WARN(
+                    "hdSilk material '%s' input '%s' reads a MaterialX place2d UV "
+                    "transform this projection cannot fold because %s; leaving the "
+                    "input at its default.",
+                    record.path.c_str(),
+                    input.name.GetText(),
+                    uv.unsupportedReason.c_str());
+                continue;
+            }
+            entry.uvPrimvar = uv.primvar;
+            for (size_t index = 0; index < 6; ++index)
+            {
+                entry.uvTransform[index] = uv.transform[index];
+            }
             record.textures.push_back(std::move(entry));
             continue;
         }
@@ -878,6 +1148,7 @@ HdSilkMaterial::Resolve(
         record.scalars.push_back(scalar);
     }
 
+    _ReconcileUvTransforms(record);
     return record;
 }
 

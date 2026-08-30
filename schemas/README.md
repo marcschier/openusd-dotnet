@@ -1,12 +1,27 @@
 # Schemas
 
-USD schema sources owned by this repository, plus the licensing evidence for third-party
-schemas we were asked to vendor.
+USD schema sources owned by this repository, the parity gate against the standard
+OpenUSD schemas, plus the licensing evidence for third-party schemas we were asked to
+vendor.
 
 | Path | Contents |
 | --- | --- |
+| [`openUsd/`](openUsd/) | Coverage parity between the pinned OpenUSD schema registry and the managed facades. |
 | [`openUsdPhysics/`](openUsdPhysics/) | The project-owned codeless `openUsdPhysics` schema plugin. |
 | [`third-party/physxSchema/`](third-party/physxSchema/) | Licensing evidence for PhysxSchema. Nothing vendored. |
+
+## `openUsd`
+
+Nothing owned here: the standard `usdGeom`, `usdShade`, `usdLux`, `usdSkel`, `usdVol`,
+`usdRender`, `usdMedia`, `usdProc`, `usdUI` and `usdPhysics` schemas ship with OpenUSD.
+What lives here is the deterministic inventory of that registry, read from the pinned
+native install, and the reviewed statement of what the managed facades represent — so a
+schema or property the facades do not cover is recorded rather than assumed. See
+[`openUsd/README.md`](openUsd/README.md).
+
+Note that the standard `usdPhysics` library covered there is not the same thing as the
+project-owned `openUsdPhysics` plugin below: the first ships with OpenUSD and is wrapped
+by `OpenUsd.Physics`, the second is defined, generated and shipped by this repository.
 
 ## `openUsdPhysics`
 

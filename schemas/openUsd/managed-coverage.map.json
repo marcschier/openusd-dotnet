@@ -1,0 +1,827 @@
+{
+  "$schemaVersion": 1,
+  "$comment": [
+    "Reviewed map from the pinned OpenUSD schema registry to the managed facades.",
+    "Hand-authored: every entry is a deliberate statement about what the public",
+    "OpenUsd assembly represents. schema-registry.g.json is the generated ground",
+    "truth; OpenUsdSchemaCoverageContractTests joins the two and fails when a",
+    "schema or a declared property is neither mapped nor listed as an exception.",
+    "Property names are the ones the schema itself declares; inherited properties",
+    "are stated once, on the schema that introduces them.",
+    "UsdPhysics* here is the standard usdPhysics library shipped by OpenUSD, which",
+    "the OpenUsd.Physics facades wrap. The repository-owned codeless plugin under",
+    "schemas/openUsdPhysics is a separate surface with its own generator and tests."
+  ],
+  "assembly": "OpenUsd",
+  "exceptionReasons": {
+    "noFacade": "No managed facade represents this schema. Prims and properties of this type remain reachable through UsdPrim and its generic typed accessors.",
+    "versionedSuccessor": "A versioned successor schema shipped by the pinned OpenUSD release. The facades target the predecessor that authoring tools still write, and adopting the successor is a separate, deliberate API change.",
+    "genericAccessorOnly": "Declared by a schema the facades cover, but no typed facade member represents this property. It is authored and read through the generic UsdPrim typed accessors.",
+    "genericRelationshipOnly": "Declared by a schema the facades cover, but no typed facade member represents this relationship. It is authored and read through UsdPrim.GetRelationship.",
+    "collectionBacked": "Backed by UsdCollectionAPI, which the managed surface does not model as a typed facade.",
+    "transformStackOnly": "The facade authors and reads the composed local transform and the reset-xform-stack flag; the raw xformOp stack order is not surfaced."
+  },
+  "schemas": {
+    "UsdGeomBasisCurves": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomBasisCurves"],
+      "properties": {
+        "basis": "Basis",
+        "type": "Type",
+        "wrap": "WrapMode"
+      }
+    },
+    "UsdGeomBoundable": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomMesh", "OpenUsd.Geom.UsdGeomSphere"],
+      "note": "Abstract boundable interface. Every concrete Gprim facade surfaces the extent as GetExtent/SetExtent.",
+      "properties": {
+        "extent": "GetExtent"
+      }
+    },
+    "UsdGeomCamera": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomCamera", "OpenUsd.Geom.UsdGeomCameraState"],
+      "note": "Authoring lives on UsdGeomCamera; the resolved read-only projection state lives on UsdGeomCameraState.",
+      "properties": {
+        "clippingRange": "ClippingRange",
+        "focalLength": "FocalLength",
+        "focusDistance": "FocusDistance",
+        "fStop": "FStop",
+        "horizontalAperture": "HorizontalAperture",
+        "horizontalApertureOffset": "HorizontalApertureOffset",
+        "projection": "Projection",
+        "verticalAperture": "VerticalAperture",
+        "verticalApertureOffset": "VerticalApertureOffset"
+      },
+      "propertyExceptions": {
+        "clippingPlanes": "genericAccessorOnly",
+        "exposure": "genericAccessorOnly",
+        "exposure:fStop": "genericAccessorOnly",
+        "exposure:iso": "genericAccessorOnly",
+        "exposure:responsivity": "genericAccessorOnly",
+        "exposure:time": "genericAccessorOnly",
+        "shutter:close": "genericAccessorOnly",
+        "shutter:open": "genericAccessorOnly",
+        "stereoRole": "genericAccessorOnly"
+      }
+    },
+    "UsdGeomCapsule": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomCapsule"],
+      "properties": {
+        "axis": "Axis",
+        "height": "Height",
+        "radius": "Radius"
+      }
+    },
+    "UsdGeomCapsule_1": {
+      "uncovered": "versionedSuccessor"
+    },
+    "UsdGeomCone": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomCone"],
+      "properties": {
+        "axis": "Axis",
+        "height": "Height",
+        "radius": "Radius"
+      }
+    },
+    "UsdGeomCube": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomCube"],
+      "properties": {
+        "size": "Size"
+      }
+    },
+    "UsdGeomCurves": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomBasisCurves"],
+      "note": "Abstract curves interface. Every concrete curves facade surfaces the same two properties.",
+      "properties": {
+        "curveVertexCounts": "GetCurveVertexCounts",
+        "widths": "GetWidths"
+      }
+    },
+    "UsdGeomCylinder": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomCylinder"],
+      "properties": {
+        "axis": "Axis",
+        "height": "Height",
+        "radius": "Radius"
+      }
+    },
+    "UsdGeomCylinder_1": {
+      "uncovered": "versionedSuccessor"
+    },
+    "UsdGeomGprim": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomMesh", "OpenUsd.Geom.UsdGeomPrimvarsAPI"],
+      "note": "Abstract gprim interface. UsdGeomMesh is the reference concrete facade for the shading-independent state; display primvars are authored through UsdGeomPrimvarsAPI.",
+      "properties": {
+        "doubleSided": "DoubleSided",
+        "orientation": "Orientation",
+        "primvars:displayColor": "SetDisplayColor"
+      },
+      "propertyExceptions": {
+        "primvars:displayOpacity": "genericAccessorOnly"
+      }
+    },
+    "UsdGeomHermiteCurves": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomHermiteCurves"],
+      "properties": {
+        "tangents": "GetTangents"
+      }
+    },
+    "UsdGeomImageable": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomImageable"],
+      "properties": {
+        "purpose": "GetPurpose",
+        "visibility": "GetVisibility"
+      },
+      "propertyExceptions": {
+        "proxyPrim": "genericRelationshipOnly"
+      }
+    },
+    "UsdGeomMesh": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomMesh"],
+      "properties": {
+        "faceVertexCounts": "GetFaceVertexCounts",
+        "faceVertexIndices": "GetFaceVertexIndices",
+        "subdivisionScheme": "SubdivisionScheme"
+      },
+      "propertyExceptions": {
+        "cornerIndices": "genericAccessorOnly",
+        "cornerSharpnesses": "genericAccessorOnly",
+        "creaseIndices": "genericAccessorOnly",
+        "creaseLengths": "genericAccessorOnly",
+        "creaseSharpnesses": "genericAccessorOnly",
+        "faceVaryingLinearInterpolation": "genericAccessorOnly",
+        "holeIndices": "genericAccessorOnly",
+        "interpolateBoundary": "genericAccessorOnly",
+        "triangleSubdivisionRule": "genericAccessorOnly"
+      }
+    },
+    "UsdGeomModelAPI": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomModelAPI"],
+      "properties": {
+        "model:applyDrawMode": "ApplyDrawMode",
+        "model:cardGeometry": "CardGeometry",
+        "model:drawMode": "DrawMode"
+      },
+      "propertyExceptions": {
+        "model:cardTextureXNeg": "genericAccessorOnly",
+        "model:cardTextureXPos": "genericAccessorOnly",
+        "model:cardTextureYNeg": "genericAccessorOnly",
+        "model:cardTextureYPos": "genericAccessorOnly",
+        "model:cardTextureZNeg": "genericAccessorOnly",
+        "model:cardTextureZPos": "genericAccessorOnly",
+        "model:drawModeColor": "genericAccessorOnly"
+      }
+    },
+    "UsdGeomMotionAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdGeomNurbsCurves": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomNurbsCurves"],
+      "properties": {
+        "knots": "GetKnots",
+        "order": "GetOrder"
+      },
+      "propertyExceptions": {
+        "pointWeights": "genericAccessorOnly",
+        "ranges": "genericAccessorOnly"
+      }
+    },
+    "UsdGeomNurbsPatch": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomNurbsPatch"],
+      "properties": {
+        "uKnots": "GetUKnots",
+        "uOrder": "UOrder",
+        "uVertexCount": "UVertexCount",
+        "vKnots": "GetVKnots",
+        "vOrder": "VOrder",
+        "vVertexCount": "VVertexCount"
+      },
+      "propertyExceptions": {
+        "pointWeights": "genericAccessorOnly",
+        "trimCurve:counts": "genericAccessorOnly",
+        "trimCurve:knots": "genericAccessorOnly",
+        "trimCurve:orders": "genericAccessorOnly",
+        "trimCurve:points": "genericAccessorOnly",
+        "trimCurve:ranges": "genericAccessorOnly",
+        "trimCurve:vertexCounts": "genericAccessorOnly",
+        "uForm": "genericAccessorOnly",
+        "uRange": "genericAccessorOnly",
+        "vForm": "genericAccessorOnly",
+        "vRange": "genericAccessorOnly"
+      }
+    },
+    "UsdGeomPlane": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomPlane"],
+      "properties": {
+        "axis": "Axis"
+      },
+      "propertyExceptions": {
+        "length": "genericAccessorOnly",
+        "width": "genericAccessorOnly"
+      }
+    },
+    "UsdGeomPointBased": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomPoints"],
+      "note": "Abstract point-based interface. UsdGeomPoints is the reference concrete facade; the same members exist on the other point-based facades.",
+      "properties": {
+        "accelerations": "GetAccelerations",
+        "normals": "GetNormals",
+        "points": "GetPoints",
+        "velocities": "GetVelocities"
+      }
+    },
+    "UsdGeomPointInstancer": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomPointInstancer"],
+      "properties": {
+        "orientations": "GetOrientations",
+        "positions": "GetPositions",
+        "protoIndices": "GetProtoIndices",
+        "prototypes": "Prototypes",
+        "scales": "GetScales",
+        "velocities": "GetVelocities"
+      },
+      "propertyExceptions": {
+        "accelerations": "genericAccessorOnly",
+        "angularVelocities": "genericAccessorOnly",
+        "ids": "genericAccessorOnly",
+        "invisibleIds": "genericAccessorOnly",
+        "orientationsf": "genericAccessorOnly"
+      }
+    },
+    "UsdGeomPoints": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomPoints"],
+      "properties": {
+        "widths": "GetWidths"
+      },
+      "propertyExceptions": {
+        "ids": "genericAccessorOnly"
+      }
+    },
+    "UsdGeomPrimvarsAPI": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomPrimvarsAPI"]
+    },
+    "UsdGeomScope": {
+      "uncovered": "noFacade"
+    },
+    "UsdGeomSphere": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomSphere"],
+      "properties": {
+        "radius": "Radius"
+      }
+    },
+    "UsdGeomSubset": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomSubset"],
+      "properties": {
+        "elementType": "ElementType",
+        "familyName": "FamilyName",
+        "indices": "GetIndices"
+      }
+    },
+    "UsdGeomTetMesh": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomTetMesh"],
+      "properties": {
+        "surfaceFaceVertexIndices": "GetSurfaceFaceVertexIndices",
+        "tetVertexIndices": "GetTetVertexIndices"
+      }
+    },
+    "UsdGeomVisibilityAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdGeomXform": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomXform"]
+    },
+    "UsdGeomXformCommonAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdGeomXformable": {
+      "managedTypes": ["OpenUsd.Geom.UsdGeomXformable"],
+      "propertyExceptions": {
+        "xformOpOrder": "transformStackOnly"
+      }
+    },
+    "UsdShadeConnectableAPI": {
+      "managedTypes": ["OpenUsd.Shade.UsdShadeConnectable"]
+    },
+    "UsdShadeCoordSysAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdShadeMaterial": {
+      "managedTypes": ["OpenUsd.Shade.UsdShadeMaterial"],
+      "properties": {
+        "outputs:displacement": "CreateDisplacementOutput",
+        "outputs:surface": "GetSurfaceOutput",
+        "outputs:volume": "CreateVolumeOutput"
+      }
+    },
+    "UsdShadeMaterialBindingAPI": {
+      "managedTypes": ["OpenUsd.Shade.UsdShadeMaterial"],
+      "note": "The binding API declares no properties of its own; bindings are authored through UsdShadeMaterial.Bind, BindCollection and Unbind."
+    },
+    "UsdShadeNodeDefAPI": {
+      "managedTypes": ["OpenUsd.Shade.UsdShadeShader"],
+      "properties": {
+        "info:id": "SourceId"
+      },
+      "propertyExceptions": {
+        "info:implementationSource": "genericAccessorOnly"
+      }
+    },
+    "UsdShadeNodeGraph": {
+      "managedTypes": ["OpenUsd.Shade.UsdShadeNodeGraph"]
+    },
+    "UsdShadeShader": {
+      "managedTypes": ["OpenUsd.Shade.UsdShadeShader"]
+    },
+    "UsdLuxBoundableLightBase": {
+      "managedTypes": ["OpenUsd.Lux.UsdLuxLight"],
+      "note": "Abstract boundable light base. It declares no properties of its own; the light state it inherits is surfaced by UsdLuxLight."
+    },
+    "UsdLuxCylinderLight": {
+      "managedTypes": ["OpenUsd.Lux.UsdLuxCylinderLight"],
+      "properties": {
+        "inputs:length": "Length",
+        "inputs:radius": "Radius"
+      },
+      "propertyExceptions": {
+        "treatAsLine": "genericAccessorOnly"
+      }
+    },
+    "UsdLuxDiskLight": {
+      "managedTypes": ["OpenUsd.Lux.UsdLuxDiskLight"],
+      "properties": {
+        "inputs:radius": "Radius"
+      }
+    },
+    "UsdLuxDistantLight": {
+      "managedTypes": ["OpenUsd.Lux.UsdLuxDistantLight"],
+      "properties": {
+        "inputs:angle": "Angle"
+      }
+    },
+    "UsdLuxDomeLight": {
+      "managedTypes": ["OpenUsd.Lux.UsdLuxDomeLight"],
+      "properties": {
+        "inputs:texture:file": "TextureFile"
+      },
+      "propertyExceptions": {
+        "guideRadius": "genericAccessorOnly",
+        "inputs:texture:format": "genericAccessorOnly",
+        "portals": "genericRelationshipOnly"
+      }
+    },
+    "UsdLuxDomeLight_1": {
+      "uncovered": "versionedSuccessor"
+    },
+    "UsdLuxGeometryLight": {
+      "uncovered": "noFacade"
+    },
+    "UsdLuxLightAPI": {
+      "managedTypes": ["OpenUsd.Lux.UsdLuxLight"],
+      "properties": {
+        "inputs:color": "Color",
+        "inputs:colorTemperature": "ColorTemperature",
+        "inputs:diffuse": "Diffuse",
+        "inputs:enableColorTemperature": "EnableColorTemperature",
+        "inputs:exposure": "Exposure",
+        "inputs:intensity": "Intensity",
+        "inputs:normalize": "Normalize",
+        "inputs:specular": "Specular"
+      },
+      "propertyExceptions": {
+        "collection:lightLink:includeRoot": "collectionBacked",
+        "collection:shadowLink:includeRoot": "collectionBacked",
+        "light:filters": "genericRelationshipOnly",
+        "light:materialSyncMode": "genericAccessorOnly",
+        "light:shaderId": "genericAccessorOnly"
+      }
+    },
+    "UsdLuxLightFilter": {
+      "uncovered": "noFacade"
+    },
+    "UsdLuxLightListAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdLuxListAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdLuxMeshLightAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdLuxNonboundableLightBase": {
+      "managedTypes": ["OpenUsd.Lux.UsdLuxLight"],
+      "note": "Abstract non-boundable light base. It declares no properties of its own; the light state it inherits is surfaced by UsdLuxLight."
+    },
+    "UsdLuxPluginLight": {
+      "uncovered": "noFacade"
+    },
+    "UsdLuxPluginLightFilter": {
+      "uncovered": "noFacade"
+    },
+    "UsdLuxPortalLight": {
+      "uncovered": "noFacade"
+    },
+    "UsdLuxRectLight": {
+      "managedTypes": ["OpenUsd.Lux.UsdLuxRectLight"],
+      "properties": {
+        "inputs:height": "Height",
+        "inputs:texture:file": "TextureFile",
+        "inputs:width": "Width"
+      }
+    },
+    "UsdLuxShadowAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdLuxShapingAPI": {
+      "managedTypes": ["OpenUsd.Lux.UsdLuxShaping"],
+      "properties": {
+        "inputs:shaping:cone:angle": "ConeAngle",
+        "inputs:shaping:cone:softness": "ConeSoftness",
+        "inputs:shaping:focus": "Focus"
+      },
+      "propertyExceptions": {
+        "inputs:shaping:focusTint": "genericAccessorOnly",
+        "inputs:shaping:ies:angleScale": "genericAccessorOnly",
+        "inputs:shaping:ies:file": "genericAccessorOnly",
+        "inputs:shaping:ies:normalize": "genericAccessorOnly"
+      }
+    },
+    "UsdLuxSphereLight": {
+      "managedTypes": ["OpenUsd.Lux.UsdLuxSphereLight"],
+      "properties": {
+        "inputs:radius": "Radius"
+      },
+      "propertyExceptions": {
+        "treatAsPoint": "genericAccessorOnly"
+      }
+    },
+    "UsdLuxVolumeLightAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdSkelAnimation": {
+      "managedTypes": ["OpenUsd.Skel.UsdSkelAnimation"],
+      "properties": {
+        "joints": "GetJoints",
+        "rotations": "GetRotations",
+        "scales": "GetScales",
+        "translations": "GetTranslations"
+      },
+      "propertyExceptions": {
+        "blendShapeWeights": "genericAccessorOnly",
+        "blendShapes": "genericAccessorOnly"
+      }
+    },
+    "UsdSkelBindingAPI": {
+      "managedTypes": ["OpenUsd.Skel.UsdSkelBinding"],
+      "properties": {
+        "primvars:skel:geomBindTransform": "GeomBindTransform",
+        "primvars:skel:jointIndices": "GetJointInfluences",
+        "primvars:skel:jointWeights": "GetJointInfluences",
+        "primvars:skel:skinningMethod": "SkinningMethod",
+        "skel:animationSource": "GetAnimationSource",
+        "skel:blendShapeTargets": "GetBlendShapeTargets",
+        "skel:blendShapes": "GetBlendShapes",
+        "skel:skeleton": "GetSkeleton"
+      },
+      "propertyExceptions": {
+        "skel:joints": "genericAccessorOnly"
+      }
+    },
+    "UsdSkelBlendShape": {
+      "managedTypes": ["OpenUsd.Skel.UsdSkelBlendShape"],
+      "properties": {
+        "normalOffsets": "GetNormalOffsets",
+        "offsets": "GetOffsets",
+        "pointIndices": "GetPointIndices"
+      }
+    },
+    "UsdSkelRoot": {
+      "managedTypes": ["OpenUsd.Skel.UsdSkelRoot"]
+    },
+    "UsdSkelSkeleton": {
+      "managedTypes": ["OpenUsd.Skel.UsdSkelSkeleton"],
+      "properties": {
+        "bindTransforms": "GetBindTransforms",
+        "joints": "GetJoints",
+        "restTransforms": "GetRestTransforms"
+      },
+      "propertyExceptions": {
+        "jointNames": "genericAccessorOnly"
+      }
+    },
+    "UsdVolField3DAsset": {
+      "managedTypes": ["OpenUsd.Vol.UsdVolField3DAsset"],
+      "properties": {
+        "fieldPurpose": "FieldPurpose"
+      }
+    },
+    "UsdVolFieldAsset": {
+      "managedTypes": ["OpenUsd.Vol.UsdVolFieldAsset"]
+    },
+    "UsdVolFieldBase": {
+      "managedTypes": ["OpenUsd.Vol.UsdVolFieldBase"]
+    },
+    "UsdVolOpenVDBAsset": {
+      "managedTypes": ["OpenUsd.Vol.UsdVolOpenVDBAsset"],
+      "properties": {
+        "fieldClass": "FieldClass"
+      }
+    },
+    "UsdVolParticleField": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleField3DGaussianSplat": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldKernelBaseAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldKernelConstantSurfletAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldKernelGaussianEllipsoidAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldKernelGaussianSurfletAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldOpacityAttributeAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldOrientationAttributeAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldPositionAttributeAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldPositionBaseAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldRadianceBaseAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldScaleAttributeAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolParticleFieldSphericalHarmonicsAttributeAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdVolVolume": {
+      "managedTypes": ["OpenUsd.Vol.UsdVolVolume"]
+    },
+    "UsdVolVolumeFieldAsset": {
+      "managedTypes": ["OpenUsd.Vol.UsdVolVolumeFieldAsset"],
+      "properties": {
+        "fieldDataType": "FieldDataType",
+        "fieldIndex": "FieldIndex",
+        "fieldName": "FieldName",
+        "filePath": "FilePath",
+        "vectorDataRoleHint": "VectorDataRoleHint"
+      }
+    },
+    "UsdVolVolumeFieldBase": {
+      "managedTypes": ["OpenUsd.Vol.UsdVolVolumeFieldBase"]
+    },
+    "UsdRenderPass": {
+      "managedTypes": ["OpenUsd.Render.UsdRenderPass"],
+      "properties": {
+        "command": "Command",
+        "fileName": "FileName",
+        "inputPasses": "InputPasses",
+        "passType": "PassType",
+        "renderSource": "RenderSource"
+      },
+      "propertyExceptions": {
+        "collection:cameraVisibility:includeRoot": "collectionBacked",
+        "collection:renderVisibility:includeRoot": "collectionBacked"
+      }
+    },
+    "UsdRenderProduct": {
+      "managedTypes": ["OpenUsd.Render.UsdRenderProduct"],
+      "properties": {
+        "orderedVars": "OrderedVars",
+        "productName": "ProductName",
+        "productType": "ProductType"
+      }
+    },
+    "UsdRenderSettings": {
+      "managedTypes": ["OpenUsd.Render.UsdRenderSettings"],
+      "properties": {
+        "includedPurposes": "IncludedPurposes",
+        "materialBindingPurposes": "MaterialBindingPurposes",
+        "products": "Products",
+        "renderingColorSpace": "RenderingColorSpace"
+      }
+    },
+    "UsdRenderSettingsBase": {
+      "managedTypes": ["OpenUsd.Render.UsdRenderSettingsBase"],
+      "properties": {
+        "aspectRatioConformPolicy": "AspectRatioConformPolicy",
+        "camera": "Camera",
+        "dataWindowNDC": "GetDataWindowNdc",
+        "disableDepthOfField": "DisableDepthOfField",
+        "disableMotionBlur": "DisableMotionBlur",
+        "pixelAspectRatio": "PixelAspectRatio",
+        "resolution": "GetResolution"
+      },
+      "propertyExceptions": {
+        "instantaneousShutter": "genericAccessorOnly"
+      }
+    },
+    "UsdRenderVar": {
+      "managedTypes": ["OpenUsd.Render.UsdRenderVar"],
+      "properties": {
+        "dataType": "DataType",
+        "sourceName": "SourceName",
+        "sourceType": "SourceType"
+      }
+    },
+    "UsdMediaAssetPreviewsAPI": {
+      "managedTypes": ["OpenUsd.Media.UsdMediaAssetPreviews"]
+    },
+    "UsdMediaSpatialAudio": {
+      "managedTypes": ["OpenUsd.Media.UsdMediaSpatialAudio"],
+      "properties": {
+        "auralMode": "AuralMode",
+        "endTime": "EndTime",
+        "filePath": "FilePath",
+        "gain": "Gain",
+        "mediaOffset": "MediaOffset",
+        "playbackMode": "PlaybackMode",
+        "startTime": "StartTime"
+      }
+    },
+    "UsdProcGenerativeProcedural": {
+      "managedTypes": ["OpenUsd.Proc.UsdProcGenerativeProcedural"],
+      "properties": {
+        "proceduralSystem": "ProceduralSystem"
+      }
+    },
+    "UsdUIAccessibilityAPI": {
+      "uncovered": "noFacade"
+    },
+    "UsdUIBackdrop": {
+      "managedTypes": ["OpenUsd.UI.UsdUIBackdrop"],
+      "properties": {
+        "ui:description": "Description"
+      }
+    },
+    "UsdUINodeGraphNodeAPI": {
+      "managedTypes": ["OpenUsd.UI.UsdUINodeGraphNode"],
+      "properties": {
+        "ui:nodegraph:node:displayColor": "DisplayColor",
+        "ui:nodegraph:node:expansionState": "ExpansionState",
+        "ui:nodegraph:node:icon": "Icon",
+        "ui:nodegraph:node:pos": "Pos",
+        "ui:nodegraph:node:size": "Size",
+        "ui:nodegraph:node:stackingOrder": "StackingOrder"
+      },
+      "propertyExceptions": {
+        "ui:nodegraph:node:docURI": "genericAccessorOnly"
+      }
+    },
+    "UsdUISceneGraphPrimAPI": {
+      "managedTypes": ["OpenUsd.UI.UsdUISceneGraphPrim"],
+      "properties": {
+        "ui:displayGroup": "DisplayGroup",
+        "ui:displayName": "DisplayName"
+      }
+    },
+    "UsdPhysicsArticulationRootAPI": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsArticulationRootAPI"],
+      "note": "Declares no properties of its own; the schema is applied and queried through Apply, Has and Wrap."
+    },
+    "UsdPhysicsCollisionAPI": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsCollisionAPI"],
+      "properties": {
+        "physics:collisionEnabled": "CollisionEnabled",
+        "physics:simulationOwner": "GetSimulationOwner"
+      }
+    },
+    "UsdPhysicsCollisionGroup": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsCollisionGroup"],
+      "properties": {
+        "physics:filteredGroups": "GetFilteredGroups",
+        "physics:invertFilteredGroups": "InvertFilteredGroups",
+        "physics:mergeGroup": "MergeGroupName"
+      }
+    },
+    "UsdPhysicsDistanceJoint": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsDistanceJoint"],
+      "properties": {
+        "physics:maxDistance": "MaxDistance",
+        "physics:minDistance": "MinDistance"
+      }
+    },
+    "UsdPhysicsDriveAPI": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsDriveAPI"],
+      "note": "Multiple-apply: the facade carries the instance name, so the __INSTANCE_NAME__ template properties resolve per instance.",
+      "properties": {
+        "drive:__INSTANCE_NAME__:physics:damping": "Damping",
+        "drive:__INSTANCE_NAME__:physics:maxForce": "MaxForce",
+        "drive:__INSTANCE_NAME__:physics:stiffness": "Stiffness",
+        "drive:__INSTANCE_NAME__:physics:targetPosition": "TargetPosition",
+        "drive:__INSTANCE_NAME__:physics:targetVelocity": "TargetVelocity",
+        "drive:__INSTANCE_NAME__:physics:type": "Type"
+      }
+    },
+    "UsdPhysicsFilteredPairsAPI": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsFilteredPairsAPI"],
+      "properties": {
+        "physics:filteredPairs": "GetFilteredPairs"
+      }
+    },
+    "UsdPhysicsFixedJoint": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsFixedJoint"]
+    },
+    "UsdPhysicsJoint": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsJoint"],
+      "properties": {
+        "physics:body0": "GetBody0",
+        "physics:body1": "GetBody1",
+        "physics:breakForce": "BreakForce",
+        "physics:breakTorque": "BreakTorque",
+        "physics:collisionEnabled": "CollisionEnabled",
+        "physics:excludeFromArticulation": "ExcludeFromArticulation",
+        "physics:jointEnabled": "JointEnabled",
+        "physics:localPos0": "LocalPos0",
+        "physics:localPos1": "LocalPos1",
+        "physics:localRot0": "LocalRot0",
+        "physics:localRot1": "LocalRot1"
+      }
+    },
+    "UsdPhysicsLimitAPI": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsLimitAPI"],
+      "note": "Multiple-apply: the facade carries the instance name, so the __INSTANCE_NAME__ template properties resolve per instance.",
+      "properties": {
+        "limit:__INSTANCE_NAME__:physics:high": "High",
+        "limit:__INSTANCE_NAME__:physics:low": "Low"
+      }
+    },
+    "UsdPhysicsMassAPI": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsMassAPI"],
+      "properties": {
+        "physics:centerOfMass": "CenterOfMass",
+        "physics:density": "Density",
+        "physics:diagonalInertia": "DiagonalInertia",
+        "physics:mass": "Mass",
+        "physics:principalAxes": "PrincipalAxes"
+      }
+    },
+    "UsdPhysicsMaterialAPI": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsMaterialAPI"],
+      "properties": {
+        "physics:density": "Density",
+        "physics:dynamicFriction": "DynamicFriction",
+        "physics:restitution": "Restitution",
+        "physics:staticFriction": "StaticFriction"
+      }
+    },
+    "UsdPhysicsMeshCollisionAPI": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsMeshCollisionAPI"],
+      "properties": {
+        "physics:approximation": "Approximation"
+      }
+    },
+    "UsdPhysicsPrismaticJoint": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsPrismaticJoint"],
+      "properties": {
+        "physics:axis": "Axis",
+        "physics:lowerLimit": "LowerLimit",
+        "physics:upperLimit": "UpperLimit"
+      }
+    },
+    "UsdPhysicsRevoluteJoint": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsRevoluteJoint"],
+      "properties": {
+        "physics:axis": "Axis",
+        "physics:lowerLimit": "LowerLimit",
+        "physics:upperLimit": "UpperLimit"
+      }
+    },
+    "UsdPhysicsRigidBodyAPI": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsRigidBodyAPI"],
+      "properties": {
+        "physics:angularVelocity": "AngularVelocity",
+        "physics:kinematicEnabled": "KinematicEnabled",
+        "physics:rigidBodyEnabled": "RigidBodyEnabled",
+        "physics:simulationOwner": "GetSimulationOwner",
+        "physics:startsAsleep": "StartsAsleep",
+        "physics:velocity": "Velocity"
+      }
+    },
+    "UsdPhysicsScene": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsScene"],
+      "properties": {
+        "physics:gravityDirection": "GravityDirection",
+        "physics:gravityMagnitude": "GravityMagnitude"
+      }
+    },
+    "UsdPhysicsSphericalJoint": {
+      "managedTypes": ["OpenUsd.Physics.UsdPhysicsSphericalJoint"],
+      "properties": {
+        "physics:axis": "Axis",
+        "physics:coneAngle0Limit": "ConeAngle0Limit",
+        "physics:coneAngle1Limit": "ConeAngle1Limit"
+      }
+    }
+  }
+}
