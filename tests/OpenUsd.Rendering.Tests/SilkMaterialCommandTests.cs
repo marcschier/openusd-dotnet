@@ -1395,6 +1395,36 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    public async Task ClearcoatTexturesUseIndependentRuntimeAndUdimBits()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Clearcoat",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(
+                    SilkMaterialParameter.Clearcoat,
+                    "clearcoat.png",
+                    SilkTextureChannel.R),
+                ScalarTexture(
+                    SilkMaterialParameter.ClearcoatRoughness,
+                    "clearcoat-roughness.<UDIM>.png",
+                    SilkTextureChannel.R),
+            ]));
+
+        await Assert.That(material.GetTextureFeatures()).IsEqualTo(
+            SilkShaderFeatures.Uv |
+            SilkShaderFeatures.ClearcoatMap |
+            SilkShaderFeatures.ClearcoatRoughnessMap);
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+        await Assert.That(ReadSingle(constants, 128)).IsEqualTo(1537f);
+        await Assert.That(ReadSingle(constants, 132)).IsEqualTo(1024f);
+    }
+
+    [Test]
     public async Task ScalarTextureChannelsSwizzleIntoEveryComponentOfTheUpload()
     {
         // One multichannel image, four inputs, four different output channels. The

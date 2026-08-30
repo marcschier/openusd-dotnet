@@ -1679,7 +1679,7 @@ def Xform "World"
                 meanChannelDelta);
             Console.WriteLine(line);
             evidence.Add(line);
-            await Assert.That(maxChannelDelta).IsGreaterThan(MinimumMaterialTextureDivergenceChannelDelta);
+            await Assert.That(maxChannelDelta).IsGreaterThan(testCase.MinimumDivergence);
         }
 
         WriteEvidence("material-texture-slot-divergence.txt", evidence);
@@ -1695,6 +1695,12 @@ def Xform "World"
     public async Task SpecularColorTextureSlotRendersIndependentlyOnD3D12() =>
         await RenderTextureSlotsIndependentlyOnD3D12(
             SilkMaterialParameter.SpecularColor);
+
+    [Test]
+    public async Task ClearcoatTextureSlotsRenderIndependentlyOnD3D12() =>
+        await RenderTextureSlotsIndependentlyOnD3D12(
+            SilkMaterialParameter.Clearcoat,
+            SilkMaterialParameter.ClearcoatRoughness);
 
     private static async Task RenderTextureSlotsIndependentlyOnD3D12(
         params SilkMaterialParameter[] parameters)
@@ -1722,8 +1728,7 @@ def Xform "World"
                 testCase,
                 testCase.DivergentFallback);
             (byte divergentMax, _) = CompareTranslatedHalves(divergent);
-            await Assert.That(divergentMax)
-                .IsGreaterThan(MinimumMaterialTextureDivergenceChannelDelta);
+            await Assert.That(divergentMax).IsGreaterThan(testCase.MinimumDivergence);
         }
     }
 
@@ -2261,7 +2266,8 @@ def Xform "World"
         float[] DivergentFallback,
         MaterialScalarSpec[] LeftScalars,
         MaterialScalarSpec[] RightScalars,
-        SilkTextureChannel Channel = SilkTextureChannel.Rgb);
+        SilkTextureChannel Channel = SilkTextureChannel.Rgb,
+        byte MinimumDivergence = MinimumMaterialTextureDivergenceChannelDelta);
 
     private sealed record MaterialTextureSpec(
         string Asset,
@@ -2638,6 +2644,14 @@ def Xform "World"
             new(SilkMaterialParameter.Opacity, [1.0f]),
             new(SilkMaterialParameter.OpacityThreshold, [0.5f]),
         ];
+        MaterialScalarSpec[] clearcoatFocused =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.62f, 0.38f, 0.14f]),
+            new(SilkMaterialParameter.Roughness, [0.62f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+            new(SilkMaterialParameter.Clearcoat, [1.0f]),
+            new(SilkMaterialParameter.ClearcoatRoughness, [0.45f]),
+        ];
         return
         [
             new(
@@ -2705,6 +2719,30 @@ def Xform "World"
                 [0, 1, 0, 1],
                 shadedDefaults,
                 shadedDefaults),
+            new(
+                "texture-slot-clearcoat",
+                SilkMaterialParameter.Clearcoat,
+                SilkColorSpace.Raw,
+                [1, 1, 1, 1],
+                [0, 0, 0, 1],
+                clearcoatFocused,
+                clearcoatFocused,
+                SilkTextureChannel.R,
+                // Clearcoat is a secondary dielectric lobe with about four-percent
+                // normal-incidence reflectance, so its valid pixel signal is subtler.
+                MinimumDivergence: 1),
+            new(
+                "texture-slot-clearcoat-roughness",
+                SilkMaterialParameter.ClearcoatRoughness,
+                SilkColorSpace.Raw,
+                [0.45f, 0.45f, 0.45f, 1],
+                [1, 1, 1, 1],
+                clearcoatFocused,
+                clearcoatFocused,
+                SilkTextureChannel.R,
+                // Keep the gate above backend rounding while retaining the physical
+                // scale of the secondary dielectric lobe.
+                MinimumDivergence: 1),
         ];
     }
 

@@ -243,7 +243,8 @@ both values, so changing only exposure or output transform updates the GPU block
 ### hdSilk shader pipeline cache
 
 Mesh shader variants are addressed by `SilkShaderPermutationId`. Its public flags still identify the actual texture
-inputs (`basecolor`, `normal`, `roughmetal`, `metallic`, `emissive`, `opacity`, `occlusion`, and `specularColor`) and
+inputs (`basecolor`, `normal`, `roughmetal`, `metallic`, `emissive`, `opacity`, `occlusion`, `specularColor`,
+`clearcoat`, and `clearcoatRoughness`) and
 reject maps without
 `uv`, but checked
 fragment artifacts no longer take their cross-product. Any non-normal map selects the bounded `uv+material` shader;
@@ -559,7 +560,8 @@ compressed Hio formats are rejected with diagnostics rather than reinterpreted o
 Textures are cached per material/asset/colour-space/parameter identity, and backend samplers are reused by
 wrap/filter state. RGBA32Float textures use nearest filtering because linear filtering for that format is
 not portable across the supported RHIs; explicit filter negotiation remains outside the current claim.
-Base-colour, normal, roughness, metallic, emissive, opacity, occlusion, specular-colour, and volume-density textures
+Base-colour, normal, roughness, metallic, emissive, opacity, occlusion, specular-colour, clearcoat,
+clearcoat-roughness, and volume-density textures
 each bind an
 independent
 sampler slot, so simultaneously active maps preserve their own `wrapS` and `wrapT` values rather than
@@ -603,6 +605,10 @@ Specular colour uses an independent texture at Vulkan bindings 20/21 (`s8`/`t11`
 texture 11), and its sampled RGB replaces the authored constant. `useSpecularWorkflow` remains the uniform integer
 selector defined by UsdPreviewSurface; it is not a texture-varying input.
 
+Clearcoat and clearcoat roughness use independent scalar textures at Vulkan bindings 22/23 and 24/25 respectively
+(`s9`/`t12` and `s10`/`t13` on D3D12, Metal samplers 9/10 and textures 12/13). Each sampled red channel replaces its
+authored constant. Both are data-valued inputs, so `auto` colour space resolves to raw rather than sRGB.
+
 A packed occlusion/roughness/metallic file is authored as one `UsdUVTexture` prim with two or three
 output connections, which reaches the renderer as several entries naming one asset and different
 channels. Each entry is decoded, swizzled, and uploaded separately, keyed by material path, asset,
@@ -612,7 +618,7 @@ selection comes first.
 
 The UDIM status bitmask in `SurfaceParameters.textureControls.y` uses the public texture-feature values:
 `2` base colour, `4` normal, `8` roughness, `16` emissive, `32` metallic, `64` opacity, `128` occlusion,
-and `256` specular colour.
+`256` specular colour, `512` clearcoat, and `1024` clearcoat roughness.
 Every scalar input has a separate slot, so each needs a separate bit; nothing aliases.
 Ordinary (non-UDIM) material textures upload a full packed mip chain rather than a single level. A
 shared backend-neutral layout stores mip 0 first, then ascending levels in order, each tightly packed

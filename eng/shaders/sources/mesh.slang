@@ -119,6 +119,14 @@ SamplerState occlusionSampler : register(s7);
 SamplerState specularColorSampler : register(s8);
 #endif
 #if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(22, 0)]]
+SamplerState clearcoatSampler : register(s9);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(24, 0)]]
+SamplerState clearcoatRoughnessSampler : register(s10);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(12, 0)]]
 SamplerState emissiveSampler : register(s3);
 #endif
@@ -153,6 +161,14 @@ Texture2D<float4> occlusionTexture : register(t10);
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(21, 0)]]
 Texture2D<float4> specularColorTexture : register(t11);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(23, 0)]]
+Texture2D<float4> clearcoatTexture : register(t12);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(25, 0)]]
+Texture2D<float4> clearcoatRoughnessTexture : register(t13);
 #endif
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(5, 0)]]
@@ -367,6 +383,8 @@ float4 FRAGMENT_ENTRY_POINT(
     float metallic = saturate(surface.metallicRoughnessThresholdWorkflow.x);
     float roughness = clamp(surface.metallicRoughnessThresholdWorkflow.y, 0.01, 1.0);
     float3 specularColor = surface.specularIor.rgb;
+    float clearcoatAmount = surface.clearcoatShaded.x;
+    float clearcoatRoughness = surface.clearcoatShaded.y;
     float3 shadingNormal = input.normal;
     uint textureMask = (uint)round(surface.textureControls.x);
     uint udimMask = (uint)round(surface.textureControls.y);
@@ -461,6 +479,24 @@ float4 FRAGMENT_ENTRY_POINT(
                 input.texCoord,
                 (udimMask & 256u) != 0).rgb);
     }
+    if ((textureMask & 512u) != 0)
+    {
+        clearcoatAmount = saturate(
+            SampleMaterialTexture(
+                clearcoatTexture,
+                clearcoatSampler,
+                input.texCoord,
+                (udimMask & 512u) != 0).r);
+    }
+    if ((textureMask & 1024u) != 0)
+    {
+        clearcoatRoughness = saturate(
+            SampleMaterialTexture(
+                clearcoatRoughnessTexture,
+                clearcoatRoughnessSampler,
+                input.texCoord,
+                (udimMask & 1024u) != 0).r);
+    }
 #endif
 
     float opacityThreshold = surface.metallicRoughnessThresholdWorkflow.z;
@@ -479,8 +515,7 @@ float4 FRAGMENT_ENTRY_POINT(
 
     // Storm clamps roughness rather than clamping into a minimum band.
     float specularRoughness = max(0.001, roughness);
-    float clearcoatAmount = surface.clearcoatShaded.x;
-    float clearcoatRoughness = max(0.001, surface.clearcoatShaded.y);
+    clearcoatRoughness = max(0.001, clearcoatRoughness);
     float reflectanceRatio =
         (1.0 - surface.specularIor.a) / (1.0 + surface.specularIor.a);
 

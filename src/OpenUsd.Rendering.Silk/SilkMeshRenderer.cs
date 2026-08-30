@@ -1323,6 +1323,10 @@ public sealed class SilkMeshRenderer :
         bindTexture(SilkMaterialParameter.Opacity, SilkShaderFeatures.OpacityMap);
         bindTexture(SilkMaterialParameter.Occlusion, SilkShaderFeatures.OcclusionMap);
         bindTexture(SilkMaterialParameter.SpecularColor, SilkShaderFeatures.SpecularColorMap);
+        bindTexture(SilkMaterialParameter.Clearcoat, SilkShaderFeatures.ClearcoatMap);
+        bindTexture(
+            SilkMaterialParameter.ClearcoatRoughness,
+            SilkShaderFeatures.ClearcoatRoughnessMap);
         if (material is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
         {
@@ -1363,7 +1367,9 @@ public sealed class SilkMeshRenderer :
                 SilkMaterialParameter.EmissiveColor or
                 SilkMaterialParameter.Opacity or
                 SilkMaterialParameter.Occlusion or
-                SilkMaterialParameter.SpecularColor)
+                SilkMaterialParameter.SpecularColor or
+                SilkMaterialParameter.Clearcoat or
+                SilkMaterialParameter.ClearcoatRoughness)
             {
                 return texture.Parameter;
             }
@@ -1429,6 +1435,20 @@ public sealed class SilkMeshRenderer :
                 commands,
                 ResolveMaterial(mesh.Mesh)!,
                 SilkMaterialParameter.SpecularColor);
+        }
+        if ((features & SilkShaderFeatures.ClearcoatMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.Clearcoat);
+        }
+        if ((features & SilkShaderFeatures.ClearcoatRoughnessMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.ClearcoatRoughness);
         }
         if (ResolveMaterial(mesh.Mesh) is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
