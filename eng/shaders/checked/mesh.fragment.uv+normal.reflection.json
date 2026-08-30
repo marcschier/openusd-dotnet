@@ -342,10 +342,27 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "textureControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 128,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 128,
+        "elementStride": 144,
         "size": null
       },
       "vulkanLayout": {
@@ -491,10 +508,27 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "textureControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 128,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 128,
+        "elementStride": 144,
         "size": null
       }
     },

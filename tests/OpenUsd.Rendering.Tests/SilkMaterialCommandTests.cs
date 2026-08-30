@@ -1232,7 +1232,7 @@ public sealed class SilkMaterialCommandTests
 
         // The authored metallic constant survives untouched: a roughness texture must
         // not consume, replace, or gate the other input.
-        byte[] constants = new byte[128];
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
         SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
         await Assert.That(ReadSingle(constants, 48)).IsEqualTo(0.75f);
     }
@@ -1255,7 +1255,7 @@ public sealed class SilkMaterialCommandTests
         // The authored roughness constant survives untouched, which the previous
         // shared-slot design could not do: it bound the metallic asset to the
         // roughness slot and read roughness out of it.
-        byte[] constants = new byte[128];
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
         SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
         await Assert.That(ReadSingle(constants, 52)).IsEqualTo(0.125f);
     }
@@ -1284,14 +1284,16 @@ public sealed class SilkMaterialCommandTests
                     SilkMaterialParameter.Metallic, "metal.<UDIM>.png", SilkTextureChannel.B),
             ]));
 
-        byte[] constants = new byte[128];
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
         SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
-        // Bit 4 is roughness alone and bit 16 is metallic alone; neither aliases the
-        // other, so a UDIM roughness beside an ordinary metallic sets only bit 4.
-        await Assert.That(ReadSingle(constants, 124)).IsEqualTo(4f);
+        await Assert.That(ReadSingle(constants, 128)).IsEqualTo(41f);
+        // The runtime mask uses the public shader-feature bits directly, so roughness
+        // and metallic remain independent without maintaining a second bit mapping.
+        await Assert.That(ReadSingle(constants, 132)).IsEqualTo(8f);
 
         SilkSurfaceUniformWriter.Write(metallicUdim, RenderHeadlight.Deterministic, constants);
-        await Assert.That(ReadSingle(constants, 124)).IsEqualTo(16f);
+        await Assert.That(ReadSingle(constants, 128)).IsEqualTo(33f);
+        await Assert.That(ReadSingle(constants, 132)).IsEqualTo(32f);
     }
 
     [Test]
@@ -1364,8 +1366,8 @@ public sealed class SilkMaterialCommandTests
 
         resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
 
-        // rgb is not a swizzle: base colour keeps its own alpha, which the shader
-        // multiplies into opacity.
+        // rgb is not a swizzle: the decoded texture retains its source alpha,
+        // although Preview Surface opacity is driven independently.
         await Assert.That(commands.Uploads[0][..4])
             .IsEquivalentTo(new byte[] { 10, 20, 30, 40 });
     }

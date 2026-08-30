@@ -8,8 +8,8 @@
       "requires": []
     },
     {
-      "name": "MAP_BASE_COLOR",
-      "token": "basecolor",
+      "name": "MAP_MATERIAL",
+      "token": "material",
       "requires": [
         "HAS_UV"
       ]
@@ -20,34 +20,13 @@
       "requires": [
         "HAS_UV"
       ]
-    },
-    {
-      "name": "MAP_ROUGHNESS_METALLIC",
-      "token": "roughmetal",
-      "requires": [
-        "HAS_UV"
-      ]
-    },
-    {
-      "name": "MAP_METALLIC",
-      "token": "metallic",
-      "requires": [
-        "HAS_UV"
-      ]
-    },
-    {
-      "name": "MAP_EMISSIVE",
-      "token": "emissive",
-      "requires": [
-        "HAS_UV"
-      ]
     }
   ],
   "permutationBudgets": [
     {
       "family": "mesh",
       "stage": "fragment",
-      "maxPermutations": 64
+      "maxPermutations": 8
     },
     {
       "family": "mesh",
@@ -118,11 +97,8 @@
       "permutationFamily": "mesh",
       "permutationFeatures": [
         "HAS_UV",
-        "MAP_BASE_COLOR",
-        "MAP_NORMAL",
-        "MAP_ROUGHNESS_METALLIC",
-        "MAP_METALLIC",
-        "MAP_EMISSIVE"
+        "MAP_MATERIAL",
+        "MAP_NORMAL"
       ],
       "resources": [
         {
@@ -199,7 +175,7 @@
       ],
       "permutationResources": [
         {
-          "feature": "MAP_BASE_COLOR",
+          "feature": "MAP_MATERIAL",
           "name": "baseColorSampler",
           "access": "read",
           "d3d": {
@@ -213,7 +189,7 @@
           }
         },
         {
-          "feature": "MAP_BASE_COLOR",
+          "feature": "MAP_MATERIAL",
           "name": "baseColorTexture",
           "access": "read",
           "d3d": {
@@ -255,7 +231,7 @@
           }
         },
         {
-          "feature": "MAP_ROUGHNESS_METALLIC",
+          "feature": "MAP_MATERIAL",
           "name": "roughnessMetallicSampler",
           "access": "read",
           "d3d": {
@@ -269,7 +245,7 @@
           }
         },
         {
-          "feature": "MAP_ROUGHNESS_METALLIC",
+          "feature": "MAP_MATERIAL",
           "name": "roughnessMetallicTexture",
           "access": "read",
           "d3d": {
@@ -283,7 +259,7 @@
           }
         },
         {
-          "feature": "MAP_METALLIC",
+          "feature": "MAP_MATERIAL",
           "name": "metallicSampler",
           "access": "read",
           "d3d": {
@@ -297,7 +273,7 @@
           }
         },
         {
-          "feature": "MAP_METALLIC",
+          "feature": "MAP_MATERIAL",
           "name": "metallicTexture",
           "access": "read",
           "d3d": {
@@ -311,7 +287,7 @@
           }
         },
         {
-          "feature": "MAP_EMISSIVE",
+          "feature": "MAP_MATERIAL",
           "name": "emissiveSampler",
           "access": "read",
           "d3d": {
@@ -325,7 +301,7 @@
           }
         },
         {
-          "feature": "MAP_EMISSIVE",
+          "feature": "MAP_MATERIAL",
           "name": "emissiveTexture",
           "access": "read",
           "d3d": {

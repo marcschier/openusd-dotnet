@@ -225,9 +225,7 @@ public sealed class SilkGraphicsPipelineTests
                     permutation);
 
             await Assert.That(dxil.EntryPoint)
-                .IsEqualTo(GetExpectedEntryPoint(
-                    "vertexMain",
-                    features & (SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap)));
+                .IsEqualTo(GetExpectedVertexEntryPoint(features));
         }
     }
 
@@ -250,7 +248,7 @@ public sealed class SilkGraphicsPipelineTests
             SilkShaderFeatures.Uv | SilkShaderFeatures.MetallicMap);
 
         await Assert.That(permutation.MeshFragmentArtifactName)
-            .IsEqualTo("mesh.fragment.uv+metallic");
+            .IsEqualTo("mesh.fragment.uv+material");
         SilkBindingLayoutDescriptor layout = permutation.CreateMeshBindingLayout();
         await Assert.That(layout.MaterialSlots
             .Where(slot => slot.Kind is SilkBindingKind.Sampler or SilkBindingKind.SampledTexture)
@@ -258,8 +256,14 @@ public sealed class SilkGraphicsPipelineTests
             .ToArray())
             .IsEquivalentTo(
             [
+                (1u, SilkBindingKind.Sampler),
+                (2u, SilkBindingKind.SampledTexture),
+                (11u, SilkBindingKind.Sampler),
+                (4u, SilkBindingKind.SampledTexture),
                 (14u, SilkBindingKind.Sampler),
                 (15u, SilkBindingKind.SampledTexture),
+                (12u, SilkBindingKind.Sampler),
+                (5u, SilkBindingKind.SampledTexture),
             ]);
         layout.Validate();
     }
@@ -288,6 +292,8 @@ public sealed class SilkGraphicsPipelineTests
             (3u, SilkBindingKind.SampledTexture),
             (11u, SilkBindingKind.Sampler),
             (4u, SilkBindingKind.SampledTexture),
+            (14u, SilkBindingKind.Sampler),
+            (15u, SilkBindingKind.SampledTexture),
             (12u, SilkBindingKind.Sampler),
             (5u, SilkBindingKind.SampledTexture),
         ]);
@@ -311,10 +317,14 @@ public sealed class SilkGraphicsPipelineTests
         // previously-unused 14/15 rather than aliasing an existing slot.
         await Assert.That(materialBindings).IsEquivalentTo(
         [
+            (1u, SilkBindingKind.Sampler),
+            (2u, SilkBindingKind.SampledTexture),
             (11u, SilkBindingKind.Sampler),
             (4u, SilkBindingKind.SampledTexture),
             (14u, SilkBindingKind.Sampler),
             (15u, SilkBindingKind.SampledTexture),
+            (12u, SilkBindingKind.Sampler),
+            (5u, SilkBindingKind.SampledTexture),
         ]);
         layout.Validate();
     }
@@ -351,8 +361,15 @@ public sealed class SilkGraphicsPipelineTests
             SilkVertexLayoutDescriptor.PositionNormal,
             SilkTextureFormat.Rgba8Unorm,
             SilkTextureFormat.D32Float);
+        ISilkGraphicsPipeline sameUniversalShader = cache.GetOrCreateMeshPipeline(
+            new SilkShaderPermutationId(
+                SilkShaderFeatures.Uv | SilkShaderFeatures.MetallicMap),
+            SilkVertexLayoutDescriptor.PositionNormal,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.D32Float);
 
         first.Dispose();
+        sameUniversalShader.Dispose();
         await Assert.That(device.CreatedPipelineCount).IsEqualTo(1);
         await Assert.That(device.DisposedPipelineCount).IsEqualTo(0);
 
@@ -367,7 +384,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
         await Assert.That(device.DisposedPipelineCount).IsEqualTo(1);
         await Assert.That(device.CreatedFragmentShaders).IsEqualTo(2);
-        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(5);
+        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(11);
     }
 
     [Test]
@@ -667,6 +684,19 @@ public sealed class SilkGraphicsPipelineTests
             .MeshFragmentArtifactName["mesh.fragment.".Length..]
             .Replace('+', '_');
         return $"{baseEntryPoint}_{suffix}";
+    }
+
+    private static string GetExpectedVertexEntryPoint(SilkShaderFeatures features)
+    {
+        var permutation = new SilkShaderPermutationId(
+            features & (SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap));
+        if (permutation.Features == SilkShaderFeatures.None)
+        {
+            return "vertexMain";
+        }
+        string suffix = permutation.MeshVertexArtifactName["mesh.vertex.".Length..]
+            .Replace('+', '_');
+        return $"vertexMain_{suffix}";
     }
 
     private sealed class CountingPipelineDevice : ISilkGraphicsDevice, ISilkPickingGraphicsDevice

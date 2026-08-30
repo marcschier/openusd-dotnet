@@ -3973,19 +3973,19 @@ def Xform "World"
             return packaged;
         }
 
+        if (TryResolveConfiguredPluginPath(out string configured))
+        {
+            return configured;
+        }
+
         if (TryPrepareLocalPluginRuntime(out string localRuntime))
         {
             return localRuntime;
         }
 
-        string? configured = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH");
-        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(Path.Combine(configured, "plugInfo.json")))
-        {
-            return configured;
-        }
-
         throw new DirectoryNotFoundException(
-            $"No OpenUSD plugin path was found under '{packaged}' or OPENUSD_PLUGIN_PATH.");
+            $"No OpenUSD plugin path was found under '{packaged}', " +
+            "OPENUSD_TEST_PLUGIN_PATH, or OPENUSD_PLUGIN_PATH.");
     }
 
     private static nuint RegisterImagePlugins()
@@ -4002,6 +4002,11 @@ def Xform "World"
             return packaged;
         }
 
+        if (TryResolveConfiguredPluginPath(out string configured))
+        {
+            return configured;
+        }
+
         string? openUsdRoot = Environment.GetEnvironmentVariable("OPENUSD_ROOT");
         if (!string.IsNullOrWhiteSpace(openUsdRoot))
         {
@@ -4012,14 +4017,26 @@ def Xform "World"
             }
         }
 
-        string? configured = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH");
-        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(Path.Combine(configured, "plugInfo.json")))
+        throw new DirectoryNotFoundException(
+            $"No OpenUSD image plugin path was found under '{packaged}', " +
+            "OPENUSD_TEST_PLUGIN_PATH, OPENUSD_PLUGIN_PATH, or OPENUSD_ROOT.");
+    }
+
+    private static bool TryResolveConfiguredPluginPath(out string pluginPath)
+    {
+        foreach (string variable in new[] { "OPENUSD_TEST_PLUGIN_PATH", "OPENUSD_PLUGIN_PATH" })
         {
-            return configured;
+            string? configured = Environment.GetEnvironmentVariable(variable);
+            if (!string.IsNullOrWhiteSpace(configured) &&
+                File.Exists(Path.Combine(configured, "plugInfo.json")))
+            {
+                pluginPath = configured;
+                return true;
+            }
         }
 
-        throw new DirectoryNotFoundException(
-            $"No OpenUSD image plugin path was found under '{packaged}', OPENUSD_ROOT, or OPENUSD_PLUGIN_PATH.");
+        pluginPath = string.Empty;
+        return false;
     }
 
     private static bool TryPrepareLocalPluginRuntime(out string pluginPath)
@@ -4534,7 +4551,7 @@ def Xform "World"
                 GateReason:
                     "1.000000 correct adjusted IoU against a 0.436893 worst " +
                     "perturbation, a 0.563107 margin. The scene authors constant " +
-                    "width 0.01 because Storm's default point width is world-space " +
+                    "width 0.0001 because Storm's default point width is world-space " +
                     "and intentionally covers most of the frame; at this measured " +
                     "width both Storm and hdSilk rasterize one pixel per point.",
                 RecommendedMinimumAdjustedIou: 0.92,

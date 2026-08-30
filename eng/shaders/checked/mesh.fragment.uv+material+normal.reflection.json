@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": "eng/shaders/sources/mesh.slang",
   "entryPoint": {
-    "name": "fragmentMain_uv_basecolor_normal_roughmetal_emissive",
+    "name": "fragmentMain_uv_material_normal",
     "stage": "fragment",
     "profile": "ps_6_0",
     "threadGroupSize": null
@@ -342,10 +342,27 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "textureControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 128,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 128,
+        "elementStride": 144,
         "size": null
       },
       "vulkanLayout": {
@@ -491,10 +508,27 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "textureControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 128,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 128,
+        "elementStride": 144,
         "size": null
       }
     },
@@ -1164,6 +1198,80 @@
         },
         "vulkan": {
           "binding": 4,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "metallicSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 5,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 14,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "metallicTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 4,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 15,
           "set": 0
         }
       },

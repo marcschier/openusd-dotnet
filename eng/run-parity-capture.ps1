@@ -554,6 +554,10 @@ try
         'SilkFrameCaptureRefusesToCaptureABlankFrameFromASynchronizedSession',
         'SilkFrameCaptureReturnsBlankFrameForEmptyUnsynchronizedSession',
         'SilkFrameCaptureRetainedRendersTheSceneALiveRendererSynchronized',
+        'SilkFrameCaptureAppliesOcioDisplayTransform',
+        'MixedTextureSlotWrapModesRemainIndependentOnD3D12',
+        'FloatTexturePreservesHdrBeforeScaleOnD3D12',
+        'SparseUdimTilesAndFallbackRenderOnD3D12',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12')
     $macosCglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
@@ -594,7 +598,8 @@ try
         'DiskLightEdgeOnMatchesUnlitSceneOnVulkan',
         'DiskLightFaceOnDivergesFromEdgeOnLightOnVulkan',
         'CylinderLightZeroLengthMatchesSphereLightOnVulkan',
-        'CylinderLightFullLengthDivergesFromSphereLightOnVulkan')
+        'CylinderLightFullLengthDivergesFromSphereLightOnVulkan',
+        'FifthDirectLightContributesOnVulkan')
     if ($Rid -eq 'win-x64')
     {
         & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `

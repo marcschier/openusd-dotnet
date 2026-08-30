@@ -23,9 +23,9 @@ internal static class SilkSurfaceUniformWriter
     /// float4 diffuseColor+opacity, emissiveColor+occlusion, specularColor+ior,
     /// (metallic, roughness, opacityThreshold, useSpecularWorkflow),
     /// (clearcoat, clearcoatRoughness, shaded, 0), lightDirection+intensity,
-    /// lightColor+ambient, and volume values.
+    /// lightColor+ambient, volume values, and (textureMask, udimMask, 0, 0).
     /// </remarks>
-    internal const int ByteSize = 128;
+    internal const int ByteSize = 144;
 
     // UsdPreviewSurface authored defaults, used when a material omits an input.
     private const float DefaultDiffuse = 0.18f;
@@ -111,30 +111,33 @@ internal static class SilkSurfaceUniformWriter
             volumeDensity ? 1 : 0,
             density,
             2,
-            sampledVolume ? 1 : udimMask);
+            sampledVolume ? 1 : 0);
+        WriteVector4(
+            destination,
+            128,
+            volumeDensity ? 0 : (float)(uint)(shaded?.GetTextureFeatures() ?? SilkShaderFeatures.None),
+            udimMask,
+            0,
+            0);
     }
 
     private static float GetUdimMask(SilkMaterialData? material)
     {
         int mask = 0;
-        // Bit per texture slot, matching the shader's binding set exactly:
-        // 1 base colour, 2 normal, 4 roughness, 8 emissive, 16 metallic. Roughness
-        // and metallic have separate slots, so they need separate bits; nothing
-        // aliases.
-        addUdimBit(SilkMaterialParameter.DiffuseColor, 1);
-        addUdimBit(SilkMaterialParameter.Normal, 2);
-        addUdimBit(SilkMaterialParameter.Roughness, 4);
-        addUdimBit(SilkMaterialParameter.EmissiveColor, 8);
-        addUdimBit(SilkMaterialParameter.Metallic, 16);
+        addUdimBit(SilkMaterialParameter.DiffuseColor, SilkShaderFeatures.BaseColorMap);
+        addUdimBit(SilkMaterialParameter.Normal, SilkShaderFeatures.NormalMap);
+        addUdimBit(SilkMaterialParameter.Roughness, SilkShaderFeatures.RoughnessMetallicMap);
+        addUdimBit(SilkMaterialParameter.EmissiveColor, SilkShaderFeatures.EmissiveMap);
+        addUdimBit(SilkMaterialParameter.Metallic, SilkShaderFeatures.MetallicMap);
         return mask;
 
-        void addUdimBit(SilkMaterialParameter parameter, int bit)
+        void addUdimBit(SilkMaterialParameter parameter, SilkShaderFeatures feature)
         {
             if (material?.GetTexture(parameter)?.Asset.Contains(
                     "<UDIM>",
                     StringComparison.Ordinal) == true)
             {
-                mask |= bit;
+                mask |= (int)feature;
             }
         }
     }

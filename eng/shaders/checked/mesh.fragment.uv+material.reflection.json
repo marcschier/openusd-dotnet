@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": "eng/shaders/sources/mesh.slang",
   "entryPoint": {
-    "name": "fragmentMain_uv_basecolor_normal_metallic",
+    "name": "fragmentMain_uv_material",
     "stage": "fragment",
     "profile": "ps_6_0",
     "threadGroupSize": null
@@ -342,10 +342,27 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "textureControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 128,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 128,
+        "elementStride": 144,
         "size": null
       },
       "vulkanLayout": {
@@ -491,10 +508,27 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "textureControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 128,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 128,
+        "elementStride": 144,
         "size": null
       }
     },
@@ -1051,15 +1085,15 @@
       }
     },
     {
-      "name": "normalSampler",
+      "name": "roughnessMetallicSampler",
       "bindings": {
         "d3d": {
           "registerClass": "s",
-          "register": 1,
+          "register": 2,
           "space": 0
         },
         "vulkan": {
-          "binding": 10,
+          "binding": 11,
           "set": 0
         }
       },
@@ -1081,15 +1115,15 @@
       }
     },
     {
-      "name": "normalTexture",
+      "name": "roughnessMetallicTexture",
       "bindings": {
         "d3d": {
           "registerClass": "t",
-          "register": 1,
+          "register": 2,
           "space": 0
         },
         "vulkan": {
-          "binding": 3,
+          "binding": 4,
           "set": 0
         }
       },
@@ -1164,6 +1198,80 @@
         },
         "vulkan": {
           "binding": 15,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "emissiveSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 3,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 12,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "emissiveTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 3,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 5,
           "set": 0
         }
       },
@@ -1296,23 +1404,6 @@
       "type": {
         "kind": "vector",
         "elementCount": 2,
-        "elementType": {
-          "kind": "scalar",
-          "scalarType": "float32"
-        }
-      }
-    },
-    {
-      "name": "tangent",
-      "semantic": {
-        "name": "TANGENT",
-        "index": 0,
-        "systemValue": false
-      },
-      "location": 5,
-      "type": {
-        "kind": "vector",
-        "elementCount": 4,
         "elementType": {
           "kind": "scalar",
           "scalarType": "float32"
