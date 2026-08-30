@@ -33,6 +33,7 @@ public sealed class BackendShaderRegisterConformanceTests
         ("metallicSampler", SilkBindingKind.Sampler, 14),
         ("opacitySampler", SilkBindingKind.Sampler, 16),
         ("occlusionSampler", SilkBindingKind.Sampler, 18),
+        ("specularColorSampler", SilkBindingKind.Sampler, 20),
         ("baseColorTexture", SilkBindingKind.SampledTexture, 2),
         ("normalTexture", SilkBindingKind.SampledTexture, 3),
         ("roughnessMetallicTexture", SilkBindingKind.SampledTexture, 4),
@@ -40,6 +41,7 @@ public sealed class BackendShaderRegisterConformanceTests
         ("metallicTexture", SilkBindingKind.SampledTexture, 15),
         ("opacityTexture", SilkBindingKind.SampledTexture, 17),
         ("occlusionTexture", SilkBindingKind.SampledTexture, 19),
+        ("specularColorTexture", SilkBindingKind.SampledTexture, 21),
         ("volumeDensityTexture", SilkBindingKind.SampledTexture, 9),
     ];
 

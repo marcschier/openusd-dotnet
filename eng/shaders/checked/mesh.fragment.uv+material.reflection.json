@@ -1381,6 +1381,80 @@
       }
     },
     {
+      "name": "specularColorSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 8,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 20,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "specularColorTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 11,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 21,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
       "name": "emissiveSampler",
       "bindings": {
         "d3d": {

@@ -1686,18 +1686,28 @@ def Xform "World"
     }
 
     [Test]
-    public async Task OpacityAndOcclusionTextureSlotsRenderIndependentlyOnD3D12()
+    public async Task OpacityAndOcclusionTextureSlotsRenderIndependentlyOnD3D12() =>
+        await RenderTextureSlotsIndependentlyOnD3D12(
+            SilkMaterialParameter.Opacity,
+            SilkMaterialParameter.Occlusion);
+
+    [Test]
+    public async Task SpecularColorTextureSlotRendersIndependentlyOnD3D12() =>
+        await RenderTextureSlotsIndependentlyOnD3D12(
+            SilkMaterialParameter.SpecularColor);
+
+    private static async Task RenderTextureSlotsIndependentlyOnD3D12(
+        params SilkMaterialParameter[] parameters)
     {
         if (!OperatingSystem.IsWindows())
         {
-            Skip.Test("D3D12 WARP opacity and occlusion evidence only runs on Windows.");
+            Skip.Test("D3D12 WARP material texture evidence only runs on Windows.");
             return;
         }
 
         using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
         foreach (MaterialTextureSlotCase testCase in CreateMaterialTextureSlotCases().Where(
-            static value => value.Parameter is
-                SilkMaterialParameter.Opacity or SilkMaterialParameter.Occlusion))
+            value => parameters.Contains(value.Parameter)))
         {
             ParityImage neutral = CaptureSyntheticMaterialTextureSlotSelfConsistency(
                 device,
@@ -2687,6 +2697,14 @@ def Xform "World"
                 shadedDefaults,
                 shadedDefaults,
                 SilkTextureChannel.R),
+            new(
+                "texture-slot-specular-color",
+                SilkMaterialParameter.SpecularColor,
+                SilkColorSpace.Raw,
+                [0.45f, 0.45f, 0.45f, 1],
+                [0, 1, 0, 1],
+                shadedDefaults,
+                shadedDefaults),
         ];
     }
 

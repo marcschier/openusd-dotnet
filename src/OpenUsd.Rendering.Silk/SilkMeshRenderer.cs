@@ -1322,6 +1322,7 @@ public sealed class SilkMeshRenderer :
         bindTexture(SilkMaterialParameter.EmissiveColor, SilkShaderFeatures.EmissiveMap);
         bindTexture(SilkMaterialParameter.Opacity, SilkShaderFeatures.OpacityMap);
         bindTexture(SilkMaterialParameter.Occlusion, SilkShaderFeatures.OcclusionMap);
+        bindTexture(SilkMaterialParameter.SpecularColor, SilkShaderFeatures.SpecularColorMap);
         if (material is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
         {
@@ -1361,7 +1362,8 @@ public sealed class SilkMeshRenderer :
                 SilkMaterialParameter.Metallic or
                 SilkMaterialParameter.EmissiveColor or
                 SilkMaterialParameter.Opacity or
-                SilkMaterialParameter.Occlusion)
+                SilkMaterialParameter.Occlusion or
+                SilkMaterialParameter.SpecularColor)
             {
                 return texture.Parameter;
             }
@@ -1420,6 +1422,13 @@ public sealed class SilkMeshRenderer :
                 commands,
                 ResolveMaterial(mesh.Mesh)!,
                 SilkMaterialParameter.Occlusion);
+        }
+        if ((features & SilkShaderFeatures.SpecularColorMap) != 0)
+        {
+            GpuResources.UploadMaterialTexture(
+                commands,
+                ResolveMaterial(mesh.Mesh)!,
+                SilkMaterialParameter.SpecularColor);
         }
         if (ResolveMaterial(mesh.Mesh) is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)

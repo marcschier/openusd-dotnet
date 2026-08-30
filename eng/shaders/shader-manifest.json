@@ -344,6 +344,34 @@
         },
         {
           "feature": "MAP_MATERIAL",
+          "name": "specularColorSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 8,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 20,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "specularColorTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 11,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 21,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
           "name": "emissiveSampler",
           "access": "read",
           "d3d": {

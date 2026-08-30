@@ -1324,6 +1324,77 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    public async Task SpecularColorTextureUsesItsOwnRuntimeAndUdimBit()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/SpecularWorkflow",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.SpecularColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "specular.<UDIM>.png",
+                    UvPrimvar: "st",
+                    Channel: SilkTextureChannel.Rgb),
+            ]));
+
+        await Assert.That(material.GetTextureFeatures()).IsEqualTo(
+            SilkShaderFeatures.Uv |
+            SilkShaderFeatures.SpecularColorMap);
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+        await Assert.That(ReadSingle(constants, 128)).IsEqualTo(257f);
+        await Assert.That(ReadSingle(constants, 132)).IsEqualTo(256f);
+    }
+
+    [Test]
+    public async Task SpecularColorAutoColorSpaceDecodesAsSrgb()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/SpecularAuto",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.SpecularColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Auto,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "specular.png",
+                    UvPrimvar: "st",
+                    Channel: SilkTextureChannel.Rgb),
+            ]));
+        bool? decodedAsSrgb = null;
+        using var device = new TextureGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, srgb) =>
+            {
+                decodedAsSrgb = srgb;
+                return new SilkDecodedImage(1, 1, [10, 20, 30, 255]);
+            });
+        using var commands = new TextureCommandList();
+
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.SpecularColor);
+
+        await Assert.That(decodedAsSrgb).IsTrue();
+    }
+
+    [Test]
     public async Task ScalarTextureChannelsSwizzleIntoEveryComponentOfTheUpload()
     {
         // One multichannel image, four inputs, four different output channels. The

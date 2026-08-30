@@ -115,6 +115,10 @@ SamplerState opacitySampler : register(s6);
 SamplerState occlusionSampler : register(s7);
 #endif
 #if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(20, 0)]]
+SamplerState specularColorSampler : register(s8);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(12, 0)]]
 SamplerState emissiveSampler : register(s3);
 #endif
@@ -145,6 +149,10 @@ Texture2D<float4> opacityTexture : register(t5);
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(19, 0)]]
 Texture2D<float4> occlusionTexture : register(t10);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(21, 0)]]
+Texture2D<float4> specularColorTexture : register(t11);
 #endif
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(5, 0)]]
@@ -358,6 +366,7 @@ float4 FRAGMENT_ENTRY_POINT(
     }
     float metallic = saturate(surface.metallicRoughnessThresholdWorkflow.x);
     float roughness = clamp(surface.metallicRoughnessThresholdWorkflow.y, 0.01, 1.0);
+    float3 specularColor = surface.specularIor.rgb;
     float3 shadingNormal = input.normal;
     uint textureMask = (uint)round(surface.textureControls.x);
     uint udimMask = (uint)round(surface.textureControls.y);
@@ -443,6 +452,15 @@ float4 FRAGMENT_ENTRY_POINT(
                 input.texCoord,
                 (udimMask & 128u) != 0).r);
     }
+    if ((textureMask & 256u) != 0)
+    {
+        specularColor = saturate(
+            SampleMaterialTexture(
+                specularColorTexture,
+                specularColorSampler,
+                input.texCoord,
+                (udimMask & 256u) != 0).rgb);
+    }
 #endif
 
     float opacityThreshold = surface.metallicRoughnessThresholdWorkflow.z;
@@ -473,7 +491,7 @@ float4 FRAGMENT_ENTRY_POINT(
     float3 grazingIncidence;
     if (surface.metallicRoughnessThresholdWorkflow.w >= 0.5)
     {
-        normalIncidence = surface.specularIor.rgb;
+        normalIncidence = specularColor;
         grazingIncidence = float3(1.0, 1.0, 1.0);
     }
     else

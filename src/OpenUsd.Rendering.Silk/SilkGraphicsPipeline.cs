@@ -156,7 +156,10 @@ public enum SilkShaderFeatures
     OpacityMap = 64,
 
     /// <summary>An occlusion texture is bound.</summary>
-    OcclusionMap = 128
+    OcclusionMap = 128,
+
+    /// <summary>A specular-color texture is bound.</summary>
+    SpecularColorMap = 256
 }
 
 /// <summary>Stable mesh shader permutation identifier.</summary>
@@ -170,7 +173,8 @@ public readonly record struct SilkShaderPermutationId
         SilkShaderFeatures.EmissiveMap |
         SilkShaderFeatures.MetallicMap |
         SilkShaderFeatures.OpacityMap |
-        SilkShaderFeatures.OcclusionMap;
+        SilkShaderFeatures.OcclusionMap |
+        SilkShaderFeatures.SpecularColorMap;
     private const SilkShaderFeatures MapFeatures =
         SilkShaderFeatures.BaseColorMap |
         SilkShaderFeatures.NormalMap |
@@ -178,7 +182,8 @@ public readonly record struct SilkShaderPermutationId
         SilkShaderFeatures.EmissiveMap |
         SilkShaderFeatures.MetallicMap |
         SilkShaderFeatures.OpacityMap |
-        SilkShaderFeatures.OcclusionMap;
+        SilkShaderFeatures.OcclusionMap |
+        SilkShaderFeatures.SpecularColorMap;
 
     /// <summary>Initializes a manifest-valid mesh shader permutation.</summary>
     public SilkShaderPermutationId(SilkShaderFeatures features)
@@ -235,6 +240,10 @@ public readonly record struct SilkShaderPermutationId
                 slots,
                 SilkBindingLayoutDescriptor.OcclusionSamplerBinding,
                 SilkBindingLayoutDescriptor.OcclusionTextureBinding);
+            AddTextureSlots(
+                slots,
+                SilkBindingLayoutDescriptor.SpecularColorSamplerBinding,
+                SilkBindingLayoutDescriptor.SpecularColorTextureBinding);
         }
         AddTextureSlots(
             slots,
@@ -518,6 +527,8 @@ public readonly record struct SilkBindingLayoutDescriptor(
     internal const uint OpacityTextureBinding = 17;
     internal const uint OcclusionSamplerBinding = 18;
     internal const uint OcclusionTextureBinding = 19;
+    internal const uint SpecularColorSamplerBinding = 20;
+    internal const uint SpecularColorTextureBinding = 21;
 
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
@@ -597,6 +608,8 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 (OpacitySamplerBinding, OpacityTextureBinding),
             SilkMaterialParameter.Occlusion =>
                 (OcclusionSamplerBinding, OcclusionTextureBinding),
+            SilkMaterialParameter.SpecularColor =>
+                (SpecularColorSamplerBinding, SpecularColorTextureBinding),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(parameter),
                 parameter,
