@@ -288,6 +288,62 @@
         },
         {
           "feature": "MAP_MATERIAL",
+          "name": "opacitySampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 16,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "opacityTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 5,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 17,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "occlusionSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 7,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 18,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "occlusionTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 10,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 19,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
           "name": "emissiveSampler",
           "access": "read",
           "d3d": {

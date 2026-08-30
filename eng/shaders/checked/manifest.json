@@ -123,7 +123,7 @@
     },
     {
       "path": "eng/shaders/shader-manifest.json",
-      "sha256": "cdb77afe82ee41063f5cbc0d93a79065d08e6d47a96c5145d5686f4c6534fba3"
+      "sha256": "3e9d87c6e77a3899d41f21e4111364df10cfafa448c437e92dce9f583fe1c71b"
     },
     {
       "path": "eng/shaders/sources/compute.slang",
@@ -131,7 +131,7 @@
     },
     {
       "path": "eng/shaders/sources/mesh.slang",
-      "sha256": "991ab34835ccd97a591fa7a7ac88f2fdac46da2df3073f69496a9da42d21db97"
+      "sha256": "ae7d0825c5d45e65b64cedd772785b932553f0d3138d9e6c74a08e525285084e"
     },
     {
       "path": "eng/shaders/sources/pick.fragment.slang",
@@ -1334,6 +1334,58 @@
           }
         },
         {
+          "name": "opacitySampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 16,
+            "set": 0
+          }
+        },
+        {
+          "name": "opacityTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 5,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 17,
+            "set": 0
+          }
+        },
+        {
+          "name": "occlusionSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 7,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 18,
+            "set": 0
+          }
+        },
+        {
+          "name": "occlusionTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 10,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 19,
+            "set": 0
+          }
+        },
+        {
           "name": "emissiveSampler",
           "access": "read",
           "d3d": {
@@ -1477,23 +1529,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.dxil",
-          "sha256": "32a773d68b7a0b510617769f1fd00f373263f478a7ee56c2f671416c6b6bb4b5",
-          "size": 14396
+          "sha256": "ecee0e01ceb1011e0861da3d50ec894f68f4182acb890af999c4ed3c91175950",
+          "size": 15788
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.spv",
-          "sha256": "4df52f4c1fcde1dcf89362c1dbb470059dbaae5b0a42ece236ad7c1111e312b9",
-          "size": 24484
+          "sha256": "14053433da2be1f26558747eff61855ab69d93bac1eadbbede85153e82208c09",
+          "size": 28492
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.metal",
-          "sha256": "b71aeb31465e2e1af395f1c143130294edfcba130cb509d2840be960fee57766",
-          "size": 27723
+          "sha256": "f256f3c9bc1653f0bcc4200de98cbac659f67a00539b0e699116166f543eaf44",
+          "size": 32501
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.reflection.json",
-          "sha256": "ad3146968a6196b3cedc59cfb2611dbd428e72d3417c97b1ee79a34b81fc67f1",
-          "size": 36913
+          "sha256": "b7809a4aba89448ea36aecb20b6ccb48ca6de5980becc310694f8b106ce9a769",
+          "size": 40146
         }
       }
     },
@@ -1922,6 +1974,58 @@
           }
         },
         {
+          "name": "opacitySampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 16,
+            "set": 0
+          }
+        },
+        {
+          "name": "opacityTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 5,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 17,
+            "set": 0
+          }
+        },
+        {
+          "name": "occlusionSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 7,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 18,
+            "set": 0
+          }
+        },
+        {
+          "name": "occlusionTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 10,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 19,
+            "set": 0
+          }
+        },
+        {
           "name": "emissiveSampler",
           "access": "read",
           "d3d": {
@@ -2068,23 +2172,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.dxil",
-          "sha256": "247d5c5954a365d1a0f4b0a0946cbe402f2f1bcd2410a7a7538d9bae0c420778",
-          "size": 15584
+          "sha256": "ebdf817ebe50c3571ecf518a7f5b7851730d83878e8a3ae715b8d35d91edc73a",
+          "size": 17000
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.spv",
-          "sha256": "904ee731794dfb9362400b080c2102249b728869079a5965874ad5f9779d302d",
-          "size": 26788
+          "sha256": "913914aa467d7dd3477f6229330c9e6269ebe0e22e5d2519d0c86f484619f2d7",
+          "size": 30764
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.metal",
-          "sha256": "e1e810ec7de49058ab3b68eb06178a028b7c04c64faa9aeca0634b112cc311f6",
-          "size": 30204
+          "sha256": "cd2d14b183cd8d7dc70ad025cd706b2376f60b8ff53585fa56d68d9efed79882",
+          "size": 35005
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.reflection.json",
-          "sha256": "77144ef130770b68f075d797121118332d0b37ae0c8f7c8018c663b026c54228",
-          "size": 38869
+          "sha256": "b195da387638e250bab1a0b3c5fadf273a02ed2678785f8cf1c5d7d039bbc926",
+          "size": 42102
         }
       }
     },

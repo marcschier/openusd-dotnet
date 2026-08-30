@@ -150,7 +150,13 @@ public enum SilkShaderFeatures
     /// in both directions: a metallic-only material sets this bit alone, and a
     /// roughness-only material never sets it, so neither input can disturb the other.
     /// </summary>
-    MetallicMap = 32
+    MetallicMap = 32,
+
+    /// <summary>An opacity texture is bound.</summary>
+    OpacityMap = 64,
+
+    /// <summary>An occlusion texture is bound.</summary>
+    OcclusionMap = 128
 }
 
 /// <summary>Stable mesh shader permutation identifier.</summary>
@@ -162,13 +168,17 @@ public readonly record struct SilkShaderPermutationId
         SilkShaderFeatures.NormalMap |
         SilkShaderFeatures.RoughnessMetallicMap |
         SilkShaderFeatures.EmissiveMap |
-        SilkShaderFeatures.MetallicMap;
+        SilkShaderFeatures.MetallicMap |
+        SilkShaderFeatures.OpacityMap |
+        SilkShaderFeatures.OcclusionMap;
     private const SilkShaderFeatures MapFeatures =
         SilkShaderFeatures.BaseColorMap |
         SilkShaderFeatures.NormalMap |
         SilkShaderFeatures.RoughnessMetallicMap |
         SilkShaderFeatures.EmissiveMap |
-        SilkShaderFeatures.MetallicMap;
+        SilkShaderFeatures.MetallicMap |
+        SilkShaderFeatures.OpacityMap |
+        SilkShaderFeatures.OcclusionMap;
 
     /// <summary>Initializes a manifest-valid mesh shader permutation.</summary>
     public SilkShaderPermutationId(SilkShaderFeatures features)
@@ -217,6 +227,14 @@ public readonly record struct SilkShaderPermutationId
                 slots,
                 SilkBindingLayoutDescriptor.EmissiveSamplerBinding,
                 SilkBindingLayoutDescriptor.EmissiveTextureBinding);
+            AddTextureSlots(
+                slots,
+                SilkBindingLayoutDescriptor.OpacitySamplerBinding,
+                SilkBindingLayoutDescriptor.OpacityTextureBinding);
+            AddTextureSlots(
+                slots,
+                SilkBindingLayoutDescriptor.OcclusionSamplerBinding,
+                SilkBindingLayoutDescriptor.OcclusionTextureBinding);
         }
         AddTextureSlots(
             slots,
@@ -496,6 +514,10 @@ public readonly record struct SilkBindingLayoutDescriptor(
 
     /// <summary>The metallic texture. See <see cref="MetallicSamplerBinding"/>.</summary>
     internal const uint MetallicTextureBinding = 15;
+    internal const uint OpacitySamplerBinding = 16;
+    internal const uint OpacityTextureBinding = 17;
+    internal const uint OcclusionSamplerBinding = 18;
+    internal const uint OcclusionTextureBinding = 19;
 
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
@@ -571,6 +593,10 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 (MetallicSamplerBinding, MetallicTextureBinding),
             SilkMaterialParameter.EmissiveColor =>
                 (EmissiveSamplerBinding, EmissiveTextureBinding),
+            SilkMaterialParameter.Opacity =>
+                (OpacitySamplerBinding, OpacityTextureBinding),
+            SilkMaterialParameter.Occlusion =>
+                (OcclusionSamplerBinding, OcclusionTextureBinding),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(parameter),
                 parameter,

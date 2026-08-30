@@ -1297,6 +1297,33 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    public async Task OpacityAndOcclusionTexturesUseIndependentRuntimeAndUdimBits()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/OpacityOcclusion",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures:
+            [
+                ScalarTexture(SilkMaterialParameter.Opacity, "opacity.png", SilkTextureChannel.A),
+                ScalarTexture(
+                    SilkMaterialParameter.Occlusion,
+                    "occlusion.<UDIM>.png",
+                    SilkTextureChannel.R),
+            ]));
+
+        await Assert.That(material.GetTextureFeatures()).IsEqualTo(
+            SilkShaderFeatures.Uv |
+            SilkShaderFeatures.OpacityMap |
+            SilkShaderFeatures.OcclusionMap);
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+        await Assert.That(ReadSingle(constants, 128)).IsEqualTo(193f);
+        await Assert.That(ReadSingle(constants, 132)).IsEqualTo(128f);
+    }
+
+    [Test]
     public async Task ScalarTextureChannelsSwizzleIntoEveryComponentOfTheUpload()
     {
         // One multichannel image, four inputs, four different output channels. The

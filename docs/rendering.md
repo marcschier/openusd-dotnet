@@ -243,7 +243,8 @@ both values, so changing only exposure or output transform updates the GPU block
 ### hdSilk shader pipeline cache
 
 Mesh shader variants are addressed by `SilkShaderPermutationId`. Its public flags still identify the actual texture
-inputs (`basecolor`, `normal`, `roughmetal`, `metallic`, and `emissive`) and reject maps without `uv`, but checked
+inputs (`basecolor`, `normal`, `roughmetal`, `metallic`, `emissive`, `opacity`, and `occlusion`) and reject maps without
+`uv`, but checked
 fragment artifacts no longer take their cross-product. Any non-normal map selects the bounded `uv+material` shader;
 a normal map selects `uv+material+normal` because it also changes the vertex output shape. A runtime mask in the
 surface block controls which independently bound slots are sampled. `roughmetal` remains the roughness slot (its name
@@ -557,7 +558,8 @@ compressed Hio formats are rejected with diagnostics rather than reinterpreted o
 Textures are cached per material/asset/colour-space/parameter identity, and backend samplers are reused by
 wrap/filter state. RGBA32Float textures use nearest filtering because linear filtering for that format is
 not portable across the supported RHIs; explicit filter negotiation remains outside the current claim.
-Base-colour, normal, roughness, metallic, emissive, and volume-density textures each bind an independent
+Base-colour, normal, roughness, metallic, emissive, opacity, occlusion, and volume-density textures each bind an
+independent
 sampler slot, so simultaneously active maps preserve their own `wrapS` and `wrapT` values rather than
 letting the final texture bound to a draw overwrite every map's address mode.
 
@@ -589,6 +591,12 @@ neither can disturb the other. A connected map's sampled value replaces the inpu
 it, because a connected input has no constant to modulate — multiplying by the UsdPreviewSurface default
 silently halved roughness and zeroed metallic.
 
+Opacity and occlusion also use independent scalar slots. Opacity uses Vulkan bindings 16/17
+(`s6`/`t5` on D3D12, Metal sampler 6 / texture 5), replaces the authored opacity, drives the existing
+`opacityThreshold` cutout, and is returned as surface alpha. Occlusion uses Vulkan bindings 18/19
+(`s7`/`t10` on D3D12, Metal sampler 7 / texture 10) and replaces the authored direct-light occlusion input.
+Transparent blending remains outside this claim; opacity currently provides cutout and output-alpha semantics.
+
 A packed occlusion/roughness/metallic file is authored as one `UsdUVTexture` prim with two or three
 output connections, which reaches the renderer as several entries naming one asset and different
 channels. Each entry is decoded, swizzled, and uploaded separately, keyed by material path, asset,
@@ -597,8 +605,8 @@ deliberate: sharing one decode across channels is an optimization, and correctne
 selection comes first.
 
 The UDIM status bitmask in `SurfaceParameters.textureControls.y` uses the public texture-feature values:
-`2` base colour, `4` normal, `8` roughness, `16` emissive, and `32` metallic. Roughness and metallic
-have separate slots, so they need separate bits; nothing aliases.
+`2` base colour, `4` normal, `8` roughness, `16` emissive, `32` metallic, `64` opacity, and `128` occlusion.
+Every scalar input has a separate slot, so each needs a separate bit; nothing aliases.
 Ordinary (non-UDIM) material textures upload a full packed mip chain rather than a single level. A
 shared backend-neutral layout stores mip 0 first, then ascending levels in order, each tightly packed
 to `max(1, base >> level)`; `UploadTexture` validates the source against that layout's exact total byte

@@ -100,7 +100,9 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         RegisterDependentObject();
         try
         {
-            CreateRootSignature(program.BindingLayout.Descriptor, out rootSignature);
+            var rootBindingPlan =
+                new D3D12RootBindingPlan(program.BindingLayout.Descriptor);
+            CreateRootSignature(rootBindingPlan, out rootSignature);
             CreatePipelineState(
                 descriptor,
                 program,
@@ -113,7 +115,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 descriptor,
                 rootSignature,
                 pipeline,
-                programLease);
+                programLease,
+                rootBindingPlan);
         }
         finally
         {
@@ -127,56 +130,67 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         }
     }
 
-    private static ShaderVisibility ToD3D12Visibility(SilkShaderStageVisibility visibility)
-    {
-        bool vertex = visibility.HasFlag(SilkShaderStageVisibility.Vertex);
-        bool fragment = visibility.HasFlag(SilkShaderStageVisibility.Fragment);
-        if (vertex && !fragment)
-        {
-            return ShaderVisibility.Vertex;
-        }
-        return !vertex && fragment ? ShaderVisibility.Pixel : ShaderVisibility.All;
-    }
-
     private void CreateRootSignature(
-        SilkBindingLayoutDescriptor layout,
+        D3D12RootBindingPlan plan,
         out ID3D12RootSignature* rootSignature)
     {
-        IReadOnlyList<SilkBindingSlot> slots = layout.MaterialSlots ?? [];
-        // Root parameter 0 stays the SceneParameters CBV at b0 so every existing
-        // pipeline keeps its exact root signature. Material slots become descriptor
-        // ranges in one table each, which is what a descriptor heap binds.
-        int parameterCount = 1 + slots.Count;
+        int parameterCount = checked((int)plan.RootParameterCount);
         RootParameter* parameters = stackalloc RootParameter[parameterCount];
-        DescriptorRange* ranges = stackalloc DescriptorRange[Math.Max(slots.Count, 1)];
+        int rangeCount = checked((int)(plan.SampledTextureCount + plan.SamplerCount));
+        DescriptorRange* ranges = stackalloc DescriptorRange[Math.Max(rangeCount, 1)];
         parameters[0] = new RootParameter(
             RootParameterType.TypeCbv,
             shaderVisibility: ShaderVisibility.All,
             descriptor: new RootDescriptor(0, 0));
-        for (int index = 0; index < slots.Count; index++)
+        int parameterIndex = 1;
+        foreach (SilkBindingSlot slot in plan.BufferSlots)
         {
-            SilkBindingSlot slot = slots[index];
-            if (slot.Kind is SilkBindingKind.UniformBuffer or SilkBindingKind.StorageBuffer)
+            parameters[parameterIndex++] = new RootParameter(
+                slot.Kind == SilkBindingKind.UniformBuffer
+                    ? RootParameterType.TypeCbv
+                    : RootParameterType.TypeSrv,
+                shaderVisibility: ShaderVisibility.All,
+                descriptor: new RootDescriptor(ToD3D12ShaderRegister(slot), slot.Set));
+        }
+
+        int rangeIndex = 0;
+        if (plan.SampledTextureCount != 0)
+        {
+            int tableStart = rangeIndex;
+            foreach (SilkBindingSlot slot in plan.SampledTextureSlots)
             {
-                parameters[index + 1] = new RootParameter(
-                    slot.Kind == SilkBindingKind.UniformBuffer
-                        ? RootParameterType.TypeCbv
-                        : RootParameterType.TypeSrv,
-                    shaderVisibility: ShaderVisibility.All,
-                    descriptor: new RootDescriptor(ToD3D12ShaderRegister(slot), slot.Set));
-                continue;
+                ranges[rangeIndex++] = new DescriptorRange(
+                    DescriptorRangeType.Srv,
+                    1,
+                    ToD3D12ShaderRegister(slot),
+                    slot.Set,
+                    uint.MaxValue);
             }
-            ranges[index] = new DescriptorRange(
-                slot.Kind == SilkBindingKind.SampledTexture
-                    ? DescriptorRangeType.Srv
-                    : DescriptorRangeType.Sampler,
-                1,
-                ToD3D12ShaderRegister(slot),
-                slot.Set);
-            parameters[index + 1] = new RootParameter(
+            parameters[parameterIndex++] = new RootParameter(
                 RootParameterType.TypeDescriptorTable,
-                shaderVisibility: ToD3D12Visibility(slot.Visibility),
-                descriptorTable: new RootDescriptorTable(1, &ranges[index]));
+                shaderVisibility: ShaderVisibility.All,
+                descriptorTable: new RootDescriptorTable(
+                    plan.SampledTextureCount,
+                    &ranges[tableStart]));
+        }
+        if (plan.SamplerCount != 0)
+        {
+            int tableStart = rangeIndex;
+            foreach (SilkBindingSlot slot in plan.SamplerSlots)
+            {
+                ranges[rangeIndex++] = new DescriptorRange(
+                    DescriptorRangeType.Sampler,
+                    1,
+                    ToD3D12ShaderRegister(slot),
+                    slot.Set,
+                    uint.MaxValue);
+            }
+            parameters[parameterIndex] = new RootParameter(
+                RootParameterType.TypeDescriptorTable,
+                shaderVisibility: ShaderVisibility.All,
+                descriptorTable: new RootDescriptorTable(
+                    plan.SamplerCount,
+                    &ranges[tableStart]));
         }
         var description = new RootSignatureDesc(
             (uint)parameterCount,
@@ -432,7 +446,8 @@ internal sealed unsafe class D3D12SilkGraphicsPipeline(
     SilkGraphicsPipelineDescriptor descriptor,
     ID3D12RootSignature* rootSignature,
     ID3D12PipelineState* pipeline,
-    IDisposable programLease)
+    IDisposable programLease,
+    D3D12RootBindingPlan rootBindingPlan)
     : SilkGraphicsResourceBase, ISilkGraphicsPipeline
 {
     private ID3D12RootSignature* _rootSignature = rootSignature;
@@ -453,6 +468,8 @@ internal sealed unsafe class D3D12SilkGraphicsPipeline(
     /// </summary>
     internal SilkBindingLayoutDescriptor BindingLayout { get; } =
         descriptor.Program.BindingLayout.Descriptor;
+
+    internal D3D12RootBindingPlan RootBindingPlan { get; } = rootBindingPlan;
 
     internal IDisposable AcquireLease() => AcquireResourceLease();
 

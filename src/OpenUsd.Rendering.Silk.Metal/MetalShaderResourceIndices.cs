@@ -36,6 +36,8 @@ internal static class MetalShaderResourceIndices
                 SilkBindingLayoutDescriptor.RoughnessMetallicTextureBinding => 2,
                 SilkBindingLayoutDescriptor.EmissiveTextureBinding => 3,
                 SilkBindingLayoutDescriptor.MetallicTextureBinding => 4,
+                SilkBindingLayoutDescriptor.OpacityTextureBinding => 5,
+                SilkBindingLayoutDescriptor.OcclusionTextureBinding => 10,
                 _ => binding
             },
             SilkBindingKind.Sampler => binding switch
@@ -46,6 +48,8 @@ internal static class MetalShaderResourceIndices
                 SilkBindingLayoutDescriptor.EmissiveSamplerBinding => 3,
                 SilkBindingLayoutDescriptor.VolumeSamplerBinding => 4,
                 SilkBindingLayoutDescriptor.MetallicSamplerBinding => 5,
+                SilkBindingLayoutDescriptor.OpacitySamplerBinding => 6,
+                SilkBindingLayoutDescriptor.OcclusionSamplerBinding => 7,
                 _ => binding
             },
             _ => binding

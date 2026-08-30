@@ -79,27 +79,33 @@ internal sealed unsafe class D3D12DescriptorIndexedTextureTables : IDisposable
         }
     }
 
-    internal bool TryCopySampledTexture(
-        CpuDescriptorHandle source,
+    internal bool TryCopySampledTextures(
+        ReadOnlySpan<CpuDescriptorHandle> sources,
         out GpuDescriptorHandle handle)
     {
         lock (_gate)
         {
             if (_resourceHeap == null ||
-                _nextResourceDescriptor >= ResourceDescriptorCapacity)
+                sources.Length == 0 ||
+                _nextResourceDescriptor >
+                    ResourceDescriptorCapacity - (uint)sources.Length)
             {
                 handle = default;
                 return false;
             }
-            uint descriptorIndex = _nextResourceDescriptor++;
-            CpuDescriptorHandle destination = new(
-                _resourceHeap->GetCPUDescriptorHandleForHeapStart().Ptr +
-                (descriptorIndex * _resourceIncrement));
-            _device->CopyDescriptorsSimple(
-                1,
-                destination,
-                source,
-                DescriptorHeapType.CbvSrvUav);
+            uint descriptorIndex = _nextResourceDescriptor;
+            _nextResourceDescriptor += (uint)sources.Length;
+            for (int index = 0; index < sources.Length; index++)
+            {
+                CpuDescriptorHandle destination = new(
+                    _resourceHeap->GetCPUDescriptorHandleForHeapStart().Ptr +
+                    ((descriptorIndex + (uint)index) * _resourceIncrement));
+                _device->CopyDescriptorsSimple(
+                    1,
+                    destination,
+                    sources[index],
+                    DescriptorHeapType.CbvSrvUav);
+            }
             handle = new GpuDescriptorHandle(
                 _resourceHeap->GetGPUDescriptorHandleForHeapStart().Ptr +
                 (descriptorIndex * _resourceIncrement));
@@ -107,27 +113,33 @@ internal sealed unsafe class D3D12DescriptorIndexedTextureTables : IDisposable
         }
     }
 
-    internal bool TryCopySampler(
-        CpuDescriptorHandle source,
+    internal bool TryCopySamplers(
+        ReadOnlySpan<CpuDescriptorHandle> sources,
         out GpuDescriptorHandle handle)
     {
         lock (_gate)
         {
             if (_samplerHeap == null ||
-                _nextSamplerDescriptor >= SamplerDescriptorCapacity)
+                sources.Length == 0 ||
+                _nextSamplerDescriptor >
+                    SamplerDescriptorCapacity - (uint)sources.Length)
             {
                 handle = default;
                 return false;
             }
-            uint descriptorIndex = _nextSamplerDescriptor++;
-            CpuDescriptorHandle destination = new(
-                _samplerHeap->GetCPUDescriptorHandleForHeapStart().Ptr +
-                (descriptorIndex * _samplerIncrement));
-            _device->CopyDescriptorsSimple(
-                1,
-                destination,
-                source,
-                DescriptorHeapType.Sampler);
+            uint descriptorIndex = _nextSamplerDescriptor;
+            _nextSamplerDescriptor += (uint)sources.Length;
+            for (int index = 0; index < sources.Length; index++)
+            {
+                CpuDescriptorHandle destination = new(
+                    _samplerHeap->GetCPUDescriptorHandleForHeapStart().Ptr +
+                    ((descriptorIndex + (uint)index) * _samplerIncrement));
+                _device->CopyDescriptorsSimple(
+                    1,
+                    destination,
+                    sources[index],
+                    DescriptorHeapType.Sampler);
+            }
             handle = new GpuDescriptorHandle(
                 _samplerHeap->GetGPUDescriptorHandleForHeapStart().Ptr +
                 (descriptorIndex * _samplerIncrement));
