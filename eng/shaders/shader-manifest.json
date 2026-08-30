@@ -428,6 +428,34 @@
         },
         {
           "feature": "MAP_MATERIAL",
+          "name": "iorSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 11,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 26,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "iorTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 14,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 27,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
           "name": "emissiveSampler",
           "access": "read",
           "d3d": {

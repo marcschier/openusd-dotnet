@@ -176,7 +176,7 @@ public sealed class SilkGraphicsPipelineTests
             SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap
         ];
 
-        await Assert.That(fragmentFeatures.Length).IsEqualTo(1025);
+        await Assert.That(fragmentFeatures.Length).IsEqualTo(2049);
         foreach (SilkShaderFeatures features in fragmentFeatures)
         {
             var permutation = new SilkShaderPermutationId(features);
@@ -235,7 +235,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(() => new SilkShaderPermutationId(
             SilkShaderFeatures.BaseColorMap)).Throws<ArgumentException>();
         await Assert.That(() => new SilkShaderPermutationId(
-            (SilkShaderFeatures)2048)).Throws<ArgumentOutOfRangeException>();
+            (SilkShaderFeatures)4096)).Throws<ArgumentOutOfRangeException>();
     }
 
     [Test]
@@ -274,6 +274,8 @@ public sealed class SilkGraphicsPipelineTests
                 (23u, SilkBindingKind.SampledTexture),
                 (24u, SilkBindingKind.Sampler),
                 (25u, SilkBindingKind.SampledTexture),
+                (26u, SilkBindingKind.Sampler),
+                (27u, SilkBindingKind.SampledTexture),
             ]);
         layout.Validate();
     }
@@ -316,6 +318,8 @@ public sealed class SilkGraphicsPipelineTests
             (23u, SilkBindingKind.SampledTexture),
             (24u, SilkBindingKind.Sampler),
             (25u, SilkBindingKind.SampledTexture),
+            (26u, SilkBindingKind.Sampler),
+            (27u, SilkBindingKind.SampledTexture),
         ]);
     }
 
@@ -355,6 +359,8 @@ public sealed class SilkGraphicsPipelineTests
             (23u, SilkBindingKind.SampledTexture),
             (24u, SilkBindingKind.Sampler),
             (25u, SilkBindingKind.SampledTexture),
+            (26u, SilkBindingKind.Sampler),
+            (27u, SilkBindingKind.SampledTexture),
         ]);
         layout.Validate();
     }
@@ -414,7 +420,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
         await Assert.That(device.DisposedPipelineCount).IsEqualTo(1);
         await Assert.That(device.CreatedFragmentShaders).IsEqualTo(2);
-        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(21);
+        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(23);
     }
 
     [Test]
@@ -672,7 +678,8 @@ public sealed class SilkGraphicsPipelineTests
             SilkShaderFeatures.OcclusionMap,
             SilkShaderFeatures.SpecularColorMap,
             SilkShaderFeatures.ClearcoatMap,
-            SilkShaderFeatures.ClearcoatRoughnessMap
+            SilkShaderFeatures.ClearcoatRoughnessMap,
+            SilkShaderFeatures.IorMap
         ];
         var features = new List<SilkShaderFeatures>
         {

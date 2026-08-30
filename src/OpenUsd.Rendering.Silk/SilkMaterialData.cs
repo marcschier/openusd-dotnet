@@ -295,6 +295,10 @@ public sealed class SilkMaterialData
         {
             features |= SilkShaderFeatures.ClearcoatRoughnessMap;
         }
+        if (GetTexture(SilkMaterialParameter.Ior) is not null)
+        {
+            features |= SilkShaderFeatures.IorMap;
+        }
         return features == SilkShaderFeatures.None
             ? features
             : features | SilkShaderFeatures.Uv;

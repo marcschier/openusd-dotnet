@@ -1292,6 +1292,7 @@ OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.BaseColorMap = 2 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.ClearcoatMap = 512 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.ClearcoatRoughnessMap = 1024 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
+OpenUsd.Rendering.Silk.SilkShaderFeatures.IorMap = 2048 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.EmissiveMap = 16 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.MetallicMap = 32 -> OpenUsd.Rendering.Silk.SilkShaderFeatures
 OpenUsd.Rendering.Silk.SilkShaderFeatures.None = 0 -> OpenUsd.Rendering.Silk.SilkShaderFeatures

@@ -125,6 +125,7 @@ struct KernelContext_0
     float roughness_0 = clamp(_S13.y, 0.00999999977648258f, 1.0f);
     float4 _S14 = float4(_S3->specularIor_0) ;
     float3 specularColor_0 = _S14.xyz;
+    float ior_0 = _S14.w;
     float _S15 = _S8.x;
     float clearcoatRoughness_0 = _S8.y;
     float opacityThreshold_0 = _S13.z;
@@ -164,55 +165,54 @@ struct KernelContext_0
     float _S17 = saturate(abs(dot(normal_2, _S16)) + 0.00000999999974738f);
     float _S18 = max(0.00100000004749745f, roughness_0);
     float _S19 = max(0.00100000004749745f, clearcoatRoughness_0);
-    float _S20 = _S14.w;
-    float reflectanceRatio_0 = (1.0f - _S20) / (1.0f + _S20);
-    float3 _S21 = float3(3.14159274101257324f) ;
-    float3 diffuse_0 = diffuseColor_0 / _S21;
+    float reflectanceRatio_0 = (1.0f - ior_0) / (1.0f + ior_0);
+    float3 _S20 = float3(3.14159274101257324f) ;
+    float3 diffuse_0 = diffuseColor_0 / _S20;
     float3 normalIncidence_0;
     float3 grazingIncidence_0;
     float3 diffuse_1;
     if((_S13.w) >= 0.5f)
     {
-        float3 _S22 = float3(1.0f, 1.0f, 1.0f);
+        float3 _S21 = float3(1.0f, 1.0f, 1.0f);
         normalIncidence_0 = specularColor_0;
-        grazingIncidence_0 = _S22;
+        grazingIncidence_0 = _S21;
         diffuse_1 = diffuse_0;
     }
     else
     {
-        float3 _S23 = float3(metallic_0) ;
-        float3 specularTint_0 = mix(float3(1.0f, 1.0f, 1.0f), diffuseColor_0, _S23);
+        float3 _S22 = float3(metallic_0) ;
+        float3 specularTint_0 = mix(float3(1.0f, 1.0f, 1.0f), diffuseColor_0, _S22);
         float3 diffuse_2 = diffuse_0 * float3((1.0f - metallic_0)) ;
-        normalIncidence_0 = mix(float3((reflectanceRatio_0 * reflectanceRatio_0))  * specularTint_0, specularTint_0, _S23);
+        normalIncidence_0 = mix(float3((reflectanceRatio_0 * reflectanceRatio_0))  * specularTint_0, specularTint_0, _S22);
         grazingIncidence_0 = specularTint_0;
         diffuse_1 = diffuse_2;
     }
-    float4 _S24 = float4(_S4->ambientLight_0) ;
-    float _S25 = _S24.w;
-    if(_S25 > 0.5f)
+    float4 _S23 = float4(_S4->ambientLight_0) ;
+    float _S24 = _S23.w;
+    if(_S24 > 0.5f)
     {
         hasSceneLighting_0 = true;
     }
     else
     {
-        float3 _S26 = _S24.xyz;
-        hasSceneLighting_0 = (dot(_S26, _S26)) > 0.0f;
+        float3 _S25 = _S23.xyz;
+        hasSceneLighting_0 = (dot(_S25, _S25)) > 0.0f;
     }
-    uint _S27 = min(uint(_S25), 8U);
-    matrix<float,int(4),int(4)>  _S28 = matrix<float,int(4),int(4)> (_S4->eyeToWorld_0.data_0[int(0)][int(0)], _S4->eyeToWorld_0.data_0[int(0)][int(1)], _S4->eyeToWorld_0.data_0[int(0)][int(2)], _S4->eyeToWorld_0.data_0[int(0)][int(3)], _S4->eyeToWorld_0.data_0[int(1)][int(0)], _S4->eyeToWorld_0.data_0[int(1)][int(1)], _S4->eyeToWorld_0.data_0[int(1)][int(2)], _S4->eyeToWorld_0.data_0[int(1)][int(3)], _S4->eyeToWorld_0.data_0[int(2)][int(0)], _S4->eyeToWorld_0.data_0[int(2)][int(1)], _S4->eyeToWorld_0.data_0[int(2)][int(2)], _S4->eyeToWorld_0.data_0[int(2)][int(3)], _S4->eyeToWorld_0.data_0[int(3)][int(0)], _S4->eyeToWorld_0.data_0[int(3)][int(1)], _S4->eyeToWorld_0.data_0[int(3)][int(2)], _S4->eyeToWorld_0.data_0[int(3)][int(3)]);
-    float3 _S29 = normalize((((float4(_S16, 0.0f)) * (_S28))).xyz);
-    float3 _S30 = (((float4(_S1.eyePosition_0, 1.0f)) * (_S28))).xyz;
-    float4 _S31 = float4(_S3->lightColorAmbient_0) ;
-    float3 color_0 = diffuseColor_0 * float3(_S31.w)  + diffuseColor_0 * _S24.xyz;
-    bool _S32 = !hasSceneLighting_0;
+    uint _S26 = min(uint(_S24), 8U);
+    matrix<float,int(4),int(4)>  _S27 = matrix<float,int(4),int(4)> (_S4->eyeToWorld_0.data_0[int(0)][int(0)], _S4->eyeToWorld_0.data_0[int(0)][int(1)], _S4->eyeToWorld_0.data_0[int(0)][int(2)], _S4->eyeToWorld_0.data_0[int(0)][int(3)], _S4->eyeToWorld_0.data_0[int(1)][int(0)], _S4->eyeToWorld_0.data_0[int(1)][int(1)], _S4->eyeToWorld_0.data_0[int(1)][int(2)], _S4->eyeToWorld_0.data_0[int(1)][int(3)], _S4->eyeToWorld_0.data_0[int(2)][int(0)], _S4->eyeToWorld_0.data_0[int(2)][int(1)], _S4->eyeToWorld_0.data_0[int(2)][int(2)], _S4->eyeToWorld_0.data_0[int(2)][int(3)], _S4->eyeToWorld_0.data_0[int(3)][int(0)], _S4->eyeToWorld_0.data_0[int(3)][int(1)], _S4->eyeToWorld_0.data_0[int(3)][int(2)], _S4->eyeToWorld_0.data_0[int(3)][int(3)]);
+    float3 _S28 = normalize((((float4(_S16, 0.0f)) * (_S27))).xyz);
+    float3 _S29 = (((float4(_S1.eyePosition_0, 1.0f)) * (_S27))).xyz;
+    float4 _S30 = float4(_S3->lightColorAmbient_0) ;
+    float3 color_0 = diffuseColor_0 * float3(_S30.w)  + diffuseColor_0 * _S23.xyz;
+    bool _S31 = !hasSceneLighting_0;
     uint lightCount_0;
-    if(_S32)
+    if(_S31)
     {
         lightCount_0 = 1U;
     }
     else
     {
-        lightCount_0 = _S27;
+        lightCount_0 = _S26;
     }
     uint lightIndex_0 = 0U;
     float3 color_1 = color_0;
@@ -225,10 +225,10 @@ struct KernelContext_0
         {
             break;
         }
-        bool _S33 = lightIndex_0 == 0U;
-        if(_S33)
+        bool _S32 = lightIndex_0 == 0U;
+        if(_S32)
         {
-            hasSceneLighting_0 = _S32;
+            hasSceneLighting_0 = _S31;
         }
         else
         {
@@ -243,17 +243,17 @@ struct KernelContext_0
         {
             lightType_0 = (float4((&_S4->lightPositionType_0)->data_1[lightIndex_0]) ).w;
         }
-        bool _S34;
-        if(_S33)
+        bool _S33;
+        if(_S32)
         {
-            _S34 = _S32;
+            _S33 = _S31;
         }
         else
         {
-            _S34 = false;
+            _S33 = false;
         }
         float3 lightDirection_0;
-        if(_S34)
+        if(_S33)
         {
             lightDirection_0 = normalize((float4(_S3->lightDirectionIntensity_0) ).xyz);
         }
@@ -261,88 +261,88 @@ struct KernelContext_0
         {
             lightDirection_0 = normalize((float4((&_S4->lightDirectionRadius_0)->data_1[lightIndex_0]) ).xyz);
         }
-        bool _S35;
-        if(_S33)
+        bool _S34;
+        if(_S32)
         {
-            _S35 = _S32;
+            _S34 = _S31;
         }
         else
         {
-            _S35 = false;
+            _S34 = false;
         }
-        float _S36;
-        if(_S35)
+        float _S35;
+        if(_S34)
         {
-            _S36 = (float4(_S3->lightDirectionIntensity_0) ).w;
-        }
-        else
-        {
-            _S36 = (float4((&_S4->lightColorIntensity_0)->data_1[lightIndex_0]) ).w;
-        }
-        bool _S37;
-        if(_S33)
-        {
-            _S37 = _S32;
+            _S35 = (float4(_S3->lightDirectionIntensity_0) ).w;
         }
         else
         {
-            _S37 = false;
+            _S35 = (float4((&_S4->lightColorIntensity_0)->data_1[lightIndex_0]) ).w;
         }
-        if(_S37)
+        bool _S36;
+        if(_S32)
         {
-            diffuseColor_0 = _S31.xyz;
+            _S36 = _S31;
+        }
+        else
+        {
+            _S36 = false;
+        }
+        if(_S36)
+        {
+            diffuseColor_0 = _S30.xyz;
         }
         else
         {
             diffuseColor_0 = (float4((&_S4->lightColorIntensity_0)->data_1[lightIndex_0]) ).xyz;
         }
-        bool _S38;
-        if(_S33)
+        bool _S37;
+        if(_S32)
         {
-            _S38 = _S32;
+            _S37 = _S31;
         }
         else
         {
-            _S38 = false;
+            _S37 = false;
         }
-        float _S39;
-        if(_S38)
+        float _S38;
+        if(_S37)
         {
-            _S39 = 1.0f;
-        }
-        else
-        {
-            _S39 = (float4((&_S4->lightControls_0)->data_1[lightIndex_0]) ).x;
-        }
-        bool _S40;
-        if(_S33)
-        {
-            _S40 = _S32;
+            _S38 = 1.0f;
         }
         else
         {
-            _S40 = false;
+            _S38 = (float4((&_S4->lightControls_0)->data_1[lightIndex_0]) ).x;
         }
-        float _S41;
-        if(_S40)
+        bool _S39;
+        if(_S32)
         {
-            _S41 = 1.0f;
-        }
-        else
-        {
-            _S41 = (float4((&_S4->lightControls_0)->data_1[lightIndex_0]) ).y;
-        }
-        bool _S42;
-        if(_S33)
-        {
-            _S42 = _S32;
+            _S39 = _S31;
         }
         else
         {
-            _S42 = false;
+            _S39 = false;
+        }
+        float _S40;
+        if(_S39)
+        {
+            _S40 = 1.0f;
+        }
+        else
+        {
+            _S40 = (float4((&_S4->lightControls_0)->data_1[lightIndex_0]) ).y;
+        }
+        bool _S41;
+        if(_S32)
+        {
+            _S41 = _S31;
+        }
+        else
+        {
+            _S41 = false;
         }
         float3 lightTangent_0;
-        if(_S42)
+        if(_S41)
         {
             lightTangent_0 = float3(1.0f, 0.0f, 0.0f);
         }
@@ -350,17 +350,17 @@ struct KernelContext_0
         {
             lightTangent_0 = normalize((float4((&_S4->lightTangentShapeX_0)->data_1[lightIndex_0]) ).xyz);
         }
-        bool _S43;
-        if(_S33)
+        bool _S42;
+        if(_S32)
         {
-            _S43 = _S32;
+            _S42 = _S31;
         }
         else
         {
-            _S43 = false;
+            _S42 = false;
         }
         float3 lightBitangent_0;
-        if(_S43)
+        if(_S42)
         {
             lightBitangent_0 = float3(0.0f, 1.0f, 0.0f);
         }
@@ -368,17 +368,17 @@ struct KernelContext_0
         {
             lightBitangent_0 = normalize((float4((&_S4->lightBitangentShapeY_0)->data_1[lightIndex_0]) ).xyz);
         }
-        bool _S44;
-        if(_S33)
+        bool _S43;
+        if(_S32)
         {
-            _S44 = _S32;
+            _S43 = _S31;
         }
         else
         {
-            _S44 = false;
+            _S43 = false;
         }
         float shapeX_0;
-        if(_S44)
+        if(_S43)
         {
             shapeX_0 = 0.0f;
         }
@@ -386,17 +386,17 @@ struct KernelContext_0
         {
             shapeX_0 = (float4((&_S4->lightTangentShapeX_0)->data_1[lightIndex_0]) ).w;
         }
-        bool _S45;
-        if(_S33)
+        bool _S44;
+        if(_S32)
         {
-            _S45 = _S32;
+            _S44 = _S31;
         }
         else
         {
-            _S45 = false;
+            _S44 = false;
         }
         float shapeY_0;
-        if(_S45)
+        if(_S44)
         {
             shapeY_0 = 0.0f;
         }
@@ -404,17 +404,17 @@ struct KernelContext_0
         {
             shapeY_0 = (float4((&_S4->lightBitangentShapeY_0)->data_1[lightIndex_0]) ).w;
         }
-        bool _S46;
-        if(_S33)
+        bool _S45;
+        if(_S32)
         {
-            _S46 = _S32;
+            _S45 = _S31;
         }
         else
         {
-            _S46 = false;
+            _S45 = false;
         }
         float lightRadius_0;
-        if(_S46)
+        if(_S45)
         {
             lightRadius_0 = 0.0f;
         }
@@ -422,31 +422,31 @@ struct KernelContext_0
         {
             lightRadius_0 = (float4((&_S4->lightDirectionRadius_0)->data_1[lightIndex_0]) ).w;
         }
-        bool _S47;
-        if(_S33)
+        bool _S46;
+        if(_S32)
         {
-            _S47 = _S32;
+            _S46 = _S31;
         }
         else
         {
-            _S47 = false;
+            _S46 = false;
         }
-        float3 _S48;
-        if(_S47)
+        float3 _S47;
+        if(_S46)
         {
-            _S48 = _S16;
+            _S47 = _S16;
         }
         else
         {
-            _S48 = _S29;
+            _S47 = _S28;
         }
         thread array<float3, int(5)> sampleOffsets_0;
-        float3 _S49 = float3(0.0f, 0.0f, 0.0f);
-        sampleOffsets_0[int(0)] = _S49;
-        sampleOffsets_0[int(1)] = _S49;
-        sampleOffsets_0[int(2)] = _S49;
-        sampleOffsets_0[int(3)] = _S49;
-        sampleOffsets_0[int(4)] = _S49;
+        float3 _S48 = float3(0.0f, 0.0f, 0.0f);
+        sampleOffsets_0[int(0)] = _S48;
+        sampleOffsets_0[int(1)] = _S48;
+        sampleOffsets_0[int(2)] = _S48;
+        sampleOffsets_0[int(3)] = _S48;
+        sampleOffsets_0[int(4)] = _S48;
         float sampleCount_0;
         if(lightType_0 == 3.0f)
         {
@@ -454,9 +454,9 @@ struct KernelContext_0
             float3 halfHeight_0 = lightBitangent_0 * float3((shapeY_0 * 0.5f)) ;
             sampleOffsets_0[int(1)] = halfWidth_0 + halfHeight_0;
             sampleOffsets_0[int(2)] = halfWidth_0 - halfHeight_0;
-            float3 _S50 = - halfWidth_0;
-            sampleOffsets_0[int(3)] = _S50 + halfHeight_0;
-            sampleOffsets_0[int(4)] = _S50 - halfHeight_0;
+            float3 _S49 = - halfWidth_0;
+            sampleOffsets_0[int(3)] = _S49 + halfHeight_0;
+            sampleOffsets_0[int(4)] = _S49 - halfHeight_0;
             sampleCount_0 = 5.0f;
         }
         else
@@ -500,16 +500,16 @@ struct KernelContext_0
                 sampleIndex_0 = sampleIndex_0 + 1U;
                 continue;
             }
-            float sampleIntensity_0 = _S36 / sampleCount_0;
+            float sampleIntensity_0 = _S35 / sampleCount_0;
             float3 sampleDirection_0;
             float emissionScale_0;
             float sampleIntensity_1;
             if(lightType_0 >= 2.0f)
             {
-                float3 toLight_0 = (float4((&_S4->lightPositionType_0)->data_1[lightIndex_0]) ).xyz + sampleOffsets_0[sampleIndex_0] - _S30;
-                float _S51 = max(dot(toLight_0, toLight_0), 0.00100000004749745f);
-                float3 sampleDirection_1 = toLight_0 * float3(rsqrt(_S51)) ;
-                float sampleIntensity_2 = sampleIntensity_0 / _S51;
+                float3 toLight_0 = (float4((&_S4->lightPositionType_0)->data_1[lightIndex_0]) ).xyz + sampleOffsets_0[sampleIndex_0] - _S29;
+                float _S50 = max(dot(toLight_0, toLight_0), 0.00100000004749745f);
+                float3 sampleDirection_1 = toLight_0 * float3(rsqrt(_S50)) ;
+                float sampleIntensity_2 = sampleIntensity_0 / _S50;
                 if(lightType_0 == 4.0f)
                 {
                     emissionScale_0 = saturate(dot(lightDirection_0, - sampleDirection_1));
@@ -527,36 +527,36 @@ struct KernelContext_0
                 emissionScale_0 = 1.0f;
                 sampleIntensity_1 = sampleIntensity_0;
             }
-            float3 half_0 = normalize(sampleDirection_0 + _S48);
+            float3 half_0 = normalize(sampleDirection_0 + _S47);
             float normalDotLight_0 = saturate(dot(normal_2, sampleDirection_0));
             float normalDotHalf_0 = saturate(dot(normal_2, half_0));
-            float3 _S52 = float3(pow(max(0.0f, 1.0f - saturate(dot(_S48, half_0))), 5.0f)) ;
-            float3 _S53 = mix(normalIncidence_0, grazingIncidence_0, _S52);
-            float3 directDiffuse_0 = diffuse_1 * (float3(1.0f)  - _S53);
+            float3 _S51 = float3(pow(max(0.0f, 1.0f - saturate(dot(_S47, half_0))), 5.0f)) ;
+            float3 _S52 = mix(normalIncidence_0, grazingIncidence_0, _S51);
+            float3 directDiffuse_0 = diffuse_1 * (float3(1.0f)  - _S52);
             float alpha_0 = _S18 * _S18;
             float alphaSquared_0 = alpha_0 * alpha_0;
-            float _S54 = normalDotHalf_0 * normalDotHalf_0;
-            float denominator_0 = _S54 * (alphaSquared_0 - 1.0f) + 1.0f;
+            float _S53 = normalDotHalf_0 * normalDotHalf_0;
+            float denominator_0 = _S53 * (alphaSquared_0 - 1.0f) + 1.0f;
             float k_0 = alpha_0 * 0.5f;
-            float _S55 = 1.0f - k_0;
-            float3 _S56 = float3((4.0f * normalDotLight_0 * _S17 + 0.00100000004749745f)) ;
-            float3 _S57 = _S53 * float3((_S17 / (_S17 * _S55 + k_0) * (normalDotLight_0 / (normalDotLight_0 * _S55 + k_0))))  * float3(((alphaSquared_0 + 0.00100000004749745f) / (denominator_0 * denominator_0 * 3.14159274101257324f)))  / _S56;
+            float _S54 = 1.0f - k_0;
+            float3 _S55 = float3((4.0f * normalDotLight_0 * _S17 + 0.00100000004749745f)) ;
+            float3 _S56 = _S52 * float3((_S17 / (_S17 * _S54 + k_0) * (normalDotLight_0 / (normalDotLight_0 * _S54 + k_0))))  * float3(((alphaSquared_0 + 0.00100000004749745f) / (denominator_0 * denominator_0 * 3.14159274101257324f)))  / _S55;
             float3 directSpecular_0;
             if(_S15 > 0.0f)
             {
                 float alpha_1 = _S19 * _S19;
                 float alphaSquared_1 = alpha_1 * alpha_1;
-                float denominator_1 = _S54 * (alphaSquared_1 - 1.0f) + 1.0f;
+                float denominator_1 = _S53 * (alphaSquared_1 - 1.0f) + 1.0f;
                 float k_1 = alpha_1 * 0.5f;
-                float _S58 = 1.0f - k_1;
-                directSpecular_0 = _S57 + float3(_S15)  * (mix(float3((reflectanceRatio_0 * reflectanceRatio_0)) , float3(1.0f, 1.0f, 1.0f), _S52) * float3((_S17 / (_S17 * _S58 + k_1) * (normalDotLight_0 / (normalDotLight_0 * _S58 + k_1))))  * float3(((alphaSquared_1 + 0.00100000004749745f) / (denominator_1 * denominator_1 * 3.14159274101257324f)))  / _S56);
+                float _S57 = 1.0f - k_1;
+                directSpecular_0 = _S56 + float3(_S15)  * (mix(float3((reflectanceRatio_0 * reflectanceRatio_0)) , float3(1.0f, 1.0f, 1.0f), _S51) * float3((_S17 / (_S17 * _S57 + k_1) * (normalDotLight_0 / (normalDotLight_0 * _S57 + k_1))))  * float3(((alphaSquared_1 + 0.00100000004749745f) / (denominator_1 * denominator_1 * 3.14159274101257324f)))  / _S55);
             }
             else
             {
-                directSpecular_0 = _S57;
+                directSpecular_0 = _S56;
             }
-            float3 _S59 = diffuseColor_0 * float3(sampleIntensity_1) ;
-            color_2 = color_2 + float3((_S10 * emissionScale_0 * normalDotLight_0))  * (directDiffuse_0 * float3(_S39)  * (_S59 * _S21) + directSpecular_0 * float3(_S41)  * _S59);
+            float3 _S58 = diffuseColor_0 * float3(sampleIntensity_1) ;
+            color_2 = color_2 + float3((_S10 * emissionScale_0 * normalDotLight_0))  * (directDiffuse_0 * float3(_S38)  * (_S58 * _S20) + directSpecular_0 * float3(_S40)  * _S58);
             sampleIndex_0 = sampleIndex_0 + 1U;
         }
         lightIndex_0 = lightIndex_0 + 1U;
@@ -571,7 +571,7 @@ struct KernelContext_0
     {
         color_1 = color_3;
     }
-    pixelOutput_0 _S60 = { float4(color_1, opacity_0) };
-    return _S60;
+    pixelOutput_0 _S59 = { float4(color_1, opacity_0) };
+    return _S59;
 }
 

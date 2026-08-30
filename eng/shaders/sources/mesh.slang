@@ -127,6 +127,10 @@ SamplerState clearcoatSampler : register(s9);
 SamplerState clearcoatRoughnessSampler : register(s10);
 #endif
 #if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(26, 0)]]
+SamplerState iorSampler : register(s11);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(12, 0)]]
 SamplerState emissiveSampler : register(s3);
 #endif
@@ -169,6 +173,10 @@ Texture2D<float4> clearcoatTexture : register(t12);
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(25, 0)]]
 Texture2D<float4> clearcoatRoughnessTexture : register(t13);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(27, 0)]]
+Texture2D<float4> iorTexture : register(t14);
 #endif
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(5, 0)]]
@@ -383,6 +391,7 @@ float4 FRAGMENT_ENTRY_POINT(
     float metallic = saturate(surface.metallicRoughnessThresholdWorkflow.x);
     float roughness = clamp(surface.metallicRoughnessThresholdWorkflow.y, 0.01, 1.0);
     float3 specularColor = surface.specularIor.rgb;
+    float ior = surface.specularIor.a;
     float clearcoatAmount = surface.clearcoatShaded.x;
     float clearcoatRoughness = surface.clearcoatShaded.y;
     float3 shadingNormal = input.normal;
@@ -497,6 +506,14 @@ float4 FRAGMENT_ENTRY_POINT(
                 input.texCoord,
                 (udimMask & 1024u) != 0).r);
     }
+    if ((textureMask & 2048u) != 0)
+    {
+        ior = SampleMaterialTexture(
+                iorTexture,
+                iorSampler,
+                input.texCoord,
+                (udimMask & 2048u) != 0).r;
+    }
 #endif
 
     float opacityThreshold = surface.metallicRoughnessThresholdWorkflow.z;
@@ -517,7 +534,7 @@ float4 FRAGMENT_ENTRY_POINT(
     float specularRoughness = max(0.001, roughness);
     clearcoatRoughness = max(0.001, clearcoatRoughness);
     float reflectanceRatio =
-        (1.0 - surface.specularIor.a) / (1.0 + surface.specularIor.a);
+        (1.0 - ior) / (1.0 + ior);
 
     // Diffuse carries the 1/pi Lambert normalization, exactly as Storm's
     // evaluateDirectDiffuse does; the light supplies the matching pi of irradiance.

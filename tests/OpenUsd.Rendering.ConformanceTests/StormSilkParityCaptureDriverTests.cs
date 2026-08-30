@@ -1702,6 +1702,10 @@ def Xform "World"
             SilkMaterialParameter.Clearcoat,
             SilkMaterialParameter.ClearcoatRoughness);
 
+    [Test]
+    public async Task IorTextureSlotRendersIndependentlyOnD3D12() =>
+        await RenderTextureSlotsIndependentlyOnD3D12(SilkMaterialParameter.Ior);
+
     private static async Task RenderTextureSlotsIndependentlyOnD3D12(
         params SilkMaterialParameter[] parameters)
     {
@@ -2743,6 +2747,23 @@ def Xform "World"
                 // Keep the gate above backend rounding while retaining the physical
                 // scale of the secondary dielectric lobe.
                 MinimumDivergence: 1),
+            new(
+                "texture-slot-ior",
+                SilkMaterialParameter.Ior,
+                SilkColorSpace.Raw,
+                [1, 1, 1, 1],
+                [0, 0, 0, 1],
+                [
+                    new(SilkMaterialParameter.DiffuseColor, [0.08f, 0.08f, 0.08f]),
+                    new(SilkMaterialParameter.Roughness, [0.35f]),
+                    new(SilkMaterialParameter.Ior, [1.0f]),
+                ],
+                [
+                    new(SilkMaterialParameter.DiffuseColor, [0.08f, 0.08f, 0.08f]),
+                    new(SilkMaterialParameter.Roughness, [0.35f]),
+                    new(SilkMaterialParameter.Ior, [1.0f]),
+                ],
+                SilkTextureChannel.R),
         ];
     }
 

@@ -165,7 +165,10 @@ public enum SilkShaderFeatures
     ClearcoatMap = 512,
 
     /// <summary>A clearcoat-roughness texture is bound.</summary>
-    ClearcoatRoughnessMap = 1024
+    ClearcoatRoughnessMap = 1024,
+
+    /// <summary>An index-of-refraction texture is bound.</summary>
+    IorMap = 2048
 }
 
 /// <summary>Stable mesh shader permutation identifier.</summary>
@@ -182,7 +185,8 @@ public readonly record struct SilkShaderPermutationId
         SilkShaderFeatures.OcclusionMap |
         SilkShaderFeatures.SpecularColorMap |
         SilkShaderFeatures.ClearcoatMap |
-        SilkShaderFeatures.ClearcoatRoughnessMap;
+        SilkShaderFeatures.ClearcoatRoughnessMap |
+        SilkShaderFeatures.IorMap;
     private const SilkShaderFeatures MapFeatures =
         SilkShaderFeatures.BaseColorMap |
         SilkShaderFeatures.NormalMap |
@@ -193,7 +197,8 @@ public readonly record struct SilkShaderPermutationId
         SilkShaderFeatures.OcclusionMap |
         SilkShaderFeatures.SpecularColorMap |
         SilkShaderFeatures.ClearcoatMap |
-        SilkShaderFeatures.ClearcoatRoughnessMap;
+        SilkShaderFeatures.ClearcoatRoughnessMap |
+        SilkShaderFeatures.IorMap;
 
     /// <summary>Initializes a manifest-valid mesh shader permutation.</summary>
     public SilkShaderPermutationId(SilkShaderFeatures features)
@@ -262,6 +267,10 @@ public readonly record struct SilkShaderPermutationId
                 slots,
                 SilkBindingLayoutDescriptor.ClearcoatRoughnessSamplerBinding,
                 SilkBindingLayoutDescriptor.ClearcoatRoughnessTextureBinding);
+            AddTextureSlots(
+                slots,
+                SilkBindingLayoutDescriptor.IorSamplerBinding,
+                SilkBindingLayoutDescriptor.IorTextureBinding);
         }
         AddTextureSlots(
             slots,
@@ -551,6 +560,8 @@ public readonly record struct SilkBindingLayoutDescriptor(
     internal const uint ClearcoatTextureBinding = 23;
     internal const uint ClearcoatRoughnessSamplerBinding = 24;
     internal const uint ClearcoatRoughnessTextureBinding = 25;
+    internal const uint IorSamplerBinding = 26;
+    internal const uint IorTextureBinding = 27;
 
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
@@ -636,6 +647,8 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 (ClearcoatSamplerBinding, ClearcoatTextureBinding),
             SilkMaterialParameter.ClearcoatRoughness =>
                 (ClearcoatRoughnessSamplerBinding, ClearcoatRoughnessTextureBinding),
+            SilkMaterialParameter.Ior =>
+                (IorSamplerBinding, IorTextureBinding),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(parameter),
                 parameter,

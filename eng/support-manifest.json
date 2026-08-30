@@ -627,7 +627,7 @@
         },
         {
           "id": "preview-surface-textures",
-          "description": "UsdPreviewSurface map binding on all three RHIs through OpenUSD Hio: typed decode, ordinary-image mip chains with normal renormalization, 1-4 channel expansion, missing-asset fallbacks, explicit connected UsdUVTexture output channels (r/g/b/a/rgb) honoured after scale/bias, fully independent roughness, metallic, opacity, occlusion, specularColor, clearcoat, and clearcoatRoughness inputs each with their own feature bit, texture, sampler, backend register, and UDIM mask bit, and the uniform useSpecularWorkflow selector",
+          "description": "UsdPreviewSurface map binding on all three RHIs through OpenUSD Hio: typed decode, ordinary-image mip chains with normal renormalization, 1-4 channel expansion, missing-asset fallbacks, explicit connected UsdUVTexture output channels (r/g/b/a/rgb) honoured after scale/bias, fully independent roughness, metallic, opacity, occlusion, specularColor, clearcoat, clearcoatRoughness, and ior inputs each with their own feature bit, texture, sampler, backend register, and UDIM mask bit, and the uniform useSpecularWorkflow selector",
           "status": "workflow-gated",
           "evidenceWorkflows": ["render.yml"],
           "evidenceWorkflowJobs": {
