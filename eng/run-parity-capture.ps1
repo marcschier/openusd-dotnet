@@ -554,14 +554,10 @@ try
         'SilkFrameCaptureRefusesToCaptureABlankFrameFromASynchronizedSession',
         'SilkFrameCaptureReturnsBlankFrameForEmptyUnsynchronizedSession',
         'SilkFrameCaptureRetainedRendersTheSceneALiveRendererSynchronized',
-        'SilkFrameCaptureAppliesOcioDisplayTransform',
-        'MixedTextureSlotWrapModesRemainIndependentOnD3D12',
         'OpacityAndOcclusionTextureSlotsRenderIndependentlyOnD3D12',
         'SpecularColorTextureSlotRendersIndependentlyOnD3D12',
         'ClearcoatTextureSlotsRenderIndependentlyOnD3D12',
         'IorTextureSlotRendersIndependentlyOnD3D12',
-        'FloatTexturePreservesHdrBeforeScaleOnD3D12',
-        'SparseUdimTilesAndFallbackRenderOnD3D12',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12')
     $macosCglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
