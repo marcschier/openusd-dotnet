@@ -5749,7 +5749,7 @@ int main(int argc, char** argv)
     openusd_stage_release(stage);
     std::cout << "Geometry values passed.\n";
 
-    const std::filesystem::path usdGeomPath = directory / "native-usdgeom.usda";
+    const std::filesystem::path usdGeomPath = directory / "native-usdgeom-probe.usda";
     std::filesystem::remove(usdGeomPath);
     stage = nullptr;
     const int32_t geomCounts[] = {4};
@@ -6025,6 +6025,20 @@ int main(int argc, char** argv)
         return 66;
     }
 
+    if (openusd_geom_imageable_set_visibility(
+            stage,
+            "/World/Mesh",
+            OPENUSD_GEOM_VISIBILITY_INHERITED,
+            0,
+            0,
+            &error) != OPENUSD_STATUS_OK ||
+        openusd_stage_save(stage, &error) != OPENUSD_STATUS_OK)
+    {
+        openusd_stage_release(stage);
+        std::cerr << "Could not restore visible native UsdGeom fixture state.\n";
+        return 66;
+    }
+
     const int32_t malformedCounts[] = {3};
     const openusd_vec2f invalidClippingRange{10.0F, 1.0F};
     if (openusd_geom_mesh_set_topology(
@@ -6144,6 +6158,7 @@ int main(int argc, char** argv)
         return 68;
     }
     openusd_stage_release(stage);
+    std::filesystem::remove(usdGeomPath);
     std::cout << "UsdGeom facade passed.\n";
 
     const std::filesystem::path usdShadePath = directory / "native-usdshade-authored.usda";
