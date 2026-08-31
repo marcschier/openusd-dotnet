@@ -131,7 +131,7 @@ internal sealed class CpuDomainFixture : IDisposable
     /// The page is immutable and is safe to compose from many threads at once, which is what lets
     /// the concurrency test build several worlds from one extraction. Opening a stage is
     /// serialized instead, because the test host runs whole tests in parallel and the USD stage
-    /// cache and plugin registry behind <see cref="UsdStage.Open"/> are process wide.
+    /// cache and plugin registry behind <see cref="UsdStage.Open(string)"/> are process wide.
     /// </remarks>
     internal UsdPhysicsExtractionPage Extract()
     {

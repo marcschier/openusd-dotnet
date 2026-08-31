@@ -21,7 +21,6 @@ def Xform "World"
             10: [(-2, -1, 0), (2, -1, 0), (2, 1, 0), (-2, 1, 0)],
         }
         uniform token subdivisionScheme = "none"
-        token visibility = "invisible"
     }
 
     def Camera "Camera"
@@ -35,4 +34,3 @@ def Xform "World"
         uniform token[] xformOpOrder = ["xformOp:transform"]
     }
 }
-

@@ -1,6 +1,8 @@
 add_executable(
     hdsilk_probe
     hdsilk_probe.cpp
+    ../src/curveWidths.cpp
+    ../src/material.cpp
     ../src/materialXBridge.cpp
     ../src/sceneState.cpp)
 target_compile_features(hdsilk_probe PRIVATE cxx_std_17)

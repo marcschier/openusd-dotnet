@@ -16,13 +16,13 @@ public sealed class NativeContractTests
     }
 
     [Test]
-    public async Task DataAbiFifteenRequiresAllSchemaCapabilities()
+    public async Task DataAbiSixteenRequiresAllSchemaCapabilities()
     {
         uint abiVersion = OpenUsdNativeContract.AbiVersion;
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
 
-        await Assert.That(abiVersion).IsEqualTo(15U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0xFFFFFFUL);
+        await Assert.That(abiVersion).IsEqualTo(16U);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x1FFFFFFUL);
         await Assert.That(requiredCapabilities & 0xFFFUL).IsEqualTo(0xFFFUL);
         await Assert.That(requiredCapabilities & 0x1000UL).IsEqualTo(0x1000UL);
         await Assert.That(requiredCapabilities & 0x2000UL).IsEqualTo(0x2000UL);
@@ -50,6 +50,9 @@ public sealed class NativeContractTests
         // Texture ingestion: float decode and UDIM tile resolution.
         await Assert.That(requiredCapabilities & 0x400000UL).IsEqualTo(0x400000UL);
         await Assert.That(requiredCapabilities & 0x800000UL).IsEqualTo(0x800000UL);
+
+        // Resolver context inspection: bulk resolution, scoped binding and plugin enumeration.
+        await Assert.That(requiredCapabilities & 0x1000000UL).IsEqualTo(0x1000000UL);
     }
 
     [Test]

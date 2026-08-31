@@ -26,6 +26,9 @@ struct SurfaceParameters_natural_0
     packed_float4 lightColorAmbient_0;
     packed_float4 reserved_0;
     packed_float4 textureControls_0;
+    packed_float4 uvTransformRow0_0;
+    packed_float4 uvTransformRow1_0;
+    packed_float4 compositeControls_0;
 };
 
 struct _MatrixStorage_float4x4natural_0
@@ -574,4 +577,3 @@ struct KernelContext_0
     pixelOutput_0 _S59 = { float4(color_1, opacity_0) };
     return _S59;
 }
-

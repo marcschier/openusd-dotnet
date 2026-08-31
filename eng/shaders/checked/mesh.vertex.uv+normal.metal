@@ -95,4 +95,3 @@ struct VertexOutput_0
     (&_S2)->tangent_0 = output_0.tangent_2;
     return _S2;
 }
-

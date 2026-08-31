@@ -5,6 +5,8 @@ set(OPENUSD_HDSILK_SOURCES
     src/api.cpp
     src/basisCurves.h
     src/basisCurves.cpp
+    src/curveWidths.h
+    src/curveWidths.cpp
     src/implicitSurfaceSceneIndexPlugin.h
     src/implicitSurfaceSceneIndexPlugin.cpp
     src/instancer.h

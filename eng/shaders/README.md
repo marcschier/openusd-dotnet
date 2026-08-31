@@ -57,6 +57,17 @@ and 8 vertex permutations for the mesh family; plan generation fails when an
 expanded family exceeds its budget. Arithmetic-only material choices remain
 uniforms and are intentionally not feature bits.
 
+The sampled density volume is a separate single-permutation family,
+`mesh.volume.fragment`, rather than a sixth mesh fragment variant. It is the only
+mesh fragment program that declares the 3D density texture and its sampler, and
+only the sampled-volume binding layout declares them. A D3D12 root signature must
+cover every resource its shader binary references, so those resources cannot live
+in the shared binary that ordinary mesh pipelines use. Programs select the
+preprocessor switch through a manifest `defines` object, validated against the
+`DEFAULT_DEFINES` set in `shader_model.py`; the value is applied identically to
+DXIL, SPIR-V, and MSL, so a resource can never exist in one backend's binary and
+be absent from another's.
+
 Reflection schema 2 preserves separate D3D register/space and Vulkan
 set/binding contracts, resource access and shape, arrays and strides, recursive
 struct/matrix layout, and stage I/O semantics. System values have a null
@@ -131,7 +142,7 @@ Windows win-x64 is authoritative for the committed deterministic artifacts.
 Cross-host Slang output is not assumed to be byte-identical. During release
 packaging, macOS osx-arm64 with exactly Xcode 16.4 compiles the checked mesh,
 pick, selection, and compute MSL files using Metal 2.4 and replaces those
-runtime inputs with the single ten-entry `mesh.metallib`. Metallib output is not generated or committed
+runtime inputs with the single combined `mesh.metallib`. Metallib output is not generated or committed
 by the Windows gate.
 
 Checked manifest provenance is an exact set defined in `shader_model.py`.

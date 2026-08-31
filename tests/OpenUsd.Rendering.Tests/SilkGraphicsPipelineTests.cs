@@ -124,6 +124,108 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(spirvFragment.EntryPoint).IsEqualTo("main");
     }
 
+    [Test]
+    public async Task CheckedSampledVolumeFragmentIsItsOwnProgram()
+    {
+        // The volume density texture and its sampler exist in exactly one checked
+        // mesh fragment binary. A backend root signature or pipeline layout must
+        // declare every resource its shader binary references, so compiling them
+        // into the shared mesh fragment would force every ordinary mesh pipeline to
+        // declare a volume texture it never samples -- which D3D12 rejects at
+        // pipeline creation. Before the split, the DXIL mesh fragment was therefore
+        // built without them and the D3D12 volume render silently fell back to the
+        // authored uniform density.
+        Assembly assembly = typeof(SilkCheckedShaderAssets).Assembly;
+        HashSet<string> resources = assembly.GetManifestResourceNames().ToHashSet(
+            StringComparer.Ordinal);
+        AssertEmbeddedResourceExists(resources, "mesh.volume.fragment.dxil");
+        AssertEmbeddedResourceExists(resources, "mesh.volume.fragment.spv");
+        AssertEmbeddedResourceExists(resources, "mesh.volume.fragment.reflection.json");
+
+        SilkShaderModuleDescriptor dxil =
+            SilkCheckedShaderAssets.LoadMeshVolumeFragment(SilkShaderBinaryFormat.Dxil);
+        SilkShaderModuleDescriptor spirv =
+            SilkCheckedShaderAssets.LoadMeshVolumeFragment(SilkShaderBinaryFormat.SpirV);
+
+        await Assert.That(dxil.Stage).IsEqualTo(SilkShaderStage.Fragment);
+        await Assert.That(dxil.EntryPoint).IsEqualTo("volumeFragmentMain");
+        await Assert.That(spirv.EntryPoint).IsEqualTo("main");
+        await Assert.That(dxil.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("mesh.volume.fragment", "dxil"));
+        await Assert.That(spirv.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("mesh.volume.fragment", "spv"));
+
+        // The volume program's own reflection must name both resources, and every
+        // other shipped mesh fragment reflection must name neither. Reading the
+        // embedded reflections is what makes this a statement about the shipped
+        // binaries rather than about the source manifest, and enumerating them from
+        // the assembly is what stops it from passing when only the one permutation
+        // someone happened to check stayed clean. The enumeration deliberately does
+        // not go through SilkShaderPermutationId: the checked family contains one
+        // fragment artifact the renderer never selects, and that artifact still ships.
+        HashSet<string> volumeResources = ReadEmbeddedReflectionResources(
+            assembly,
+            "mesh.volume.fragment.reflection.json");
+        await Assert.That(volumeResources).Contains("volumeDensityTexture");
+        await Assert.That(volumeResources).Contains("volumeDensitySampler");
+
+        const string prefix = "OpenUsd.Rendering.Silk.Shaders.";
+        string[] fragmentReflections = resources
+            .Where(static name =>
+                name.StartsWith($"{prefix}mesh.fragment", StringComparison.Ordinal) &&
+                name.EndsWith(".reflection.json", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        await Assert.That(fragmentReflections.Length).IsEqualTo(5);
+        foreach (string embedded in fragmentReflections)
+        {
+            HashSet<string> declared = ReadEmbeddedReflectionResources(
+                assembly,
+                embedded[prefix.Length..]);
+            await Assert.That(declared).DoesNotContain("volumeDensityTexture");
+            await Assert.That(declared).DoesNotContain("volumeDensitySampler");
+            // Proves the reflection was really read rather than coming back empty,
+            // which would satisfy the two negative assertions vacuously.
+            await Assert.That(declared).Contains("surfaceParameters");
+        }
+
+        // Every permutation the renderer can actually select must resolve to one of
+        // those clean artifacts and never to the volume program.
+        var selectable = new HashSet<string>(StringComparer.Ordinal);
+        foreach (SilkShaderFeatures features in GetManifestFragmentFeatures())
+        {
+            selectable.Add(new SilkShaderPermutationId(features).MeshFragmentArtifactName);
+        }
+        await Assert.That(selectable).DoesNotContain("mesh.volume.fragment");
+        foreach (string name in selectable)
+        {
+            await Assert.That(fragmentReflections).Contains($"{prefix}{name}.reflection.json");
+        }
+    }
+
+    private static HashSet<string> ReadEmbeddedReflectionResources(
+        Assembly assembly,
+        string artifactName)
+    {
+        using Stream stream =
+            assembly.GetManifestResourceStream($"OpenUsd.Rendering.Silk.Shaders.{artifactName}") ??
+            throw new InvalidOperationException(
+                $"The checked reflection '{artifactName}' is not embedded.");
+        using JsonDocument reflection = JsonDocument.Parse(stream);
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (JsonElement resource in
+            reflection.RootElement.GetProperty("resources").EnumerateArray())
+        {
+            names.Add(resource.GetProperty("name").GetString()!);
+        }
+        if (names.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"The checked reflection '{artifactName}' declared no resources.");
+        }
+        return names;
+    }
+
     private static int ManifestArtifactSize(string program, string artifact)
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
@@ -276,6 +378,12 @@ public sealed class SilkGraphicsPipelineTests
                 (25u, SilkBindingKind.SampledTexture),
                 (26u, SilkBindingKind.Sampler),
                 (27u, SilkBindingKind.SampledTexture),
+                // The material's single two-image composite slot. It is declared by
+                // every MAP_MATERIAL layout because the checked binary references it
+                // in every one of them, and a D3D12 root signature must cover every
+                // resource its binary names.
+                (28u, SilkBindingKind.Sampler),
+                (29u, SilkBindingKind.SampledTexture),
             ]);
         layout.Validate();
     }
@@ -320,6 +428,12 @@ public sealed class SilkGraphicsPipelineTests
             (25u, SilkBindingKind.SampledTexture),
             (26u, SilkBindingKind.Sampler),
             (27u, SilkBindingKind.SampledTexture),
+            // The material's single two-image composite slot, declared by every
+            // MAP_MATERIAL layout because the checked binary references it in
+            // every one of them and a D3D12 root signature must cover every
+            // resource its binary names.
+            (28u, SilkBindingKind.Sampler),
+            (29u, SilkBindingKind.SampledTexture)
         ]);
     }
 
@@ -361,6 +475,12 @@ public sealed class SilkGraphicsPipelineTests
             (25u, SilkBindingKind.SampledTexture),
             (26u, SilkBindingKind.Sampler),
             (27u, SilkBindingKind.SampledTexture),
+            // The material's single two-image composite slot, declared by every
+            // MAP_MATERIAL layout because the checked binary references it in
+            // every one of them and a D3D12 root signature must cover every
+            // resource its binary names.
+            (28u, SilkBindingKind.Sampler),
+            (29u, SilkBindingKind.SampledTexture)
         ]);
         layout.Validate();
     }
@@ -420,7 +540,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
         await Assert.That(device.DisposedPipelineCount).IsEqualTo(1);
         await Assert.That(device.CreatedFragmentShaders).IsEqualTo(2);
-        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(23);
+        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(25);
     }
 
     [Test]
@@ -458,6 +578,44 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(transparent.Descriptor.BlendMode)
             .IsEqualTo(SilkBlendMode.StraightAlphaOver);
         await Assert.That(transparent.Descriptor.DepthWriteEnabled).IsFalse();
+    }
+
+    /// <summary>
+    /// The pipeline descriptor accepts every cull mode the renderer can resolve,
+    /// and still rejects an unknown one.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SilkCullMode"/> had only <c>None</c> and <c>Back</c>, so a mesh
+    /// authoring Hydra's <c>front</c> or <c>frontUnlessDoubleSided</c> cull style
+    /// had no rasterizer state to resolve onto at all -- the renderer's mapping
+    /// silently produced <c>Back</c> instead, culling exactly the faces those
+    /// styles ask to keep. The cross-backend pixel half of this is
+    /// <c>CullStyleFrontCullsTheOppositeFacesOfBackOnD3D12AndVulkan</c>; this is
+    /// the contract half, and it is what keeps a future backend from quietly
+    /// dropping the new mode into its own catch-all.
+    /// </remarks>
+    [Test]
+    [Arguments(SilkCullMode.None)]
+    [Arguments(SilkCullMode.Back)]
+    [Arguments(SilkCullMode.Front)]
+    public async Task PipelineDescriptorAcceptsEveryResolvableCullMode(SilkCullMode cullMode)
+    {
+        using var layout = new CountingBindingLayout(
+            SilkBindingLayoutDescriptor.SceneParameters);
+        using var program = new CountingShaderProgram(layout);
+        var descriptor = new SilkGraphicsPipelineDescriptor(
+            program,
+            SilkVertexLayoutDescriptor.PositionNormal,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.D32Float,
+            cullMode);
+
+        descriptor.Validate();
+        await Assert.That(descriptor.CullMode).IsEqualTo(cullMode);
+
+        var unknown = descriptor with { CullMode = (SilkCullMode)3 };
+        await Assert.That(() => unknown.Validate())
+            .Throws<ArgumentOutOfRangeException>();
     }
 
     [Test]

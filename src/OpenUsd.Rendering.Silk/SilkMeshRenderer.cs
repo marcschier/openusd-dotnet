@@ -108,14 +108,6 @@ public sealed class SilkMeshRenderer :
 {
     private readonly object _gate = new();
     private readonly ISilkGraphicsDevice _device;
-    private readonly ISilkGraphicsShaderModule _vertexShader;
-    private readonly ISilkGraphicsShaderModule _fragmentShader;
-    private readonly ISilkGraphicsBindingLayout _bindingLayout;
-    private readonly ISilkGraphicsShaderProgram _program;
-    private readonly ISilkGraphicsPipeline _pipeline;
-    private readonly ISilkGraphicsPipeline _backCullPipeline;
-    private readonly ISilkGraphicsPipeline _linePipeline;
-    private readonly ISilkGraphicsPipeline _pointPipeline;
     private readonly SilkGraphicsPipelineCache _pipelineCache;
     private readonly SilkProjectedMaterialShaderGenerator _materialShaderGenerator;
     private readonly SilkMaterialShaderCompilerService _materialShaderCompiler;
@@ -238,56 +230,10 @@ public sealed class SilkMeshRenderer :
                 : new SilkSceneGpuResources(device, textureResidencyOptions)
             : new SilkSceneGpuResources(device, imageDecoder, udimResolver, textureResidencyOptions);
 
-        ISilkGraphicsShaderModule? vertexShader = null;
-        ISilkGraphicsShaderModule? fragmentShader = null;
-        ISilkGraphicsBindingLayout? bindingLayout = null;
-        ISilkGraphicsShaderProgram? program = null;
-        ISilkGraphicsPipeline? pipeline = null;
-        ISilkGraphicsPipeline? backCullPipeline = null;
-        ISilkGraphicsPipeline? linePipeline = null;
-        ISilkGraphicsPipeline? pointPipeline = null;
         ISilkPickGraphicsPipeline? pickPipeline = null;
         SilkPickReadbackRing? pickReadbacks = null;
         try
         {
-            vertexShader = device.CreateShaderModule(
-                SilkCheckedShaderAssets.LoadMeshVertex(shaderFormat));
-            fragmentShader = device.CreateShaderModule(
-                SilkCheckedShaderAssets.LoadMeshFragment(shaderFormat));
-            bindingLayout = device.CreateBindingLayout(SilkBindingLayoutDescriptor.SceneParameters);
-            program = device.CreateShaderProgram(new SilkShaderProgramDescriptor(
-                vertexShader,
-                fragmentShader,
-                bindingLayout));
-            pipeline = device.CreateGraphicsPipeline(new SilkGraphicsPipelineDescriptor(
-                program,
-                SilkVertexLayoutDescriptor.PositionNormal,
-                SilkTextureFormat.Rgba8Unorm,
-                SilkTextureFormat.D32Float));
-            backCullPipeline = device.CreateGraphicsPipeline(new SilkGraphicsPipelineDescriptor(
-                program,
-                SilkVertexLayoutDescriptor.PositionNormal,
-                SilkTextureFormat.Rgba8Unorm,
-                SilkTextureFormat.D32Float,
-                SilkCullMode.Back));
-            // Lines are never culled: Storm rasterizes curve segments as
-            // screen-space lines, which have no facing to cull against.
-            linePipeline = device.CreateGraphicsPipeline(
-                new SilkGraphicsPipelineDescriptor(
-                    program,
-                    SilkVertexLayoutDescriptor.PositionNormal,
-                    SilkTextureFormat.Rgba8Unorm,
-                    SilkTextureFormat.D32Float,
-                    SilkCullMode.None,
-                    SilkTopologyKind.LineList));
-            pointPipeline = device.CreateGraphicsPipeline(
-                new SilkGraphicsPipelineDescriptor(
-                    program,
-                    SilkVertexLayoutDescriptor.PositionNormal,
-                    SilkTextureFormat.Rgba8Unorm,
-                    SilkTextureFormat.D32Float,
-                    SilkCullMode.None,
-                    SilkTopologyKind.PointList));
             if (_pickingDevice is not null)
             {
                 SilkPickPipelineDescriptor pickDescriptor =
@@ -302,26 +248,10 @@ public sealed class SilkMeshRenderer :
         {
             pickReadbacks?.Dispose();
             pickPipeline?.Dispose();
-            backCullPipeline?.Dispose();
-            linePipeline?.Dispose();
-            pointPipeline?.Dispose();
-            pipeline?.Dispose();
-            program?.Dispose();
-            bindingLayout?.Dispose();
-            fragmentShader?.Dispose();
-            vertexShader?.Dispose();
             GpuResources.Dispose();
             throw;
         }
 
-        _vertexShader = vertexShader;
-        _fragmentShader = fragmentShader;
-        _bindingLayout = bindingLayout;
-        _program = program;
-        _pipeline = pipeline;
-        _backCullPipeline = backCullPipeline;
-        _linePipeline = linePipeline;
-        _pointPipeline = pointPipeline;
         _pipelineCache = new SilkGraphicsPipelineCache(device, shaderFormat);
         _materialShaderGenerator = new SilkProjectedMaterialShaderGenerator();
         _materialShaderCompiler = new SilkMaterialShaderCompilerService(_materialShaderGenerator);
@@ -773,14 +703,6 @@ public sealed class SilkMeshRenderer :
             GpuResources.Dispose();
             _materialShaderCompiler.Dispose();
             _pipelineCache.Dispose();
-            _backCullPipeline.Dispose();
-            _pipeline.Dispose();
-            _linePipeline.Dispose();
-            _pointPipeline.Dispose();
-            _program.Dispose();
-            _bindingLayout.Dispose();
-            _fragmentShader.Dispose();
-            _vertexShader.Dispose();
 
             // Batch keys reference geometry resources the GPU scene has just disposed, so the table
             // is emptied here rather than left holding them for the lifetime of the renderer.
@@ -845,8 +767,17 @@ public sealed class SilkMeshRenderer :
         string resolveMaterialShaderIdentity(SilkMeshData mesh) =>
             options.UseSceneMaterials ? GetMaterialShaderIdentity(mesh) : string.Empty;
 
+        // A screen-space line or point has no facing, so no cull style can apply
+        // to one. Resolving it to None here rather than letting the mesh's style
+        // through keeps that invariant where the topology is known -- the
+        // rasterizer would ignore the mode for these topologies anyway, but a
+        // cull mode that varies with the authored style would fragment the
+        // pipeline cache into states that draw identically.
         SilkCullMode resolveCullMode(SilkMeshData mesh) =>
-            options.BackfaceCulling ? GetCullMode(mesh) : SilkCullMode.None;
+            !options.BackfaceCulling ||
+                mesh.TopologyKind != SilkTopologyKind.TriangleList
+                ? SilkCullMode.None
+                : GetCullMode(mesh);
 
         bool resolveSampledVolume(SilkMeshData mesh) =>
             options.UseSceneMaterials && IsSampledVolumeMesh(mesh);
@@ -1182,12 +1113,23 @@ public sealed class SilkMeshRenderer :
             right.Geometry.Key.TopologyFingerprint);
     }
 
+    /// <summary>
+    /// Resolves Hydra's cull style onto a rasterizer cull mode.
+    /// </summary>
+    /// <remarks>
+    /// The two "front" styles used to fall into a catch-all that culled *back*
+    /// faces, so authoring <c>front</c> culled exactly the set of faces it asks
+    /// to keep. The mapping is now total, and an unknown wire value falls back
+    /// to Hydra's default rather than to a silently inverted one.
+    /// </remarks>
     private static SilkCullMode GetCullMode(SilkMeshData mesh) =>
         mesh.CullStyle switch
         {
             SilkMeshCullStyle.Nothing => SilkCullMode.None,
             SilkMeshCullStyle.Back => SilkCullMode.Back,
+            SilkMeshCullStyle.Front => SilkCullMode.Front,
             SilkMeshCullStyle.BackUnlessDoubleSided => mesh.DoubleSided ? SilkCullMode.None : SilkCullMode.Back,
+            SilkMeshCullStyle.FrontUnlessDoubleSided => mesh.DoubleSided ? SilkCullMode.None : SilkCullMode.Front,
             _ => mesh.DoubleSided ? SilkCullMode.None : SilkCullMode.Back,
         };
 
@@ -1234,10 +1176,33 @@ public sealed class SilkMeshRenderer :
         SilkMaterialShaderRequest? materialShader = null,
         bool transparent = false)
     {
-        if (materialShader?.Status == SilkMaterialShaderStatus.Ready)
+        if (sampledVolume)
         {
-            return _pipelineCache.GetOrCreateMaterialPipeline(
-                materialShader.Program,
+            // The sampled density volume has exactly one checked fragment program, and
+            // it is the only mesh fragment binary that declares the 3D density texture.
+            // There is no permutation of it that also samples 2D material maps, and no
+            // runtime material shader is generated for a volume surface. Falling through
+            // to an ordinary mesh pipeline would raymarch nothing and shade the authored
+            // uniform density instead of the grid: a plausible image that silently
+            // ignores the volume, which is the exact failure the dedicated program
+            // exists to prevent. Name the impossible combination instead.
+            if (materialShader?.Status == SilkMaterialShaderStatus.Ready)
+            {
+                throw new InvalidDataException(
+                    $"Mesh '{mesh.Mesh.Path}' binds a sampled density volume and a runtime " +
+                    "material shader. hdSilk has no checked fragment program that samples " +
+                    "both, and rendering it as an ordinary surface would silently drop the " +
+                    "volume grid.");
+            }
+            if (features != SilkShaderFeatures.None)
+            {
+                throw new InvalidDataException(
+                    $"Mesh '{mesh.Mesh.Path}' binds a sampled density volume together with " +
+                    $"material texture features '{features}'. hdSilk has no checked fragment " +
+                    "program that samples both, and rendering it as an ordinary surface " +
+                    "would silently drop the volume grid.");
+            }
+            return _pipelineCache.GetOrCreateSampledVolumePipeline(
                 mesh.VertexLayout,
                 colorFormat,
                 SilkTextureFormat.D32Float,
@@ -1246,25 +1211,10 @@ public sealed class SilkMeshRenderer :
                 transparent ? SilkBlendMode.StraightAlphaOver : SilkBlendMode.None,
                 depthWriteEnabled: !transparent);
         }
-        if (features == SilkShaderFeatures.None &&
-            !sampledVolume &&
-            mesh.VertexLayout.Equals(SilkVertexLayoutDescriptor.PositionNormal) &&
-            colorFormat == SilkTextureFormat.Rgba8Unorm &&
-            !transparent)
+        if (materialShader?.Status == SilkMaterialShaderStatus.Ready)
         {
-            return topologyKind switch
-            {
-                SilkTopologyKind.LineList => _linePipeline,
-                SilkTopologyKind.PointList => _pointPipeline,
-                SilkTopologyKind.TriangleList =>
-                    cullMode == SilkCullMode.Back ? _backCullPipeline : _pipeline,
-                _ => throw new InvalidDataException(
-                    $"Unsupported Silk topology kind '{topologyKind}'.")
-            };
-        }
-        if (features == SilkShaderFeatures.None && sampledVolume)
-        {
-            return _pipelineCache.GetOrCreateSampledVolumePipeline(
+            return _pipelineCache.GetOrCreateMaterialPipeline(
+                materialShader.Program,
                 mesh.VertexLayout,
                 colorFormat,
                 SilkTextureFormat.D32Float,
@@ -1397,6 +1347,14 @@ public sealed class SilkMeshRenderer :
             SilkMaterialParameter.ClearcoatRoughness,
             SilkShaderFeatures.ClearcoatRoughnessMap);
         bindTexture(SilkMaterialParameter.Ior, SilkShaderFeatures.IorMap);
+        if ((features & ~SilkShaderFeatures.Uv) != 0)
+        {
+            // Always bound, because the checked binary references the slot in every
+            // MAP_MATERIAL permutation. A material with no composite binds the same
+            // stand-in the unused material slots bind and the shader never samples
+            // it, because its composite target matches no slot bit.
+            GpuResources.BindCompositeTexture(commands, material!, alias);
+        }
         if (material is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)
         {
@@ -1527,6 +1485,10 @@ public sealed class SilkMeshRenderer :
                 commands,
                 ResolveMaterial(mesh.Mesh)!,
                 SilkMaterialParameter.Ior);
+        }
+        if ((features & ~SilkShaderFeatures.Uv) != 0)
+        {
+            GpuResources.UploadCompositeTexture(commands, ResolveMaterial(mesh.Mesh)!);
         }
         if (ResolveMaterial(mesh.Mesh) is { SurfaceKind: SilkSurfaceKind.VolumeDensity } volumeMaterial &&
             volumeMaterial.GetTexture(SilkMaterialParameter.VolumeDensity) is not null)

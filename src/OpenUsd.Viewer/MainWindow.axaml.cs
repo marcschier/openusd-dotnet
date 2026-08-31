@@ -34,6 +34,11 @@ internal enum ViewerLayerCommand
 
 public sealed partial class MainWindow : Window, IDisposable
 {
+    /// <summary>
+    /// The most spline knot lines one inspector rebuild may render in total.
+    /// </summary>
+    private const int SplineKnotRowBudget = 64;
+
     private readonly CancellationTokenSource _viewerLifetime = new();
     private readonly CancellationTokenRegistration _hostShutdown;
     private readonly SemaphoreSlim _documentGate = new(1, 1);
@@ -76,8 +81,12 @@ public sealed partial class MainWindow : Window, IDisposable
     private ViewerLayerStackSnapshot _layers = ViewerLayerStackSnapshot.Empty;
     private ViewerStageStatisticsSnapshot _statistics = ViewerStageStatisticsSnapshot.Empty;
     private ViewerValidationSnapshot _validation = ViewerValidationSnapshot.Empty;
+    private Task<ViewerValidationSnapshot>? _validationTask;
+    private int _validationGeneration;
+    private bool _validationRefreshPending;
     private ViewerHydraSceneSnapshot _hydraScene = ViewerHydraSceneSnapshot.Empty;
     private ViewerPrimInspectorSnapshot? _currentInspector;
+    private int _splineKnotBudget = SplineKnotRowBudget;
     private ViewerStageCameraMenuEntry[] _stageCameras = [];
     private string? _primaryCameraPath;
     private ViewerDiagnosticsSnapshot _latestDiagnostics = ViewerDiagnosticsSnapshot.Empty;
@@ -225,6 +234,7 @@ public sealed partial class MainWindow : Window, IDisposable
             ExportDiagnosticsButton.Click += OnExportDiagnosticsClick;
             IncludeDiagnosticPathsCheckBox.Click += OnDiagnosticPathSettingChanged;
             RefreshValidationButton.Click += OnRefreshValidationClick;
+            ValidationScopeSelector.SelectionChanged += OnValidationScopeChanged;
             RefreshHydraSceneButton.Click += OnRefreshHydraSceneClick;
             RefreshTfDebugButton.Click += OnRefreshTfDebugClick;
             PickModeSelector.SelectionChanged += OnPickModeChanged;
@@ -2450,12 +2460,71 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private async void OnRefreshValidationClick(object? sender, RoutedEventArgs e)
     {
+        // An async void handler that throws takes the process with it, and
+        // cancelling the document while a run is in flight is ordinary, not
+        // exceptional. Every outcome is absorbed here and rendered from the
+        // snapshot instead.
         if (_coordinator is null || _documentLifetime is null)
         {
             return;
         }
 
-        await RefreshValidationAsync(_coordinator, _documentLifetime.Token);
+        await RunValidationFromUiAsync(_coordinator, _documentLifetime.Token);
+    }
+
+    private async void OnValidationScopeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        // Results carry the scope they were produced under, so leaving stale
+        // ones on screen under a new scope label would be a lie. Re-running is
+        // the only honest response to the scope changing.
+        if (_coordinator is null || _documentLifetime is null || _validationBusy)
+        {
+            return;
+        }
+
+        await RunValidationFromUiAsync(_coordinator, _documentLifetime.Token);
+    }
+
+    /// <summary>
+    /// Runs validation for a user gesture, absorbing every outcome and always
+    /// leaving the tab rendering a non-running state.
+    /// </summary>
+    private async Task RunValidationFromUiAsync(
+        ViewerRenderCoordinator coordinator,
+        CancellationToken cancellationToken)
+    {
+        int generation = _validationGeneration;
+        try
+        {
+            await RefreshValidationAsync(coordinator, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            if (IsCurrentValidationGeneration(generation, coordinator))
+            {
+                _validation = ViewerValidationSnapshot.Failed(
+                    GetSelectedValidationScope(),
+                    _selectionState.PrimPath ?? string.Empty,
+                    ViewerPackageErrorFormatter.Format(exception),
+                    exception.ToString());
+            }
+        }
+        finally
+        {
+            // Only a gesture that actually owns the in-flight run may clear the
+            // busy flag. A document-driven run that is still going keeps it,
+            // because "running" is then the true state and rendering it is
+            // correct; clearing it here would let a second run start.
+            if (IsCurrentValidationGeneration(generation, coordinator) &&
+                _validationTask is null)
+            {
+                _validationBusy = false;
+                RenderValidation();
+            }
+        }
     }
 
     private async Task RefreshValidationAsync(
@@ -2464,54 +2533,177 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (_validationBusy)
         {
+            _validationRefreshPending = true;
             return;
         }
 
+        ViewerValidationScope scope = GetSelectedValidationScope();
+        string scopePath = scope == ViewerValidationScope.Prim
+            ? _selectionState.PrimPath ?? string.Empty
+            : string.Empty;
+        if (scope == ViewerValidationScope.Prim && scopePath.Length == 0)
+        {
+            // Nothing to validate, so nothing is scheduled. The missing
+            // selection is a state of the model, not a line written straight
+            // to a control that the next render would contradict.
+            _validation = ViewerValidationSnapshot.NoSelection();
+            RenderValidation();
+            return;
+        }
+
+        // Every run belongs to the document generation it started in. A run
+        // that outlives its document - close, reload, or a stage switch -
+        // must never write its results into the next one, and awaiting it is
+        // not enough on its own because the awaiting frame resumes after the
+        // new document has already been built.
+        int generation = _validationGeneration;
+        ViewerRenderCoordinator startingCoordinator = coordinator;
         _validationBusy = true;
+        _validationRefreshPending = false;
+        _validation = ViewerValidationSnapshot.Running(scope, scopePath);
         RenderValidation();
+        Task<ViewerValidationSnapshot>? run = null;
         try
         {
-            ValidationState.Text = "Running UsdValidation...";
-            _validation = await coordinator.Scheduler.InvokeAsync(
-                static stage =>
+            run = coordinator.Scheduler.InvokeAsync(
+                stage =>
                 {
                     Stopwatch timer = Stopwatch.StartNew();
                     IReadOnlyList<UsdValidationValidatorInfo> validators =
                         UsdValidation.GetRegisteredValidators();
-                    IReadOnlyList<UsdValidationError> errors = UsdValidation.Validate(stage);
+                    // The prim is resolved inside the callback: a UsdPrim is
+                    // stage bound and must never be captured by the UI thread.
+                    IReadOnlyList<UsdValidationError> errors;
+                    if (scope == ViewerValidationScope.Prim)
+                    {
+                        if (!stage.HasPrim(scopePath))
+                        {
+                            throw new InvalidOperationException(
+                                $"Prim '{scopePath}' no longer exists.");
+                        }
+                        errors = UsdValidation.Validate(stage.GetPrim(scopePath));
+                    }
+                    else
+                    {
+                        errors = UsdValidation.Validate(stage);
+                    }
                     timer.Stop();
-                    return ViewerValidationSnapshot.Create(validators, errors, timer.Elapsed);
+                    return ViewerValidationSnapshot.Create(
+                        validators,
+                        errors,
+                        timer.Elapsed,
+                        scope,
+                        scopePath);
                 },
-                cancellationToken);
-            RenderValidation();
+                cancellationToken).AsTask();
+            _validationTask = run;
+            ViewerValidationSnapshot result = await run;
+            if (IsCurrentValidationGeneration(generation, startingCoordinator))
+            {
+                _validation = result;
+            }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            throw;
+            if (IsCurrentValidationGeneration(generation, startingCoordinator))
+            {
+                _validation = ViewerValidationSnapshot.Cancelled(scope, scopePath);
+            }
+            if (cancellationToken.IsCancellationRequested)
+            {
+                // The document is going away, so the flow that requested this
+                // run must abort with it. UI gestures absorb this in
+                // RunValidationFromUiAsync.
+                throw;
+            }
         }
         catch (Exception exception)
         {
-            ValidationState.Text =
-                $"UsdValidation failed: {ViewerPackageErrorFormatter.Format(exception)}";
-            ValidationText.Text = exception.ToString();
+            if (IsCurrentValidationGeneration(generation, startingCoordinator))
+            {
+                _validation = ViewerValidationSnapshot.Failed(
+                    scope,
+                    scopePath,
+                    ViewerPackageErrorFormatter.Format(exception),
+                    exception.ToString());
+            }
         }
         finally
         {
+            if (run is not null && ReferenceEquals(_validationTask, run))
+            {
+                _validationTask = null;
+            }
             _validationBusy = false;
-            RefreshValidationButton.IsEnabled = _coordinator is not null && !_documentBusy;
+            if (IsCurrentValidationGeneration(generation, startingCoordinator))
+            {
+                if (_validationRefreshPending && !cancellationToken.IsCancellationRequested)
+                {
+                    _validationRefreshPending = false;
+                    await RefreshValidationAsync(startingCoordinator, cancellationToken);
+                }
+                else
+                {
+                    RenderValidation();
+                }
+            }
         }
     }
 
+    /// <summary>
+    /// Whether a run that started in <paramref name="generation"/> may still
+    /// publish into the tab.
+    /// </summary>
+    private bool IsCurrentValidationGeneration(
+        int generation,
+        ViewerRenderCoordinator startingCoordinator) =>
+        generation == _validationGeneration &&
+        ReferenceEquals(_coordinator, startingCoordinator);
+
+    /// <summary>
+    /// Invalidates every in-flight validation run and waits for it to finish.
+    /// </summary>
+    private async Task StopValidationAsync()
+    {
+        _validationGeneration++;
+        _validationRefreshPending = false;
+        Task? run = _validationTask;
+        _validationTask = null;
+        if (run is not null)
+        {
+            try
+            {
+                await run;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception)
+            {
+                // A failing run belongs to the document being torn down; its
+                // outcome is discarded with it rather than surfaced here.
+            }
+        }
+        _validationBusy = false;
+        _validation = ViewerValidationSnapshot.Empty;
+    }
+
+    private ViewerValidationScope GetSelectedValidationScope() =>
+        ValidationScopeSelector.SelectedIndex == 1
+            ? ViewerValidationScope.Prim
+            : ViewerValidationScope.Stage;
+
     private void RenderValidation()
     {
-        ValidationState.Text = _validationBusy
-            ? "Running UsdValidation..."
-            : ViewerValidationFormatter.FormatState(_validation);
+        // Rendering is a pure function of the snapshot, including the running
+        // state, so no state the tab can show outlives the model that says it.
+        ValidationState.Text = ViewerValidationFormatter.FormatState(_validation);
         ValidationText.Text = ViewerValidationFormatter.FormatDetails(_validation);
         RefreshValidationButton.IsEnabled =
             _coordinator is not null &&
             !_documentBusy &&
             !_validationBusy;
+        ValidationScopeSelector.IsEnabled = RefreshValidationButton.IsEnabled;
     }
 
     private void OnRefreshHydraSceneClick(object? sender, RoutedEventArgs e) =>
@@ -3794,6 +3986,7 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             SetBusy($"Reloading {Path.GetFileName(_stagePath)}...");
+            await StopValidationAsync();
             await coordinator.Scheduler.EditAsync(
                 static stage =>
                 {
@@ -3847,6 +4040,9 @@ public sealed partial class MainWindow : Window, IDisposable
         _pickLifetime?.Cancel();
         _selectionLifetime?.Cancel();
         _documentLifetime?.Cancel();
+        // Invalidated before the awaits below, so a run that completes while
+        // the document is being torn down cannot publish into the next one.
+        await StopValidationAsync();
         if (_pickTask is not null)
         {
             await _pickTask;
@@ -4830,6 +5026,7 @@ public sealed partial class MainWindow : Window, IDisposable
         _currentInspector = inspector;
         _diagnostics.AddUnsupported(inspector.UnsupportedFeatures);
         _rebuildingInspector = true;
+        _splineKnotBudget = SplineKnotRowBudget;
         try
         {
             InspectorRows.Children.Clear();
@@ -5023,11 +5220,14 @@ public sealed partial class MainWindow : Window, IDisposable
             }
             foreach (ViewerAttributeSnapshot attribute in inspector.Attributes)
             {
+                string splineSuffix = attribute.Spline is ViewerSplineSnapshot attributeSpline
+                    ? $"; spline={ViewerSplineFormatter.FormatSummary(attributeSpline)}"
+                    : string.Empty;
                 AddInspectorRow(
                     attribute.Name,
                     $"{attribute.TypeName}; authored={attribute.HasAuthoredValue}; " +
                     $"blocked={attribute.IsBlocked}; samples={attribute.TimeSampleCount}; " +
-                    $"value={attribute.Value}");
+                    $"value={attribute.Value}{splineSuffix}");
                 AddValueAttributeRow(attribute, inspector);
             }
             AddInspectorHeading($"Relationships ({inspector.Relationships.Length})");
@@ -5206,6 +5406,19 @@ public sealed partial class MainWindow : Window, IDisposable
             Text = $"Time samples: {attribute.TimeSamples}",
             TextWrapping = TextWrapping.Wrap
         });
+        if (attribute.Spline is ViewerSplineSnapshot spline)
+        {
+            // One control per spline, and one knot-line budget for the whole
+            // inspector: a prim with many splined attributes must not be able
+            // to grow the visual tree without a bound.
+            ViewerSplineBlock block = ViewerSplineFormatter.FormatBlock(spline, _splineKnotBudget);
+            _splineKnotBudget -= block.KnotsShown;
+            row.Children.Add(new TextBlock
+            {
+                Text = block.Text,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
         var actions = new StackPanel
         {
             Orientation = Avalonia.Layout.Orientation.Horizontal,

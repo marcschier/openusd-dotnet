@@ -120,7 +120,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v8 and
-hdSilk session ABI v5; the hdSilk page ABI is v13. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v5; the hdSilk page ABI is v15. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -274,6 +274,58 @@ The cache never compiles shaders. It creates shader modules only from embedded c
 names the missing artifact; hdSilk does not silently drop map bits or substitute a less specialized shader because that
 would produce a plausible but wrong render.
 
+### hdSilk sampled volume density
+
+A `UsdVolVolume` with one `UsdVolOpenVDBAsset` density field is published by the native shim as a proxy mesh whose
+material carries a bulk cached R32 volume texture and its `width,height,depth` extent. `SilkSceneGpuResources`
+allocates one R32Float 3D texture through `ISilkVolumeTextureGraphicsDevice`, uploads the cache once through
+`ISilkVolumeTextureCommandList`, and binds it with the volume sampler slot; the C ABI stays renderer-neutral and
+carries no 3D-texture concept. Vulkan and D3D12 both implement the pair, and D3D12 repacks each depth slice into the
+row pitch `GetCopyableFootprints` reports. Metal implements it as an `MTLTextureType.Type3D` `R32Float` texture filled
+by a single `MTLBlitCommandEncoder` buffer copy, and binds it at Metal texture index 9 with sampler index 4, which is
+what the checked `mesh.volume.fragment.metal` declares. The `macos-arm64` render job runs the same sampled and uniform
+gates against that path, but no run has recorded executed evidence yet, so Metal sampled volumes carry no rendering
+support claim; see [Testing](testing.md) for the evidence classification and the promotion step.
+A device that does not implement `ISilkVolumeTextureGraphicsDevice` never selects the sampled-volume path at all: the
+surface constants report the volume as unsampled and the mesh keeps its authored uniform density, rather than binding
+a texture the backend cannot create.
+
+Metal binds that texture directly, never through an argument buffer. `MetalArgumentBufferCompatibility` refuses the
+sampled-volume layout for a permanent reason -- an `MTLArgumentDescriptor` carries an explicit `TextureType`, and one
+built for `Type2D` does not describe the `texture3d` the checked program declares -- and refuses every other
+texture-bearing layout for a second, liftable reason: no checked Metal program declares an argument buffer, so writing
+one would bind a buffer nothing reads and leave `[[texture(9)]]` and `[[sampler(4)]]` unset. Neither mistake is
+reportable through the Metal API; the draw would simply sample something undefined and still return an image. The
+Tier 2 table therefore declines before allocating, `SilkGraphicsCapabilities.SupportsDescriptorIndexedTextureTables`
+reports `false` with that reason rather than echoing the hardware tier, and the encoder falls through to
+`SetFragmentTexture` and `SetFragmentSamplerState` at the indices `MetalShaderResourceIndices` encodes.
+
+The fragment shader for this path is its own checked program, `mesh.volume.fragment`, not a bit of the shared mesh
+permutation family. Only the sampled-volume binding layout declares the 3D texture and its sampler, and a D3D12 root
+signature must declare every resource its shader binary references, so those resources cannot live in the binary that
+ordinary mesh pipelines use. `SilkGraphicsPipelineCache.GetOrCreateSampledVolumePipeline` is the only caller that
+selects it. Before the split, the volume resources were restricted to the SPIR-V target, which left D3D12 with no
+density texture at all: it rendered sampled volumes at the authored uniform density, and its images did not change
+when the density grid moved.
+
+Because that program is the only one that samples the grid, a volume material that also binds 2D material maps, or one
+routed through the runtime MaterialX shader service, has no correct pipeline at all. `SilkMeshRenderer` raises an
+`InvalidDataException` naming the prim and the offending combination instead of falling through to an ordinary mesh
+pipeline. That fallback would shade the proxy at the authored uniform density and produce a plausible image with no
+volume in it, which is the same class of silent-but-wrong render the dedicated program exists to prevent.
+
+The fragment integrates the density column with one sample per voxel layer, and the layer count is the grid's own Z
+resolution rather than a constant. That extent already travels with the texture as `width,height,depth`, is already
+parsed to allocate the 3D texture, and is now also written into the surface constants so the shader integrates over
+exactly the grid it was given. A fixed step count reconstructs the column exactly only where the sample lattice happens
+to align with the layers: the retired constant of 32 was right for the one checked-in 32-deep asset and wrong for
+anything else. Over a 96-deep grid it steps straight over a two-layer feature and integrates it to exactly zero -- the
+volume still renders, it has simply lost the structure. Sampling at layer centres makes the linear filter return each
+texel exactly, so the sum is the true mean of the column.
+Silk accepts sampled density grids up to 512 layers deep for this exact integration path and rejects deeper grids with
+an explicit diagnostic rather than silently undersampling them. The gate measures a sampled 96-deep slab and a uniform
+proxy at its exact column mean rendering bit-identically on D3D12 and Vulkan.
+
 ### hdSilk draw ordering and retained uploads
 
 `SilkMeshRenderer` builds retained draw batches by geometry, material path, shader feature permutation, cull mode,
@@ -311,7 +363,8 @@ Operational backend failures are not result statuses: implementations throw thei
 exceptions and may attach `RenderBackendDiagnosticCategory.Picking` diagnostics.
 
 A hit always has authoritative `SelectionItem` identity: an absolute prim path, optional absolute
-instancer path plus zero-based instance index, and optional zero-based element/subprim index.
+instancer path plus the instance's own index inside that instancer, and optional zero-based
+element/subprim index.
 World-space position, world-space normal, and normalized near-to-far depth in `[0, 1]` are
 independently optional so ID-only backends do not fabricate geometry. Every geometry value a backend
 does provide must be finite. Optional backend kind/token values are diagnostic hints only and must
@@ -362,7 +415,7 @@ evidence verifies both the highlight hash change and exact clear restoration. Sc
 instance as its whole prim path. hdSilk retains selection through rendering and backend switches and renders the shared
 visible-only orange mask/composite outline on D3D12, Vulkan, and Metal. D3D12 WARP and Vulkan SwiftShader conformance
 prove real outline pixels, physical width, occlusion suppression, exact clear restoration, resize/generation recovery,
-cleanup, and NativeAOT. Metal source and ten-entry shader contracts are complete. Hosted real-pixel
+cleanup, and NativeAOT. Metal source and combined shader-library contracts are complete. Hosted real-pixel
 proof remains pending on macOS with Xcode 16.4. Stale, unsupported, canceled, and failed picks
 retain the last valid selection.
 
@@ -490,7 +543,8 @@ reasons without an independently retained camera/time request binding.
 Checked `pickVertexMain` and `pickFragmentMain` artifacts are embedded alongside the visible mesh
 shaders for DXIL and SPIR-V, with normalized reflection validating `SceneParameters` at set 0 /
 binding 0 and the 16-byte `PickParameters` uint4 at set 0 / binding 1. Checked MSL is generated by
-the same pinned Windows authority workflow. The combined ten-entry `mesh.metallib` remains a hosted
+the same pinned Windows authority workflow. The combined `mesh.metallib`, whose entry points are derived from
+`eng/shaders/shader-manifest.json`, remains a hosted
 macOS/Xcode 16.4 artifact and is never fabricated on Windows.
 
 ### Material binding layout
@@ -731,11 +785,140 @@ The documented MaterialX subset is intentionally a projection into that same dat
   parameters.
 - Direct `ND_image_*` inputs can drive base colour and normal maps; `ND_normalmap` unwraps to its input image and uses
   the existing tangent-space normal-map shader path. `ND_geompropvalue_vector2`, `ND_texcoord_vector2`, and
-  `UsdPrimvarReader_float2` select the UV primvar, defaulting to `st` when the graph has no explicit coordinate node.
-- Constant `ND_multiply_*`, `ND_add_*`, `ND_subtract_*`, `ND_clamp_*`, and `ND_mix_*` chains are folded on the CPU for
-  supported scalar/vector inputs. Per-pixel arithmetic, mixing two images, UV transform/place2d nodes, ramps, swizzles,
+  `UsdPrimvarReader_float2` are the coordinate nodes that terminate a texture-coordinate chain and select the UV
+  primvar, defaulting to `st` when the graph has no coordinate connection at all. A `ND_texcoord_vector2` whose `index`
+  is non-zero names a second UV set and is rejected with a diagnostic, because hdSilk carries one coordinate stream per
+  material and resolving it to `st` would sample the first set while the graph asked for another.
+- Constant `ND_multiply_*`, `ND_add_*`, `ND_subtract_*`, `ND_clamp_*`, `ND_mix_*`, and `ND_constant_*` chains are folded
+  on the CPU for supported scalar/vector inputs, using the MaterialX nodedef defaults: `mix` defaults to `0`, which
+  selects `bg`. An input the author replaced with a connection is never folded from the value Hydra leaves behind that
+  connection, so a chain that reaches an image or any node outside this list is reported rather than collapsed to the
+  nodedef fallback. Ramps, swizzles,
   procedural noise, transmission, subsurface, coat/sheen, displacement, and UDIM expansion are excluded from
   projection.
+
+### MaterialX image sampling
+
+A MaterialX image node states its sampling with MaterialX names and MaterialX defaults, not UsdUVTexture's, and hdSilk
+reads it that way for `ND_image_*` and the UsdUVTexture way for `UsdUVTexture`:
+
+- `uaddressmode` and `vaddressmode` are read per axis and default to `periodic`, which is the wire's repeat mode.
+  `clamp` and `mirror` map to the matching wire modes, and `constant` maps to the wire's black mode because the
+  wire carries no border colour. Reading `wrapS`/`wrapT` from a MaterialX image found nothing and published black,
+  which the renderer resolves to clamp-to-edge, so a texture the graph tiles was smeared from its edge column of
+  texels. An address mode outside that enumeration is reported and the input keeps its default.
+- The wire's black mode is not a border colour. `SilkTextureWrap.Black` records what UsdUVTexture's `black`/unauthored
+  `wrap` and MaterialX `constant` addressing asked for, but no supported backend is handed a border colour and
+  `SilkSceneGpuResources` resolves it to `ClampToEdge`, so it renders identically to `SilkTextureWrap.Clamp`: a sample
+  outside the unit range returns the edge texel, not black and not a MaterialX node's `default` value. The two values
+  stay distinct because they record different authored intent; true border sampling would need a new wire field and an
+  ABI bump.
+- `default` is the value the node produces when the file cannot be read, which is exactly what UsdUVTexture calls
+  `fallback`, so it is carried in the same wire field. Only the components the node authors are overwritten, so a
+  `color3` default keeps the opaque alpha.
+
+### Constant arithmetic over one image
+
+A chain of `ND_multiply_*`, `ND_add_*`, `ND_subtract_*`, and `ND_mix_*` nodes in which exactly one operand branch
+reaches an image, and every other operand folds to a constant, is affine in the sampled value. hdSilk composes that
+chain into the texture entry's existing `scale` and `bias`, which the consumer applies per texel in linear space after
+decode. This is exact rather than an approximation: an affine map commutes with bilinear filtering, so folding before
+the sample and folding after it produce the same picture. `constant - image` is included, as a negative slope.
+
+The bound is where that transport stops being exact, and it is enforced rather than assumed:
+
+- The composed affine must map the unit interval into itself on every consumed channel. The decoded image is stored
+  back in its own format, so an eight-bit source clamps anything pushed outside `[0, 1]`; a clamped base colour is not
+  a rounding difference, it changes the lit result at every light intensity below saturation. A brighten or darken that
+  leaves the range is reported and the input keeps its documented default.
+- Exactly one branch may reach an image *for this fold*. Two images joined by one constant operator are not folded
+  here at all: their result is not affine in either image, so no per-texel scale and bias can carry it. They are
+  published as a two-image composite instead, described below.
+- The `mix` factor must be constant. An image-driven factor is a per-pixel blend, not an affine.
+- Only those four operators are walked. `ND_clamp_*`, powers, and every other non-affine operator over an image have no
+  scale-and-bias representation and are reported.
+- The `normal` input is excluded on purpose: scaling a tangent-space normal is not the colour operation this fold
+  models.
+- The chain is walked to a bounded depth.
+
+This is a projection into the existing texture data model, not general MaterialX standard-library support, and it adds
+no shader, wire, or descriptor surface. The folded constants are part of the decoded texture's effective identity;
+because the texture cache is keyed by material path and parameter and a material change evicts that material's
+entries, re-authoring the graph with a different constant re-decodes rather than serving previously folded pixels.
+
+### Two images composited per pixel
+
+A `ND_multiply_*`, `ND_add_*`, `ND_subtract_*` or `ND_mix_*` node whose *both* operands reach images is the one
+MaterialX shape the affine fold cannot carry, because the product, sum, difference or blend of two images is not
+affine in either one. hdSilk publishes it as two texture entries for one parameter -- a primary and a composite
+operand carrying the operator -- and the fragment shader combines them per pixel, in floating point after both
+decodes. Each branch still folds its own constant arithmetic into its own entry's scale and bias, so only the one
+operator that joins them costs a shader sample.
+
+Because the combination happens in the shader rather than at decode, the unit-range restriction that governs the
+per-entry affines does not apply to it: `add` may saturate, and that is the authored result rather than a clamp the
+transport introduced. Each entry's own affine is still restricted, because that one is applied per texel when the
+image is decoded into its own storage format.
+
+The renderer binds **one** composite image per material, not one per surface input: a per-input composite would need
+a second sampler and texture for each of the eleven material slots, and every mesh pipeline would have to declare
+them. The single slot lives inside the existing `MAP_MATERIAL` permutation and is selected by a runtime value, so it
+adds no shader permutation and leaves `mesh.volume.fragment`, which compiles with `MAP_MATERIAL=0`, unchanged.
+
+Everything outside that is refused with a diagnostic:
+
+- A graph that composites a **second** parameter has *both* entries of that second parameter dropped, leaving the
+  input at its default. Publishing only its primary would render one of two authored images and look like an ordinary
+  single-texture input. The first composited parameter in the fixed input order wins, which makes the choice
+  deterministic rather than dependent on table order.
+- A connected `mix` factor is a third sampled input the renderer has no slot for.
+- Both operands must read the material's single texture-coordinate stream, which the primvar and transform
+  reconciliation above already guarantees; a pair that disagrees is dropped as a whole parameter.
+- Three or more images in one input exceed the single composite slot and are reported by the fold that walks them.
+
+### Texture-coordinate chains
+
+hdSilk walks the `st`/`texcoord` connection of every texture it publishes and folds the chain into one constant affine,
+published as page ABI v14's `uv_transform` and applied once per fragment before every texture sample. This is shared by
+the MaterialX projection and the UsdPreviewSurface path, because both reach the same texture table.
+
+- `ND_place2d_vector2` is reproduced exactly from `NG_place2d_vector2`: `pivot`, `scale`, `rotate`, `offset`, and both
+  `operationorder` values (`SRT` and `TRS`), including `rotate2d`'s clockwise matrix for a positive angle in degrees.
+- `UsdTransform2d` is reproduced exactly from UsdPreviewSurface: scale, then a counter-clockwise `rotation` in degrees,
+  then `translation`. The opposite rotation sense to `rotate2d` is deliberate and is folded by its own matrix builder
+  rather than a shared one.
+- A chain of up to eight such nodes is composed into a single affine, so `place2d` feeding `place2d`, or `place2d`
+  feeding `UsdTransform2d`, is exact rather than approximate. The chain's own coordinate node still selects the UV
+  primvar, so a transform never silently changes which primvar is read.
+
+Everything outside that is refused with a diagnostic naming the material input and the exact reason, never resolved to
+a partial answer:
+
+- A `place2d` or `UsdTransform2d` input that is *connected* rather than authored constant is a per-pixel transform this
+  projection does not model. The connected image is rejected and its surface input keeps its documented default.
+- A chain that passes through **any** other node -- a per-pixel `ND_multiply_vector2`, a noise generator, anything --
+  is rejected whole. Folding only the transforms nearest the image and running them over the default primvar would
+  render coordinates the graph never produced, so a transform behind an unsupported intermediate does not reach pixels
+  at all.
+- A chain that never reaches a coordinate node, because a transform's own coordinate input is an authored constant, is
+  rejected rather than resolved to an untransformed `st`.
+- A chain longer than the bounded depth is rejected, which is what keeps a cyclic authored network from hanging the
+  delegate.
+
+The refusal is reported once, against the real cause. When the coordinate chain is what failed, hdSilk does not also
+report the image node as an unsupported input, because the image is understood and naming it would misdirect the reader.
+
+Because the renderer builds exactly one texture-coordinate stream per material, hdSilk reconciles **both** halves of
+that stream -- the UV transform and the UV primvar -- across every texture the material publishes. The stream is the
+one the first texture in the fixed input order resolves: `uv_transform` carries its affine, and the consumer derives
+the primvar from the first entry that names one. A later texture asking for a different transform, or for a different
+primvar, is rejected with a `TF_WARN` naming the material, the parameter, and which of the two diverged, instead of
+being sampled through coordinates it never authored.
+
+Both halves are ordinary authoring shapes, not contrived ones: a transformed base colour beside an untransformed
+normal map diverges on the transform, and a base colour on `uvSet0` beside a normal map on `uvSet1` diverges on the
+primvar. Either combination therefore remains outside the support claim, and one of the two textures is left at its
+default rather than silently sampled through the other's coordinates.
 
 Unsupported MaterialX terminals and unsupported upstream nodes are not approximated. hdSilk publishes an unsupported
 material record or leaves the individual input at its documented default and emits a `TF_WARN` naming the material,
@@ -1196,16 +1379,57 @@ topology rebuilds the `primitiveParams` mapping and increments its revision; pro
 
 Page ABI v3 turns the previously reserved instance fields into real identity. A prim with no instancer publishes
 exactly one record with `instance_id` and `instance_index` both zero. A point-instanced prototype publishes one
-record per resolved instance: `path` stays the authoritative prototype path, `instance_index` is the zero-based
-instance ordinal, `instance_id` is a stable non-zero diagnostic identifier for the owning instancer, and every record
+record per resolved instance: `path` stays the authoritative prototype path, `instance_index` identifies the
+instance, `instance_id` is a stable non-zero diagnostic identifier for the owning instancer, and every record
 carries its own fully resolved transform. Consumers must therefore key retained meshes by `(path, instance_index)`
 rather than by path alone. A `MESH_REMOVE` retires exactly one such identity, so a shrinking instancer emits one
 removal per dropped instance, and a selected path highlights all of its instances.
 
-Page ABI v8 stops repeating prototype geometry for those point-instancer records. Instance zero
-still carries the full mesh payload and transform; later records keep the same fixed header but set
-the geometry, material-path, and attribute counts to zero and reuse instance zero's retained
-geometry, material path, and attributes.
+Page ABI v14 makes `instance_index` the instance's own index inside its instancer -- the index into the point
+instancer's `protoIndices` and `positions` arrays, which is what UsdImaging decodes back to a scene instance --
+rather than the ordinal of the instance in hdSilk's resolved array. The two differ whenever an instancer has
+several prototypes, whenever `protoIndices` change over time, and whenever `invisibleIds` hides an instance. With
+authored proto indices `[0, 1, 0, 1]` the second prototype owns instancer instances 1 and 3 and publishes exactly
+those indices; the resolved-array ordinal would have called them 0 and 1 and would have renumbered the survivors
+the moment an instance was hidden, silently re-pointing a retained pick identity at a different scene instance.
+A prototype therefore publishes a sparse index set rather than a dense zero-based range. Nested instancers have no
+such USD index, so hdSilk composes one as `parent_index * inner_instance_count + inner_index`, where
+`inner_instance_count` is the inner instancer's own authoritative instance count and never a value widened to fit
+the prototype being resolved: a per-prototype radix would give the instancer's prototypes different index spaces,
+so adding or hiding an instance of one would renumber the other. An index that the authoritative count cannot
+explain has no unique composition and is dropped with a diagnostic rather than folded into another instance's slot.
+The result is unique and equally stable under the same edits, but it is an hdSilk encoding rather than an index USD
+can decode on its own.
+
+Page ABI v8 stops repeating prototype geometry for those point-instancer records. The payload record
+carries the full mesh payload and transform; later records keep the same fixed header but set
+the geometry, material-path, and attribute counts to zero and reuse the payload record's retained
+geometry, material path, and attributes. Since ABI v14 that payload record is the *lowest*
+`instance_index` a path publishes, which is not necessarily zero -- a prototype that never owns
+instancer instance 0 never publishes an index-zero record. Records of one path arrive in ascending
+`instance_index` order and all upserts precede all removals in a page, so a consumer resolves the
+payload by the first record a path publishes, and a page that moves the payload to a new index
+publishes the new payload record before retiring the old identity.
+
+Two invariants keep that resolution total rather than best-effort. First, the records of one path are serialized
+atomically: if any record of a path fails validation, every record of that path is rolled back out of the page, so
+an instance reference is never published without the payload record it reuses. Other paths are unaffected, so a
+single malformed prim still cannot blank the scene, and consumers keep whatever they already retained for the
+dropped path. Second, a prim with no points or no indices is retired rather than published, because an empty record
+is byte-identical on the wire to an instance reference -- the payload record of an empty instanced prototype would
+otherwise look like a record that reuses a payload, and every instance of that path would be unresolvable.
+
+The elision is topology neutral. A line list emitted from instanced `BasisCurves` and a point list emitted from
+instanced `Points` carry their payload once on the lowest published index in exactly the same way a triangle list
+does, so the retained scene reconstructs their geometry, subprims, and attributes from the payload record rather
+than receiving a copy per instance.
+
+Validation runs twice: once on the record as hdSilk holds it, before the draw mode and complexity transforms index
+into its points and vertex attributes, and again on the transformed record, because those transforms rebuild the
+topology. The first pass is what makes the second safe. Wireframe draw mode carries the authored index values
+through into a line list unchanged, and complexity then dereferences both endpoints of every line into the point
+array and into every `VERTEX` attribute, so an out-of-range index would read past the end of both on its way to
+being rejected.
 
 Page ABI v9 extended `FRAME` with a fixed light table and ambient vector; page ABI v12 expands
 that bounded table from four to eight direct lights. Lights are frame-local rather than
@@ -1227,6 +1451,24 @@ to different outputs of one texture prim are otherwise indistinguishable from tw
 separate prims. A scalar input must carry a single-channel output and a colour or vector input must carry
 `OPENUSD_SILK_TEXTURE_CHANNEL_RGB`; any other pairing, and any output token hdSilk does not model, is
 rejected with a diagnostic rather than guessed at, both in the native serializer and in the managed parser.
+
+Page ABI v15 appends `composite_op` and `composite_factor` to each `MATERIAL_UPSERT` texture entry, growing it from
+80 to 88 bytes. `composite_op` is `NONE` on an ordinary entry; any other value marks the second operand of a two-image
+surface input, and the table then also carries exactly one `NONE` entry for that same parameter. A table holds at most
+two entries per parameter and at most one composite entry in total. The consumer combines them per pixel after each
+entry's own scale and bias, and `composite_factor` is meaningful only for `MIX`. `SilkSurfaceUniformWriter` packs the
+target, operator and factor into the surface block as `(targetTextureMaskBit, operator, factor, 0)` at offset 176,
+where the target is the same texture-mask bit the driven slot already uses.
+
+Page ABI v14 appends `uv_transform` to `MATERIAL_UPSERT`, six floats after the generated MSL source and at the
+very end of the command. It is the row-major affine `(m00, m01, m10, m11, tx, ty)` applied as
+`u' = m00*u + m01*v + tx` and `v' = m10*u + m11*v + ty`, and it is the identity `(1, 0, 0, 1, 0, 0)` unless a
+constant MaterialX `place2d` or UsdPreviewSurface `UsdTransform2d` chain was folded into it. Every existing
+offset in the command is unchanged, so the addition is a pure append. The managed parser requires the six
+floats and rejects a `MATERIAL_UPSERT` that ends without them, so a stale native library cannot be mistaken
+for a material with no transform. `SilkSurfaceUniformWriter` packs it into the surface block as
+`(m00, m01, tx, 0)` and `(m10, m11, ty, 0)` at offsets 144 and 160, which the mesh fragment shader applies
+once to the interpolated coordinate before any texture sample.
 
 The table is how every per-vertex value other than position travels, so authored normals, texture coordinates
 and arbitrary primvars all use one mechanism and a new attribute needs no further ABI bump. Attribute data is
@@ -1258,6 +1500,46 @@ parity frame; with constant width `0.0001` in `parity-points-asymmetric.usda`, S
 Vulkan SwiftShader all rasterize exactly one pixel per point. hdSilk currently supports that measured
 one-pixel point-list subset and does not implement wide point splats.
 
+Linear segmented basis curves use `LINE_LIST` topology and now carry their authored widths through the
+same attribute table, under the name `widths` with semantic `OPENUSD_SILK_ATTRIBUTE_WIDTH` and one
+component. Constant, uniform, varying, and vertex interpolations are all resolved: a constant width
+publishes one `CONSTANT` element, and the other three publish one `VERTEX` element per emitted line
+vertex, with `uniform` expanded from its per-curve value onto both endpoints of every segment the
+curve emits. Vertex widths are parallel to the points array and are indexed by the resolved point
+index, so an indexed `HdBasisCurvesTopology` selects the same slot for the width as for the position
+and expects one authored width per point rather than one per flattened control-point slot. An
+unindexed topology resolves a point by its flattened ordinal, so it accepts a widths array sized
+either to that control-point count or to a longer points array -- USD permits points the curves do
+not consume, and both sizes index identically. This is a
+real geometry fix, not just a new attribute: before it, anything other than a scalar or
+single-element `widths` array failed extraction and the delegate removed the whole Rprim, so a curve
+Storm rendered normally drew nothing at all in hdSilk.
+
+Complexity subdivides those line segments, and every `VERTEX` attribute is interpolated at the same
+parameter as the position rather than copied from the nearer endpoint, so an authored width ramp
+stays a ramp: at medium complexity the authored `0.03, 0.06` span publishes
+`0.03, 0.045, 0.045, 0.06`. A `CONSTANT` entry stays a single element through subdivision.
+
+Complexity is applied after the draw mode, so it also subdivides a triangle-list record that the
+wireframe, hidden-surface-wireframe, or points draw mode converted into lines or points. A complexity
+change therefore republishes those records too while such a draw mode is active, not only the records
+hdSilk already stores as lines or points; otherwise a converted record would stay at the previous
+density until something unrelated happened to dirty it.
+
+Authored widths are read from `float`, `double`, and `GfHalf` scalars and from `VtFloatArray`,
+`VtDoubleArray`, and `VtHalfArray`. `UsdGeomCurves` declares `widths` as `float[]`, but a scene index
+or a delegate is free to hand Hydra the half-precision primvar it authored, and `GfHalf` converts to
+`float` exactly.
+
+The widths do not change the emitted line geometry, and that is the measured correct behaviour rather
+than a shortcut. Storm rasterizes linear basis curves as one-pixel screen-space lines at the harness
+refinement and ignores authored world-space widths -- `parity-curve-width-probe.usda` measured Storm
+at 128 pixels for two segments authored 0.24 units wide, against 2093 for world-space ribbons -- so
+expanding widths into geometry would be a parity regression. It is also not portable: D3D12 has no
+line width state, Vulkan needs the optional `wideLines` feature for anything but 1.0, and Metal has
+none. A consumer that wants ribbons or half-tubes builds them itself from the published widths;
+hdSilk does not, and refined curve draw styles remain unimplemented and unclaimed.
+
 Other mesh state is deliberately narrower. hdSilk now removes invisible Rprims
 from retained state and republishes them when visibility becomes inherited again.
 Purpose is filtered by the `UsdImagingGLRenderParams` render-purpose flags rather
@@ -1266,6 +1548,41 @@ use less-equal depth with depth writes. Authored `doubleSided` and cull style ar
 represented for mesh topology; line and point batches are always unculled because
 they carry no facing. Camera clipping travels through the view/projection matrices;
 arbitrary clip planes do not.
+
+### Facing: cull style, double-sidedness, and orientation
+
+All five Hydra cull styles now resolve, and the two "front" ones are a fixed defect rather than a new
+feature. `front` and `frontUnlessDoubleSided` used to fall into a catch-all that culled *back* faces, so
+authoring `front` culled exactly the set of faces it asks to keep, and `SilkCullMode` had no `Front`
+member at all -- the pipeline descriptor rejected anything but `None` and `Back`. The mapping is now
+total: `nothing` culls nothing, `back` and `front` cull their named faces, the `*UnlessDoubleSided`
+variants cull nothing when `doubleSided` is authored, and an unknown wire value falls back to Hydra's
+default instead of a silently inverted one. `SilkCullMode.Front` is translated by all three backends
+(`D3D12_CULL_MODE_FRONT`, `VK_CULL_MODE_FRONT_BIT`, `MTLCullModeFront`).
+
+Every batch now resolves its pipeline through the pipeline cache. The renderer used to build four eager
+pipelines and their shader program at construction for a fast path that bypassed the cache for plain
+position/normal meshes, and that path resolved the cull mode as `cullMode == Back ? backCull : none` --
+which would have mapped `Front` to `None`. It was unreachable in practice, because
+`SilkVertexLayoutDescriptor` is a record struct whose `Attributes` is an `IReadOnlyList` and
+`PositionNormal` allocates a fresh array on every access, so the equality guarding the path was
+reference-based and never true. That made it a latent trap rather than a live bug: making the equality
+structural would have re-armed it. It is removed, measured rather than assumed -- one draw of one
+triangle created five pipelines and four shader modules, of which four and two were never bound, and
+now creates one and two. Line and point batches resolve to `SilkCullMode.None` explicitly, because a
+screen-space line or point has no facing and a cull mode that varied with the authored style would
+fragment the cache into states that draw identically.
+
+Winding needs no correction on the page, and that is measured rather than assumed. USD authors face
+winding with `orientation`: `rightHanded` faces are counter-clockwise seen from the front, `leftHanded`
+clockwise, and every backend hdSilk targets rasterizes with counter-clockwise front faces
+(`FrontCounterClockwise`, `VK_FRONT_FACE_COUNTER_CLOCKWISE`, `MTLWindingCounterClockwise`). It would be
+reasonable to assume `HdMeshUtil::ComputeTriangleIndices` triangulates in authored index order and leaves
+the convention to the renderer, in which case hdSilk would have to reverse a `leftHanded` mesh itself --
+but it does not: `ComputeTriangleIndices` already reverses the corners of a `leftHanded` face. Adding a
+reversal on top of that made a `leftHanded` quad publish the double-reversed order `2,0,1,2,3,0`, which
+inverts facing for exactly the prims USD had already handled. `hdsilk_probe` now pins both orders so
+neither a dropped nor a duplicated correction can regress silently.
 
 hdSilk still registers `extComputation` as a supported Sprim type so unsupported procedural deformations have a safe
 fallback, but the render path now evaluates the supported UsdSkel subset directly from the USD stage during Rprim sync.
@@ -1387,8 +1704,8 @@ accepted scenes with a structured required adjusted IoU of `1.000000`, separate 
 perturbation-discrimination floor. The macOS render job now runs the same parity-driver capture
 against Metal, but that path is pending hosted proof until a workflow run records the CGL Storm
 context and Metal capture artifacts.
-Subdivision, shadows, arbitrary MaterialX graphs, volumes beyond the Vulkan single-density OpenVDB
-gate, path tracing, proprietary shaders, and third-party Hydra render plugins are out of scope.
+Subdivision, shadows, arbitrary MaterialX graphs, volumes beyond the single-density OpenVDB gate,
+path tracing, proprietary shaders, and third-party Hydra render plugins are out of scope.
 
 Automatic fallback covers capability and initialization failures plus device-loss conditions reported cleanly by the
 graphics API. It cannot recover from a native driver crash that terminates the process.

@@ -277,6 +277,19 @@ public readonly record struct SilkShaderPermutationId
             SilkShaderFeatures.NormalMap,
             SilkBindingLayoutDescriptor.NormalSamplerBinding,
             SilkBindingLayoutDescriptor.NormalTextureBinding);
+        if ((Features & MapFeatures) != 0)
+        {
+            // The material's single composite image, declared for every
+            // MAP_MATERIAL pipeline because the checked binary references it in
+            // every one of them; a material that binds no composite leaves the
+            // slot at the shared stand-in, exactly as an unbound material map
+            // does. Added last on purpose: descriptor offsets follow slot order,
+            // so appending keeps every pre-existing offset where it was.
+            AddTextureSlots(
+                slots,
+                SilkBindingLayoutDescriptor.CompositeSamplerBinding,
+                SilkBindingLayoutDescriptor.CompositeTextureBinding);
+        }
         return SilkBindingLayoutDescriptor.ForMaterial(slots);
     }
 
@@ -562,6 +575,20 @@ public readonly record struct SilkBindingLayoutDescriptor(
     internal const uint ClearcoatRoughnessTextureBinding = 25;
     internal const uint IorSamplerBinding = 26;
     internal const uint IorTextureBinding = 27;
+
+    /// <summary>
+    /// The sampler for the material's single composite image.
+    /// </summary>
+    /// <remarks>
+    /// One universal slot, not one per material parameter: a per-parameter
+    /// composite would need eleven more sampler/texture pairs, and every mesh
+    /// pipeline would have to declare them. Which parameter it drives is a
+    /// runtime value in the surface constants, so it adds no shader permutation.
+    /// </remarks>
+    internal const uint CompositeSamplerBinding = 28;
+
+    /// <summary>The material's single composite image. See <see cref="CompositeSamplerBinding"/>.</summary>
+    internal const uint CompositeTextureBinding = 29;
 
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
@@ -886,13 +913,21 @@ public readonly record struct SilkVertexLayoutDescriptor(
 }
 
 /// <summary>Face-culling mode supported by Silk mesh pipelines.</summary>
+/// <remarks>
+/// Every backend rasterizes with counter-clockwise front faces, and hdSilk
+/// normalises an authored <c>leftHanded</c> orientation into that convention
+/// before the page, so "front" and "back" mean the same thing on all of them.
+/// </remarks>
 public enum SilkCullMode
 {
     /// <summary>Rasterizes front- and back-facing triangles.</summary>
     None = 0,
 
     /// <summary>Culls back-facing triangles.</summary>
-    Back = 1
+    Back = 1,
+
+    /// <summary>Culls front-facing triangles.</summary>
+    Front = 2
 }
 
 /// <summary>Color blending mode for a Silk graphics pipeline.</summary>
@@ -934,7 +969,7 @@ public readonly record struct SilkGraphicsPipelineDescriptor(
         {
             throw new ArgumentException("The depth format must be D32Float.");
         }
-        if (CullMode is not (SilkCullMode.None or SilkCullMode.Back))
+        if (CullMode is not (SilkCullMode.None or SilkCullMode.Back or SilkCullMode.Front))
         {
             throw new ArgumentOutOfRangeException(nameof(CullMode));
         }
@@ -1103,7 +1138,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
                     cullMode,
                     topologyKind,
                     blendMode,
-                    depthWriteEnabled);
+                    depthWriteEnabled,
+                    sampledVolumeFragment: true);
                 _entries.Add(key, entry);
             }
 
@@ -1187,7 +1223,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkCullMode cullMode,
         SilkTopologyKind topologyKind,
         SilkBlendMode blendMode,
-        bool depthWriteEnabled)
+        bool depthWriteEnabled,
+        bool sampledVolumeFragment = false)
     {
         ISilkGraphicsShaderModule? vertexShader = null;
         ISilkGraphicsShaderModule? fragmentShader = null;
@@ -1198,8 +1235,16 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         {
             vertexShader = _device.CreateShaderModule(
                 SilkCheckedShaderAssets.LoadMeshVertex(_shaderFormat, permutation));
+            // The sampled density volume is its own checked fragment program rather
+            // than a switch inside the shared mesh permutation. A backend root
+            // signature or pipeline layout must declare every resource its shader
+            // binary references, so a volume texture compiled into the shared
+            // fragment binary would have to be declared by every ordinary mesh
+            // pipeline that never samples a volume -- which D3D12 rejects outright.
             fragmentShader = _device.CreateShaderModule(
-                SilkCheckedShaderAssets.LoadMeshFragment(_shaderFormat, permutation));
+                sampledVolumeFragment
+                    ? SilkCheckedShaderAssets.LoadMeshVolumeFragment(_shaderFormat)
+                    : SilkCheckedShaderAssets.LoadMeshFragment(_shaderFormat, permutation));
             bindingLayout = _device.CreateBindingLayout(bindingLayoutDescriptor);
             program = _device.CreateShaderProgram(new SilkShaderProgramDescriptor(
                 vertexShader,
@@ -1549,6 +1594,23 @@ public static partial class SilkCheckedShaderAssets
                 permutation.MeshFragmentArtifactName,
                 "mesh.fragment",
                 "fragmentMain"));
+
+    /// <summary>Loads the checked sampled-density-volume mesh fragment module.</summary>
+    /// <remarks>
+    /// A separate checked program, not a permutation of the shared mesh fragment
+    /// family: it is the only mesh fragment binary that references the 3D density
+    /// texture and its sampler, and only the sampled-volume binding layout declares
+    /// them. Compiling those resources into the shared binary makes every ordinary
+    /// mesh pipeline reference resources its root signature does not declare, which
+    /// D3D12 rejects at pipeline creation.
+    /// </remarks>
+    internal static SilkShaderModuleDescriptor LoadMeshVolumeFragment(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModuleByName(
+            "mesh.volume.fragment",
+            SilkShaderStage.Fragment,
+            format,
+            "volumeFragmentMain");
 
     /// <summary>Loads the checked pick vertex module.</summary>
     public static SilkShaderModuleDescriptor LoadPickVertex(

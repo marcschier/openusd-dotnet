@@ -111,6 +111,8 @@ on:
       - 'tests/OpenUsd.Rendering.ConformanceTests/**'
       - 'tests/OpenUsd.Viewer.Tests/**'
       - 'tests/OpenUsd.Package.Tests/**'
+      - 'test-assets/parity/**'
+      - 'native/hdSilk/**'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
       - 'version.json'
@@ -317,6 +319,61 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/D3D12DeviceTests/WarpCompositesStraightAlphaOverDestination')
+      - name: Execute sampled OpenVDB volume conformance
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        # The D3D12 WARP volume gate is required evidence, not an optional extra.
+        # A backend that ignores the sampled density grid still passes a
+        # sampled-versus-uniform check on its own, so the same job also runs the
+        # Vulkan gate and the cross-backend comparison that makes such a backend
+        # visible. Both device paths are software here: WARP and the packaged
+        # SwiftShader ICD that run-managed-tests.ps1 selects.
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project -c Release -f net10.0
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumeRenderingConformanceTests/*')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumePipelineSelectionConformanceTests/*')
+          # Authors its own grid, so it needs no native runtime and covers a density
+          # resolution the one checked-in VDB does not have.
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumeDepthSamplingConformanceTests/*')
+      - name: Classify the Windows volume evidence
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        # win-x64 is already an advertised evidence platform for the sampled-volume gate,
+        # so a run that skipped it would make that claim false. There is no
+        # -AllowCapabilitySkip here for exactly that reason: a capability skip on this
+        # runner must fail rather than quietly ship an unbacked claim.
+        run: |
+          $volumes = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/volumes'
+          ./eng/assert-volume-evidence.ps1 -Root $volumes -Backend vulkan
+          ./eng/assert-volume-evidence.ps1 -Root $volumes -Backend d3d12 -SkipUniformGate
+      - name: Upload sampled volume evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-volume-evidence-win-x64-${{ github.run_id }}
+          path: |
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/volumes/*.txt
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/volumes/*.json
+          if-no-files-found: warn
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -1001,6 +1058,69 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/VulkanDeviceTests/VulkanCompositesStraightAlphaOverDestination')
+      - name: Execute Linux sampled OpenVDB volume conformance
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.linux-vulkan.outputs.ready == 'true')
+        shell: pwsh
+        # Real Linux execution of the Vulkan volume legs, not an inherited claim from
+        # the Windows job. The runtime is the one the GLX parity capture already staged
+        # in this job: OPENUSD_PLUGIN_PATH names its plugin root, which carries both the
+        # hdSilk delegate and OpenUSD's hioOpenVDB reader, and LD_LIBRARY_PATH is
+        # exported here rather than from inside the test host because the ELF loader
+        # reads it once at process start. The D3D12 and cross-backend legs of the class
+        # report a platform skip here; they are gated by the Windows job.
+        env:
+          VK_DRIVER_FILES: ${{ steps.linux-vulkan-runtime.outputs.icd }}
+          VK_ICD_FILENAMES: ${{ steps.linux-vulkan-runtime.outputs.icd }}
+          OPENUSD_PLUGIN_PATH: ${{ github.workspace }}/artifacts/parity-capture/linux-x64/runtime/plugin/usd
+          LD_LIBRARY_PATH: ${{ github.workspace }}/artifacts/parity-capture/linux-x64/runtime/lib:${{ github.workspace }}/artifacts/parity-capture/linux-x64/runtime/bin
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project -c Release -f net10.0
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumeRenderingConformanceTests/(UniformDensityVolumeGatesOnVulkan|SampledOpenVdbDensityGatesOnVulkan)')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumePipelineSelectionConformanceTests/*')
+          # The Vulkan legs of the depth gate; its D3D12 legs report a platform skip here.
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumeDepthSamplingConformanceTests/*')
+      - name: Classify the Linux volume evidence
+        if: >-
+          steps.native-ready.outputs.ready == 'true' &&
+          (steps.linux-vulkan.outputs.ready == 'true')
+        shell: pwsh
+        # linux-x64 is already an advertised evidence platform for the sampled-volume gate,
+        # so a capability skip here must fail rather than quietly ship an unbacked claim.
+        # Only the Vulkan legs run in this job, so only they are classified.
+        run: >
+          ./eng/assert-volume-evidence.ps1
+          -Root tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/volumes
+          -Backend vulkan
+      - name: Upload Linux sampled volume evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-volume-evidence-linux-x64-${{ github.run_id }}
+          path: |
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/volumes/*.txt
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/volumes/*.json
+          if-no-files-found: warn
       - name: Execute X11 Storm child switching gate
         if: steps.native-ready.outputs.ready == 'true'
         env:
@@ -1183,7 +1303,7 @@ jobs:
       - name: Install native build prerequisites
         if: steps.native-ready.outputs.ready == 'true'
         run: brew install cmake ninja
-      - name: Build and validate six-entry Metal library
+      - name: Build and validate the manifest-derived combined Metal library
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: |
@@ -1331,6 +1451,75 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/MetalCompositionViewportLifecycleTests/*')
+      - name: Stage macOS hdSilk volume runtime
+        id: macos-volume-runtime
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        # Staged here rather than reusing the CGL parity capture's runtime, because that
+        # capture runs only when resolve-macos-cgl-capability.ps1 proves hosted CGL works.
+        # The Metal volume gates do not touch OpenGL, so binding them to that capability
+        # would make a Metal pixel gate vanish whenever hosted CGL regressed.
+        run: ./eng/stage-hdsilk-runtime.ps1 -Rid osx-arm64
+      - name: Execute macOS sampled OpenVDB volume conformance
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        # The executed Metal pixel gate. It runs the same shared helper, stages, crops and
+        # thresholds as the Windows and Linux legs, so a Metal backend that ignored the
+        # density grid would fail here exactly as D3D12 did. DYLD_LIBRARY_PATH is exported
+        # from the step rather than from inside the test host because dyld reads it once at
+        # process start, and OpenUsdRequireMetalShaderLibrary stages the combined
+        # mesh.metallib beside the host so the checked volumeFragmentMain entry point
+        # resolves. The Vulkan, D3D12, and cross-backend legs of the class report platform
+        # skips here; they are gated by the Windows and Linux jobs.
+        #
+        # The default --minimum-expected-tests of 1 is deliberate. It counts executed, not
+        # skipped, tests, so it fails when both legs skip -- which on this runner can only
+        # mean the metallib or the staged runtime is wrong -- while still letting the
+        # uniform leg run and the sampled leg record an hioOpenVDB capability skip that the
+        # classify step below is responsible for judging.
+        env:
+          OPENUSD_PLUGIN_PATH: ${{ steps.macos-volume-runtime.outputs.plugin }}
+          DYLD_LIBRARY_PATH: ${{ steps.macos-volume-runtime.outputs.library-path }}
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project `
+            -c Release `
+            -f net10.0 `
+            -p:OpenUsdRequireMetalShaderLibrary=true
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumeRenderingConformanceTests/(UniformDensityVolumeGatesOnMetal|SampledOpenVdbDensityGatesOnMetal)')
+      - name: Classify the macOS volume evidence
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        # A skipped gate still exits zero, and an artifact of skip notes reads exactly like
+        # an artifact of measured deltas. This step separates them and writes
+        # volume-evidence-metal-status.json into the uploaded evidence, so the osx-arm64
+        # support claim can only be promoted from a run whose status is "executed".
+        # Missing or malformed evidence is a wiring fault and fails the job outright.
+        # -AllowCapabilitySkip is the one thing to remove once a run records "executed":
+        # dropping it makes the Metal volume gate required evidence on this runner, the
+        # way the D3D12 WARP gate already is on the Windows job.
+        run: >
+          ./eng/assert-volume-evidence.ps1
+          -Root tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/volumes
+          -Backend metal
+          -AllowCapabilitySkip
+          -SkipDepthGate
+      - name: Upload macOS sampled volume evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-volume-evidence-osx-arm64-${{ github.run_id }}
+          path: |
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/volumes/*.txt
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/volumes/*.json
+            artifacts/hdsilk-runtime/osx-arm64/runtime.json
+          if-no-files-found: warn
       - name: Execute native probe and Storm/Metal no-restart switching loops
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh

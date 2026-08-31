@@ -96,4 +96,3 @@ struct KernelContext_0
     pixelOutput_0 _S5 = { float4((&kernelContext_0)->SelectionOutlineParameters_0->outlineColor_0.xyz, (&kernelContext_0)->SelectionOutlineParameters_0->outlineColor_0.w * edge_0) };
     return _S5;
 }
-

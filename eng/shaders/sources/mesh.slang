@@ -183,6 +183,21 @@ Texture2D<float4> iorTexture : register(t14);
 Texture2D<float4> emissiveTexture : register(t3);
 #endif
 
+// The one image a material may bind as the second operand of a two-image surface
+// input. It is a single universal slot rather than one per material parameter:
+// eleven more sampler/texture pairs would be needed for the latter, and every
+// mesh pipeline would have to declare them. Which parameter it composites into,
+// and with which operator, are runtime values in SurfaceParameters, so this
+// changes no shader permutation.
+#if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(28, 0)]]
+SamplerState compositeSampler : register(s12);
+#endif
+#if FRAGMENT_STAGE && MAP_MATERIAL
+[[vk::binding(29, 0)]]
+Texture2D<float4> compositeTexture : register(t15);
+#endif
+
 #if FRAGMENT_STAGE && VOLUME_DENSITY_TEXTURES
 [[vk::binding(9, 0)]]
 Texture3D<float> volumeDensityTexture : register(t9);
@@ -227,6 +242,17 @@ struct SurfaceParameters
     float4 lightColorAmbient;
     float4 reserved;
     float4 textureControls;
+    // The one constant texture-coordinate transform this material samples every
+    // texture through, as (m00, m01, tx, 0) and (m10, m11, ty, 0). Identity
+    // unless a constant MaterialX place2d or UsdTransform2d chain was folded.
+    float4 uvTransformRow0;
+    float4 uvTransformRow1;
+    // The two-image composite, as (targetTextureMaskBit, operator, factor, udim).
+    // targetTextureMaskBit is zero when this material binds no composite image;
+    // otherwise it is the same bit textureControls.x uses for the parameter the
+    // composite drives, so exactly one of the slots below combines. operator is
+    // one of the CompositeOp constants and factor is meaningful only for mix.
+    float4 compositeControls;
 };
 
 [[vk::binding(7, 0)]]
@@ -270,6 +296,76 @@ float4 SampleMaterialTexture(
         textureSampler,
         pixel / float2(atlasWidth, atlasHeight));
 }
+
+[ForceInline]
+float2 TransformTextureCoordinate(SurfaceParameters surface, float2 textureCoordinate)
+{
+    return float2(
+        dot(surface.uvTransformRow0.xy, textureCoordinate) + surface.uvTransformRow0.z,
+        dot(surface.uvTransformRow1.xy, textureCoordinate) + surface.uvTransformRow1.z);
+}
+
+// Wire values of OPENUSD_SILK_COMPOSITE_*; see openusd_hdsilk.h.
+static const uint CompositeOpNone = 0u;
+static const uint CompositeOpMultiply = 1u;
+static const uint CompositeOpAdd = 2u;
+static const uint CompositeOpSubtract = 3u;
+static const uint CompositeOpMix = 4u;
+
+#if MAP_MATERIAL
+/// Combines the primary sample of one material slot with the material's single
+/// composite image, when that slot is the one the composite drives.
+///
+/// The whole expression is evaluated here rather than folded into the primary
+/// entry's scale and bias because the product, sum, difference or blend of two
+/// images is not affine in either one. It runs in floating point after both
+/// decodes, so the eight-bit unit-range restriction that governs the per-entry
+/// affines does not apply to it.
+///
+/// `slotBit` is the same textureControls.x bit the slot already uses, so the
+/// comparison is exact and no second identifier space is introduced.
+[ForceInline]
+float4 ApplyMaterialComposite(
+    SurfaceParameters surface,
+    float slotBit,
+    float4 primary,
+    float2 textureCoordinate)
+{
+    if (surface.compositeControls.x != slotBit)
+    {
+        return primary;
+    }
+    // The composite's own UDIM bit, not the driven slot's. The two operands of
+    // one surface input are independent assets and either may be a UDIM set on
+    // its own, so reusing the slot's bit sampled a plain image through the atlas
+    // path -- which reads its first texel as tile metadata -- or sampled an atlas
+    // with raw coordinates.
+    float4 composite = SampleMaterialTexture(
+        compositeTexture,
+        compositeSampler,
+        textureCoordinate,
+        surface.compositeControls.w >= 0.5);
+    uint operation = (uint)round(surface.compositeControls.y);
+    if (operation == CompositeOpMultiply)
+    {
+        return primary * composite;
+    }
+    if (operation == CompositeOpAdd)
+    {
+        return primary + composite;
+    }
+    if (operation == CompositeOpSubtract)
+    {
+        return primary - composite;
+    }
+    if (operation == CompositeOpMix)
+    {
+        float factor = surface.compositeControls.z;
+        return primary * (1.0 - factor) + composite * factor;
+    }
+    return primary;
+}
+#endif
 
 /// Mirrors Storm's Preview.Lighting NormalDistribution, including its epsilon, so
 /// the two renderers agree by construction rather than by approximation.
@@ -341,12 +437,26 @@ void DiscardClippedFragment(float3 eyePosition, FrameParameters frame)
 }
 
 #if VOLUME_DENSITY_TEXTURES
+/// Integrates the density column with one sample per voxel layer.
+///
+/// The step count is the grid's own Z resolution rather than a constant. A fixed
+/// count only reconstructs the column exactly when the sample lattice happens to
+/// align with the voxel layers, which is why a hardcoded 32 looked correct for as
+/// long as the only gated asset was 32 deep. For a 96-deep grid the same 32 steps
+/// land off-layer and can integrate a two-layer feature to exactly zero -- the
+/// volume still renders, it has simply lost the structure, which is the class of
+/// plausible-but-wrong image this program exists to prevent. Sampling at layer
+/// centres instead makes the linear filter return each texel exactly, so the sum
+/// is the true mean of the column. The command parser rejects depths above the
+/// renderer's 512-layer exact-integration limit.
 [ForceInline]
-float SampleVolumeDensity(float3 objectPosition)
+float SampleVolumeDensity(float3 objectPosition, float voxelDepth)
 {
     float2 uv = saturate(objectPosition.xy + float2(0.5, 0.5));
     float density = 0.0;
-    const uint stepCount = 32u;
+    // Clamped defensively even though the command parser guarantees a depth in
+    // [1, 512] whenever the sampled-volume flag is set.
+    const uint stepCount = (uint)clamp(voxelDepth, 1.0, 512.0);
     for (uint step = 0u; step < stepCount; step++)
     {
         float z = ((float)step + 0.5) / (float)stepCount;
@@ -379,7 +489,8 @@ float4 FRAGMENT_ENTRY_POINT(
     {
 #if VOLUME_DENSITY_TEXTURES
         float density = surface.reserved.w >= 0.5
-            ? SampleVolumeDensity(input.objectPosition) * max(0.0, surface.reserved.y)
+            ? SampleVolumeDensity(input.objectPosition, surface.textureControls.z) *
+                max(0.0, surface.reserved.y)
             : max(0.0, surface.reserved.y);
 #else
         float density = max(0.0, surface.reserved.y);
@@ -397,15 +508,24 @@ float4 FRAGMENT_ENTRY_POINT(
     float3 shadingNormal = input.normal;
     uint textureMask = (uint)round(surface.textureControls.x);
     uint udimMask = (uint)round(surface.textureControls.y);
+#if HAS_UV
+    // Applied once, before any sample: the material publishes exactly one folded
+    // MaterialX place2d transform, and every texture it binds reads through it.
+    float2 materialTexCoord = TransformTextureCoordinate(surface, input.texCoord);
+#endif
 
 #if MAP_MATERIAL
     if ((textureMask & 2u) != 0)
     {
-        diffuseColor = SampleMaterialTexture(
-            baseColorTexture,
-            baseColorSampler,
-            input.texCoord,
-            (udimMask & 2u) != 0).rgb;
+        diffuseColor = ApplyMaterialComposite(
+            surface,
+            2.0,
+            SampleMaterialTexture(
+                baseColorTexture,
+                baseColorSampler,
+                materialTexCoord,
+                (udimMask & 2u) != 0),
+            materialTexCoord).rgb;
     }
 #endif
 #if MAP_NORMAL
@@ -413,7 +533,7 @@ float4 FRAGMENT_ENTRY_POINT(
         SampleMaterialTexture(
             normalTexture,
             normalSampler,
-            input.texCoord,
+            materialTexCoord,
             (udimMask & 4u) != 0).xyz * 2.0 - 1.0;
     float3 tangent = normalize(input.tangent.xyz);
     float3 bitangent = cross(normalize(shadingNormal), tangent) * input.tangent.w;
@@ -432,11 +552,15 @@ float4 FRAGMENT_ENTRY_POINT(
     if ((textureMask & 8u) != 0)
     {
         roughness = clamp(
-            SampleMaterialTexture(
-                roughnessMetallicTexture,
-                roughnessMetallicSampler,
-                input.texCoord,
-                (udimMask & 8u) != 0).r,
+            ApplyMaterialComposite(
+                surface,
+                8.0,
+                SampleMaterialTexture(
+                    roughnessMetallicTexture,
+                    roughnessMetallicSampler,
+                    materialTexCoord,
+            (udimMask & 8u) != 0),
+                materialTexCoord).r,
             0.01,
             1.0);
     }
@@ -447,72 +571,104 @@ float4 FRAGMENT_ENTRY_POINT(
     if ((textureMask & 32u) != 0)
     {
         metallic = saturate(
-            SampleMaterialTexture(
-                metallicTexture,
-                metallicSampler,
-                input.texCoord,
-                (udimMask & 32u) != 0).r);
+            ApplyMaterialComposite(
+                surface,
+                32.0,
+                SampleMaterialTexture(
+                    metallicTexture,
+                    metallicSampler,
+                    materialTexCoord,
+                    (udimMask & 32u) != 0),
+                materialTexCoord).r);
     }
     if ((textureMask & 16u) != 0)
     {
-        emissiveColor = SampleMaterialTexture(
-            emissiveTexture,
-            emissiveSampler,
-            input.texCoord,
-            (udimMask & 16u) != 0).rgb;
+        emissiveColor = ApplyMaterialComposite(
+            surface,
+            16.0,
+            SampleMaterialTexture(
+                emissiveTexture,
+                emissiveSampler,
+                materialTexCoord,
+                (udimMask & 16u) != 0),
+            materialTexCoord).rgb;
     }
     if ((textureMask & 64u) != 0)
     {
         opacity = saturate(
-            SampleMaterialTexture(
-                opacityTexture,
-                opacitySampler,
-                input.texCoord,
-                (udimMask & 64u) != 0).r);
+            ApplyMaterialComposite(
+                surface,
+                64.0,
+                SampleMaterialTexture(
+                    opacityTexture,
+                    opacitySampler,
+                    materialTexCoord,
+                    (udimMask & 64u) != 0),
+                materialTexCoord).r);
     }
     if ((textureMask & 128u) != 0)
     {
         occlusion = saturate(
-            SampleMaterialTexture(
-                occlusionTexture,
-                occlusionSampler,
-                input.texCoord,
-                (udimMask & 128u) != 0).r);
+            ApplyMaterialComposite(
+                surface,
+                128.0,
+                SampleMaterialTexture(
+                    occlusionTexture,
+                    occlusionSampler,
+                    materialTexCoord,
+                    (udimMask & 128u) != 0),
+                materialTexCoord).r);
     }
     if ((textureMask & 256u) != 0)
     {
         specularColor = saturate(
-            SampleMaterialTexture(
-                specularColorTexture,
-                specularColorSampler,
-                input.texCoord,
-                (udimMask & 256u) != 0).rgb);
+            ApplyMaterialComposite(
+                surface,
+                256.0,
+                SampleMaterialTexture(
+                    specularColorTexture,
+                    specularColorSampler,
+                    materialTexCoord,
+                    (udimMask & 256u) != 0),
+                materialTexCoord).rgb);
     }
     if ((textureMask & 512u) != 0)
     {
         clearcoatAmount = saturate(
-            SampleMaterialTexture(
-                clearcoatTexture,
-                clearcoatSampler,
-                input.texCoord,
-                (udimMask & 512u) != 0).r);
+            ApplyMaterialComposite(
+                surface,
+                512.0,
+                SampleMaterialTexture(
+                    clearcoatTexture,
+                    clearcoatSampler,
+                    materialTexCoord,
+                    (udimMask & 512u) != 0),
+                materialTexCoord).r);
     }
     if ((textureMask & 1024u) != 0)
     {
         clearcoatRoughness = saturate(
-            SampleMaterialTexture(
-                clearcoatRoughnessTexture,
-                clearcoatRoughnessSampler,
-                input.texCoord,
-                (udimMask & 1024u) != 0).r);
+            ApplyMaterialComposite(
+                surface,
+                1024.0,
+                SampleMaterialTexture(
+                    clearcoatRoughnessTexture,
+                    clearcoatRoughnessSampler,
+                    materialTexCoord,
+                    (udimMask & 1024u) != 0),
+                materialTexCoord).r);
     }
     if ((textureMask & 2048u) != 0)
     {
-        ior = SampleMaterialTexture(
-                iorTexture,
-                iorSampler,
-                input.texCoord,
-                (udimMask & 2048u) != 0).r;
+        ior = ApplyMaterialComposite(
+                surface,
+                2048.0,
+                SampleMaterialTexture(
+                    iorTexture,
+                    iorSampler,
+                    materialTexCoord,
+                    (udimMask & 2048u) != 0),
+                materialTexCoord).r;
     }
 #endif
 

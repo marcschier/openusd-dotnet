@@ -9,72 +9,6 @@
   },
   "resources": [
     {
-      "name": "volumeDensitySampler",
-      "bindings": {
-        "d3d": {
-          "registerClass": "s",
-          "register": 4,
-          "space": 0
-        },
-        "vulkan": {
-          "binding": 13,
-          "set": 0
-        }
-      },
-      "shape": {
-        "kind": "sampler",
-        "access": "read",
-        "arrayCount": null,
-        "elementType": null,
-        "elementStride": null,
-        "size": null
-      },
-      "vulkanLayout": {
-        "kind": "sampler",
-        "access": "read",
-        "arrayCount": null,
-        "elementType": null,
-        "elementStride": null,
-        "size": null
-      }
-    },
-    {
-      "name": "volumeDensityTexture",
-      "bindings": {
-        "d3d": {
-          "registerClass": "t",
-          "register": 9,
-          "space": 0
-        },
-        "vulkan": {
-          "binding": 9,
-          "set": 0
-        }
-      },
-      "shape": {
-        "kind": "texture3D",
-        "access": "read",
-        "arrayCount": null,
-        "elementType": {
-          "kind": "scalar",
-          "scalarType": "float32"
-        },
-        "elementStride": null,
-        "size": null
-      },
-      "vulkanLayout": {
-        "kind": "texture3D",
-        "access": "read",
-        "arrayCount": null,
-        "elementType": {
-          "kind": "scalar",
-          "scalarType": "float32"
-        },
-        "elementStride": null,
-        "size": null
-      }
-    },
-    {
       "name": "SceneParameters",
       "bindings": {
         "d3d": {
@@ -359,10 +293,61 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "uvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 144,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "uvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 160,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "compositeControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 176,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 144,
+        "elementStride": 192,
         "size": null
       },
       "vulkanLayout": {
@@ -525,10 +510,61 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "uvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 144,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "uvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 160,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "compositeControls",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 176,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 144,
+        "elementStride": 192,
         "size": null
       }
     },
@@ -1790,6 +1826,80 @@
         },
         "vulkan": {
           "binding": 5,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "compositeSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 12,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 28,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "compositeTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 15,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 29,
           "set": 0
         }
       },

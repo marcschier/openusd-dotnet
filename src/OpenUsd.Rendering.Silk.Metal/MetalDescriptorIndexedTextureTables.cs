@@ -34,6 +34,14 @@ internal sealed class MetalDescriptorIndexedTextureTables : IDisposable
             return true;
         }
 
+        // Checked before anything is allocated or encoded. Declining here is the whole
+        // safety property: the caller falls back to direct SetFragmentTexture and
+        // SetFragmentSamplerState, which is what the checked programs actually read.
+        if (MetalArgumentBufferCompatibility.TryGetRejectionReason(layout, out _))
+        {
+            return false;
+        }
+
         lock (_gate)
         {
             if (_disposed)
@@ -289,6 +297,18 @@ internal sealed class MetalDescriptorIndexedTextureTables : IDisposable
                     };
                     if (slot.Kind == SilkBindingKind.SampledTexture)
                     {
+                        // Type2D is asserted, not assumed. MetalArgumentBufferCompatibility
+                        // rejects every layout carrying the sampled density 3D texture
+                        // before a table is ever created, so a Type3D slot cannot reach
+                        // here; if one ever does, fail loudly rather than describe it as a
+                        // 2D texture and hand the shader an undefined sample.
+                        if (slot.Binding ==
+                            SilkBindingLayoutDescriptor.VolumeDensityTextureBinding)
+                        {
+                            throw new InvalidOperationException(
+                                "A Metal argument buffer cannot encode the sampled density " +
+                                $"3D texture at binding {slot.Binding}.");
+                        }
                         descriptors[index].TextureType = MTLTextureType.Type2D;
                     }
                     objects[index] = descriptors[index].NativePtr;

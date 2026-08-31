@@ -25,4 +25,3 @@ struct SelectionOutlineVertexOutput_0
     (&_S1)->textureCoordinate_0 = output_0.textureCoordinate_1;
     return _S1;
 }
-

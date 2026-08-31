@@ -272,13 +272,22 @@ public sealed class ResourceStabilityTests
         SilkMeshRenderResult result = renderer.ApplyAndRender(page, color, depth);
 
         await Assert.That(result.DrawCount).IsEqualTo(1);
-        await Assert.That(device.CreatedShaderModuleCount).IsEqualTo(4);
+        // The renderer creates no GPU objects until a draw needs them. It used to
+        // build four eager pipelines and their shader program up front for a
+        // fast path that bypassed the pipeline cache, but that path was
+        // unreachable -- it compared the mesh's SilkVertexLayoutDescriptor to a
+        // freshly allocated PositionNormal, and the record struct's array-valued
+        // Attributes made that equality reference-based -- so every draw went
+        // through the cache anyway and the eager objects were never bound. This
+        // count is the measurement: it was 5 pipelines and 4 shader modules for
+        // one draw, of which 4 and 2 were dead.
+        await Assert.That(device.CreatedShaderModuleCount).IsEqualTo(2);
         await Assert.That(AllShaderModulesMatchCheckedArtifacts(
                 device,
                 SilkCheckedShaderAssets.LoadMeshVertex(SilkShaderBinaryFormat.SpirV),
                 SilkCheckedShaderAssets.LoadMeshFragment(SilkShaderBinaryFormat.SpirV)))
             .IsTrue();
-        await Assert.That(device.CreatedPipelineCount).IsEqualTo(5);
+        await Assert.That(device.CreatedPipelineCount).IsEqualTo(1);
     }
 
     [Test]

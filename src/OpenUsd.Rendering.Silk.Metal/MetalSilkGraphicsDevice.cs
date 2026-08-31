@@ -14,7 +14,8 @@ public sealed partial class MetalSilkGraphicsDevice
     : SilkGraphicsDeviceLifetimeBase,
       ISilkGraphicsDevice,
       ISilkPickingGraphicsDevice,
-      ISilkSelectionOutlineGraphicsDevice
+      ISilkSelectionOutlineGraphicsDevice,
+      ISilkVolumeTextureGraphicsDevice
 {
     private readonly MTLArgumentBuffersTier _argumentBuffersSupport;
     private readonly MetalDescriptorIndexedTextureTables? _materialDescriptorTables;
@@ -32,19 +33,37 @@ public sealed partial class MetalSilkGraphicsDevice
             _materialDescriptorTables =
                 new MetalDescriptorIndexedTextureTables(device);
         }
+        // Tier 2 hardware is necessary but not sufficient. The capability answers "can
+        // material textures be bound through a descriptor-indexed table", and with the
+        // current checked shaders they cannot: every checked Metal program takes its
+        // textures and samplers as direct entry-point arguments, so
+        // MetalArgumentBufferCompatibility declines every layout that carries one and the
+        // encoder always falls back to direct binding. Reporting the hardware tier here
+        // instead would advertise a path no draw can take, and the viewer prints this
+        // field verbatim into its diagnostics.
+        string tablesRejection;
+        bool tablesUsable;
+        if (_materialDescriptorTables is null)
+        {
+            tablesRejection =
+                $"ArgumentBuffersSupport is {_argumentBuffersSupport}; requires Tier2";
+            tablesUsable = false;
+        }
+        else
+        {
+            tablesUsable = !MetalArgumentBufferCompatibility
+                .TryGetCapabilityRejectionReason(out tablesRejection);
+        }
         Capabilities = new SilkGraphicsCapabilities(
             device.Name.ToString() ?? "Metal Device",
             "Metal",
             SupportsCompute: true,
             IsSoftware: false)
         {
-            SupportsDescriptorIndexedTextureTables =
-                _materialDescriptorTables is not null,
-            DescriptorIndexedTextureTablesDiagnostic =
-                _materialDescriptorTables is null
-                    ? "Metal descriptor-indexed texture tables unavailable: " +
-                        $"ArgumentBuffersSupport is {_argumentBuffersSupport}; requires Tier2."
-                    : null,
+            SupportsDescriptorIndexedTextureTables = tablesUsable,
+            DescriptorIndexedTextureTablesDiagnostic = tablesUsable
+                ? null
+                : $"Metal descriptor-indexed texture tables unavailable: {tablesRejection}.",
             // Metal guarantees samplers accept a maxAnisotropy of up to 16 on every device --
             // there is no separate feature query in the current SharpMetal surface, so this
             // uses the API-documented ceiling rather than an unverifiable runtime probe.

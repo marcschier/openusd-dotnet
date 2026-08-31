@@ -128,8 +128,9 @@ def Xform "World"
         (0.152, 0.165, 0.000),
         (0.100, 0.200, 0.000)
         ]
-        float[] widths = [0.0001]
-        uniform token widths:interpolation = "constant"
+        float[] widths = [0.0001] (
+            interpolation = "constant"
+        )
         color3f[] primvars:displayColor = [(0.88, 0.62, 0.20)]
         uniform token primvars:displayColor:interpolation = "constant"
     }

@@ -342,7 +342,8 @@ internal sealed record ViewerAttributeSnapshot(
     bool IsBlocked,
     int TimeSampleCount,
     string TimeSamples,
-    string Value) : IUsdDetachedResult;
+    string Value,
+    ViewerSplineSnapshot? Spline = null) : IUsdDetachedResult;
 
 internal sealed record ViewerRelationshipSnapshot(
     string Name,
@@ -758,6 +759,17 @@ internal sealed record ViewerDocumentSnapshot(
 
 internal static class ViewerStageSnapshotBuilder
 {
+    /// <summary>
+    /// The most authored Ts splines one inspector snapshot reads and evaluates.
+    /// </summary>
+    /// <remarks>
+    /// This bounds native work inside the scheduler callback and is distinct
+    /// from the Value tab's knot-line budget, which bounds the visual tree
+    /// afterwards. One is about what the stage thread does; the other is about
+    /// what the UI thread builds.
+    /// </remarks>
+    internal const int MaxReadSplinesPerInspector = 16;
+
     internal static ViewerDocumentSnapshot BuildDocument(UsdStage stage)
         => BuildDocument(stage, previousLayers: null, selectedPrimPath: null);
 
@@ -884,6 +896,7 @@ internal static class ViewerStageSnapshotBuilder
         UsdPrim prim = stage.GetPrim(primPath);
         IReadOnlyList<UsdAttribute> attributes = prim.GetAttributes();
         var attributeSnapshots = new ViewerAttributeSnapshot[attributes.Count];
+        int splineBudget = MaxReadSplinesPerInspector;
         for (int index = 0; index < attributes.Count; index++)
         {
             UsdAttribute attribute = attributes[index];
@@ -897,7 +910,8 @@ internal static class ViewerStageSnapshotBuilder
                 state.IsBlocked,
                 timeSamples.Length,
                 FormatTimeSamples(timeSamples),
-                GetDisplayValue(attribute, typeName, state));
+                GetDisplayValue(attribute, typeName, state),
+                BuildSpline(attribute, ref splineBudget));
         }
 
         IReadOnlyList<UsdRelationship> relationships = prim.GetRelationships();
@@ -1052,6 +1066,61 @@ internal static class ViewerStageSnapshotBuilder
             editTargetIdentifier,
             identifiers,
             mutedIdentifiers);
+    }
+
+    /// <summary>
+    /// Copies an attribute's authored Ts spline, plus a bounded evaluated
+    /// preview, while the builder still holds stage access.
+    /// </summary>
+    /// <remarks>
+    /// Every failure the native runtime can report here belongs to one
+    /// attribute - an unsupported value type, a spline the runtime refuses to
+    /// read, a time it refuses to evaluate. Letting it escape would fail the
+    /// whole inspector snapshot and leave the prim uninspectable, so it is
+    /// projected as an unreadable spline instead.
+    ///
+    /// Reading one spline costs two native calls plus one evaluation per
+    /// preview sample, and nothing bounds how many splined attributes a prim
+    /// may carry, so the scheduler callback would grow with the prim. The
+    /// budget bounds that native work per inspector; the attributes past it
+    /// are projected as deliberately unread rather than dropped, so the Value
+    /// tab can say which ones were skipped and why.
+    /// </remarks>
+    private static ViewerSplineSnapshot? BuildSpline(UsdAttribute attribute, ref int budget)
+    {
+        try
+        {
+            if (!attribute.HasSpline())
+            {
+                return null;
+            }
+
+            if (budget <= 0)
+            {
+                return ViewerSplineSnapshot.CreateNotRead(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"this prim's budget of {MaxReadSplinesPerInspector} read spline(s) " +
+                        $"was already spent"));
+            }
+
+            budget--;
+            using TsSpline spline = attribute.GetSpline();
+            TsSplineData data = spline.GetData();
+            double[] times = ViewerSplineSnapshot.GetSampleTimes(data);
+            var samples = new ViewerSplineSampleSnapshot[times.Length];
+            for (int index = 0; index < times.Length; index++)
+            {
+                samples[index] = new ViewerSplineSampleSnapshot(
+                    times[index],
+                    spline.Evaluate(times[index]));
+            }
+            return ViewerSplineSnapshot.Create(data, samples);
+        }
+        catch (OpenUsdNativeException exception)
+        {
+            return ViewerSplineSnapshot.CreateUnreadable(exception.Message);
+        }
     }
 
     private static string GetDisplayValue(

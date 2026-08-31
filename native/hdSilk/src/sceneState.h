@@ -116,6 +116,12 @@ struct HdSilkMaterialTexture
     float scale[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     float bias[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     float fallback[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    // How this entry combines with the primary entry of the same parameter.
+    // OPENUSD_SILK_COMPOSITE_NONE marks the primary entry; anything else marks
+    // the second operand of a two-image surface input. compositeFactor is
+    // meaningful only for OPENUSD_SILK_COMPOSITE_MIX.
+    uint32_t compositeOp = 0;
+    float compositeFactor = 0.0f;
     // The folded MaterialX place2d transform this texture reads its coordinates
     // through, as the row-major affine (m00, m01, m10, m11, tx, ty). Resolved per
     // texture so the material-wide reconciliation can tell agreement from

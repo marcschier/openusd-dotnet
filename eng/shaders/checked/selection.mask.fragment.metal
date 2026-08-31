@@ -12,4 +12,3 @@ struct pixelOutput_0
     pixelOutput_0 _S1 = { float4(1.0f, 1.0f, 1.0f, 1.0f) };
     return _S1;
 }
-

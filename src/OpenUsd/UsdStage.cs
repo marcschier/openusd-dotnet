@@ -54,6 +54,17 @@ public sealed class UsdStage : IDisposable, IUsdStageBound
     /// <summary>Opens an existing stage.</summary>
     public static UsdStage Open(string path) => new(OpenUsdNativeRuntime.OpenStage(path));
 
+    /// <summary>Opens an existing stage whose asset resolution uses a resolver context.</summary>
+    /// <remarks>
+    /// The context is owned by the stage for the lifetime of its composition, so callers do not
+    /// have to bind it on the calling thread.
+    /// </remarks>
+    public static UsdStage Open(string path, UsdResolverContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return new UsdStage(OpenUsdNativeRuntime.OpenStageWithContext(path, context.Native));
+    }
+
     /// <summary>Opens an existing stage with a bulk population mask.</summary>
     public static UsdStage OpenMasked(string path, ReadOnlySpan<string> maskPaths)
     {

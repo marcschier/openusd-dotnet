@@ -265,6 +265,18 @@
             "tests/OpenUsd.NativeProbe/Program.cs"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "resolver-context-inspection",
+          "nativeCapability": "OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION",
+          "description": "ArResolver context creation, scoped binding, bulk resolved-asset and plugin inspection",
+          "status": "implemented",
+          "evidenceTests": [
+            "native/tests/native_probe.cpp",
+            "tests/OpenUsd.NativeCoverage.Tests/ResolverPluginNativeCoverageTests.cs",
+            "tests/OpenUsd.NativeProbe/Program.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         }
       ]
     },
@@ -501,7 +513,7 @@
         },
         {
           "id": "usdvol",
-          "description": "UsdVol: Volume, field assets, OpenVDBAsset schema, Field3DAsset; Vulkan single-density OpenVDB rendering gated",
+          "description": "UsdVol: Volume, field assets, OpenVDBAsset schema, Field3DAsset; Vulkan and D3D12 single-density OpenVDB rendering gated",
           "status": "implemented",
           "evidenceTests": [
             "tests/OpenUsd.Tests/SchemaFacadeSurfaceTests.cs",
@@ -694,7 +706,7 @@
         },
         {
           "id": "materialx-projection",
-          "description": "hdSilk MaterialX projection: ND_standard_surface base colour, emission, metalness, roughness, normal; constant, direct image, and arithmetic fold",
+          "description": "hdSilk MaterialX projection: ND_standard_surface base colour, emission, metalness, roughness, normal; constant, direct image, arithmetic fold, one reconciled texture-coordinate stream per material covering both the folded place2d/UsdTransform2d transform and the UV primvar, constant affine arithmetic over exactly one image folded into that texture's scale and bias, one two-image multiply/add/subtract/mix composite per material evaluated per pixel in the shader, and MaterialX image sampling read from uaddressmode/vaddressmode and default rather than the UsdUVTexture names",
           "status": "workflow-gated",
           "evidenceWorkflows": ["render.yml"],
           "evidenceWorkflowJobs": {
@@ -706,7 +718,11 @@
             ]
           },
           "evidenceTests": [
-            "tests/OpenUsd.Rendering.Tests/SilkMaterialShaderCompilerTests.cs"
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialShaderCompilerTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs",
+            "tests/OpenUsd.Rendering.Tests/MaterialCompositeSlotContractTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/StormSilkParityCaptureDriverTests.cs",
+            "native/hdSilk/tests/hdsilk_probe.cpp"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64"]
         },
@@ -729,15 +745,21 @@
           "evidencePlatforms": ["win-x64", "linux-x64"]
         },
         {
-          "id": "usdvol-vulkan",
-          "description": "UsdVol density rendering: single OpenVDBAsset density field, R32 3D texture, raymarch; gated for Vulkan only",
+          "id": "usdvol-density",
+          "description": "UsdVol density rendering: single OpenVDBAsset density field, R32 3D texture, and exact layer-centre integration for grids up to 512 layers deep; deeper grids are rejected explicitly rather than silently undersampled. The Vulkan legs are gated on win-x64 and linux-x64 and the D3D12 WARP leg on win-x64 only, because Direct3D 12 exists only on Windows. The gates include a 96-layer thin-feature recovery, a cross-backend image comparison, because a backend that ignores the sampled grid still passes its own sampled-versus-uniform check, and a pipeline-selection gate that requires an impossible volume/material-map combination to be reported rather than shaded flat",
           "status": "workflow-gated",
           "evidenceWorkflows": ["render.yml"],
           "evidenceWorkflowJobs": {
-            "render.yml": ["windows-vulkan-required", "linux-presentation"]
+            "render.yml": ["windows-wgl", "linux-presentation"]
           },
           "evidenceTests": [
-            "tests/OpenUsd.Rendering.Tests/SilkGraphicsTextureTests.cs"
+            "tests/OpenUsd.Rendering.Tests/SilkGraphicsTextureTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkGraphicsPipelineTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkMaterialCommandTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VolumeRenderingConformanceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VolumeDepthSamplingConformanceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VolumePipelineSelectionConformanceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/BackendShaderRegisterConformanceTests.cs"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64"]
         },
@@ -756,6 +778,59 @@
           },
           "evidenceTests": [
             "tests/OpenUsd.Rendering.Tests/SilkDeformationRetentionTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "basis-curve-width-interpolation",
+          "description": "hdSilk linear segmented basis curves resolve constant, uniform, varying, and vertex authored widths onto the emitted line vertices and publish them as an OPENUSD_SILK_ATTRIBUTE_WIDTH vertex attribute, interpolated along each segment at higher complexity; the widths do not change the rasterized one-pixel lines, which is what Storm draws at the harness refinement",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "ci.yml", "native.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": [
+              "windows-wgl",
+              "linux-presentation",
+              "macos-arm64"
+            ],
+            "ci.yml": ["coverage"],
+            "native.yml": ["build"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.ConformanceTests/StormSilkParityCaptureDriverTests.cs",
+            "native/hdSilk/tests/hdsilk_probe.cpp"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "point-instancer-instance-identity",
+          "description": "hdSilk publishes each point-instanced record with the instance's own index inside its instancer -- the index into the PointInstancer protoIndices and positions arrays that UsdImaging decodes back to a scene instance -- rather than the ordinal of the instance in the resolved array, so a prototype that owns only part of an instancer publishes a sparse index set, changing protoIndices retires and republishes identities instead of renumbering the survivors, and invisibleIds leaves the surviving indices alone. The ABI v8 prototype payload therefore rides the lowest index a path publishes and is resolved that way by the retained scene rather than by index zero, for triangle-list, line-list, and point-list prototypes alike, records of one path are serialized atomically so a rejected payload cannot leave orphan instance references on the wire, and an empty mesh is retired rather than published because an empty record is indistinguishable on the wire from an instance reference. Every record is validated as published, before the draw-mode and complexity transforms index into its points and vertex attributes, so a malformed index is rejected rather than dereferenced. Nested instancers have no USD instance index, so hdSilk composes parent_index * inner_instance_count + inner_index against the inner instancer's own authoritative instance count and never a per-prototype radix, dropping with a diagnostic any index that count cannot explain; that composition is an hdSilk encoding rather than an index USD can decode. This is a page-level identity claim only: there is no Storm parity scene, because Storm publishes no per-instance page to compare against, and instanced shadows remain ungated",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["ci.yml", "native.yml"],
+          "evidenceWorkflowJobs": {
+            "ci.yml": ["build-test", "coverage"],
+            "native.yml": ["build"]
+          },
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Rendering.Tests/SilkPointInstancerIdentityTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
+        },
+        {
+          "id": "mesh-facing-cull-styles",
+          "description": "hdSilk resolves all five Hydra cull styles onto rasterizer state and pins the winding it emits for each authored USD orientation. front and frontUnlessDoubleSided previously fell into a catch-all that culled back faces, so authoring front culled exactly the faces it asks to keep, and SilkCullMode had no Front member: the pipeline descriptor rejected anything but None and Back. The mapping is now total -- nothing culls nothing, back and front cull their named faces, the *UnlessDoubleSided variants cull nothing when doubleSided is authored, and an unknown wire value falls back to Hydra's default rather than a silently inverted one -- SilkCullMode.Front is translated by the D3D12, Vulkan, and Metal backends, and every batch resolves through the pipeline cache after an unreachable eager fast path that would have mapped Front to None was removed. Line and point batches resolve to no culling because a screen-space line or point has no facing. Winding needs no page-level correction: HdMeshUtil::ComputeTriangleIndices already reverses a leftHanded face's corners and every backend rasterizes counter-clockwise-front, so hdsilk_probe pins the emitted indices of a matched rightHanded/leftHanded quad pair against both a dropped and a duplicated correction, and cross-checks a leftHanded face-varying quad's expanded corner values against the points they were expanded from. The claim is bounded to the page: USD gprims author doubleSided rather than a Hydra cull style and the hosted session pins UsdImagingGLRenderParams.cullStyle to backUnlessDoubleSided, so the front styles are reachable through the wire rather than from a stage, there is no Storm parity scene for them or for orientation, and cullStyle=nothing remains ungated",
+          "status": "workflow-gated",
+          "evidenceWorkflows": ["render.yml", "ci.yml", "native.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl"],
+            "ci.yml": ["build-test", "coverage"],
+            "native.yml": ["build"]
+          },
+          "evidenceTests": [
+            "tests/OpenUsd.Rendering.ConformanceTests/StormSilkParityCaptureDriverTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkGraphicsPipelineTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkTextureResidencyTests.cs",
+            "native/hdSilk/tests/hdsilk_probe.cpp"
           ],
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },

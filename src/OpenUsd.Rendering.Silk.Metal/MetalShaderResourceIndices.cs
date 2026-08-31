@@ -42,6 +42,7 @@ internal static class MetalShaderResourceIndices
                 SilkBindingLayoutDescriptor.ClearcoatTextureBinding => 12,
                 SilkBindingLayoutDescriptor.ClearcoatRoughnessTextureBinding => 13,
                 SilkBindingLayoutDescriptor.IorTextureBinding => 14,
+                SilkBindingLayoutDescriptor.CompositeTextureBinding => 15,
                 _ => binding
             },
             SilkBindingKind.Sampler => binding switch
@@ -58,6 +59,7 @@ internal static class MetalShaderResourceIndices
                 SilkBindingLayoutDescriptor.ClearcoatSamplerBinding => 9,
                 SilkBindingLayoutDescriptor.ClearcoatRoughnessSamplerBinding => 10,
                 SilkBindingLayoutDescriptor.IorSamplerBinding => 11,
+                SilkBindingLayoutDescriptor.CompositeSamplerBinding => 12,
                 _ => binding
             },
             _ => binding

@@ -638,6 +638,18 @@
                     AutomationProperties.Name="Refresh UsdValidation results"
                     Content="_Refresh"
                     IsEnabled="False" />
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Text="Scope:" />
+                <ComboBox
+                    x:Name="ValidationScopeSelector"
+                    AutomationProperties.Name="UsdValidation scope"
+                    IsEnabled="False"
+                    MinWidth="160"
+                    SelectedIndex="0">
+                  <ComboBoxItem Content="Whole stage" Tag="Stage" />
+                  <ComboBoxItem Content="Selected prim" Tag="Prim" />
+                </ComboBox>
               </StackPanel>
               <TextBlock
                   x:Name="ValidationState"

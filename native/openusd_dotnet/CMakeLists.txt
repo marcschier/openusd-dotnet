@@ -16,6 +16,7 @@ set(OPENUSD_DOTNET_SOURCES
     src/physics_extract.cpp
     src/relationship.cpp
     src/renderer_stage_bridge.cpp
+    src/resolver.cpp
     src/runtime.cpp
     src/session_overlay.cpp
     src/stage.cpp

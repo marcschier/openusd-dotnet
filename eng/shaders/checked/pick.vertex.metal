@@ -32,4 +32,3 @@ struct PickVertexOutput_0
     (&_S2)->position_0 = output_0.position_2;
     return _S2;
 }
-

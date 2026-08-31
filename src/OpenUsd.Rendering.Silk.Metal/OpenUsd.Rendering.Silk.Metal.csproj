@@ -19,8 +19,34 @@
     <None Include="..\..\eng\shaders\checked\mesh.vertex.metal"
           Link="Shaders\mesh.vertex.metal"
           Visible="false" />
+    <None Include="..\..\eng\shaders\checked\mesh.vertex.uv.metal"
+          Link="Shaders\mesh.vertex.uv.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\mesh.vertex.uv+normal.metal"
+          Link="Shaders\mesh.vertex.uv+normal.metal"
+          Visible="false" />
     <None Include="..\..\eng\shaders\checked\mesh.fragment.metal"
           Link="Shaders\mesh.fragment.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\mesh.fragment.uv.metal"
+          Link="Shaders\mesh.fragment.uv.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\mesh.fragment.uv+normal.metal"
+          Link="Shaders\mesh.fragment.uv+normal.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\mesh.fragment.uv+material.metal"
+          Link="Shaders\mesh.fragment.uv+material.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\mesh.fragment.uv+material+normal.metal"
+          Link="Shaders\mesh.fragment.uv+material+normal.metal"
+          Visible="false" />
+    <!--
+      The sampled density volume is its own checked program, not a mesh fragment
+      permutation, so it needs its own item; it is also the only checked Metal source
+      declaring a texture3d, which is exactly the source a reader goes looking for.
+    -->
+    <None Include="..\..\eng\shaders\checked\mesh.volume.fragment.metal"
+          Link="Shaders\mesh.volume.fragment.metal"
           Visible="false" />
     <None Include="..\..\eng\shaders\checked\pick.vertex.metal"
           Link="Shaders\pick.vertex.metal"

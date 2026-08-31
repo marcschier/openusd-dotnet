@@ -109,7 +109,8 @@ def publish(
             if suffix == "metal":
                 metal_text = source.read_text(encoding="utf-8")
                 destination.write_text(
-                    metal_text.replace("\r\n", "\n").replace("\r", "\n"),
+                    metal_text.replace("\r\n", "\n").replace("\r", "\n").rstrip()
+                    + "\n",
                     encoding="utf-8",
                     newline="\n",
                 )

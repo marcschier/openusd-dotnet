@@ -29,7 +29,6 @@ public sealed class BackendShaderRegisterConformanceTests
         ("normalSampler", SilkBindingKind.Sampler, 10),
         ("roughnessMetallicSampler", SilkBindingKind.Sampler, 11),
         ("emissiveSampler", SilkBindingKind.Sampler, 12),
-        ("volumeDensitySampler", SilkBindingKind.Sampler, 13),
         ("metallicSampler", SilkBindingKind.Sampler, 14),
         ("opacitySampler", SilkBindingKind.Sampler, 16),
         ("occlusionSampler", SilkBindingKind.Sampler, 18),
@@ -48,6 +47,14 @@ public sealed class BackendShaderRegisterConformanceTests
         ("clearcoatTexture", SilkBindingKind.SampledTexture, 23),
         ("clearcoatRoughnessTexture", SilkBindingKind.SampledTexture, 25),
         ("iorTexture", SilkBindingKind.SampledTexture, 27),
+    ];
+
+    // The sampled density volume is its own checked fragment program, because only
+    // its binding layout declares the 3D texture and its sampler. Its registers are
+    // still part of the same allocation, so they are pinned the same way.
+    private static readonly (string Resource, SilkBindingKind Kind, uint Binding)[] VolumeBindings =
+    [
+        ("volumeDensitySampler", SilkBindingKind.Sampler, 13),
         ("volumeDensityTexture", SilkBindingKind.SampledTexture, 9),
     ];
 
@@ -56,8 +63,14 @@ public sealed class BackendShaderRegisterConformanceTests
     {
         Dictionary<string, (string RegisterClass, uint Register, uint Binding)> declared =
             ReadCheckedMeshResources();
+        foreach ((string resource, (string RegisterClass, uint Register, uint Binding) volume)
+            in ReadCheckedVolumeResources())
+        {
+            declared[resource] = volume;
+        }
 
-        foreach ((string resource, SilkBindingKind kind, uint binding) in MeshBindings)
+        foreach ((string resource, SilkBindingKind kind, uint binding) in
+            MeshBindings.Concat(VolumeBindings))
         {
             (string registerClass, uint register, uint reflectedBinding) = declared[resource];
 
@@ -74,12 +87,78 @@ public sealed class BackendShaderRegisterConformanceTests
     }
 
     [Test]
+    public async Task TheSampledVolumeProgramIsTheOnlyMeshFragmentDeclaringTheVolumeTexture()
+    {
+        // The concrete D3D12 failure this split exists to prevent: a root signature
+        // must declare every resource its shader binary references, so a volume
+        // texture compiled into the shared mesh fragment binary makes every ordinary
+        // mesh pipeline fail to create. Checking one permutation would not prove that,
+        // because the mesh fragment family expands into several checked binaries and
+        // the manifest could reintroduce the resource into any one of them. Every
+        // checked mesh reflection is therefore enumerated from disk.
+        string checkedRoot = Path.Combine(FindRepositoryRoot(), "eng", "shaders", "checked");
+        string[] meshReflections = Directory
+            .GetFiles(checkedRoot, "mesh.*.reflection.json")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        string volumeReflection = Path.Combine(checkedRoot, "mesh.volume.fragment.reflection.json");
+
+        // Five fragment permutations and three vertex permutations expand from the
+        // manifest, plus the sampled-volume program. A glob that silently matched
+        // fewer files would make the loop below vacuous.
+        await Assert.That(meshReflections.Length).IsEqualTo(9);
+        await Assert.That(meshReflections).Contains(volumeReflection);
+
+        var declaringPrograms = new List<string>();
+        foreach (string reflection in meshReflections)
+        {
+            Dictionary<string, (string RegisterClass, uint Register, uint Binding)> resources =
+                ReadCheckedResources(Path.GetFileName(reflection));
+            bool declaresAnyVolumeResource = false;
+            foreach ((string resource, _, _) in VolumeBindings)
+            {
+                declaresAnyVolumeResource |= resources.ContainsKey(resource);
+            }
+            if (declaresAnyVolumeResource)
+            {
+                declaringPrograms.Add(reflection);
+                // A program that declares one volume resource must declare both: a
+                // texture with no sampler, or the reverse, cannot be bound at all.
+                foreach ((string resource, _, _) in VolumeBindings)
+                {
+                    await Assert.That(resources.ContainsKey(resource)).IsTrue();
+                }
+            }
+            // Every mesh fragment, volume or not, still reads the shared surface and
+            // frame blocks, so this also proves the enumeration found real reflections
+            // rather than empty documents.
+            if (Path.GetFileName(reflection).StartsWith("mesh.vertex", StringComparison.Ordinal))
+            {
+                await Assert.That(resources.ContainsKey("frameParameters")).IsTrue();
+            }
+            else
+            {
+                await Assert.That(resources.ContainsKey("surfaceParameters")).IsTrue();
+                await Assert.That(resources.ContainsKey("frameParameters")).IsTrue();
+            }
+        }
+
+        await Assert.That(declaringPrograms).IsEquivalentTo([volumeReflection]);
+    }
+
+    [Test]
     public async Task MetalResourceIndicesMatchTheCheckedReflection()
     {
         Dictionary<string, (string RegisterClass, uint Register, uint Binding)> declared =
             ReadCheckedMeshResources();
+        foreach ((string resource, (string RegisterClass, uint Register, uint Binding) volume)
+            in ReadCheckedVolumeResources())
+        {
+            declared[resource] = volume;
+        }
 
-        foreach ((string resource, SilkBindingKind kind, uint binding) in MeshBindings)
+        foreach ((string resource, SilkBindingKind kind, uint binding) in
+            MeshBindings.Concat(VolumeBindings))
         {
             (_, uint register, uint reflectedBinding) = declared[resource];
 
@@ -118,7 +197,16 @@ public sealed class BackendShaderRegisterConformanceTests
     }
 
     private static Dictionary<
-        string, (string RegisterClass, uint Register, uint Binding)> ReadCheckedMeshResources()
+        string, (string RegisterClass, uint Register, uint Binding)> ReadCheckedMeshResources() =>
+        ReadCheckedResources("mesh.fragment.uv+material+normal.reflection.json");
+
+    private static Dictionary<
+        string, (string RegisterClass, uint Register, uint Binding)> ReadCheckedVolumeResources() =>
+        ReadCheckedResources("mesh.volume.fragment.reflection.json");
+
+    private static Dictionary<
+        string, (string RegisterClass, uint Register, uint Binding)> ReadCheckedResources(
+        string artifactName)
     {
         // The universal material shader with normal mapping declares every 2D slot
         // at once, which is what makes a collision visible.
@@ -127,7 +215,7 @@ public sealed class BackendShaderRegisterConformanceTests
             "eng",
             "shaders",
             "checked",
-            "mesh.fragment.uv+material+normal.reflection.json");
+            artifactName);
         using JsonDocument reflection = JsonDocument.Parse(File.ReadAllBytes(path));
         Dictionary<string, (string RegisterClass, uint Register, uint Binding)> declared =
             new(StringComparer.Ordinal);

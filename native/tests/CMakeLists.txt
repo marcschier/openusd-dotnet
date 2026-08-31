@@ -7,6 +7,29 @@ if(TARGET openusd_native_sanitizers)
     target_link_libraries(openusd_native_probe PRIVATE openusd_native_sanitizers)
 endif()
 
+# The third-party resolver contract is proved with a real out-of-tree plugin tree rather than a
+# linked stub: the plugin is loaded only through PlugRegistry, keeps its own unflattened
+# plugInfo.json under its own resources directory, and is never linked into the shim or installed.
+set(OPENUSD_TEST_RESOLVER_TREE "${CMAKE_CURRENT_BINARY_DIR}/plugins/openusdTestResolver")
+add_library(openusd_test_resolver MODULE resolver_plugin/testResolver.cpp)
+target_compile_features(openusd_test_resolver PRIVATE cxx_std_17)
+target_link_libraries(openusd_test_resolver PRIVATE usd_m)
+set_target_properties(
+    openusd_test_resolver
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${OPENUSD_TEST_RESOLVER_TREE}"
+        LIBRARY_OUTPUT_DIRECTORY "${OPENUSD_TEST_RESOLVER_TREE}")
+if(MSVC)
+    target_compile_options(openusd_test_resolver PRIVATE /W4 /WX /permissive-)
+else()
+    target_compile_options(openusd_test_resolver PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+file(
+    GENERATE
+    OUTPUT "${OPENUSD_TEST_RESOLVER_TREE}/resources/plugInfo.json"
+    INPUT "${CMAKE_CURRENT_SOURCE_DIR}/resolver_plugin/plugInfo.json.in")
+add_dependencies(openusd_native_probe openusd_test_resolver)
+
 if(MSVC)
     target_compile_options(openusd_native_probe PRIVATE /W4 /WX /permissive-)
 else()
@@ -31,7 +54,8 @@ add_test(
         "${CMAKE_SOURCE_DIR}/../test-assets/mcp-monkey-car-city-textures/asphalt_roughness.jpg"
         "${CMAKE_SOURCE_DIR}/../test-assets/mcp-monkey-car-city-textures/asphalt_diffuse.jpg"
         "${CMAKE_SOURCE_DIR}/../test-assets/native-image-gray-alpha.png"
-        "${CMAKE_SOURCE_DIR}/../test-assets/ocio-test-config.ocio")
+        "${CMAKE_SOURCE_DIR}/../test-assets/ocio-test-config.ocio"
+        "${OPENUSD_TEST_RESOLVER_TREE}/resources/plugInfo.json")
 if(WIN32)
     set_tests_properties(
         openusd_native_probe

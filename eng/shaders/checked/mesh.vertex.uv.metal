@@ -90,4 +90,3 @@ struct VertexOutput_0
     (&_S2)->texCoord_0 = output_0.texCoord_2;
     return _S2;
 }
-

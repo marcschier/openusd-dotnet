@@ -20,7 +20,7 @@ flowchart LR
     macos --> metallib["Validated metallib + evidence"]
 ```
 
-The Linux implementation generates, validates, and reproduces only the ten SPIR-V targets without
+The Linux implementation generates, validates, and reproduces only the declared SPIR-V targets without
 requiring DXC. It also structurally validates the full committed checked payload and proves SPIR-V
 corruption rejection. The dashed edge remains until a hosted run provides green evidence.
 
@@ -41,8 +41,8 @@ consumer build or runtime downloads or compiles shaders.
 Windows win-x64 is the authoritative host for checked DXIL, SPIR-V, MSL source,
 normalized reflection, and publication.
 Release packaging for Metal uses macOS osx-arm64 with exactly Xcode 16.4:
-all ten checked mesh, pick, selection mask, selection outline, fill, and scale
-MSL files are compiled as
+every checked mesh, sampled-volume mesh, pick, selection mask, selection outline, fill, and scale
+MSL file is compiled as
 Metal 2.4 AIR and linked into exactly one `mesh.metallib`. The library is staged at
 `eng/shaders/checked/mesh.metallib` for the Metal RHI project and packaged at
 `runtimes/osx/native/mesh.metallib`. Cross-host Slang output and metallib bytes
@@ -70,7 +70,7 @@ scripts.
 `.github/workflows/shaders.yml` provides path-filtered platform validation.
 Windows x64 proves offline rehydration, checked byte/hash equality, the pinned
 SPIR-V validator, and full same-host reproducibility. Linux x64 independently
-generates, validates, and reproduces only the ten SPIR-V targets, then
+generates, validates, and reproduces only the declared SPIR-V targets, then
 structurally validates the full committed payload and runs a checked SPIR-V
 corruption rejection test. macOS arm64 selects the lock-specified Xcode,
 compiles committed MSL into
@@ -80,6 +80,30 @@ download archives are cached. Host tool versions, manifests, logs, and macOS
 metallib evidence are uploaded for review.
 
 ## Payload contracts
+
+### The sampled density volume is its own fragment program
+
+`mesh.volume.fragment` compiles `mesh.slang` with `VOLUME_DENSITY_TEXTURES=1` and
+entry point `volumeFragmentMain`; every other mesh fragment permutation compiles
+with `VOLUME_DENSITY_TEXTURES=0`. That value is a manifest-declared per-program
+`defines` entry and is identical for DXIL, SPIR-V, and MSL, so the resource set of
+a program can never differ between backends.
+
+The split is a backend requirement, not a size optimization. A D3D12 root signature
+must declare every resource its shader binary references, so a `Texture3D` compiled
+into the shared mesh fragment binary would have to be declared by every ordinary
+mesh pipeline that never samples a volume, and `CreateGraphicsPipelineState` fails
+when it is not. The previous manifest avoided that by restricting the volume
+resources to `targets: ["spirv"]`, which left the D3D12 backend with no density
+texture at all: it rendered sampled volumes at the authored uniform density, and
+its images were invariant under a translated density grid.
+
+`mesh.volume.fragment` is part of the combined `mesh.metallib` contract like every
+other program in the manifest, so `volumeFragmentMain` is an exported entry point
+the pinned library must carry. Slang assigns it Metal argument indices
+`texture(9)` and `sampler(4)`, which is what `MetalShaderResourceIndices` encodes
+and what `MetalSampledVolumeConformanceTests` reads back out of the checked
+`.metal` source on every host.
 
 ### Non-shader files are hashed inputs too
 
@@ -123,8 +147,12 @@ package assets and rejects any missing visible, pick, selection, or compute entr
 The Metal sidecar has one exact schema, version 4. Its top level contains only
 `schemaVersion`, `rid`, `checkedRoot`, `payloadRoot`, `stagedManifestPath`,
 `toolchain`, `provenance`, and `library`. The library record contains its exact
-name, output and staged paths, hash and size; exactly ten source records,
-exactly ten AIR records, and exactly ten entry records; the symbol-dump path,
+name, output and staged paths, hash and size; one source, AIR, and entry record
+per program in the combined library, and the count is derived from
+`eng/shaders/shader-manifest.json` rather than fixed -- adding a program such as
+`mesh.volume.fragment` extends the contract automatically, and a literal count
+here would silently describe the wrong library. It also carries the symbol-dump
+path,
 hash, and size; and exact compile, link, inspect, and per-entry symbol-check
 commands. Every source and AIR record includes program, relative path, hash,
 size, stage, and entry point. Provenance is the exact centralized input set.

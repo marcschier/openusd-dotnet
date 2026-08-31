@@ -37,7 +37,9 @@ public sealed class SilkMaterialTexture
         float[] bias,
         float[] fallback,
         string asset,
-        string uvPrimvar)
+        string uvPrimvar,
+        SilkCompositeOperator compositeOperator,
+        float compositeFactor)
     {
         Parameter = parameter;
         WrapS = wrapS;
@@ -50,10 +52,30 @@ public sealed class SilkMaterialTexture
         Fallback = fallback;
         Asset = asset;
         UvPrimvar = uvPrimvar;
+        CompositeOperator = compositeOperator;
+        CompositeFactor = compositeFactor;
     }
 
     /// <summary>Gets the parameter this texture drives.</summary>
     public SilkMaterialParameter Parameter { get; }
+
+    /// <summary>
+    /// Gets how this entry combines with the primary entry of the same parameter.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SilkCompositeOperator.None"/> marks the primary entry. Any
+    /// other value marks the second operand of a two-image surface input, and the
+    /// material then also carries exactly one primary entry for the same
+    /// parameter. A material carries at most one such operand in total, because
+    /// the renderer binds one composite image per material.
+    /// </remarks>
+    public SilkCompositeOperator CompositeOperator { get; }
+
+    /// <summary>
+    /// Gets the blend factor, meaningful only for
+    /// <see cref="SilkCompositeOperator.Mix"/>.
+    /// </summary>
+    public float CompositeFactor { get; }
 
     /// <summary>Gets the horizontal wrap mode.</summary>
     public SilkTextureWrap WrapS { get; }
@@ -90,6 +112,13 @@ public sealed class SilkMaterialTexture
     /// Gets the primvar supplying texture coordinates, empty when the texture has
     /// no resolvable reader connection.
     /// </summary>
+    /// <remarks>
+    /// Every texture of one material reports the same primvar in practice: the
+    /// renderer builds one coordinate stream per material and takes its name from
+    /// the first entry that names one, so hdSilk reconciles this across a
+    /// material's textures and drops an entry whose primvar diverges rather than
+    /// publishing one that would be sampled through another entry's coordinates.
+    /// </remarks>
     public string UvPrimvar { get; }
 }
 
@@ -105,6 +134,7 @@ public sealed class SilkMaterialData
         SilkSurfaceKind surfaceKind,
         SilkMaterialScalar[] scalars,
         SilkMaterialTexture[] textures,
+        float[] uvTransform,
         byte[] generatedFragmentSpirV,
         byte[] generatedFragmentMslSource)
     {
@@ -113,6 +143,7 @@ public sealed class SilkMaterialData
         SurfaceKind = surfaceKind;
         Scalars = scalars;
         Textures = textures;
+        UvTransform = uvTransform;
         GeneratedFragmentSpirV = generatedFragmentSpirV;
         GeneratedFragmentMslSource = generatedFragmentMslSource;
     }
@@ -131,6 +162,22 @@ public sealed class SilkMaterialData
 
     /// <summary>Gets the texture-driven inputs.</summary>
     public IReadOnlyList<SilkMaterialTexture> Textures { get; }
+
+    /// <summary>
+    /// Gets the constant texture-coordinate transform every texture of this
+    /// material samples through, as the row-major affine
+    /// (m00, m01, m10, m11, tx, ty).
+    /// </summary>
+    /// <remarks>
+    /// The identity unless hdSilk folded a chain of constant MaterialX place2d
+    /// or UsdPreviewSurface UsdTransform2d nodes. hdSilk publishes exactly one
+    /// transform per material because the renderer builds one coordinate stream
+    /// per material; a texture asking for a different transform, or for a
+    /// different <see cref="SilkMaterialTexture.UvPrimvar"/>, is rejected
+    /// upstream with a diagnostic rather than sampled with coordinates it did
+    /// not author.
+    /// </remarks>
+    public IReadOnlyList<float> UvTransform { get; }
 
     /// <summary>Gets generated MaterialX fragment SPIR-V bytes for runtime shaders.</summary>
     public ReadOnlyMemory<byte> GeneratedFragmentSpirV { get; }
@@ -196,17 +243,25 @@ public sealed class SilkMaterialData
                 bias,
                 fallback,
                 entry.Asset,
-                entry.UvPrimvar);
+                entry.UvPrimvar,
+                entry.CompositeOperator,
+                entry.CompositeFactor);
         }
 
         byte[] generatedFragmentSpirV = command.GeneratedFragmentSpirV.ToArray();
         byte[] generatedFragmentMslSource = command.GeneratedFragmentMslSource.ToArray();
+        float[] uvTransform = new float[6];
+        for (int index = 0; index < uvTransform.Length; index++)
+        {
+            uvTransform[index] = command.GetUvTransform(index);
+        }
         return new SilkMaterialData(
             command.Path,
             command.StableHash,
             command.SurfaceKind,
             scalars,
             textures,
+            uvTransform,
             generatedFragmentSpirV,
             generatedFragmentMslSource);
     }
@@ -235,7 +290,30 @@ public sealed class SilkMaterialData
     {
         foreach (SilkMaterialTexture texture in Textures)
         {
-            if (texture.Parameter == parameter)
+            if (texture.Parameter == parameter &&
+                texture.CompositeOperator == SilkCompositeOperator.None)
+            {
+                return texture;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the material's single composite operand, or null when no surface
+    /// input of this material is driven by two images.
+    /// </summary>
+    /// <remarks>
+    /// The entry names the parameter it combines into and the operator to use.
+    /// Its primary half is the ordinary <see cref="GetTexture"/> entry for that
+    /// same parameter, which is why <see cref="GetTexture"/> skips composite
+    /// operands rather than returning whichever entry it reaches first.
+    /// </remarks>
+    public SilkMaterialTexture? GetCompositeTexture()
+    {
+        foreach (SilkMaterialTexture texture in Textures)
+        {
+            if (texture.CompositeOperator != SilkCompositeOperator.None)
             {
                 return texture;
             }
@@ -308,7 +386,7 @@ public sealed class SilkMaterialData
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
-        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v3");
+        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v5");
         writer.Write(Path);
         writer.Write((uint)SurfaceKind);
         writer.Write(Scalars.Count);
@@ -332,6 +410,12 @@ public sealed class SilkMaterialData
             writer.Write((uint)texture.SourceColorSpace);
             writer.Write(texture.ComponentCount);
             writer.Write((uint)texture.Channel);
+            writer.Write((uint)texture.CompositeOperator);
+            writer.Write(texture.CompositeFactor);
+        }
+        foreach (float element in UvTransform)
+        {
+            writer.Write(element);
         }
         writer.Write(GeneratedFragmentSpirV.Length);
         writer.Write(GeneratedFragmentSpirV.Span);
@@ -341,6 +425,17 @@ public sealed class SilkMaterialData
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// Resolves the single texture-coordinate primvar this material samples every
+    /// texture through.
+    /// </summary>
+    /// <remarks>
+    /// The first entry that names one wins. hdSilk reconciles the primvar across
+    /// a material's textures before publishing, so this scan sees agreement for
+    /// any page hdSilk produced; the scan remains because the page is validated
+    /// wire data rather than trusted input, and an entry may legitimately name no
+    /// primvar at all.
+    /// </remarks>
     internal string GetPrimaryUvPrimvar()
     {
         foreach (SilkMaterialTexture texture in Textures)

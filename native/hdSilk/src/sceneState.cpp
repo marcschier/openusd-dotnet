@@ -358,7 +358,14 @@ struct MeshWireCounts
     size_t payloadSize;
 };
 
-MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
+/// Checks every invariant an HdSilkMeshRecord must satisfy before anything
+/// indexes into it. This runs on the record as published, before ApplyDrawMode
+/// and ApplyComplexity, because both of those dereference record.indices into
+/// record.points and into vertex attribute data: validating only the
+/// transformed record would let a malformed index read out of bounds on the way
+/// to being rejected. The transformed record is validated again, since the
+/// transforms rebuild the topology.
+void ValidateMeshShape(const HdSilkMeshRecord& record)
 {
     ValidatePath(record.path);
     if (record.primId < 0)
@@ -451,6 +458,17 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
                 "An hdSilk custom mesh attribute requires its authored name.");
         }
     }
+}
+
+MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
+{
+    ValidateMeshShape(record);
+    const size_t pointCount = record.points.size() / 3;
+    const size_t indicesPerPrimitive =
+        record.topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST
+            ? 3u
+            : (record.topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ? 2u : 1u);
+    const size_t primitiveCount = record.indices.size() / indicesPerPrimitive;
 
     size_t payloadSize = MeshFixedPayloadSize;
     payloadSize = CheckedAdd(
@@ -525,6 +543,25 @@ void AppendVertexAttributeElement(
     }
 }
 
+void AppendInterpolatedVertexAttributeElement(
+    HdSilkMeshAttribute& destination,
+    const HdSilkMeshAttribute& source,
+    uint32_t firstPoint,
+    uint32_t secondPoint,
+    float t)
+{
+    const size_t firstOffset =
+        static_cast<size_t>(firstPoint) * source.componentCount;
+    const size_t secondOffset =
+        static_cast<size_t>(secondPoint) * source.componentCount;
+    for (uint32_t component = 0; component < source.componentCount; ++component)
+    {
+        const float first = source.data[firstOffset + component];
+        const float second = source.data[secondOffset + component];
+        destination.data.push_back(first + ((second - first) * t));
+    }
+}
+
 void AppendPointWithAttributes(
     HdSilkMeshRecord& destination,
     const HdSilkMeshRecord& source,
@@ -547,13 +584,19 @@ void AppendPointWithAttributes(
     }
 }
 
+/// Emits one point of a complexity-subdivided line at parameter t, together with
+/// every vertex attribute the record carries. Attributes are interpolated at the
+/// same t as the position rather than copied from whichever endpoint is nearer:
+/// a subdivided segment is the same segment, so a per-vertex value such as an
+/// authored curve width has to vary along it exactly as the position does.
+/// Selecting an endpoint instead made a 2x-subdivided curve report a step
+/// function where the authored data was a ramp.
 void AppendInterpolatedLinePoint(
     HdSilkMeshRecord& destination,
     const HdSilkMeshRecord& source,
     uint32_t firstPoint,
     uint32_t secondPoint,
-    float t,
-    bool useSecondAttributes)
+    float t)
 {
     const size_t firstOffset = static_cast<size_t>(firstPoint) * 3;
     const size_t secondOffset = static_cast<size_t>(secondPoint) * 3;
@@ -568,10 +611,12 @@ void AppendInterpolatedLinePoint(
         const HdSilkMeshAttribute& sourceAttribute = source.attributes[attribute];
         if (sourceAttribute.interpolation == OPENUSD_SILK_INTERPOLATION_VERTEX)
         {
-            AppendVertexAttributeElement(
+            AppendInterpolatedVertexAttributeElement(
                 destination.attributes[attribute],
                 sourceAttribute,
-                useSecondAttributes ? secondPoint : firstPoint);
+                firstPoint,
+                secondPoint,
+                t);
         }
     }
 }
@@ -633,15 +678,13 @@ HdSilkMeshRecord ApplyComplexity(
                 record,
                 first,
                 second,
-                start,
-                false);
+                start);
             AppendInterpolatedLinePoint(
                 result,
                 record,
                 first,
                 second,
-                end,
-                true);
+                end);
             result.indices.push_back(emitted);
             result.indices.push_back(emitted + 1);
             result.triangleSubprims.push_back(record.triangleSubprims[primitive]);
@@ -799,6 +842,60 @@ void AppendMaterialUpsert(
                 "colour or vector input and a single channel for a one-component "
                 "input.");
         }
+        if (texture.compositeOp > OPENUSD_SILK_COMPOSITE_MIX)
+        {
+            throw std::invalid_argument(
+                "An hdSilk material texture has an unknown composite operator.");
+        }
+        if (!std::isfinite(texture.compositeFactor))
+        {
+            throw std::invalid_argument(
+                "An hdSilk material texture composite factor must be finite.");
+        }
+    }
+
+    // A composite entry is the *second* operand of its parameter, so it is
+    // meaningless without the first. The whole point of the wire carrying both
+    // is that a consumer can bind two images for one input; publishing a lone
+    // composite would make the consumer either drop it silently or render one
+    // operand of an authored pair.
+    size_t compositeCount = 0;
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        size_t primaries = 0;
+        size_t composites = 0;
+        for (const HdSilkMaterialTexture& sibling : record.textures)
+        {
+            if (sibling.parameter != texture.parameter)
+            {
+                continue;
+            }
+            if (sibling.compositeOp == OPENUSD_SILK_COMPOSITE_NONE)
+            {
+                ++primaries;
+            }
+            else
+            {
+                ++composites;
+            }
+        }
+        if (primaries != 1 || composites > 1)
+        {
+            throw std::invalid_argument(
+                "An hdSilk material parameter must carry exactly one primary "
+                "texture and at most one composite operand.");
+        }
+        if (texture.compositeOp != OPENUSD_SILK_COMPOSITE_NONE)
+        {
+            ++compositeCount;
+        }
+    }
+    if (compositeCount > 1)
+    {
+        // The consumer binds one composite texture per material, not one per
+        // surface input, so a second composited parameter has no slot to sample.
+        throw std::invalid_argument(
+            "An hdSilk material carries at most one composite texture operand.");
     }
 
     for (size_t index = 0; index < 6; ++index)
@@ -854,6 +951,8 @@ void AppendMaterialUpsert(
             AppendF32(payload, texture.fallback[index]);
         }
         AppendU32(payload, texture.outputChannel);
+        AppendU32(payload, texture.compositeOp);
+        AppendF32(payload, texture.compositeFactor);
         AppendBytes(payload, texture.asset.data(), texture.asset.size());
         AppendBytes(payload, texture.uvPrimvar.data(), texture.uvPrimvar.size());
     }
@@ -1013,10 +1112,21 @@ HdSilkSceneState::SetComplexity(uint32_t complexity)
         return;
     }
     _complexity = complexity;
+    // Complexity subdivides line and point topology. A triangle-list record
+    // becomes one of those on the way to the wire whenever the current draw
+    // mode converts it, so it has to be republished too: otherwise changing
+    // complexity while wireframe or points draw mode is active leaves every
+    // converted record at the previous density.
+    const bool drawModeConverts =
+        _drawMode == OPENUSD_SILK_DRAW_MODE_WIREFRAME ||
+        _drawMode == OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME ||
+        _drawMode == OPENUSD_SILK_DRAW_MODE_POINTS;
     for (auto& entry : _meshes)
     {
-        if (entry.second.record.topologyKind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ||
-            entry.second.record.topologyKind == OPENUSD_SILK_TOPOLOGY_POINT_LIST)
+        const uint32_t kind = entry.second.record.topologyKind;
+        if (kind == OPENUSD_SILK_TOPOLOGY_LINE_LIST ||
+            kind == OPENUSD_SILK_TOPOLOGY_POINT_LIST ||
+            (drawModeConverts && kind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST))
         {
             entry.second.dirty = true;
         }
@@ -1219,29 +1329,57 @@ HdSilkSceneState::BuildPage(uint64_t* outRevision, uint32_t* outCommandCount)
         }
     }
 
-    for (const _Entry* entry : dirtyEntries)
+    // Records are grouped by path and serialized atomically per path. ABI v8
+    // makes the records of one path interdependent: the lowest instance index
+    // carries the payload every later record of that path reuses, so appending
+    // a later record after the payload record was rejected would publish an
+    // instance reference that no page can ever resolve. A path that cannot be
+    // serialized whole is therefore dropped whole, and every consumer keeps
+    // whatever it already retained for that path rather than a torn version of
+    // it. Paths are independent, so one malformed prim still cannot blank the
+    // scene: the rest of the page serializes normally.
+    for (size_t start = 0; start < dirtyEntries.size();)
     {
-        // A single malformed or not-yet-resolved prim must not blank the
-        // whole scene: reject just that record, keep the rest of the page,
-        // and let the next dirty sync republish it once its data is
-        // consistent.
-        const size_t bufferSize = buffer.size();
-        try
+        size_t end = start + 1;
+        while (end < dirtyEntries.size() &&
+            dirtyEntries[end]->record.path == dirtyEntries[start]->record.path)
         {
-            const HdSilkMeshRecord modeRecord = ApplyDrawMode(entry->record, _drawMode);
-            AppendMeshUpsert(buffer, modeRecord, _complexity);
-            ++appendedCommands;
+            ++end;
         }
-        catch (const std::exception& error)
+
+        const size_t pathBufferSize = buffer.size();
+        const size_t pathCommandCount = appendedCommands;
+        for (size_t index = start; index < end; ++index)
         {
-            buffer.resize(bufferSize);
-            _rejectedMeshCount.fetch_add(1, std::memory_order_relaxed);
-            TF_WARN(
-                "hdSilk skipped mesh '%s' instance %d: %s",
-                entry->record.path.c_str(),
-                static_cast<int>(entry->record.instanceIndex),
-                error.what());
+            const _Entry* entry = dirtyEntries[index];
+            try
+            {
+                // The record is validated as published, before ApplyDrawMode
+                // and ApplyComplexity index into its points and attributes.
+                // Validating only the transformed record would let a malformed
+                // index read out of bounds on the way to being rejected.
+                ValidateMeshShape(entry->record);
+                const HdSilkMeshRecord modeRecord =
+                    ApplyDrawMode(entry->record, _drawMode);
+                AppendMeshUpsert(buffer, modeRecord, _complexity);
+                ++appendedCommands;
+            }
+            catch (const std::exception& error)
+            {
+                buffer.resize(pathBufferSize);
+                appendedCommands = pathCommandCount;
+                _rejectedMeshCount.fetch_add(
+                    end - start, std::memory_order_relaxed);
+                TF_WARN(
+                    "hdSilk skipped mesh '%s' and its %zu published instance(s): instance %d is invalid: %s",
+                    entry->record.path.c_str(),
+                    end - start,
+                    static_cast<int>(entry->record.instanceIndex),
+                    error.what());
+                break;
+            }
         }
+        start = end;
     }
 
     for (const HdSilkMeshKey& key : removals)

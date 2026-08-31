@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Text;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
+using OpenUsd.Rendering.Silk.Metal;
 using OpenUsd.Rendering.Silk.Vulkan;
 using OpenUsd.Rendering.Storm;
 
@@ -26,21 +27,78 @@ public sealed class VolumeRenderingConformanceTests
     private const double MinimumSampledVsUniformMeanDelta = 1.0;
     private const double MinimumTranslatedMeanDelta = 1.0;
 
+    // Measured, not guessed. D3D12 WARP and Vulkan SwiftShader render the sampled grid
+    // bit-identically today: maxChannelDelta=0 and meanChannelDelta=0.000000, with the
+    // same footprint variance 890.508958 on both. Both are software rasterizers running
+    // the same checked shader source, so exact agreement is the expected result and the
+    // budget below exists only so a future rounding or filtering difference in one
+    // backend does not turn a correct render into a failure. It is deliberately far
+    // below the divergence the bug this gate was written for produced: a backend that
+    // ignores the density grid renders the flat authored density and lands at
+    // maxChannelDelta=183 / meanChannelDelta=93.333333 against the sampled reference,
+    // more than twenty times this mean budget and more than twenty times the channel
+    // budget, so the gate cannot pass while a backend silently drops the volume.
+    private const byte MaximumCrossBackendChannelDelta = 8;
+    private const double MaximumCrossBackendMeanDelta = 0.5;
+
     [Test]
     public async Task UniformDensityVolumeGatesOnVulkan()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Skip.Test("The Vulkan volume gate is currently exercised only by the Windows native profile.");
-        }
+        await RunUniformDensityVolumeGate(
+            "vulkan",
+            VulkanSilkGraphicsDevice.Create,
+            "volume-density-vulkan-gates.txt").ConfigureAwait(false);
+    }
 
+    [Test]
+    public async Task UniformDensityVolumeGatesOnMetal()
+    {
+        // Metal exists only on macOS, so this leg is genuinely platform-bound in the same
+        // way the D3D12 legs are; it reports a platform skip everywhere else.
+        RequireMetalHost();
+        await RunUniformDensityVolumeGate(
+            "metal",
+            CreateMetalDevice,
+            "volume-density-metal-gates.txt").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task SampledOpenVdbDensityGatesOnMetal()
+    {
+        // The same stage set, crops, and thresholds the Vulkan and D3D12 legs use, through
+        // the same helper. Running a Metal-shaped variant of these assertions would prove
+        // Metal agrees with itself; running the shared one is what makes a Metal backend
+        // that ignores the density grid fail the way D3D12 did.
+        RequireMetalHost();
+        await RunSampledOpenVdbDensityGate(
+            "metal",
+            CreateMetalDevice,
+            "volume-vdb-metal-gates.txt").ConfigureAwait(false);
+    }
+
+    private static async Task RunUniformDensityVolumeGate(
+        string backendName,
+        Func<ISilkGraphicsDevice> createDevice,
+        string evidenceFileName)
+    {
         ParityImage capture;
         try
         {
-            capture = CaptureStage(WriteStage("volume-density-gates"), VulkanSilkGraphicsDevice.Create);
+            capture = CaptureStage(
+                WriteStage($"volume-density-{backendName}-gates"),
+                createDevice);
         }
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
+            // The evidence file is written even here, and that is the point: a gate that
+            // skipped for a named capability reason and a gate that never ran at all are
+            // otherwise indistinguishable to anything reading the uploaded artifact.
+            // eng/assert-volume-evidence.ps1 treats the first as a recorded non-render and
+            // the second as a wiring fault, so both have to leave a distinct trace.
+            WriteEvidence(
+                evidenceFileName,
+                [$"volume-density-{backendName} unavailable: the hdSilk native runtime " +
+                    $"could not be loaded: {exception.Message}"]);
             Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
             return;
         }
@@ -65,7 +123,7 @@ public sealed class VolumeRenderingConformanceTests
                 $"meanChannelDelta={Format(doubleAgainstUnit.MeanChannelDelta)}; " +
                 $"unitMeanRgb={Format(unitBrightness)}; doubleMeanRgb={Format(doubleBrightness)}",
         ];
-        WriteEvidence("volume-density-vulkan-gates.txt", evidence);
+        WriteEvidence(evidenceFileName, evidence);
 
         await Assert.That(zeroAgainstEmpty.MaximumChannelDelta)
             .IsLessThanOrEqualTo(MaximumZeroDensityChannelDelta)
@@ -97,13 +155,79 @@ public sealed class VolumeRenderingConformanceTests
     }
 
     [Test]
-    public async Task SampledOpenVdbDensityReportsD3D12WarpLimitation()
+    public async Task SampledOpenVdbDensityGatesOnD3D12Warp()
     {
+        // Direct3D 12 exists only on Windows, so this leg is genuinely platform-bound
+        // rather than merely unproven elsewhere. The Vulkan legs above carry no such
+        // guard: they run wherever the native profile and a Vulkan device are present,
+        // and report a capability skip when either is missing.
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("Direct3D 12 is available only on Windows.");
+        }
+
         await RunSampledOpenVdbDensityGate(
             "d3d12",
             CreateD3D12WarpDevice,
-            "volume-vdb-d3d12-gates.txt",
-            skipWhenTranslatedGridIsInvariant: true).ConfigureAwait(false);
+            "volume-vdb-d3d12-gates.txt").ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task SampledOpenVdbDensityAgreesBetweenD3D12AndVulkan()
+    {
+        // Self-divergence alone cannot tell a correctly sampled volume from a
+        // consistently wrong one: the D3D12 backend used to pass the sampled-vs-uniform
+        // check while rendering a flat authored density, because its DXIL mesh fragment
+        // binary had no 3D density texture at all. Comparing the two backends'
+        // sampled images against each other is what makes that failure visible.
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("Direct3D 12 is available only on Windows, so the two backends cannot be compared here.");
+        }
+
+        ClearVolumeCache();
+        string asset = ResolveOpenVdbAsset("sampled_density.vdb");
+        ParityImage vulkan;
+        try
+        {
+            vulkan = CaptureStage(
+                WriteVdbStage("volume-vdb-cross-backend-vulkan", asset, 0, 1, sampleDensity: true),
+                VulkanSilkGraphicsDevice.Create);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
+        }
+        if (!TryReadMeanCachedDensity("volume-vdb-cross-backend-vulkan", out _))
+        {
+            WriteEvidence(
+                "volume-vdb-cross-backend.txt",
+                ["volume-vdb-cross-backend skipped: hioOpenVDB reader is unavailable in the native profile."]);
+            Skip.Test("hioOpenVDB reader is unavailable in the native profile.");
+        }
+        ParityImage d3d12 = CaptureStage(
+            WriteVdbStage("volume-vdb-cross-backend-d3d12", asset, 0, 1, sampleDensity: true),
+            CreateD3D12WarpDevice);
+
+        ImageDelta crossBackend = ImageDelta.Compare(vulkan, d3d12);
+        double vulkanVariance = VarianceRgb(Crop(vulkan, 68, 52, 24, 24));
+        double d3d12Variance = VarianceRgb(Crop(d3d12, 68, 52, 24, 24));
+        WriteEvidence(
+            "volume-vdb-cross-backend.txt",
+            [
+                $"volume-vdb-d3d12-vs-vulkan maxChannelDelta={crossBackend.MaximumChannelDelta}; " +
+                    $"meanChannelDelta={Format(crossBackend.MeanChannelDelta)}",
+                $"volume-vdb-footprint-variance vulkanRgb={Format(vulkanVariance)}; " +
+                    $"d3d12Rgb={Format(d3d12Variance)}",
+            ]);
+
+        await Assert.That(crossBackend.MaximumChannelDelta)
+            .IsLessThanOrEqualTo(MaximumCrossBackendChannelDelta)
+            .Because("the D3D12 and Vulkan backends must raymarch the same density grid to the same image.");
+        await Assert.That(crossBackend.MeanChannelDelta)
+            .IsLessThanOrEqualTo(MaximumCrossBackendMeanDelta)
+            .Because("a backend that ignores the sampled grid diverges across the whole footprint, not one pixel.");
     }
 
     [Test]
@@ -217,14 +341,8 @@ public sealed class VolumeRenderingConformanceTests
     private static async Task RunSampledOpenVdbDensityGate(
         string backendName,
         Func<ISilkGraphicsDevice> createDevice,
-        string evidenceFileName,
-        bool skipWhenTranslatedGridIsInvariant = false)
+        string evidenceFileName)
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Skip.Test($"The {backendName} volume gate is currently exercised only by the Windows native profile.");
-        }
-
         ClearVolumeCache();
         string asset = ResolveOpenVdbAsset("sampled_density.vdb");
         string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
@@ -237,6 +355,13 @@ public sealed class VolumeRenderingConformanceTests
         }
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
+            // Recorded rather than silent, for the same reason as the uniform gate: the
+            // uploaded artifact has to distinguish a named capability skip from a gate
+            // that never executed.
+            WriteEvidence(
+                evidenceFileName,
+                [$"volume-vdb-{backendName}-sampled unavailable: the hdSilk native runtime " +
+                    $"could not be loaded: {exception.Message}"]);
             Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
         }
@@ -282,13 +407,6 @@ public sealed class VolumeRenderingConformanceTests
         await Assert.That(sampledVsUniform.MeanChannelDelta)
             .IsGreaterThanOrEqualTo(MinimumSampledVsUniformMeanDelta)
             .Because("sampled-vs-uniform must move the image mean, not only one edge pixel.");
-        if (skipWhenTranslatedGridIsInvariant &&
-            shiftedInterior.MeanChannelDelta < MinimumTranslatedMeanDelta)
-        {
-            Skip.Test(
-                $"{backendName} sampled VDB rendering is not a conformance gate yet: the translated-grid " +
-                "divergence check is invariant in this harness. See the evidence file for deltas.");
-        }
         await Assert.That(shiftedInterior.MeanChannelDelta)
             .IsGreaterThanOrEqualTo(MinimumTranslatedMeanDelta)
             .Because("translating the VDB density grid inside the same proxy must move the sampled density footprint.");
@@ -301,6 +419,44 @@ public sealed class VolumeRenderingConformanceTests
             throw new PlatformNotSupportedException("Direct3D 12 is available only on Windows.");
         }
         return D3D12SilkGraphicsDevice.Create(useWarp: true);
+    }
+
+    /// <summary>
+    /// Reports a platform or capability skip unless this host can execute the Metal legs.
+    /// </summary>
+    /// <remarks>
+    /// Two separate preconditions, and both have to be named rather than folded into the
+    /// render itself. Metal only exists on macOS. The checked Metal shaders are a combined
+    /// <c>mesh.metallib</c> built by the macOS shader toolchain and staged next to the test
+    /// host by <c>OpenUsdRequireMetalShaderLibrary</c>; without it every pipeline creation
+    /// fails on a missing artifact, which is a build-wiring fault and must not be reported
+    /// as a volume rendering failure. Neither condition writes an evidence file, so on the
+    /// macOS job -- where the platform condition cannot be the cause -- a missing metallib
+    /// surfaces through <c>eng/assert-volume-evidence.ps1</c> as a wiring fault that fails
+    /// the job, rather than as an allowed capability skip. A capability skip that does have
+    /// a named runtime cause records itself in the evidence file instead.
+    /// </remarks>
+    private static void RequireMetalHost()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Skip.Test("Metal is available only on macOS.");
+        }
+        if (!SilkCheckedShaderAssets.HasPinnedMetalLibrary)
+        {
+            Skip.Test(
+                "The pinned mesh.metallib is not staged beside the test host; build the " +
+                "conformance project with -p:OpenUsdRequireMetalShaderLibrary=true.");
+        }
+    }
+
+    private static ISilkGraphicsDevice CreateMetalDevice()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            throw new PlatformNotSupportedException("Metal is available only on macOS.");
+        }
+        return MetalSilkGraphicsDevice.Create();
     }
 
     private static async Task<ParityImage> CaptureStormStage(string stagePath)
@@ -623,6 +779,19 @@ public sealed class VolumeRenderingConformanceTests
         }
     }
 
+    /// <summary>
+    /// Prepends the locally built native runtime to the Windows DLL search path.
+    /// </summary>
+    /// <remarks>
+    /// Windows-only by construction, not by policy. <c>PATH</c> is the Windows loader's
+    /// search list and can still be changed after process start; the ELF and Mach-O
+    /// loaders read <c>LD_LIBRARY_PATH</c>/<c>DYLD_LIBRARY_PATH</c> once at process
+    /// start, so setting them from inside the test host would do nothing. On those
+    /// platforms the caller (see the render workflow's Linux and macOS volume steps)
+    /// exports the staged runtime before launching the test host, and a missing runtime
+    /// surfaces here as the <see cref="DllNotFoundException"/> capability skip rather than
+    /// as a silently different render.
+    /// </remarks>
     private static void PrependHdSilkNativeSearchPath()
     {
         string? root = FindRepositoryRoot();
@@ -678,7 +847,12 @@ public sealed class VolumeRenderingConformanceTests
     {
         pluginPath = string.Empty;
         string? root = FindRepositoryRoot();
-        if (root is null)
+        // The developer-convenience staging below reads the win-x64 shim build tree and
+        // copies DLLs. Non-Windows hosts reach this path only from CI, where the runtime
+        // is already staged and named by OPENUSD_PLUGIN_PATH, so attempting a
+        // Windows-shaped copy there would only turn a clean capability skip into a
+        // confusing one.
+        if (root is null || !OperatingSystem.IsWindows())
         {
             return false;
         }
@@ -772,37 +946,6 @@ public sealed class VolumeRenderingConformanceTests
         foreach (string child in Directory.EnumerateDirectories(source))
         {
             CopyDirectory(child, Path.Combine(destination, Path.GetFileName(child)));
-        }
-    }
-
-    private readonly record struct ImageDelta(int MaximumChannelDelta, double MeanChannelDelta)
-    {
-        internal static ImageDelta Compare(ParityImage reference, ParityImage candidate)
-        {
-            reference.Validate(nameof(reference));
-            candidate.Validate(nameof(candidate));
-            if (reference.Width != candidate.Width || reference.Height != candidate.Height)
-            {
-                throw new ArgumentException("Images must have matching dimensions.", nameof(candidate));
-            }
-
-            ReadOnlySpan<byte> referencePixels = reference.Rgba.Span;
-            ReadOnlySpan<byte> candidatePixels = candidate.Rgba.Span;
-            int maximum = 0;
-            long sum = 0;
-            int count = 0;
-            for (int offset = 0; offset < referencePixels.Length; offset += ParityImage.BytesPerPixel)
-            {
-                for (int channel = 0; channel < 3; channel++)
-                {
-                    int delta = Math.Abs(referencePixels[offset + channel] - candidatePixels[offset + channel]);
-                    maximum = Math.Max(maximum, delta);
-                    sum += delta;
-                    count++;
-                }
-            }
-
-            return new ImageDelta(maximum, count == 0 ? 0 : (double)sum / count);
         }
     }
 }

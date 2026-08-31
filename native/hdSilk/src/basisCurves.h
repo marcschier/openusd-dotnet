@@ -10,6 +10,7 @@
 #include "pxr/imaging/hd/basisCurves.h"
 #include "pxr/imaging/hd/basisCurvesTopology.h"
 
+#include "curveWidths.h"
 #include "sceneState.h"
 
 #include <cstdint>
@@ -18,25 +19,6 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 struct HdSilkMeshRecord;
-
-/// Authored width interpolations hdSilk resolves for linear segmented curves.
-/// USD gives varying and vertex the same element count on linear curves -- one
-/// value per control point -- so both resolve to Vertex.
-enum class HdSilkCurveWidthInterpolation
-{
-    Constant,
-    Uniform,
-    Vertex
-};
-
-/// Authored widths after validation against the curve topology. "values" is
-/// never empty, so every resolved lookup is in range by construction.
-struct HdSilkCurveWidths
-{
-    HdSilkCurveWidthInterpolation interpolation =
-        HdSilkCurveWidthInterpolation::Constant;
-    std::vector<float> values{1.0f};
-};
 
 /// HdSilkBasisCurves supports the linear/segmented curves emitted by
 /// UsdImagingGLDrawModeAdapter for origin and bounds draw modes, and plain

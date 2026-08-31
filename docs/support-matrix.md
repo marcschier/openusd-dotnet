@@ -221,11 +221,35 @@ current and peak decoded/GPU resident bytes, both configured budgets, the total 
 across every kind, and a cumulative eviction count.
 It also supports a documented MaterialX projection plus generated-source paths for graphs outside that projection:
 `ND_standard_surface_surfaceshader` base colour, emission colour, metalness, roughness, and normal can be constant,
-driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes. Unsupported nodes are
+driven by a direct image, or folded through constant multiply/add/subtract/clamp/mix nodes, a chain of constant
+multiply/add/subtract/mix nodes over exactly one image is folded into that texture's scale and bias, and a constant
+texture-coordinate chain of `ND_place2d_vector2` and `UsdTransform2d` nodes is composed into the single per-material
+UV transform its images sample through. Unsupported nodes are
 reported with `TF_WARN` diagnostics that name the material input and node id. That source support is broader than the
 Storm parity evidence: the only gated MaterialX-adjacent scene is a hand-authored PreviewSurface equivalent of constant
 base colour, roughness, and zero metalness. Storm currently renders the authored MaterialX standard-surface parity mesh
 as black in this harness, so the scene is recorded but not gated.
+The UV transform fold is gated by pixel self-consistency and divergence on both executable backends rather than by
+Storm parity: a quad whose authored coordinate reads one texel of a 2x2 image renders identically to a constant
+reference of the texel the folded affine selects, both for a pure `(1, 0, 0, 1, 0.5, 0.5)` translation and for the
+`(0, -1, 1, 0, 1, 0)` quarter turn a `UsdTransform2d` produces (`maxChannelDelta=2`, `meanChannelDelta=0.017` on both
+Vulkan and D3D12 WARP), while the same material with the identity transform fails that comparison at
+`maxChannelDelta=244`. The rotation case is what proves the off-diagonal matrix terms reach the shader, which a
+translation-only capture cannot. Non-constant transform inputs, a transform behind an unsupported intermediate node, a
+chain that never reaches a coordinate node, and a second image in the same material asking for a different transform
+are all rejected with diagnostics and proven by the native `hdsilk_probe` rather than approximated.
+Constant arithmetic over one image is gated the same way and to the same precision: the chain
+`mix(0.2, image * 0.5, 0.75)` folds to `image * 0.375 + 0.05`, and a 0.4 texel shades bit-identically to a constant
+material of 0.2 (`maxChannelDelta=0`, `meanChannelDelta=0.000` on both Vulkan and D3D12 WARP) because both values are
+exactly representable in eight bits, while the same image bound with the identity scale and bias diverges at
+`maxChannelDelta=49`. Two images combined into one input, an image-driven mix factor, a non-affine operator over an
+image, arithmetic over a normal map, and any fold that would leave the unit range are all rejected with diagnostics.
+MaterialX image sampling is read with MaterialX's own names and defaults: `uaddressmode`/`vaddressmode` per axis,
+defaulting to `periodic`, and `default` as the unreadable-file fallback. That default is gated by pixels on both
+executable backends -- a 1.25 coordinate on a 2x2 image matches the wrapped texel under periodic and the edge texel
+under the wire's black mode, each at `maxChannelDelta=2`, and the two diverge at `maxChannelDelta=244`. An
+address mode outside the four MaterialX names, and a `ND_texcoord_vector2` naming a second UV set, are rejected with
+diagnostics rather than resolved to the first set.
 The staged runtime includes `usdMtlx`, MaterialX DLLs, `MaterialXGenGlsl`, and the standard libraries, and the
 asset uses the MaterialX `out` terminal; with `UsdImagingGLEngine` scene materials enabled, Storm still covers only
 the 347-pixel PreviewSurface anchor against hdSilk's 4314-pixel MaterialX mesh. Where the two overlap, the colour
@@ -234,19 +258,40 @@ self-consistency instead: an unlit `ND_constant_color3 -> ND_multiply_color3FA -
 against an emissive PreviewSurface equivalent at `maxChannelDelta=1` and `meanChannelDelta=0.237`, and disabling
 generated shader selection fails at 187 / 19.574. Metal carries generated `MslShaderGenerator` source through the same
 runtime shader cache, but this Windows harness cannot execute a Metal pixel gate.
-Sampled `UsdVol` density rendering is currently implemented and conformance-gated only for the Vulkan hdSilk backend
-and only when the native profile provides OpenUSD's `hioOpenVDB` field reader. The native shim reads one
-`UsdVolOpenVDBAsset` density field through OpenUSD Hio and publishes a bulk cached R32 volume texture; Vulkan uploads
-that cache as a 3D texture and the mesh raymarches it. The gate compares the sampled render with a uniform proxy at the
-same mean density and with a shifted density grid, so a uniform fallback fails. If the Hio OpenVDB reader is absent, the
-gate is reported as a capability skip. Storm is not a usable VDB reference in the current offscreen harness: the same
-sampled, uniform-mean, and shifted VDB stages produce identical Storm images, so hdSilk remains gated by the
-self-divergence proof rather than cross-renderer parity. D3D12 now has the R32 3D texture upload/bind path needed to try
-the same scene on WARP, but it is not advertised as supported because the shifted-grid divergence remains invariant in
-that backend (`maxChannelDelta=0`, `meanChannelDelta=0` for sampled versus shifted). Metal's explicit texture slot
-binding still needs an executed macOS proof before it can be advertised. Multi-field volumes, non-density field roles
-such as temperature or velocity, Field3D rendering, and `UsdVolVolume` prims with several field relationships remain
-outside the rendering support claim.
+Sampled `UsdVol` density rendering is implemented and conformance-gated for the Vulkan and D3D12 hdSilk backends,
+and only when the native profile provides OpenUSD's `hioOpenVDB` field reader. The Vulkan legs are executed on
+win-x64 and linux-x64; the D3D12 WARP leg and the cross-backend comparison are executed on win-x64 only, because
+Direct3D 12 exists only on Windows. The native shim reads one
+`UsdVolOpenVDBAsset` density field through OpenUSD Hio and publishes a bulk cached R32 volume texture; both backends
+upload that cache as a 3D texture and the mesh raymarches it, integrating one sample per voxel layer so the
+reconstruction follows the grid's own Z resolution rather than a fixed step count. Each backend gate compares the
+sampled render with a
+uniform proxy at the same mean density and with a shifted density grid, so a uniform fallback fails. If the Hio OpenVDB
+reader is absent, the gate is reported as a capability skip. Storm is not a usable VDB reference in the current
+offscreen harness: the same sampled, uniform-mean, and shifted VDB stages produce identical Storm images, so hdSilk
+remains gated by the self-divergence proof plus a cross-backend comparison rather than cross-renderer parity. D3D12 WARP
+and Vulkan SwiftShader now render the same sampled grid to the same image (`maxChannelDelta=0`,
+`meanChannelDelta=0.000000`), with identical footprint variance `890.508958`, sampled-versus-uniform
+`maxChannelDelta=100` / `meanChannelDelta=19.730324`, and shifted-grid `maxChannelDelta=115` /
+`meanChannelDelta=2.409473`. Self-divergence alone was not enough evidence: D3D12 previously passed the
+sampled-versus-uniform check while rendering a flat authored density, because the checked DXIL mesh fragment declared no
+density texture at all and the shifted-grid check was therefore invariant. That is why the cross-backend comparison is
+now part of the gate. Only one checked fragment program samples the density grid, so a volume material that also binds
+2D material maps, or one routed through the runtime MaterialX shader service, has no correct pipeline; hdSilk names that
+combination and refuses the draw rather than shading the proxy at the authored uniform density. The Metal backend now
+implements the same R32Float 3D texture create, blit upload, and explicit texture/sampler slot binding, the
+`volumeFragmentMain` entry point is part of the pinned `mesh.metallib` contract, and `UniformDensityVolumeGatesOnMetal`
+and `SampledOpenVdbDensityGatesOnMetal` run the same shared helper, stages, crops, and thresholds as the Vulkan and
+D3D12 legs from the `macos-arm64` render job. That job stages the runtime with `eng/stage-hdsilk-runtime.ps1`, uploads
+`render-volume-evidence-osx-arm64-<run>`, and classifies the result with `eng/assert-volume-evidence.ps1`. No workflow
+run has recorded `status=executed` for that backend yet, so osx-arm64 is deliberately absent from the sampled-volume
+evidence platforms and Metal sampled volumes carry no rendering support claim: the promotion step is a run whose
+`volume-evidence-metal-status.json` says `executed`, after which `-AllowCapabilitySkip` is removed from that job and
+osx-arm64 joins the gate. Multi-field volumes, non-density field
+roles such as temperature or velocity, Field3D rendering, and `UsdVolVolume` prims with several field relationships
+remain outside the rendering support claim. The field's own transform is likewise not yet honored: the grid is
+stretched to fill the proxy rather than placed by the `UsdVolOpenVDBAsset` prim transform and the VDB's own
+index-to-world transform, so only the density values are transported, not the grid's placement.
 
 ## Backend capabilities
 
@@ -354,10 +399,13 @@ limitation and needs a GPU-equipped self-hosted runner.
 | Dome light ambient | `light-dome-ambient` |
 | Shadows | None |
 | Point instancing | `point-instancer-cluster` |
+| Point-instancer instance identity | None; page-level gated by `hdsilk_probe` and managed identity tests (see below) |
 | Points | `points-asymmetric` |
 | Basis curves / draw-mode generated lines | `bounds-draw-mode`, `origin-draw-mode` |
+| Basis curve width interpolation | None; workflow-gated by page-level and cross-backend tests instead (see below) |
 | Draw modes | `cards-draw-mode`, `bounds-draw-mode`, `origin-draw-mode` |
 | Double-sided/culling | `single-sided-winding`, `cull-style-back-self-consistency`, and its divergence companion |
+| Front cull styles and orientation | None; cross-backend and page-level gated (see below) |
 | Time-varying transform/display colour | `time-varying-transform-primvar` |
 | UsdSkel CPU skinning | `skinned-pennant` |
 | Subdivision surfaces | None |
@@ -382,7 +430,8 @@ Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
   confined to `[0,1]`, where every wrap mode is mathematically equivalent. Each measured
   `maxChannelDelta=2` / `meanChannelDelta=0.082`. The companion outside-`[0,1]` UV divergence cases require
   the sampler address mode to differ: clamp and `useMetadata`/black each measured `maxChannelDelta=203` /
-  `meanChannelDelta=14.950`, and mirror measured `maxChannelDelta=127` / `meanChannelDelta=7.135`.
+  `meanChannelDelta=14.950` -- identical, because both resolve to clamp-to-edge -- and mirror measured
+  `maxChannelDelta=127` / `meanChannelDelta=7.135`.
 - `texture-colorspace-auto-self-consistency` compares diffuse `sourceColorSpace=sRGB` with `auto`, which
   resolves to the same sRGB decode for diffuse textures. It measured `maxChannelDelta=2` /
   `meanChannelDelta=0.082`. The raw/linear companion compares the same texture as `sRGB` versus `raw`;
@@ -442,18 +491,80 @@ remains measured but ungated until the remaining divergence is eliminated.
 - Varying, uniform, and face-varying texture-coordinate primvar interpolation modes are gated.
 - Other primvar names beyond constant `displayColor`, normals, and `st` texture coordinates are not gated.
 - Texture `repeat`, `clamp`, `mirror`, `useMetadata`/black, `sRGB`, diffuse `auto`, and raw/linear colour
-  space are gated.
+  space are gated. `useMetadata`/black is gated as clamp-to-edge, which is what the renderer implements for
+  it; no backend is given a border colour.
 - Specular, opacity, and occlusion texture slots have no parity scene.
 - `displacement` is not implemented in hdSilk. The material ABI can carry the authored input, but the
   checked mesh shader has no tessellation or vertex/fragment displacement path that changes pixels.
 - The Vulkan renderer-consumption path for emissive colour, occlusion, opacity threshold, clearcoat,
   clearcoat roughness, and IOR is self-consistency-gated, but not yet Storm-gated from authored USD.
 - MaterialX images, normal maps, emission, non-zero metalness, and arithmetic chains have no Storm parity gate.
+- The MaterialX `place2d` / `UsdTransform2d` UV transform fold is gated by Vulkan and D3D12 pixel self-consistency and
+  divergence, not by Storm parity, and only one texture-coordinate stream per material is carried: **both** the UV
+  transform and the UV primvar are reconciled across a material's textures, so divergent per-image transforms,
+  divergent per-image primvars (a base colour on `uvSet0` beside a normal map on `uvSet1`),
+  non-constant transform inputs, transforms behind unsupported intermediate nodes, and chains that never reach a
+  coordinate node are rejected with diagnostics rather than rendered.
+- Constant arithmetic over one image folds into that texture's scale and bias and is gated the same way. Two images
+  joined by one constant `multiply`, `add`, `subtract` or `mix` are supported as a per-pixel composite and gated by
+  pixels on both executable backends, but **one composite per material** only: a graph that composites a second
+  surface input has both entries of that second input dropped with a diagnostic. Image-driven mix factors, non-affine
+  operators over an image, three or more images in one input, arithmetic on the `normal` input, and per-entry folds
+  leaving the unit range are rejected with diagnostics.
+- MaterialX image sampling is read from `uaddressmode`/`vaddressmode` and `default`, with MaterialX's periodic
+  default. Border sampling is **not** implemented: `SilkTextureWrap.Black` -- published for UsdUVTexture's
+  `black`/unauthored `wrap` and for MaterialX `constant` addressing -- is resolved to clamp-to-edge, so it renders
+  identically to `SilkTextureWrap.Clamp` and a sample outside the unit range returns the edge texel rather than black
+  or a MaterialX node's `default` colour. The `default` colour is transported only in its other role, as the
+  unreadable-file fallback. A second UV set named by a `ND_texcoord_vector2` `index` is not supported.
 - Sphere-light glossy shaping, dome textures, image-based lighting, and area-light texture inputs are not gated.
-- Multiple point-instancer prototypes/proto-index variation and instanced shadows are not gated.
-- Wide point splats and authored curve widths/ribbons are not gated.
+- Multiple point-instancer prototypes, proto-index variation, `invisibleIds`, and two levels of nesting have no
+  Storm parity scene, and instanced shadows are not gated at all. What is gated is the published identity, at page
+  level rather than by pixels, under manifest capability `point-instancer-instance-identity`: `hdsilk_probe` drives
+  `test-assets/hdsilk-pointinstancer-probe.usda` and requires the
+  instance's own index inside its instancer -- the index into `protoIndices`/`positions` that UsdImaging decodes back
+  to a scene instance -- rather than the ordinal of the instance in the resolved array, so a prototype that owns only
+  part of an instancer publishes a sparse index set, swapping proto indices retires and republishes identities instead
+  of renumbering them, and hiding an instance leaves the survivors' indices alone. Nested instancers have no USD
+  instance index; hdSilk composes `parent_index * inner_instance_count + inner_index` against the inner instancer's
+  own authoritative instance count and never a per-prototype radix, and drops with a diagnostic any index that count
+  cannot explain. The encoding is unique and stable but is an hdSilk encoding rather than an index USD can decode.
+  Two wire invariants keep the ABI v8 payload resolvable: the records of one path serialize atomically, so a rejected
+  payload cannot leave orphan instance references, and an empty mesh is retired rather than published, because an
+  empty record is byte-identical on the wire to an instance reference. The elision is topology neutral, so instanced
+  `BasisCurves` line lists and instanced `Points` point lists carry their payload once on the lowest published index
+  in the same way a triangle list does.
+- Wide point splats are not gated. Authored curve widths are now resolved for every interpolation
+  `UsdGeomCurves` can author on a linear segmented curve -- constant, uniform, varying, and vertex --
+  published as an `OPENUSD_SILK_ATTRIBUTE_WIDTH` vertex attribute, and interpolated along each
+  segment when complexity subdivides it. They no longer delete the prim: before this, only a scalar
+  or single-element `widths` array was accepted, and `parity-curve-width-interpolation.usda`
+  published one of its four curve prims instead of four.
+  What they still do not do is change coverage, and that is deliberate: Storm rasterizes linear basis
+  curves as one-pixel screen-space lines at the harness refinement and ignores authored world-space
+  widths (`parity-curve-width-probe.usda` measured Storm at 128 pixels against 2093 for ribbons), and
+  no backend can widen a line portably -- D3D12 has no line width state, Vulkan needs the optional
+  `wideLines` feature, Metal has none. There is therefore no Storm parity scene; the capability is
+  workflow-gated instead by page-level tests on all three `render.yml` platform jobs, a D3D12 WARP
+  and Vulkan SwiftShader cross-backend gate on `windows-wgl`, and `hdsilk_probe` in `ci.yml` and
+  `native.yml`. Ribbons and half-tubes at higher refinement are not implemented and not claimed.
 - Authored `cullStyle=back` and the default `backUnlessDoubleSided` are gated for a single-sided mesh and
-  a double-sided back-face divergence companion. `front`, `frontUnlessDoubleSided`, and `nothing` remain ungated.
+  a double-sided back-face divergence companion against Storm. `front` and `frontUnlessDoubleSided` have no
+  Storm parity scene, but they are no longer ungated or unimplemented: they were mapped to *back* culling by
+  a catch-all, which culled exactly the faces they ask to keep, and `SilkCullMode` had no `Front` member at
+  all. `CullStyleFrontCullsTheOppositeFacesOfBackOnD3D12AndVulkan` renders one front-facing and one
+  back-facing single-sided quad and requires the two styles to select disjoint halves of the canvas
+  identically on D3D12 WARP and Vulkan SwiftShader; measured `back=2323/0`, `front=0/2323`, and
+  `frontUnlessDoubleSided` on a double-sided mesh `2323/2323`, versus `front=2323/0` -- indistinguishable
+  from `back` -- when the catch-all is reinstated. The claim is bounded: USD gprims author `doubleSided`
+  rather than a Hydra cull style, and the hosted session pins `UsdImagingGLRenderParams.cullStyle` to
+  `backUnlessDoubleSided`, so the front styles are reachable through the page and not from a stage.
+  `nothing` remains ungated.
+- Authored `orientation` needs no page-level handling: `HdMeshUtil::ComputeTriangleIndices` already reverses
+  a `leftHanded` face's corners, and every backend rasterizes counter-clockwise-front, so the emitted winding
+  is correct for both orientations. `hdsilk_probe` pins the emitted indices for a matched `rightHanded` and
+  `leftHanded` quad pair so neither a dropped nor a duplicated correction can regress silently. There is no
+  Storm parity scene for orientation.
 - Animated materials, textures, lights, and topology have no parity scene.
 - GPU skinning is not implemented or gated. `docs/rendering.md` records the ABI/shader design that
   must land before this can become a backend gate.
@@ -522,6 +633,8 @@ the existing doubled-intensity sensitivity probe, so the harness must keep the e
 | Ordered scheduler | Implemented | Serialized stage ownership and bounded work |
 | Change notifications | Implemented | Coalesced stage changes |
 | Shared render source | Implemented | Retained exact-stage renderer access |
+| Asset resolution | Implemented | Resolver contexts, scoped binding, bulk resolved-asset records |
+| Plugin tree discovery | Implemented | Registration and enumeration of unflattened third-party plugin trees |
 
 The complete API examples and native ownership rules are in [Data API](data-api.md).
 
@@ -536,8 +649,9 @@ The complete API examples and native ownership rules are in [Data API](data-api.
 | `Pcp` | Detached prim-index node/error inspection | Focused read-only |
 | `Ts` | Double-valued spline knots, tangents, extrapolation, evaluation | Focused read-only |
 | `UsdValidation` | Registry enumeration and stage/prim validation results | Focused read-only |
+| `Ar` and `Plug` | Resolver contexts, bulk resolution, plugin registration and enumeration | Read-only inspection |
 | `UsdPhysics` | Scene, body, collision, material, joints, limits/drives, filtering | Authoring only |
-| `UsdVol` | Volume, field assets, OpenVDBAsset schema, Field3DAsset | Vulkan single-density OpenVDB gate |
+| `UsdVol` | Volume, field assets, OpenVDBAsset schema, Field3DAsset | Vulkan and D3D12 single-density OpenVDB gate |
 | `UsdRender` | SettingsBase, Settings, Product, Var, Pass | Data API; no RenderDenoisePass in pinned OpenUSD |
 | `UsdMedia` | SpatialAudio, AssetPreviewsAPI | Data API |
 | `UsdProc` | GenerativeProcedural | Data API |
@@ -570,9 +684,9 @@ when a backend returns identity-only results.
 | Open/drop `.usd`, `.usda`, `.usdc`, and `.usdz` | Implemented |
 | Hierarchy filtering and selection | Implemented |
 | Properties, relationships, variants, and payload inspection | Implemented |
-| Composition tab data (`PcpPrimIndex`) | ABI/API implemented; UI pending |
-| Spline plot data (`TsSpline`) | ABI/API implemented; UI pending |
-| Validation panel data (`UsdValidation`) | ABI/API implemented; UI pending |
+| Composition tab data (`PcpPrimIndex`) | Implemented |
+| Spline data in the Value tab (`TsSpline`) | Implemented; read-only, no knot authoring |
+| Validation panel data (`UsdValidation`) | Implemented |
 | Root/session edit targets and layer muting | Implemented |
 | Timeline playback and authored timing | Implemented |
 | Orbit (including viewport-focused 5-degree arrows), pan, zoom, projection toggle, and framing | Implemented |
@@ -614,7 +728,7 @@ here.
 - The curated Storm/hdSilk parity matrix is observed on D3D12 WARP and Vulkan SwiftShader. Metal is
   wired into the macOS render job for the same 25-scene capture, but hosted arm64 currently records a
   CGL capability skip; it must not be reported as passing until a workflow run captures it.
-- Volume rendering outside Vulkan single-density OpenVDB assets, path tracing, proprietary shaders,
+- Volume rendering outside single-density OpenVDB assets, path tracing, proprietary shaders,
   arbitrary MaterialX graphs, and third-party Hydra render delegates are excluded from the next-alpha support claim.
 
 Use [Troubleshooting](troubleshooting.md) to diagnose native loading, plugin discovery, platform,

@@ -4117,19 +4117,596 @@ bool VerifyOcioDisplayTransform(const char* configPath)
     openusd_ocio_processor_release(processor);
     return success;
 }
+
+struct ResolvedAssetResult
+{
+    bool resolved = false;
+    bool contextDependent = false;
+    bool timestampValid = false;
+    double modificationTime = 0.0;
+    std::string identifier;
+    std::string resolvedPath;
+    std::string extension;
+    std::string assetVersion;
+    std::string assetName;
+};
+
+bool ReadStringList(
+    openusd_status (*getter)(
+        openusd_string_list**,
+        openusd_string_list_view*,
+        openusd_error_buffer*),
+    openusd_error_buffer* error,
+    std::vector<std::string>* values)
+{
+    openusd_string_list* list = nullptr;
+    openusd_string_list_view view{
+        static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0, 0};
+    if (getter(&list, &view, error) != OPENUSD_STATUS_OK)
+    {
+        return false;
+    }
+
+    values->clear();
+    values->reserve(view.count);
+    for (size_t i = 0; i < view.count; ++i)
+    {
+        values->emplace_back(view.data + view.offsets[i]);
+    }
+    openusd_string_list_release(list);
+    return true;
+}
+
+openusd_string_list_view MakeStringListView(
+    const std::vector<char>& data,
+    const std::vector<size_t>& offsets)
+{
+    openusd_string_list_view view{
+        static_cast<uint32_t>(sizeof(openusd_string_list_view)),
+        offsets.empty() ? nullptr : data.data(),
+        offsets.empty() ? 0 : data.size(),
+        offsets.empty() ? nullptr : offsets.data(),
+        offsets.size() * sizeof(size_t),
+        offsets.size()};
+    return view;
+}
+
+void PackStrings(
+    const std::vector<std::string>& values,
+    std::vector<char>* data,
+    std::vector<size_t>* offsets)
+{
+    data->clear();
+    offsets->clear();
+    for (const std::string& value : values)
+    {
+        offsets->push_back(data->size());
+        data->insert(data->end(), value.begin(), value.end());
+        data->push_back('\0');
+    }
+}
+
+bool ResolveAssets(
+    const std::vector<std::string>& assetPaths,
+    const openusd_resolver_context* context,
+    const char* anchor,
+    openusd_error_buffer* error,
+    std::vector<ResolvedAssetResult>* results)
+{
+    std::vector<char> data;
+    std::vector<size_t> offsets;
+    PackStrings(assetPaths, &data, &offsets);
+    openusd_string_list_view paths = MakeStringListView(data, offsets);
+
+    openusd_resolved_asset_list* list = nullptr;
+    openusd_resolved_asset_view view{
+        static_cast<uint32_t>(sizeof(openusd_resolved_asset_view)),
+        OPENUSD_RESOLVED_ASSET_VIEW_VERSION,
+        nullptr,
+        0,
+        0,
+        nullptr,
+        0,
+        nullptr,
+        0,
+        0};
+    if (openusd_resolver_resolve(&paths, context, anchor, &list, &view, error) !=
+            OPENUSD_STATUS_OK ||
+        view.record_count != assetPaths.size() ||
+        view.string_count != assetPaths.size() * 5u)
+    {
+        openusd_resolved_asset_list_release(list);
+        return false;
+    }
+
+    results->clear();
+    results->reserve(view.record_count);
+    for (size_t i = 0; i < view.record_count; ++i)
+    {
+        const openusd_resolved_asset_record& record = view.records[i];
+        ResolvedAssetResult result;
+        result.resolved = record.resolved != 0;
+        result.contextDependent = record.context_dependent != 0;
+        result.timestampValid = record.timestamp_valid != 0;
+        result.modificationTime = record.modification_time;
+        result.identifier = view.data + view.offsets[record.identifier_offset];
+        result.resolvedPath = view.data + view.offsets[record.resolved_path_offset];
+        result.extension = view.data + view.offsets[record.extension_offset];
+        result.assetVersion = view.data + view.offsets[record.asset_version_offset];
+        result.assetName = view.data + view.offsets[record.asset_name_offset];
+        results->push_back(std::move(result));
+    }
+    openusd_resolved_asset_list_release(list);
+    return true;
+}
+
+bool VerifyResolverContracts(const char* stagePath, openusd_error_buffer* error)
+{
+    const std::filesystem::path stage = std::filesystem::absolute(stagePath);
+    const std::string directory = stage.parent_path().string();
+    const std::string fileName = stage.filename().string();
+
+    std::vector<std::string> plugins;
+    if (!ReadStringList(&openusd_get_registered_plugins, error, &plugins) ||
+        (plugins.size() % 5u) != 0u)
+    {
+        std::cerr << "Registered-plugin enumeration failed.\n";
+        return false;
+    }
+    bool foundTestPlugin = false;
+    for (size_t i = 0; i + 4 < plugins.size(); i += 5)
+    {
+        if (plugins[i] != "openusdTestResolver")
+        {
+            continue;
+        }
+        foundTestPlugin = plugins[i + 1] == "library" &&
+            !plugins[i + 3].empty() &&
+            plugins[i + 4].find("resources") != std::string::npos;
+    }
+    if (!foundTestPlugin)
+    {
+        std::cerr << "The third-party resolver plugin tree was not discovered.\n";
+        return false;
+    }
+
+    std::vector<std::string> schemes;
+    if (!ReadStringList(&openusd_resolver_get_uri_schemes, error, &schemes) ||
+        std::find(schemes.begin(), schemes.end(), "openusdtest") == schemes.end())
+    {
+        std::cerr << "The third-party URI scheme was not registered.\n";
+        return false;
+    }
+
+    // Upstream keeps URI resolvers out of the primary-resolver candidate list: they are selected
+    // per scheme, not as the process resolver. The available-type query therefore reports the
+    // default resolver and not the third-party URI resolver, which is what makes the scheme list
+    // the right discovery signal for a vendor plugin.
+    std::vector<std::string> resolverTypes;
+    if (!ReadStringList(&openusd_resolver_get_available_type_names, error, &resolverTypes) ||
+        std::find(resolverTypes.begin(), resolverTypes.end(), "ArDefaultResolver") ==
+            resolverTypes.end() ||
+        std::find(resolverTypes.begin(), resolverTypes.end(), "OpenUsdTestResolver") !=
+            resolverTypes.end())
+    {
+        std::cerr << "Resolver type discovery did not match upstream behavior.\n";
+        return false;
+    }
+
+    std::array<char, 512> primaryType{};
+    size_t primaryRequired = 0;
+    if (openusd_resolver_get_primary_type_name(
+            primaryType.data(), primaryType.size(), &primaryRequired, error) !=
+            OPENUSD_STATUS_OK ||
+        std::string(primaryType.data()) != "ArDefaultResolver")
+    {
+        std::cerr << "Unexpected primary resolver: " << primaryType.data() << '\n';
+        return false;
+    }
+
+    // One context configures both resolvers: the primary resolver gets a search path and the
+    // third-party resolver gets the directory its URI scheme maps onto.
+    const std::vector<std::string> contextStrings{"", directory, "openusdtest", directory};
+    std::vector<char> contextData;
+    std::vector<size_t> contextOffsets;
+    PackStrings(contextStrings, &contextData, &contextOffsets);
+    openusd_string_list_view contextView = MakeStringListView(contextData, contextOffsets);
+    openusd_resolver_context* context = nullptr;
+    if (openusd_resolver_context_create(&contextView, &context, error) != OPENUSD_STATUS_OK ||
+        context == nullptr)
+    {
+        std::cerr << "Resolver-context creation failed: " << error->data << '\n';
+        return false;
+    }
+
+    bool success = true;
+    int32_t isEmpty = 1;
+    std::array<char, 1024> debugText{};
+    size_t debugRequired = 0;
+    if (openusd_resolver_context_is_empty(context, &isEmpty, error) != OPENUSD_STATUS_OK ||
+        isEmpty != 0 ||
+        openusd_resolver_context_get_debug_string(
+            context, debugText.data(), debugText.size(), &debugRequired, error) !=
+            OPENUSD_STATUS_OK ||
+        debugRequired <= 1)
+    {
+        std::cerr << "Resolver-context inspection failed.\n";
+        success = false;
+    }
+
+    const std::string uriAsset = "openusdtest://" + fileName;
+    const std::string missingUriAsset = "openusdtest://openusd-missing-asset.usda";
+    std::vector<ResolvedAssetResult> results;
+    if (success &&
+        (!ResolveAssets({uriAsset, fileName, missingUriAsset}, context, nullptr, error, &results) ||
+         results.size() != 3))
+    {
+        std::cerr << "Bulk asset resolution failed: " << error->data << '\n';
+        success = false;
+    }
+    if (success)
+    {
+        const ResolvedAssetResult& uri = results[0];
+        const ResolvedAssetResult& searched = results[1];
+        const ResolvedAssetResult& missing = results[2];
+        if (!uri.resolved || !uri.contextDependent || !uri.timestampValid ||
+            uri.modificationTime != 1234.5 || uri.identifier != uriAsset ||
+            uri.assetVersion != "test-1" || uri.assetName != fileName ||
+            uri.extension != "usda" ||
+            std::filesystem::path(uri.resolvedPath) != stage)
+        {
+            std::cerr << "The third-party resolver did not resolve its own URI scheme.\n";
+            success = false;
+        }
+        if (!searched.resolved || !searched.contextDependent ||
+            std::filesystem::path(searched.resolvedPath) != stage)
+        {
+            std::cerr << "The search-path context did not resolve a relative asset.\n";
+            success = false;
+        }
+        if (missing.resolved || !missing.resolvedPath.empty() || missing.timestampValid)
+        {
+            std::cerr << "A missing third-party asset reported a resolved path.\n";
+            success = false;
+        }
+    }
+
+    // An asset the resolver declines to identify must be reported unresolved rather than resolved
+    // from its raw asset path. The fixture file exists and the test resolver's _Resolve would find
+    // it, so a fallback would report success for an asset UsdStage::Open cannot load.
+    const std::string unidentifiedName = "no-identifier-probe.usda";
+    const std::filesystem::path unidentifiedPath = stage.parent_path() / unidentifiedName;
+    std::error_code copyCode;
+    std::filesystem::copy_file(
+        stage,
+        unidentifiedPath,
+        std::filesystem::copy_options::overwrite_existing,
+        copyCode);
+    const std::string unidentifiedAsset = "openusdtest://" + unidentifiedName;
+    std::vector<ResolvedAssetResult> unidentified;
+    if (success &&
+        (copyCode || !std::filesystem::exists(unidentifiedPath) ||
+         !ResolveAssets({unidentifiedAsset}, context, nullptr, error, &unidentified) ||
+         unidentified.size() != 1))
+    {
+        std::cerr << "Resolving an unidentifiable asset failed: " << error->data << '\n';
+        success = false;
+    }
+    if (success &&
+        (unidentified[0].resolved || !unidentified[0].identifier.empty() ||
+         !unidentified[0].resolvedPath.empty() || unidentified[0].timestampValid))
+    {
+        std::cerr << "An asset with no identifier reported a resolved path.\n";
+        success = false;
+    }
+    if (success)
+    {
+        openusd_stage* unidentifiedStage = nullptr;
+        std::array<char, 1024> stageErrorText{};
+        openusd_error_buffer stageError{stageErrorText.data(), stageErrorText.size(), 0};
+        if (openusd_stage_open_with_context(
+                unidentifiedAsset.c_str(), context, &unidentifiedStage, &stageError) ==
+                OPENUSD_STATUS_OK ||
+            unidentifiedStage != nullptr)
+        {
+            std::cerr << "A stage opened an asset the resolver refused to identify.\n";
+            success = false;
+            if (unidentifiedStage != nullptr)
+            {
+                openusd_stage_release(unidentifiedStage);
+            }
+        }
+    }
+
+    // Binding is scoped to the calling thread: a bound context resolves without being passed, an
+    // unbind from another thread is rejected and stays retryable, an out-of-order unbind is
+    // rejected, and an explicitly empty context shadows whatever is already bound.
+    openusd_resolver_binding* binding = nullptr;
+    if (success &&
+        openusd_resolver_context_bind(context, &binding, error) != OPENUSD_STATUS_OK)
+    {
+        std::cerr << "Resolver-context binding failed: " << error->data << '\n';
+        success = false;
+    }
+    if (success)
+    {
+        std::vector<ResolvedAssetResult> bound;
+        if (!ResolveAssets({uriAsset}, nullptr, nullptr, error, &bound) ||
+            bound.size() != 1 || !bound[0].resolved)
+        {
+            std::cerr << "A bound resolver context did not affect resolution.\n";
+            success = false;
+        }
+
+        openusd_status crossThread = OPENUSD_STATUS_OK;
+        std::thread other([&]()
+        {
+            std::array<char, 1024> threadErrorText{};
+            openusd_error_buffer threadError{
+                threadErrorText.data(), threadErrorText.size(), 0};
+            crossThread = openusd_resolver_context_unbind(binding, &threadError);
+        });
+        other.join();
+        if (crossThread != OPENUSD_STATUS_WRONG_THREAD)
+        {
+            std::cerr << "A cross-thread unbind was accepted.\n";
+            success = false;
+        }
+
+        // Refresh rejection is scoped to the context by value identity, and it is process-wide
+        // rather than thread-local: this context is bound here, so refreshing it must be rejected
+        // even from another thread, while an unrelated context must still refresh freely.
+        std::array<char, 1024> refreshErrorText{};
+        openusd_error_buffer refreshError{refreshErrorText.data(), refreshErrorText.size(), 0};
+        if (openusd_resolver_context_refresh(context, &refreshError) !=
+            OPENUSD_STATUS_INVALID_ARGUMENT)
+        {
+            std::cerr << "Refreshing a bound context was accepted.\n";
+            success = false;
+        }
+
+        openusd_status crossThreadRefresh = OPENUSD_STATUS_OK;
+        std::thread refresher([&]()
+        {
+            std::array<char, 1024> threadErrorText{};
+            openusd_error_buffer threadError{
+                threadErrorText.data(), threadErrorText.size(), 0};
+            crossThreadRefresh = openusd_resolver_context_refresh(context, &threadError);
+        });
+        refresher.join();
+        if (crossThreadRefresh != OPENUSD_STATUS_INVALID_ARGUMENT)
+        {
+            std::cerr << "Refreshing a context bound on another thread was accepted.\n";
+            success = false;
+        }
+
+        // An unrelated context is not blocked by this binding.
+        openusd_resolver_context* unrelated = nullptr;
+        const std::vector<std::string> unrelatedStrings{"", stage.parent_path().string()};
+        std::vector<char> unrelatedData;
+        std::vector<size_t> unrelatedOffsets;
+        PackStrings(unrelatedStrings, &unrelatedData, &unrelatedOffsets);
+        openusd_string_list_view unrelatedView =
+            MakeStringListView(unrelatedData, unrelatedOffsets);
+        if (openusd_resolver_context_create(&unrelatedView, &unrelated, error) !=
+                OPENUSD_STATUS_OK ||
+            unrelated == nullptr)
+        {
+            std::cerr << "Creating an unrelated resolver context failed.\n";
+            success = false;
+        }
+        else
+        {
+            if (openusd_resolver_context_refresh(unrelated, error) != OPENUSD_STATUS_OK)
+            {
+                std::cerr << "An unrelated context was blocked by a live binding: "
+                    << error->data << '\n';
+                success = false;
+            }
+            openusd_resolver_context_release(unrelated);
+        }
+
+        // An explicitly empty context shadows the ambient binding: passing it must resolve as if
+        // nothing were bound, while passing null keeps using the ambient binding. Without this,
+        // "resolve ignoring whatever this thread already bound" would be inexpressible.
+        openusd_resolver_context* emptyContext = nullptr;
+        openusd_string_list_view emptyView{
+            static_cast<uint32_t>(sizeof(openusd_string_list_view)), nullptr, 0, nullptr, 0, 0};
+        int32_t emptyIsEmpty = 0;
+        if (openusd_resolver_context_create(&emptyView, &emptyContext, error) !=
+                OPENUSD_STATUS_OK ||
+            emptyContext == nullptr ||
+            openusd_resolver_context_is_empty(emptyContext, &emptyIsEmpty, error) !=
+                OPENUSD_STATUS_OK ||
+            emptyIsEmpty != 1)
+        {
+            std::cerr << "The default resolver context was not empty.\n";
+            success = false;
+        }
+        if (success)
+        {
+            std::vector<ResolvedAssetResult> shadowed;
+            std::vector<ResolvedAssetResult> ambient;
+            if (!ResolveAssets({uriAsset}, emptyContext, nullptr, error, &shadowed) ||
+                shadowed.size() != 1 || shadowed[0].resolved)
+            {
+                std::cerr << "An empty context did not shadow the ambient binding.\n";
+                success = false;
+            }
+            else if (!ResolveAssets({uriAsset}, nullptr, nullptr, error, &ambient) ||
+                ambient.size() != 1 || !ambient[0].resolved)
+            {
+                std::cerr << "The ambient binding did not survive an empty-context batch.\n";
+                success = false;
+            }
+        }
+
+        // Nesting the empty context as a real binding must shadow the outer one for as long as it
+        // lives, and the outer binding must come back once it is released in reverse order.
+        openusd_resolver_binding* nested = nullptr;
+        if (success &&
+            openusd_resolver_context_bind(emptyContext, &nested, error) != OPENUSD_STATUS_OK)
+        {
+            std::cerr << "Nested empty-context binding failed: " << error->data << '\n';
+            success = false;
+        }
+        if (success)
+        {
+            std::vector<ResolvedAssetResult> nestedResults;
+            if (!ResolveAssets({uriAsset}, nullptr, nullptr, error, &nestedResults) ||
+                nestedResults.size() != 1 || nestedResults[0].resolved)
+            {
+                std::cerr << "A nested empty binding did not shadow the outer context.\n";
+                success = false;
+            }
+
+            // The outer binding is still bound, so releasing it first must be rejected and must
+            // leave both bindings usable rather than consuming the outer one.
+            std::array<char, 1024> orderErrorText{};
+            openusd_error_buffer orderError{
+                orderErrorText.data(), orderErrorText.size(), 0};
+            if (openusd_resolver_context_unbind(binding, &orderError) !=
+                OPENUSD_STATUS_INVALID_ARGUMENT)
+            {
+                std::cerr << "An out-of-order unbind was accepted.\n";
+                success = false;
+            }
+            if (openusd_resolver_context_unbind(nested, error) != OPENUSD_STATUS_OK)
+            {
+                std::cerr << "Releasing the nested binding failed: " << error->data << '\n';
+                success = false;
+            }
+            else
+            {
+                std::vector<ResolvedAssetResult> restored;
+                if (!ResolveAssets({uriAsset}, nullptr, nullptr, error, &restored) ||
+                    restored.size() != 1 || !restored[0].resolved)
+                {
+                    std::cerr << "The outer binding was not restored after nesting.\n";
+                    success = false;
+                }
+            }
+        }
+        if (emptyContext != nullptr)
+        {
+            openusd_resolver_context_release(emptyContext);
+        }
+
+        if (openusd_resolver_context_unbind(binding, error) != OPENUSD_STATUS_OK)
+        {
+            std::cerr << "Resolver-context unbinding failed.\n";
+            success = false;
+        }
+        else
+        {
+            // The rejected refreshes above were retryable, not permanent: the same call succeeds
+            // once the binding is released.
+            if (openusd_resolver_context_refresh(context, error) != OPENUSD_STATUS_OK)
+            {
+                std::cerr << "Refreshing an unbound context was rejected: " << error->data << '\n';
+                success = false;
+            }
+            std::vector<ResolvedAssetResult> unbound;
+            if (!ResolveAssets({uriAsset}, nullptr, nullptr, error, &unbound) ||
+                unbound.size() != 1 || unbound[0].resolved)
+            {
+                std::cerr << "An unbound context still affected resolution.\n";
+                success = false;
+            }
+        }
+    }
+
+    // Malformed requests must be rejected without producing an owner.
+    openusd_resolved_asset_list* rejected = reinterpret_cast<openusd_resolved_asset_list*>(
+        uintptr_t{1});
+    openusd_resolved_asset_view rejectedView{
+        static_cast<uint32_t>(sizeof(openusd_resolved_asset_view)), 0, nullptr, 0, 0,
+        nullptr, 0, nullptr, 0, 0};
+    std::vector<char> singleData;
+    std::vector<size_t> singleOffsets;
+    PackStrings({uriAsset}, &singleData, &singleOffsets);
+    openusd_string_list_view singleView = MakeStringListView(singleData, singleOffsets);
+    if (openusd_resolver_resolve(
+            &singleView, context, nullptr, &rejected, &rejectedView, error) !=
+            OPENUSD_STATUS_INVALID_ARGUMENT ||
+        rejected != nullptr)
+    {
+        std::cerr << "An unversioned resolved-asset view was accepted.\n";
+        success = false;
+    }
+
+    const std::vector<std::string> oddContext{"openusdtest"};
+    std::vector<char> oddData;
+    std::vector<size_t> oddOffsets;
+    PackStrings(oddContext, &oddData, &oddOffsets);
+    openusd_string_list_view oddView = MakeStringListView(oddData, oddOffsets);
+    openusd_resolver_context* oddContextHandle =
+        reinterpret_cast<openusd_resolver_context*>(uintptr_t{1});
+    if (openusd_resolver_context_create(&oddView, &oddContextHandle, error) !=
+            OPENUSD_STATUS_INVALID_ARGUMENT ||
+        oddContextHandle != nullptr)
+    {
+        std::cerr << "An unpaired resolver-context list was accepted.\n";
+        success = false;
+    }
+
+    // A stage opened with the context composes through the same resolution the batch reported.
+    openusd_stage* contextStage = nullptr;
+    if (success &&
+        (openusd_stage_open_with_context(fileName.c_str(), context, &contextStage, error) !=
+             OPENUSD_STATUS_OK ||
+         contextStage == nullptr))
+    {
+        std::cerr << "Opening a stage with a resolver context failed: " << error->data << '\n';
+        success = false;
+    }
+    if (contextStage != nullptr)
+    {
+        openusd_stage_release(contextStage);
+    }
+    if (openusd_stage_open_with_context(fileName.c_str(), nullptr, &contextStage, error) !=
+        OPENUSD_STATUS_INVALID_ARGUMENT)
+    {
+        std::cerr << "A null resolver context was accepted when opening a stage.\n";
+        success = false;
+    }
+
+    openusd_resolver_context_release(context);
+    return success;
+}
 }
 
 int main(int argc, char** argv)
 {
-    if (argc != 7)
+    if (argc != 8)
     {
         std::cerr <<
             "Usage: openusd_native_probe <plugin-path> <stage-path> " <<
-            "<grayscale-jpeg> <rgb-jpeg> <grayscale-alpha-png> <ocio-config>\n";
+            "<grayscale-jpeg> <rgb-jpeg> <grayscale-alpha-png> <ocio-config> " <<
+            "<third-party-resolver-plug-info>\n";
         return 2;
     }
 
-    if (openusd_get_abi_version() != 15 ||
+    // A plugin that registers an ArResolver has to be registered before the process resolves its
+    // first asset, because OpenUSD selects and caches its resolver set on first use. Registering
+    // the third-party tree here, ahead of every other probe step, is the contract this repository
+    // documents for vendor resolver packages rather than an artifact of the probe.
+    {
+        std::array<char, 4096> registrationErrorText{};
+        openusd_error_buffer registrationError{
+            registrationErrorText.data(), registrationErrorText.size(), 0};
+        size_t thirdPartyPluginCount = 0;
+        if (openusd_register_plugins(
+                argv[7], &thirdPartyPluginCount, &registrationError) != OPENUSD_STATUS_OK ||
+            thirdPartyPluginCount == 0)
+        {
+            std::cerr << "Could not register the third-party resolver plugin tree: "
+                      << registrationErrorText.data() << '\n';
+            return 120;
+        }
+    }
+
+    if (openusd_get_abi_version() != 16 ||
         (openusd_get_capabilities() &
          (OPENUSD_CAPABILITY_STRING_LIST_V2 |
           OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -4154,7 +4731,8 @@ int main(int argc, char** argv)
           OPENUSD_CAPABILITY_PHYSICS_BAKE |
           OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
           OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F |
-          OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION)) !=
+          OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION |
+          OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION)) !=
             (OPENUSD_CAPABILITY_STRING_LIST_V2 |
              OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
              OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES |
@@ -4178,7 +4756,8 @@ int main(int argc, char** argv)
              OPENUSD_CAPABILITY_PHYSICS_BAKE |
              OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
              OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F |
-             OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION))
+             OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION |
+             OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION))
     {
         std::cerr << "Unexpected ABI version.\n";
         return 3;
@@ -4286,6 +4865,13 @@ int main(int argc, char** argv)
     }
     std::cout << "RGBA8 image decode passed.\n";
     std::cout << "RGBA32F image decode passed.\n";
+
+    if (!VerifyResolverContracts(argv[2], &error))
+    {
+        std::cerr << "Resolver and plugin contract failed: " << errorText.data() << '\n';
+        return 121;
+    }
+    std::cout << "Resolver and third-party plugin contract passed.\n";
 
     openusd_stage* stage = nullptr;
     status = openusd_stage_open(argv[2], &stage, &error);

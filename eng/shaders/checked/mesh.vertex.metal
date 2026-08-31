@@ -85,4 +85,3 @@ struct VertexOutput_0
     (&_S2)->tint_0 = output_0.tint_2;
     return _S2;
 }
-

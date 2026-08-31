@@ -1,7 +1,7 @@
 #nullable enable
-const OpenUsd.Interop.OpenUsdNativeContract.AbiVersion = 15 -> uint
+const OpenUsd.Interop.OpenUsdNativeContract.AbiVersion = 16 -> uint
 const OpenUsd.Interop.OpenUsdNativeContract.LibraryName = "openusd_dotnet" -> string!
-const OpenUsd.Interop.OpenUsdNativeContract.RequiredCapabilities = 16777215 -> ulong
+const OpenUsd.Interop.OpenUsdNativeContract.RequiredCapabilities = 33554431 -> ulong
 OpenUsd.Interop.OpenUsdNativeContract
 OpenUsd.Interop.OpenUsdNativeException
 OpenUsd.Interop.OpenUsdNativeException.Status.get -> OpenUsd.Interop.OpenUsdNativeStatus

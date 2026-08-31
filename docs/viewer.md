@@ -134,6 +134,96 @@ labeled as relative. Anonymous source layers are labeled anonymous and process-l
 identifiers are not portable. Existing load/unload controls remain available; the Viewer does not
 offer payload add/remove authoring.
 
+### Ts splines in the Value tab
+
+An attribute with an authored [Ts spline](data-api.md#ts-splines) shows one extra block in the
+Value tab, below its time samples. The block is a single wrapped text run: a summary line
+reporting the authored knot count, the curve family, both extrapolations, and whether the spline is
+time-valued, then one line per knot carrying the knot time, value, an authored pre-value when
+present, the next-segment interpolation, and both tangent widths, slopes, and algorithms.
+
+A final line shows a small evaluated preview. `TsSpline` owns a native handle and can never leave
+the stage scheduler, so the snapshot builder evaluates the spline itself while it still holds
+stage access: nine uniformly spaced samples covering the authored knots plus a margin of ten
+percent of the knot span on each side, so both extrapolation regions are visible. A single-knot
+spline uses a fixed margin of one time unit. A sample that lands in a value block is labeled as
+one rather than shown as zero. A spline with no knots, with a non-finite first or last knot time,
+or whose knot span cannot be sampled without overflowing to infinity, is shown with no evaluated
+line instead of a fabricated or non-finite one.
+
+Three bounds apply. The snapshot builder reads and evaluates at most 16 splines per inspector,
+because each one costs two native calls plus one evaluation per preview sample and nothing bounds
+how many splined attributes a prim may carry; splined attributes past that budget are still listed
+and are labeled `not read (...)`, naming the budget, rather than dropped or fabricated. Each
+projection that *is* read retains at most 32 knots. The Value tab then spends a budget of 64 knot
+lines per rebuild, so a prim with many splined attributes stays bounded: every splined attribute
+still gets its own summary, and a block that ran out of budget says how many knots it omitted. The
+summary is also appended to the attribute's row in the Inspector tab, so a spline is visible
+without opening the Value tab.
+
+Float, half, and double splines all project; their values are widened to double for display.
+A spline the native runtime refuses to read is reported as `unreadable (<reason>)` on that one
+attribute, because failing the whole inspector over one bad attribute would lose every other one;
+when the runtime reports no reason, the label still names one. `unreadable` and `not read` are
+distinct: the first was attempted and failed, the second was never attempted.
+Splines are read-only in the Viewer; there is no knot authoring.
+
+The projection is a detached snapshot with value equality, so a caller polling an unchanged stage
+gets snapshots that compare equal and can diff them. The Value tab itself does not yet use that:
+it rebuilds its rows on every inspector refresh.
+
+## UsdValidation results
+
+The Validation tab runs the OpenUSD validation registry and shows what it reported. Both entry
+points run inside the stage scheduler callback, so no `UsdStage` or `UsdPrim` ever reaches the UI
+thread; the tab receives a detached `ViewerValidationSnapshot` with value equality.
+
+A scope selector chooses what a run covers:
+
+- **Whole stage** runs every registered validator over the stage.
+- **Selected prim** runs the prim validators over the selected prim only, resolving the prim from
+  its path *inside* the scheduler callback. With no prim selected, nothing is scheduled and the tab
+  says so rather than running the stage under a label that claims one prim.
+
+Changing the scope re-runs immediately, because results carry the scope they were produced under
+and showing old results under a new label would be a lie. The state line always names what the run
+actually covered: `UsdValidation (whole stage): ...` or `UsdValidation (prim /World/Cube): ...`.
+
+Results are bounded. A snapshot retains at most 200 results and each retained result keeps at most
+512 characters of message and 256 of site list, because the snapshot is copied out of the scheduler
+and rendered as text on the UI thread. The retained window is taken from the results ordered by
+severity rank - error, warning, info, then anything else - and the ordering is made stable by the
+original position, so within one severity it is the order `UsdValidation` already made stable and
+two runs over an unchanged stage retain the same window. A severity this build does not recognize
+ranks last but is still ranked, so it is retained and shown rather than dropped.
+
+Truncation does not change the counts. The reported total and the per-severity counts are taken
+over the whole run before truncation, so a truncated view still says how many results exist; the
+state line adds `Showing the 200 most severe.` and the detail list ends with how many were not
+shown. Results whose severity is neither error, warning, nor info are counted and reported as
+`Unclassified severity: N` rather than folded into the informational count. What is bounded is what
+the snapshot retains and displays, not what the run found.
+
+The validator count in the state line is the number of validators **registered** when the run
+started, not the number that executed: a prim-scoped run only executes the prim validators among
+them.
+
+Every state the tab can show - not run, running, completed, no selection, failed, cancelled - is
+part of the snapshot, and rendering is a pure function of it. Nothing is written directly to a
+label, so no transient message can survive into a later render that contradicts it. A run is also
+tagged with the document generation it started in: closing, reloading, or switching the stage
+invalidates in-flight runs and waits for them, and a run that finishes after its document is gone
+is discarded instead of being published into the next one.
+
+Validation re-runs automatically on stage open, on reload, and after any layer, prim, or hierarchy
+command that refreshes the document; **Refresh** re-runs it on demand and changing the scope
+re-runs it immediately. Changing the *selection* alone does not re-run it, so prim-scoped results
+stay labeled with the prim they were produced for until the next run.
+
+Two snapshots compare equal when they describe the same run outcome: state, scope, counts, and
+retained results. Wall-clock `Duration` is deliberately excluded, because including a measured
+time would make every poll of an unchanged stage compare unequal.
+
 ## Camera navigation
 
 The Viewer owns one UI-thread-affine renderer-neutral orbit-camera controller. Initial stage open,

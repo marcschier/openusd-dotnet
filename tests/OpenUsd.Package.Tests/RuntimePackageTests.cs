@@ -45,7 +45,7 @@ public sealed class RuntimePackageTests
 
     private const int RequiredStormAbiVersion = 8;
     private const int RequiredSilkSessionAbiVersion = 5;
-    private const int RequiredSilkPageAbiVersion = 13;
+    private const int RequiredSilkPageAbiVersion = 15;
     private const int RequiredStormChildAbiVersion = 8;
     private const int RequiredStormChildNavigationInputVersion = 2;
 
@@ -3230,6 +3230,42 @@ public sealed class RuntimePackageTests
                 }
                 """);
 
+            // A vendor plugin tree is staged beside the packaged trees, not merged into them. It
+            // is a resource plugin rather than a real ArResolver, so this gate covers the
+            // packaging contract - discovery in place, own resource path, packaged plugInfo.json
+            // untouched - while the CTest native probe covers executable resolver behaviour.
+            string vendorPluginRoot = Path.Combine(
+                consumer.PublishRoot,
+                "vendor-plugins",
+                "openusdVendorResolver",
+                "resources");
+            Directory.CreateDirectory(vendorPluginRoot);
+            string contextAssetRoot = Path.Combine(consumer.PublishRoot, "assets");
+            Directory.CreateDirectory(contextAssetRoot);
+            await File.WriteAllTextAsync(
+                Path.Combine(contextAssetRoot, "context-asset.usda"),
+                """
+                #usda 1.0
+
+                def Xform "ContextAsset" {
+                }
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(vendorPluginRoot, "plugInfo.json"),
+                """
+                {
+                    "Plugins": [
+                        {
+                            "Info": {},
+                            "Name": "openusdVendorResolver",
+                            "ResourcePath": "resources",
+                            "Root": "..",
+                            "Type": "resource"
+                        }
+                    ]
+                }
+                """);
+
             CommandResult result = await RunExecutableAsync(
                 GetExecutablePath(consumer.PublishRoot, "Consumer"),
                 consumer.PublishRoot,
@@ -3246,12 +3282,23 @@ public sealed class RuntimePackageTests
             await Assert.That(result.Output).Contains("CAMERA_STATE_QUERY=true");
             await Assert.That(result.Output).Contains("ROUNDTRIP_SAVED=true");
             await Assert.That(result.Output).Contains("ROUNDTRIP_VALUE=42.5");
+            await Assert.That(result.Output).Contains("RESOLVER_PRIMARY=ArDefaultResolver");
+            await Assert.That(result.Output).Contains("RESOLVER_BULK=true");
+            await Assert.That(result.Output).Contains("RESOLVER_SCOPED=true");
+            await Assert.That(result.Output).Contains("VENDOR_PLUGINS=1");
+            await Assert.That(result.Output).Contains("VENDOR_PLUGIN_TREE=true");
+            await Assert.That(result.Output).Contains("PACKAGED_PLUGIN_TREE_INTACT=true");
             await Assert.That(result.Output).Contains("CWD_IS_PUBLISH=true");
             await AssertNoSourcePathLeakageAsync(result.Output, repositoryRoot);
 
             await Assert.That(File.Exists(outputPath)).IsTrue();
             await Assert.That(await File.ReadAllTextAsync(outputPath)).Contains("PackageRoundTrip");
             await Assert.That(File.Exists(Path.Combine(consumer.PublishRoot, "usd", "plugInfo.json"))).IsTrue();
+            await Assert.That(File.Exists(Path.Combine(vendorPluginRoot, "plugInfo.json"))).IsTrue();
+            await Assert.That(
+                    await File.ReadAllTextAsync(
+                        Path.Combine(consumer.PublishRoot, "usd", "plugInfo.json")))
+                .DoesNotContain("openusdVendorResolver");
             await Assert.That(
                 File.Exists(Path.Combine(consumer.PublishRoot, platform.DotnetLibrary))).IsTrue();
             await Assert.That(
@@ -5635,6 +5682,7 @@ public sealed class RuntimePackageTests
             Path.Combine(consumerRoot, "Program.cs"),
             """
             using System;
+            using System.Collections.Generic;
             using System.IO;
             using OpenUsd;
             using OpenUsd.Geom;
@@ -5705,6 +5753,93 @@ public sealed class RuntimePackageTests
                         return 6;
                     }
 
+                    // This proves the packaging half of the third-party contract: a tree that the
+                    // packaged layout knows nothing about is registered from its own
+                    // plugInfo.json, where it lies, and nothing is merged into usd/**. It is a
+                    // resource plugin, not an ArResolver, because a package consumer cannot
+                    // compile a native plugin; the executable ArResolver half of the contract is
+                    // proved by the CTest native probe against native/tests/resolver_plugin.
+                    string packagedPlugInfo = Path.Combine(pluginPath, "plugInfo.json");
+                    string packagedBefore = File.ReadAllText(packagedPlugInfo);
+                    string vendorRoot = Path.Combine(
+                        AppContext.BaseDirectory,
+                        "vendor-plugins",
+                        "openusdVendorResolver");
+                    string vendorPlugInfo = Path.Combine(vendorRoot, "resources", "plugInfo.json");
+                    if (!File.Exists(vendorPlugInfo))
+                    {
+                        return 8;
+                    }
+
+                    int vendorPlugins = UsdPluginRegistry.Register(vendorPlugInfo);
+                    bool vendorDiscovered = false;
+                    bool vendorOwnsTree = false;
+                    foreach (UsdPluginInfo plugin in UsdPluginRegistry.GetRegisteredPlugins())
+                    {
+                        if (plugin.Name != "openusdVendorResolver")
+                        {
+                            continue;
+                        }
+                        vendorDiscovered = true;
+
+                        // Upstream reports resource paths with forward slashes and a trailing
+                        // separator, so normalize before comparing directories.
+                        string reported = Path.GetFullPath(
+                            plugin.ResourcePath.TrimEnd('/', '\\'));
+                        vendorOwnsTree =
+                            plugin.Kind == UsdPluginKind.Resource &&
+                            reported.StartsWith(
+                                Path.GetFullPath(vendorRoot),
+                                StringComparison.OrdinalIgnoreCase) &&
+                            !reported.StartsWith(
+                                Path.GetFullPath(pluginPath),
+                                StringComparison.OrdinalIgnoreCase);
+                    }
+                    bool packagedTreeIntact = string.Equals(
+                        packagedBefore,
+                        File.ReadAllText(packagedPlugInfo),
+                        StringComparison.Ordinal);
+                    if (vendorPlugins != 1 || !vendorDiscovered || !vendorOwnsTree ||
+                        !packagedTreeIntact)
+                    {
+                        return 9;
+                    }
+
+                    // The context asset lives in its own directory rather than the working
+                    // directory, so only the resolver context can find it.
+                    using UsdResolverContext resolverContext = UsdResolverContext.Create(
+                        [
+                            new UsdResolverContextString(
+                                string.Empty,
+                                Path.Combine(AppContext.BaseDirectory, "assets")),
+                        ]);
+                    IReadOnlyList<UsdResolvedAsset> resolved = UsdResolver.Resolve(
+                        [
+                            "context-asset.usda",
+                            "package-missing-asset.usda",
+                            Path.GetFileName(args[1]),
+                        ],
+                        resolverContext);
+                    bool resolverBulk =
+                        resolved.Count == 3 &&
+                        resolved[0].IsResolved &&
+                        resolved[0].Extension == "usda" &&
+                        resolved[0].IsContextDependent &&
+                        !resolved[1].IsResolved &&
+                        resolved[1].ResolvedPath.Length == 0 &&
+                        resolved[2].IsResolved;
+                    bool resolverScoped;
+                    using (resolverContext.Bind())
+                    {
+                        resolverScoped = UsdResolver.Resolve(["context-asset.usda"])[0].IsResolved;
+                    }
+                    resolverScoped = resolverScoped &&
+                        !UsdResolver.Resolve(["context-asset.usda"])[0].IsResolved;
+                    if (!resolverBulk || !resolverScoped)
+                    {
+                        return 10;
+                    }
+
                     string currentDirectory = Path.GetFullPath(".")
                         .TrimEnd(Path.DirectorySeparatorChar);
                     string baseDirectory = AppContext.BaseDirectory
@@ -5723,6 +5858,16 @@ public sealed class RuntimePackageTests
                         $"CAMERA_STATE_QUERY={cameraStateQuery.ToString().ToLowerInvariant()}");
                     Console.WriteLine($"ROUNDTRIP_SAVED={File.Exists(args[1]).ToString().ToLowerInvariant()}");
                     Console.WriteLine($"ROUNDTRIP_VALUE={value}");
+                    Console.WriteLine($"RESOLVER_PRIMARY={UsdResolver.PrimaryTypeName}");
+                    Console.WriteLine($"RESOLVER_BULK={resolverBulk.ToString().ToLowerInvariant()}");
+                    Console.WriteLine(
+                        $"RESOLVER_SCOPED={resolverScoped.ToString().ToLowerInvariant()}");
+                    Console.WriteLine($"VENDOR_PLUGINS={vendorPlugins}");
+                    Console.WriteLine(
+                        $"VENDOR_PLUGIN_TREE={vendorOwnsTree.ToString().ToLowerInvariant()}");
+                    Console.WriteLine(
+                        "PACKAGED_PLUGIN_TREE_INTACT=" +
+                        packagedTreeIntact.ToString().ToLowerInvariant());
                     Console.WriteLine($"CWD_IS_PUBLISH={cwdIsPublish.ToString().ToLowerInvariant()}");
                     return cwdIsPublish ? 0 : 7;
                 }

@@ -98,6 +98,72 @@ internal static partial class Program
                 File.Delete(udim1001);
                 File.Delete(udim1013);
             }
+
+            // Resolver contexts, bulk resolution, and plugin inspection.
+            string resolverAsset = $"managed-resolver-{Guid.NewGuid():N}.usda";
+            using (UsdStage resolverStage = UsdStage.Create(Path.Combine(directory, resolverAsset)))
+            {
+                resolverStage.DefinePrim("/Resolved", "Xform");
+                resolverStage.Save();
+            }
+            using (UsdResolverContext resolverContext = UsdResolverContext.Create(
+                [new UsdResolverContextString(string.Empty, directory)]))
+            {
+                IReadOnlyList<UsdResolvedAsset> resolvedAssets = UsdResolver.Resolve(
+                    [resolverAsset, "managed-resolver-missing.usda"],
+                    resolverContext);
+                if (resolvedAssets.Count != 2 ||
+                    !resolvedAssets[0].IsResolved ||
+                    resolvedAssets[0].Extension != "usda" ||
+                    !resolvedAssets[0].IsContextDependent ||
+                    resolvedAssets[1].IsResolved ||
+                    resolverContext.IsEmpty ||
+                    resolverContext.DebugString.Length == 0)
+                {
+                    Console.Error.WriteLine("Bulk asset resolution returned unexpected results.");
+                    return 113;
+                }
+
+                // No await inside a bound scope: the binding is thread local, so a continuation
+                // resuming on another thread would resolve without it and fail to release it.
+                bool boundResolved;
+                bool shadowedResolved;
+                using (UsdResolverContext emptyContext = UsdResolverContext.CreateDefault())
+                using (resolverContext.Bind())
+                {
+                    boundResolved = UsdResolver.Resolve([resolverAsset])[0].IsResolved;
+
+                    // An empty context is bound like any other, so it shadows the ambient binding
+                    // rather than silently inheriting it.
+                    shadowedResolved =
+                        UsdResolver.Resolve([resolverAsset], emptyContext)[0].IsResolved;
+                }
+                if (!boundResolved || shadowedResolved ||
+                    UsdResolver.Resolve([resolverAsset])[0].IsResolved)
+                {
+                    Console.Error.WriteLine("Resolver-context binding was not scoped.");
+                    return 114;
+                }
+
+                using UsdStage contextStage = UsdStage.Open(resolverAsset, resolverContext);
+                if (!contextStage.HasPrim("/Resolved"))
+                {
+                    Console.Error.WriteLine("A stage opened with a resolver context was empty.");
+                    return 115;
+                }
+            }
+
+            IReadOnlyList<UsdPluginInfo> registeredPlugins =
+                UsdPluginRegistry.GetRegisteredPlugins();
+            if (registeredPlugins.Count == 0 ||
+                !registeredPlugins.Any(static plugin => plugin.Name == "usd") ||
+                UsdResolver.PrimaryTypeName.Length == 0 ||
+                UsdResolver.GetAvailableResolverTypeNames().Count == 0)
+            {
+                Console.Error.WriteLine("Plugin and resolver inspection returned nothing.");
+                return 116;
+            }
+            Console.WriteLine("Resolver context and plugin inspection passed.");
             string authoredPath = Path.Combine(directory, "managed-authored.usda");
             File.Delete(authoredPath);
 

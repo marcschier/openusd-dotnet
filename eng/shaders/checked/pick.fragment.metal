@@ -18,4 +18,3 @@ struct SLANG_ParameterGroup_PickParameters_0
     pixelOutput_0 _S1 = { float4(float(token_0 & 255U), float((token_0 >> 8U) & 255U), float((token_0 >> 16U) & 255U), float((token_0 >> 24U) & 255U)) / float4(255.0f)  };
     return _S1;
 }
-

@@ -54,4 +54,48 @@ def Xform "World"
             interpolation = "constant"
         )
     }
+
+    # Winding: these three quads pin what hdSilk emits for each authored USD
+    # "orientation". rightHanded faces are wound counter-clockwise seen from the
+    # front and leftHanded clockwise, and every backend hdSilk targets
+    # rasterizes with counter-clockwise front faces, so the emitted triangle
+    # list has to carry that distinction faithfully.
+    #
+    # The first two are byte-identical apart from the one token, and carry no
+    # primvars, so the emitted indices are the only place the difference can
+    # appear.
+    def Mesh "ProbeRightHandedMesh"
+    {
+        uniform token orientation = "rightHanded"
+        uniform token subdivisionScheme = "none"
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+    }
+
+    def Mesh "ProbeLeftHandedMesh"
+    {
+        uniform token orientation = "leftHanded"
+        uniform token subdivisionScheme = "none"
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+    }
+
+    # A leftHanded quad carrying a face-varying primvar. That data is one
+    # element per triangulated corner in HdMeshUtil's order, and the same
+    # orientation handling reorders those corners, so the two stay aligned only
+    # while neither is permuted alone. The values are distinct per corner so a
+    # misalignment is visible element by element rather than only in aggregate.
+    def Mesh "ProbeLeftHandedFaceVaryingMesh"
+    {
+        uniform token orientation = "leftHanded"
+        uniform token subdivisionScheme = "none"
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        float[] primvars:cornerId = [10, 11, 12, 13] (
+            interpolation = "faceVarying"
+        )
+    }
 }

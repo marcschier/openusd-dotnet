@@ -251,6 +251,61 @@ public sealed class SilkTextureResidencyTests
     // ---------------------------------------------------------------------
 
     [Test]
+    public async Task ChangingTheFoldedScaleAndBiasReDecodesTheSameAsset()
+    {
+        // Folded MaterialX arithmetic reaches the GPU as the texture entry's scale
+        // and bias, applied per texel at decode. The decoded bytes are therefore
+        // part of the entry's effective identity even though the asset path does
+        // not change, so re-authoring the graph with a different constant must
+        // evict and re-decode instead of serving the previously folded pixels.
+        using var device = new TextureDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => new SilkDecodedImage(2, 2, CreatePixels(2, 2)));
+        using var commands = new TextureCommandList();
+        var scene = new SilkSceneState();
+
+        byte[] unfolded = CreateMaterialUpsert(
+            "/World/Materials/Folded",
+            SilkSurfaceKind.MaterialXProjected,
+            [new TextureSpec(SilkMaterialParameter.DiffuseColor, "shared.png")]);
+        SilkSceneDelta first = scene.Apply(unfolded, 1, revision: 1);
+        resources.Apply(scene, first);
+        resources.UploadMaterialTexture(
+            commands,
+            scene.Materials["/World/Materials/Folded"],
+            SilkMaterialParameter.DiffuseColor);
+        await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(1);
+        await Assert.That(device.AllTextures.Count).IsEqualTo(1);
+
+        byte[] folded = CreateMaterialUpsert(
+            "/World/Materials/Folded",
+            SilkSurfaceKind.MaterialXProjected,
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    "shared.png",
+                    Scale: [0.375f, 0.375f, 0.375f, 1f],
+                    Bias: [0.05f, 0.05f, 0.05f, 0f]),
+            ]);
+        SilkSceneDelta second = scene.Apply(folded, 1, revision: 2);
+        await Assert.That(second.MaterialChanges).IsEqualTo(1);
+        resources.Apply(scene, second);
+        await Assert.That(device.AllTextures[0].DisposeCount).IsEqualTo(1);
+
+        SilkMaterialData retained = scene.Materials["/World/Materials/Folded"];
+        await Assert.That(retained.GetTexture(SilkMaterialParameter.DiffuseColor)!.Scale[0])
+            .IsEqualTo(0.375f);
+        resources.UploadMaterialTexture(
+            commands,
+            retained,
+            SilkMaterialParameter.DiffuseColor);
+        await Assert.That(device.AllTextures.Count).IsEqualTo(2);
+        await Assert.That(device.AllTextures[1].DisposeCount).IsEqualTo(0);
+        await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task NoEvictionOccursUntilTrimIsCalledExplicitly()
     {
         using var device = new TextureDevice();
@@ -1229,7 +1284,11 @@ public sealed class SilkTextureResidencyTests
         string Asset,
         string UvPrimvar = "st",
         int ComponentCount = 4,
-        SilkTextureChannel Channel = SilkTextureChannel.Rgb);
+        SilkTextureChannel Channel = SilkTextureChannel.Rgb,
+        float[]? Scale = null,
+        float[]? Bias = null,
+        SilkCompositeOperator CompositeOperator = SilkCompositeOperator.None,
+        float CompositeFactor = 0f);
 
     private static byte[] CreateMaterialUpsert(
         string path,
@@ -1270,23 +1329,29 @@ public sealed class SilkTextureResidencyTests
             payload.AddRange(BitConverter.GetBytes((uint)texture.ComponentCount));
             for (int component = 0; component < 4; component++)
             {
-                payload.AddRange(BitConverter.GetBytes(1f));
+                payload.AddRange(BitConverter.GetBytes(texture.Scale?[component] ?? 1f));
             }
             for (int component = 0; component < 4; component++)
             {
-                payload.AddRange(BitConverter.GetBytes(0f));
+                payload.AddRange(BitConverter.GetBytes(texture.Bias?[component] ?? 0f));
             }
             for (int component = 0; component < 4; component++)
             {
                 payload.AddRange(BitConverter.GetBytes(component == 3 ? 1f : 0f));
             }
             payload.AddRange(BitConverter.GetBytes((uint)texture.Channel));
+            payload.AddRange(BitConverter.GetBytes((uint)texture.CompositeOperator));
+            payload.AddRange(BitConverter.GetBytes(texture.CompositeFactor));
             payload.AddRange(assetBytes);
             payload.AddRange(uvBytes);
         }
 
         payload.AddRange(BitConverter.GetBytes(0u));
         payload.AddRange(BitConverter.GetBytes(0u));
+        foreach (float element in new[] { 1f, 0f, 0f, 1f, 0f, 0f })
+        {
+            payload.AddRange(BitConverter.GetBytes(element));
+        }
         return CreateCommand((uint)SilkCommandType.MaterialUpsert, payload);
     }
 
@@ -1300,11 +1365,180 @@ public sealed class SilkTextureResidencyTests
         return CreateCommand((uint)SilkCommandType.MaterialRemove, payload);
     }
 
+    /// <summary>
+    /// Every Hydra cull style reaches the rasterizer as its own cull mode, for
+    /// every emitted topology kind.
+    /// </summary>
+    /// <remarks>
+    /// This is the routing half of the front-cull fix, and it exists because the
+    /// renderer used to carry an eager fast path that bypassed the pipeline
+    /// cache for plain position/normal meshes and resolved the cull mode as
+    /// <c>cullMode == Back ? backCull : none</c>. That ternary silently mapped
+    /// <see cref="SilkCullMode.Front"/> to <see cref="SilkCullMode.None"/>. It
+    /// happened to be unreachable -- <see cref="SilkVertexLayoutDescriptor"/> is
+    /// a record struct holding an <c>IReadOnlyList</c>, and
+    /// <c>PositionNormal</c> allocates a fresh array on every access, so its
+    /// equality check was reference-based and never true -- which is exactly the
+    /// kind of accident that makes a latent trap: making that equality
+    /// structural would have re-armed it. The fast path and its four eager
+    /// pipelines are gone, so routing is now a single total call, and this case
+    /// pins that.
+    /// </remarks>
+    [Test]
+    [Arguments(SilkMeshCullStyle.Nothing, false, SilkCullMode.None)]
+    [Arguments(SilkMeshCullStyle.Back, false, SilkCullMode.Back)]
+    [Arguments(SilkMeshCullStyle.Front, false, SilkCullMode.Front)]
+    [Arguments(SilkMeshCullStyle.BackUnlessDoubleSided, false, SilkCullMode.Back)]
+    [Arguments(SilkMeshCullStyle.FrontUnlessDoubleSided, false, SilkCullMode.Front)]
+    [Arguments(SilkMeshCullStyle.BackUnlessDoubleSided, true, SilkCullMode.None)]
+    [Arguments(SilkMeshCullStyle.FrontUnlessDoubleSided, true, SilkCullMode.None)]
+    [Arguments(SilkMeshCullStyle.Back, true, SilkCullMode.Back)]
+    [Arguments(SilkMeshCullStyle.Front, true, SilkCullMode.Front)]
+    public async Task EveryCullStyleRoutesToItsOwnRasterizerCullMode(
+        SilkMeshCullStyle cullStyle,
+        bool doubleSided,
+        SilkCullMode expected)
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.SpirV);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(4, 4));
+        byte[] mesh = CreateMeshUpsert(
+            "/World/Facing",
+            string.Empty,
+            primId: 3,
+            transform: null,
+            cullStyle,
+            doubleSided);
+        SilkSceneDelta delta = renderer.Scene.Apply(
+            Concat(CreateFrameCommand(4, 4), mesh), 2, 1);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+
+        _ = renderer.Render(color, depth);
+
+        SilkGraphicsPipelineDescriptor state = device.RecordedPipelineStates.Single();
+        await Assert.That(state.CullMode).IsEqualTo(expected);
+        await Assert.That(state.TopologyKind).IsEqualTo(SilkTopologyKind.TriangleList);
+    }
+
+    /// <summary>
+    /// Line and point batches are never culled, whatever cull style the wire
+    /// carries, because a screen-space line or point has no facing.
+    /// </summary>
+    /// <remarks>
+    /// The removed fast path hard-coded that by handing out dedicated uncalled
+    /// line and point pipelines. Routing through the cache has to preserve it,
+    /// so this drives the cull style most likely to expose a regression.
+    /// </remarks>
+    [Test]
+    [Arguments(SilkTopologyKind.LineList)]
+    [Arguments(SilkTopologyKind.PointList)]
+    public async Task LineAndPointBatchesAreNeverCulled(SilkTopologyKind topologyKind)
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.SpirV);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(4, 4));
+        byte[] mesh = CreateNonTriangleMeshUpsert(
+            "/World/Thin",
+            primId: 4,
+            topologyKind,
+            SilkMeshCullStyle.Front);
+        SilkSceneDelta delta = renderer.Scene.Apply(
+            Concat(CreateFrameCommand(4, 4), mesh), 2, 1);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+
+        _ = renderer.Render(color, depth);
+
+        SilkGraphicsPipelineDescriptor state = device.RecordedPipelineStates.Single();
+        await Assert.That(state.TopologyKind).IsEqualTo(topologyKind);
+        await Assert.That(state.CullMode).IsEqualTo(SilkCullMode.None);
+    }
+
+    /// <summary>
+    /// Builds a line-list or point-list mesh upsert with no material binding.
+    /// </summary>
+    private static byte[] CreateNonTriangleMeshUpsert(
+        string pathValue,
+        int primId,
+        SilkTopologyKind topologyKind,
+        SilkMeshCullStyle cullStyle)
+    {
+        byte[] path = Encoding.UTF8.GetBytes(pathValue);
+        float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
+        (uint[] Indices, uint[] Subprims) topology = topologyKind switch
+        {
+            SilkTopologyKind.LineList => ([0u, 1u], [0u]),
+            _ => ([0u, 1u, 2u], [0u, 1u, 2u]),
+        };
+        int size = 224 +
+            path.Length +
+            (points.Length * sizeof(float)) +
+            (topology.Indices.Length * sizeof(uint)) +
+            (topology.Subprims.Length * sizeof(uint));
+        var bytes = new byte[size];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            bytes.AsSpan(8),
+            SilkWireFormat.ComputeStableHash(pathValue));
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), primId);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), (uint)topologyKind);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44), (uint)cullStyle);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), (uint)path.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), 3);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(56), (uint)topology.Indices.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(60), (uint)topology.Subprims.Length);
+        for (int i = 0; i < 4; i++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(64 + (i * 4)), 1);
+        }
+        for (int i = 0; i < 16; i++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(
+                bytes.AsSpan(80 + (i * 8)),
+                i % 5 == 0 ? 1 : 0);
+        }
+        path.CopyTo(bytes, 224);
+        int pointsOffset = 224 + path.Length;
+        for (int i = 0; i < points.Length; i++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(pointsOffset + (i * sizeof(float))),
+                points[i]);
+        }
+        int indicesOffset = pointsOffset + (points.Length * sizeof(float));
+        for (int i = 0; i < topology.Indices.Length; i++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(indicesOffset + (i * sizeof(uint))),
+                topology.Indices[i]);
+        }
+        int subprimOffset = indicesOffset + (topology.Indices.Length * sizeof(uint));
+        for (int i = 0; i < topology.Subprims.Length; i++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(subprimOffset + (i * sizeof(uint))),
+                topology.Subprims[i]);
+        }
+        return bytes;
+    }
+
     private static byte[] CreateMeshUpsert(
         string pathValue,
         string materialPath,
         int primId,
-        double[]? transform = null)
+        double[]? transform = null,
+        SilkMeshCullStyle cullStyle = SilkMeshCullStyle.BackUnlessDoubleSided,
+        bool doubleSided = true)
     {
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         byte[] material = Encoding.UTF8.GetBytes(materialPath);
@@ -1327,10 +1561,8 @@ public sealed class SilkTextureResidencyTests
             bytes.AsSpan(28),
             (uint)SilkTopologyKind.TriangleList);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            bytes.AsSpan(44),
-            (uint)SilkMeshCullStyle.BackUnlessDoubleSided);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), doubleSided ? 1u : 0u);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44), (uint)cullStyle);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), (uint)path.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), 3);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56), 3);

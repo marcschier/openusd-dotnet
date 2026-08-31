@@ -23,9 +23,13 @@ internal static class SilkSurfaceUniformWriter
     /// float4 diffuseColor+opacity, emissiveColor+occlusion, specularColor+ior,
     /// (metallic, roughness, opacityThreshold, useSpecularWorkflow),
     /// (clearcoat, clearcoatRoughness, shaded, 0), lightDirection+intensity,
-    /// lightColor+ambient, volume values, and (textureMask, udimMask, 0, 0).
+    /// lightColor+ambient, volume values, (textureMask, udimMask, volumeVoxelDepth, 0),
+    /// the
+    /// two folded MaterialX UV transform rows (m00, m01, tx, 0) and
+    /// (m10, m11, ty, 0), and the two-image composite controls
+    /// (targetTextureMaskBit, operator, factor, 0).
     /// </remarks>
-    internal const int ByteSize = 144;
+    internal const int ByteSize = 192;
 
     // UsdPreviewSurface authored defaults, used when a material omits an input.
     private const float DefaultDiffuse = 0.18f;
@@ -112,14 +116,86 @@ internal static class SilkSurfaceUniformWriter
             density,
             2,
             sampledVolume ? 1 : 0);
+        // The density grid's own Z resolution, and it is not decoration: the shader
+        // integrates one sample per voxel layer, so a wrong or absent depth silently
+        // reconstructs the wrong column. Zero for everything that is not a sampled
+        // volume, because only that path reads it.
+        float volumeDepth = sampledVolume
+            ? SilkVolumeTextureExtent.Parse(
+                shaded!.GetTexture(SilkMaterialParameter.VolumeDensity)!.UvPrimvar).Depth
+            : 0;
         WriteVector4(
             destination,
             128,
             volumeDensity ? 0 : (float)(uint)(shaded?.GetTextureFeatures() ?? SilkShaderFeatures.None),
             udimMask,
-            0,
+            volumeDepth,
             0);
+
+        // hdSilk publishes one folded MaterialX place2d affine per material, so the
+        // shader applies it once to the interpolated coordinate rather than
+        // re-deriving a per-texture transform it was never given.
+        IReadOnlyList<float>? uv = shaded?.UvTransform;
+        WriteVector4(
+            destination,
+            144,
+            uv is null ? 1 : Finite(uv[0], "UV transform m00"),
+            uv is null ? 0 : Finite(uv[1], "UV transform m01"),
+            uv is null ? 0 : Finite(uv[4], "UV transform tx"),
+            0);
+        WriteVector4(
+            destination,
+            160,
+            uv is null ? 0 : Finite(uv[2], "UV transform m10"),
+            uv is null ? 1 : Finite(uv[3], "UV transform m11"),
+            uv is null ? 0 : Finite(uv[5], "UV transform ty"),
+            0);
+
+        // The material's single two-image composite. The target is written as the
+        // same texture-mask bit the slot already uses, so the shader compares one
+        // value rather than mapping a second identifier space, and a material with
+        // no composite writes zero, which matches no slot bit.
+        SilkMaterialTexture? composite = volumeDensity ? null : shaded?.GetCompositeTexture();
+        WriteVector4(
+            destination,
+            176,
+            composite is null ? 0 : (float)(uint)GetTextureFeatureBit(composite.Parameter),
+            composite is null ? 0 : (float)(uint)composite.CompositeOperator,
+            composite is null ? 0 : Finite(composite.CompositeFactor, "composite factor"),
+            // The composite's own UDIM-ness, not the slot's. The two operands of a
+            // pair are independent assets and only one of them may be a UDIM set;
+            // reusing the primary slot's bit sampled a plain image through the
+            // atlas path, which reads its first texel as tile metadata and returns
+            // one flat colour for the whole surface.
+            composite is not null && IsUdim(composite) ? 1 : 0);
     }
+
+    private static bool IsUdim(SilkMaterialTexture texture) =>
+        texture.Asset.Contains("<UDIM>", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Maps a material parameter onto the shader's texture-mask bit for its slot.
+    /// </summary>
+    /// <remarks>
+    /// Reuses <see cref="SilkShaderFeatures"/> because the mask the shader reads
+    /// from <c>textureControls.x</c> is that same enum, so a composite target and
+    /// the slot it drives can never disagree about which bit means which input.
+    /// </remarks>
+    private static SilkShaderFeatures GetTextureFeatureBit(SilkMaterialParameter parameter) =>
+        parameter switch
+        {
+            SilkMaterialParameter.DiffuseColor => SilkShaderFeatures.BaseColorMap,
+            SilkMaterialParameter.Roughness => SilkShaderFeatures.RoughnessMetallicMap,
+            SilkMaterialParameter.Metallic => SilkShaderFeatures.MetallicMap,
+            SilkMaterialParameter.EmissiveColor => SilkShaderFeatures.EmissiveMap,
+            SilkMaterialParameter.Opacity => SilkShaderFeatures.OpacityMap,
+            SilkMaterialParameter.Occlusion => SilkShaderFeatures.OcclusionMap,
+            SilkMaterialParameter.SpecularColor => SilkShaderFeatures.SpecularColorMap,
+            SilkMaterialParameter.Clearcoat => SilkShaderFeatures.ClearcoatMap,
+            SilkMaterialParameter.ClearcoatRoughness => SilkShaderFeatures.ClearcoatRoughnessMap,
+            SilkMaterialParameter.Ior => SilkShaderFeatures.IorMap,
+            _ => SilkShaderFeatures.None
+        };
 
     private static float GetUdimMask(SilkMaterialData? material)
     {
@@ -141,9 +217,10 @@ internal static class SilkSurfaceUniformWriter
 
         void addUdimBit(SilkMaterialParameter parameter, SilkShaderFeatures feature)
         {
-            if (material?.GetTexture(parameter)?.Asset.Contains(
-                    "<UDIM>",
-                    StringComparison.Ordinal) == true)
+            // The primary entry only. A composite operand carries its own UDIM bit
+            // in compositeControls.w, because the two operands of one input are
+            // independent assets and either may be a UDIM set on its own.
+            if (material?.GetTexture(parameter) is { } texture && IsUdim(texture))
             {
                 mask |= (int)feature;
             }

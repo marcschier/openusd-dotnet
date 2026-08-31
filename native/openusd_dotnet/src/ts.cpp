@@ -2,6 +2,8 @@
 
 #include "internal/common.h"
 
+#include "pxr/base/gf/half.h"
+
 namespace
 {
 TsInterpMode ToInterp(int32_t value)
@@ -52,25 +54,92 @@ TsTangentAlgorithm ToAlgorithm(int32_t value)
     }
 }
 
+// A Ts knot holds double, float, or GfHalf, and every typed accessor refuses a
+// mismatched type - it posts a coding error and returns false - rather than
+// converting. Reading only double therefore did not fail loudly on a float or
+// half spline: it left every value, pre-value, and tangent slope at zero. The
+// C ABI is double-only by design, so each field is read as a VtValue and
+// widened here instead, which is exact for all three supported types.
+// (Evaluation needs none of this: Ts evaluates in double and casts on output.)
+bool TryReadDouble(const VtValue& value, double* result)
+{
+    if (result == nullptr || value.IsEmpty())
+    {
+        return false;
+    }
+    if (value.IsHolding<double>())
+    {
+        *result = value.UncheckedGet<double>();
+        return true;
+    }
+    if (value.IsHolding<float>())
+    {
+        *result = static_cast<double>(value.UncheckedGet<float>());
+        return true;
+    }
+    if (value.IsHolding<GfHalf>())
+    {
+        *result = static_cast<double>(value.UncheckedGet<GfHalf>());
+        return true;
+    }
+    if (value.CanCast<double>())
+    {
+        const VtValue cast = VtValue::Cast<double>(value);
+        if (cast.IsHolding<double>())
+        {
+            *result = cast.UncheckedGet<double>();
+            return true;
+        }
+    }
+    return false;
+}
+
+// Reads one knot field, or throws naming the field and the spline's value
+// type. A field that cannot be widened is a type the ABI does not support, not
+// a zero: silently recording 0.0 would publish an authored value that does not
+// exist and would be indistinguishable from a legitimately zero knot.
+double ReadKnotField(
+    const TsKnot& knot,
+    const char* field,
+    bool read,
+    const VtValue& value)
+{
+    double converted = 0.0;
+    if (!read || !TryReadDouble(value, &converted))
+    {
+        const std::string type = knot.GetValueType().GetTypeName();
+        const std::string held = value.IsEmpty() ? std::string("<empty>") : value.GetTypeName();
+        throw std::runtime_error(
+            std::string("The Ts knot ") + field + " of a spline of type '" + type +
+            "' could not be read as a double; the value held '" + held + "'.");
+    }
+    return converted;
+}
+
 openusd_ts_knot_record FromKnot(const TsKnot& knot)
 {
     openusd_ts_knot_record record{};
     record.time = knot.GetTime();
-    double value = 0.0;
-    if (knot.GetValue(&value))
+    VtValue value;
+    record.value = ReadKnotField(knot, "value", knot.GetValue(&value), value);
+    // GetPreValue returns the ordinary value for a knot that is not dual
+    // valued, so flagging on its success alone made every knot look
+    // dual valued and turned SetData(GetData()) into an authoring change.
+    if (knot.IsDualValued())
     {
-        record.value = value;
-    }
-    double preValue = 0.0;
-    if (knot.GetPreValue(&preValue))
-    {
-        record.pre_value = preValue;
+        VtValue preValue;
+        record.pre_value =
+            ReadKnotField(knot, "pre-value", knot.GetPreValue(&preValue), preValue);
         record.flags |= OPENUSD_TS_KNOT_HAS_PRE_VALUE;
     }
     record.pre_tangent_width = knot.GetPreTanWidth();
-    knot.GetPreTanSlope(&record.pre_tangent_slope);
+    VtValue preSlope;
+    record.pre_tangent_slope =
+        ReadKnotField(knot, "pre-tangent slope", knot.GetPreTanSlope(&preSlope), preSlope);
     record.post_tangent_width = knot.GetPostTanWidth();
-    knot.GetPostTanSlope(&record.post_tangent_slope);
+    VtValue postSlope;
+    record.post_tangent_slope =
+        ReadKnotField(knot, "post-tangent slope", knot.GetPostTanSlope(&postSlope), postSlope);
     record.next_interpolation = static_cast<int32_t>(knot.GetNextInterpolation());
     record.pre_tangent_algorithm = static_cast<int32_t>(knot.GetPreTanAlgorithm());
     record.post_tangent_algorithm = static_cast<int32_t>(knot.GetPostTanAlgorithm());
@@ -224,13 +293,17 @@ openusd_status openusd_ts_spline_get_data(
             return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
         openusd_ts_spline* mutableSpline = const_cast<openusd_ts_spline*>(spline);
-        mutableSpline->snapshot.clear();
         const TsKnotMap knots = spline->value.GetKnots();
-        mutableSpline->snapshot.reserve(knots.size());
+        // Built aside so a knot this ABI cannot represent leaves the retained
+        // snapshot - which the previously returned view still points at -
+        // untouched instead of half rewritten.
+        std::vector<openusd_ts_knot_record> converted;
+        converted.reserve(knots.size());
         for (const TsKnot& knot : knots)
         {
-            mutableSpline->snapshot.push_back(FromKnot(knot));
+            converted.push_back(FromKnot(knot));
         }
+        mutableSpline->snapshot = std::move(converted);
         const uint32_t structSize = view->struct_size;
         std::memset(view, 0, sizeof(*view));
         view->struct_size = structSize;
@@ -274,6 +347,11 @@ openusd_status openusd_ts_spline_eval(
             WriteError(error, "A valid Ts spline, finite time, value output, and has-value output are required.");
             return OPENUSD_STATUS_INVALID_ARGUMENT;
         }
+        // Unlike the typed knot accessors, evaluation is type-independent:
+        // Ts evaluates in double internally and only casts on the way out, so
+        // reading into a double is both valid and the most precise result a
+        // float or half spline can produce. Reading into a VtValue would round
+        // to the spline's own type first.
         double evaluated = 0.0;
         if (spline->value.Eval(time, &evaluated))
         {

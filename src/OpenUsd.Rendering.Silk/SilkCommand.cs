@@ -384,10 +384,11 @@ public readonly ref struct SilkMeshUpsertCommand
     public int InstanceId => BinaryPrimitives.ReadInt32LittleEndian(_bytes[20..24]);
 
     /// <summary>
-    /// Gets the zero-based instance ordinal. A prim with no instancer always
-    /// reports zero; a point-instanced prototype reports one full record for
-    /// instance zero and lightweight records for later instances, so
-    /// (<see cref="Path"/>, <see cref="InstanceIndex"/>) is the retained identity.
+    /// Gets the instance's own index inside its owning instancer. A prim with
+    /// no instancer always reports zero; a point-instanced prototype reports
+    /// one full record on the lowest index it owns and lightweight records for
+    /// its later instances, so (<see cref="Path"/>, <see cref="InstanceIndex"/>)
+    /// is the retained identity.
     /// </summary>
     public int InstanceIndex => BinaryPrimitives.ReadInt32LittleEndian(_bytes[24..28]);
 
@@ -420,7 +421,8 @@ public readonly ref struct SilkMeshUpsertCommand
 
     /// <summary>
     /// Gets whether this ABI v8 record is a lightweight point-instance record
-    /// that reuses the full prototype geometry carried by instance index zero.
+    /// that reuses the full prototype geometry carried by the lowest instance
+    /// index the prototype owns.
     /// </summary>
     internal bool IsInstanceReference =>
         InstanceId != 0 &&
@@ -584,7 +586,20 @@ public enum SilkAttributeSemantic
     Color = 3,
 
     /// <summary>Surface tangents.</summary>
-    Tangent = 4
+    Tangent = 4,
+
+    /// <summary>
+    /// Authored curve or point widths, resolved onto the emitted vertices.
+    /// </summary>
+    /// <remarks>
+    /// A line list emitted from linear segmented basis curves carries this
+    /// entry under the authored name <c>widths</c> with one component. It does
+    /// not change the emitted geometry: every supported backend rasterizes a
+    /// line at exactly one pixel, matching Storm's measured behaviour for
+    /// linear curves, so a consumer that wants ribbons builds them itself from
+    /// these values.
+    /// </remarks>
+    Width = 5
 }
 
 /// <summary>
@@ -768,10 +783,52 @@ public enum SilkMaterialParameter : uint
     VolumeDensity = 15
 }
 
-/// <summary>UsdUVTexture wrap mode.</summary>
+/// <summary>
+/// How one texture entry combines with the primary entry of the same parameter.
+/// </summary>
+/// <remarks>
+/// The renderer binds one composite image per material rather than one per
+/// surface input, so a material carries at most one entry whose operator is not
+/// <see cref="None"/>. The combination is evaluated in the fragment shader in
+/// floating point after both decodes, so unlike the per-entry scale and bias it
+/// is not clamped by an eight-bit source.
+/// </remarks>
+public enum SilkCompositeOperator : uint
+{
+    /// <summary>This entry is the primary operand and combines with nothing.</summary>
+    None = 0,
+
+    /// <summary><c>primary * composite</c>.</summary>
+    Multiply = 1,
+
+    /// <summary><c>primary + composite</c>.</summary>
+    Add = 2,
+
+    /// <summary><c>primary - composite</c>, in that order.</summary>
+    Subtract = 3,
+
+    /// <summary><c>primary * (1 - factor) + composite * factor</c>.</summary>
+    Mix = 4
+}
+
+/// <summary>Texture wrap mode.</summary>
 public enum SilkTextureWrap : uint
 {
-    /// <summary>Sample black outside the unit range.</summary>
+    /// <summary>
+    /// UsdUVTexture's <c>black</c> or unauthored <c>wrap</c>, and MaterialX
+    /// <c>constant</c> addressing.
+    /// </summary>
+    /// <remarks>
+    /// The name records the authored intent, not what this renderer does with
+    /// it. The wire carries no border colour, no supported backend is given one,
+    /// and <c>SilkSceneGpuResources</c> resolves this mode to
+    /// <see cref="SilkSamplerAddressMode.ClampToEdge"/>, so it renders
+    /// identically to <see cref="Clamp"/>: a sample outside the unit range
+    /// returns the edge texel rather than black or a MaterialX node's
+    /// <c>default</c> value. It stays a distinct value because it records
+    /// different authored intent, which a consumer that does implement border
+    /// sampling must be able to tell apart.
+    /// </remarks>
     Black = 0,
 
     /// <summary>Clamp to edge.</summary>
@@ -858,7 +915,7 @@ public readonly ref struct SilkMaterialScalarEntry
 /// </summary>
 public readonly ref struct SilkMaterialTextureEntry
 {
-    internal const int FixedSize = 80;
+    internal const int FixedSize = 88;
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly string _asset;
     private readonly string _uvPrimvar;
@@ -901,6 +958,24 @@ public readonly ref struct SilkMaterialTextureEntry
     public SilkTextureChannel Channel =>
         (SilkTextureChannel)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[76..80]);
 
+    /// <summary>
+    /// Gets how this entry combines with the primary entry of the same parameter.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SilkCompositeOperator.None"/> marks the primary entry itself.
+    /// Any other value marks the second operand of a two-image surface input,
+    /// which the shader combines with the primary per pixel after both decodes.
+    /// </remarks>
+    public SilkCompositeOperator CompositeOperator =>
+        (SilkCompositeOperator)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[80..84]);
+
+    /// <summary>
+    /// Gets the blend factor, which is meaningful only for
+    /// <see cref="SilkCompositeOperator.Mix"/> and zero otherwise.
+    /// </summary>
+    public float CompositeFactor =>
+        BinaryPrimitives.ReadSingleLittleEndian(_bytes[84..88]);
+
     /// <summary>Gets one component of the multiply applied after sampling.</summary>
     public float GetScale(int component) => ReadVector(28, component);
 
@@ -934,6 +1009,13 @@ public readonly ref struct SilkMaterialTextureEntry
 public readonly ref struct SilkMaterialUpsertCommand
 {
     private const int FixedSize = 32;
+
+    /// <summary>
+    /// Bytes of the trailing row-major affine (m00, m01, m10, m11, tx, ty) every
+    /// texture of this material samples its coordinates through.
+    /// </summary>
+    private const int UvTransformByteCount = 6 * sizeof(float);
+
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly string _path;
     private readonly int _pathLength;
@@ -941,6 +1023,7 @@ public readonly ref struct SilkMaterialUpsertCommand
     private readonly int _generatedFragmentLength;
     private readonly int _generatedFragmentMslSourceOffset;
     private readonly int _generatedFragmentMslSourceLength;
+    private readonly int _uvTransformOffset;
 
     internal SilkMaterialUpsertCommand(ReadOnlySpan<byte> bytes)
     {
@@ -1019,6 +1102,13 @@ public readonly ref struct SilkMaterialUpsertCommand
                 "The generated MaterialX fragment MSL source payload is truncated.");
         }
         offset += _generatedFragmentMslSourceLength;
+        if (offset + UvTransformByteCount > bytes.Length)
+        {
+            throw new InvalidDataException(
+                "The material upsert UV transform is truncated.");
+        }
+        _uvTransformOffset = offset;
+        offset += UvTransformByteCount;
         if (offset != bytes.Length)
         {
             throw new InvalidDataException(
@@ -1043,6 +1133,26 @@ public readonly ref struct SilkMaterialUpsertCommand
 
     /// <summary>Gets the authoritative USD material path.</summary>
     public string Path => _path;
+
+    /// <summary>
+    /// Gets one element of the constant texture-coordinate transform every
+    /// texture of this material samples through, in the row-major order
+    /// (m00, m01, m10, m11, tx, ty).
+    /// </summary>
+    /// <remarks>
+    /// The identity (1, 0, 0, 1, 0, 0) unless the graph routed texture
+    /// coordinates through a chain of MaterialX place2d or UsdPreviewSurface
+    /// UsdTransform2d nodes whose inputs are all constant. hdSilk folds and
+    /// composes that chain exactly, so the consumer applies one affine rather
+    /// than re-deriving pivot, scale, rotation, offset, and operation order.
+    /// </remarks>
+    public float GetUvTransform(int index)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, 6);
+        return BinaryPrimitives.ReadSingleLittleEndian(
+            _bytes.Slice(_uvTransformOffset + (index * sizeof(float)), sizeof(float)));
+    }
 
     /// <summary>Gets generated MaterialX fragment SPIR-V bytes, if this material carries any.</summary>
     public ReadOnlySpan<byte> GeneratedFragmentSpirV =>

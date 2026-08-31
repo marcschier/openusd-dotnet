@@ -254,27 +254,42 @@ HdSilkPoints::_BuildInstanceRecords(
         return {};
     }
 
-    const VtMatrix4dArray instanceTransforms =
-        static_cast<HdSilkInstancer*>(instancer)->ComputeInstanceTransforms(
+    // Points prototypes carry their payload once, exactly as meshes do since
+    // ABI v8: the lowest published instance index keeps the full record and
+    // every later instance reuses it. The published index is the instance's own
+    // index inside the instancer rather than its position in the resolved
+    // array, so the payload rides the lowest index the prototype owns and not
+    // necessarily index zero.
+    const std::vector<HdSilkInstanceSample> samples =
+        static_cast<HdSilkInstancer*>(instancer)->ComputeInstanceSamples(
             GetId());
-    if (instanceTransforms.size() >
-        static_cast<size_t>(std::numeric_limits<int32_t>::max()))
-    {
-        throw std::overflow_error(
-            "The hdSilk points instance count exceeds the 32-bit instance index.");
-    }
 
     const int32_t instanceId = HdSilkStableInstanceId(instancerId.GetString());
     std::vector<HdSilkMeshRecord> records;
-    records.reserve(instanceTransforms.size());
-    for (size_t index = 0; index < instanceTransforms.size(); ++index)
+    records.reserve(samples.size());
+    for (size_t position = 0; position < samples.size(); ++position)
     {
+        const HdSilkInstanceSample& sample = samples[position];
+        if (sample.index > static_cast<int64_t>(
+                std::numeric_limits<int32_t>::max()))
+        {
+            throw std::overflow_error(
+                "The hdSilk points instance index exceeds the 32-bit instance index.");
+        }
         HdSilkMeshRecord instanceRecord = record;
         instanceRecord.instanceId = instanceId;
-        instanceRecord.instanceIndex = static_cast<int32_t>(index);
+        instanceRecord.instanceIndex = static_cast<int32_t>(sample.index);
         HdSilkFlattenMatrix(
-            _transform * instanceTransforms[index],
+            _transform * sample.transform,
             instanceRecord.transform);
+        if (position != 0)
+        {
+            instanceRecord.points.clear();
+            instanceRecord.indices.clear();
+            instanceRecord.triangleSubprims.clear();
+            instanceRecord.materialPath.clear();
+            instanceRecord.attributes.clear();
+        }
         records.push_back(std::move(instanceRecord));
     }
     return records;

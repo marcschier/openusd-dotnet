@@ -30,8 +30,18 @@ public sealed class D3D12DeviceTests
         await Assert.That(plan.RootParameterCount).IsEqualTo(6u);
         await Assert.That(plan.RootSignatureDwordCost).IsEqualTo(10u);
         await Assert.That(plan.RootSignatureDwordCost).IsLessThanOrEqualTo(64u);
-        await Assert.That(plan.SampledTextureCount).IsEqualTo(11u);
-        await Assert.That(plan.SamplerCount).IsEqualTo(11u);
+        // Twelve, not eleven: the eleven material slots plus the material's single
+        // two-image composite image. The composite is one universal slot rather
+        // than one per material input precisely so this stays bounded -- a
+        // per-input composite would double both counts.
+        await Assert.That(plan.SampledTextureCount).IsEqualTo(12u);
+        await Assert.That(plan.SamplerCount).IsEqualTo(12u);
+        await Assert.That(plan.GetDescriptorOffset(
+            0,
+            SilkBindingLayoutDescriptor.CompositeTextureBinding,
+            SilkBindingKind.SampledTexture)).IsEqualTo(11u);
+        // Appending the composite last keeps every pre-existing descriptor offset,
+        // including the normal map's, exactly where it was.
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.MetallicTextureBinding,

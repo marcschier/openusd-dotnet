@@ -81,7 +81,7 @@ public sealed class MetalSelectionOutlineTests
     }
 
     [Test]
-    public async Task CheckedMslReflectionManifestAndHostedGateProveTenEntries()
+    public async Task CheckedMslReflectionManifestAndHostedGateProveTheDeclaredPrograms()
     {
         string root = FindRepositoryRoot();
         string checkedRoot = Path.Combine(root, "eng", "shaders", "checked");
@@ -134,9 +134,13 @@ public sealed class MetalSelectionOutlineTests
         await Assert.That(
             parameters.GetProperty("shape").GetProperty("size").GetInt32())
             .IsEqualTo(32);
+        // Eleven declared programs: the ten historical ones plus
+        // mesh.volume.fragment, the single-permutation family that carries the
+        // sampled density volume's 3D texture and sampler. Expansion multiplies
+        // this into the seventeen entries the combined library actually links.
         await Assert.That(
             manifest.RootElement.GetProperty("programs").GetArrayLength())
-            .IsEqualTo(10);
+            .IsEqualTo(11);
         await Assert.That(project).Contains(
             "checked\\selection.mask.vertex.metal");
         await Assert.That(project).Contains(

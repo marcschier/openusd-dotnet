@@ -166,6 +166,7 @@ def Xform "World"
     private static readonly Lazy<nuint> ImagePluginsRegistered = new(
         RegisterImagePlugins,
         LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly SemaphoreSlim FullSceneCaptureGate = new(1, 1);
 
     /// <summary>
     /// Largest single-channel difference tolerated on a scene that binds a real
@@ -204,6 +205,19 @@ def Xform "World"
 
     [Test]
     public async Task CapturesStormAndHdSilkBackendsDeterministically()
+    {
+        await FullSceneCaptureGate.WaitAsync();
+        try
+        {
+            await CaptureStormAndHdSilkBackendsDeterministicallyCore();
+        }
+        finally
+        {
+            FullSceneCaptureGate.Release();
+        }
+    }
+
+    private static async Task CaptureStormAndHdSilkBackendsDeterministicallyCore()
     {
         ParityScene[] scenes = CreateScenes();
         VerifyExpectedSceneSet(scenes);
@@ -425,6 +439,19 @@ def Xform "World"
 
     [Test]
     public async Task ComparisonDetectsPerturbedCaptures()
+    {
+        await FullSceneCaptureGate.WaitAsync();
+        try
+        {
+            await ComparePerturbedCapturesCore();
+        }
+        finally
+        {
+            FullSceneCaptureGate.Release();
+        }
+    }
+
+    private static async Task ComparePerturbedCapturesCore()
     {
         ParityScene[] scenes = CreateScenes();
         VerifyExpectedSceneSet(scenes);
@@ -753,6 +780,356 @@ def Xform "World"
         await Assert.That(lowStats.PointListPointCount).IsGreaterThan(0);
         await Assert.That(mediumStats.PointListPointCount).IsGreaterThan(lowStats.PointListPointCount);
         await Assert.That(mediumStats.PointListIndexCount).IsGreaterThan(lowStats.PointListIndexCount);
+    }
+
+    /// <summary>
+    /// Every authored width interpolation on a linear segmented curve resolves onto the emitted
+    /// line vertices instead of deleting the prim.
+    /// </summary>
+    /// <remarks>
+    /// Before hdSilk resolved width interpolation, only a scalar or single-element widths array
+    /// was accepted; a uniform, varying, or vertex array made the delegate drop the whole Rprim, so
+    /// three of these four prims published no geometry at all while Storm rendered all four.
+    /// </remarks>
+    [Test]
+    public async Task HdSilkResolvesEveryCurveWidthInterpolationOntoLineVertices()
+    {
+        Dictionary<string, CurveWidthRecord> curves;
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-curve-width-interpolation.usda");
+            string pluginPath = ResolvePluginPath();
+
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            curves = CaptureCurveWidthRecords(session);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk curve width interpolation", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        string[] expectedPaths =
+        [
+            "/World/ConstantWidth",
+            "/World/UniformWidth",
+            "/World/VaryingWidth",
+            "/World/VertexWidth",
+        ];
+        await Assert.That(curves.Keys.Order(StringComparer.Ordinal).ToArray()).IsEquivalentTo(expectedPaths);
+
+        foreach (string path in expectedPaths)
+        {
+            CurveWidthRecord record = curves[path];
+            await Assert.That(record.TopologyKind).IsEqualTo(SilkTopologyKind.LineList);
+            await Assert.That(record.PointCount).IsEqualTo(4);
+            await Assert.That(record.IndexCount).IsEqualTo(4);
+            await Assert.That(record.TriangleCount).IsEqualTo(2);
+            await Assert.That(record.WidthName).IsEqualTo("widths");
+            await Assert.That(record.WidthSemantic).IsEqualTo(SilkAttributeSemantic.Width);
+            await Assert.That(record.WidthComponentCount).IsEqualTo(1);
+        }
+
+        // A single authored width still collapses to one constant wire element, so the
+        // constant-width payload is exactly what it was before non-constant widths resolved.
+        await Assert.That(curves["/World/ConstantWidth"].WidthInterpolation)
+            .IsEqualTo(SilkAttributeInterpolation.Constant);
+        await Assert.That(curves["/World/ConstantWidth"].Widths).IsEquivalentTo(ExpectedConstantCurveWidths);
+
+        // Uniform widths are per curve and are expanded onto both endpoints of every segment the
+        // curve emits; varying and vertex are per control point and travel straight through.
+        await Assert.That(curves["/World/UniformWidth"].WidthInterpolation)
+            .IsEqualTo(SilkAttributeInterpolation.Vertex);
+        await Assert.That(curves["/World/UniformWidth"].Widths)
+            .IsEquivalentTo(ExpectedUniformCurveWidths);
+        await Assert.That(curves["/World/VaryingWidth"].WidthInterpolation)
+            .IsEqualTo(SilkAttributeInterpolation.Vertex);
+        await Assert.That(curves["/World/VaryingWidth"].Widths)
+            .IsEquivalentTo(ExpectedVaryingCurveWidths);
+        await Assert.That(curves["/World/VertexWidth"].WidthInterpolation)
+            .IsEqualTo(SilkAttributeInterpolation.Vertex);
+        await Assert.That(curves["/World/VertexWidth"].Widths)
+            .IsEquivalentTo(ExpectedVertexCurveWidths);
+    }
+
+    /// <summary>
+    /// Authored widths reach the wire without moving a single emitted line vertex.
+    /// </summary>
+    /// <remarks>
+    /// Storm rasterizes linear basis curves as one-pixel screen-space lines at the harness
+    /// refinement and ignores authored world-space widths, measured in
+    /// <c>parity-curve-width-probe.usda</c>: two segments authored 0.24 units wide covered 128
+    /// pixels, while world-space ribbons covered 2093. D3D12 has no line width state, Vulkan needs
+    /// the optional <c>wideLines</c> feature, and Metal has none, so no backend can widen a line
+    /// portably either. The four prims in this scene are the same shape with four different width
+    /// interpolations, so identical emitted points is the assertion that hdSilk did not start
+    /// inventing width-driven geometry Storm never draws.
+    /// </remarks>
+    [Test]
+    public async Task HdSilkCurveWidthsDoNotMoveEmittedLineVertices()
+    {
+        Dictionary<string, CurveWidthRecord> curves;
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-curve-width-interpolation.usda");
+            string pluginPath = ResolvePluginPath();
+
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            curves = CaptureCurveWidthRecords(session);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk curve width geometry invariance", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        float[] expectedPoints =
+        [
+            -0.20f, -0.15f, 0f,
+            0.15f, 0.05f, 0f,
+            -0.15f, 0.18f, 0f,
+            0.20f, 0.08f, 0f,
+        ];
+        uint[] expectedIndices = [0, 1, 2, 3];
+        foreach (CurveWidthRecord record in curves.Values)
+        {
+            await Assert.That(record.Points).IsEquivalentTo(expectedPoints);
+            await Assert.That(record.Indices).IsEquivalentTo(expectedIndices);
+        }
+    }
+
+    /// <summary>
+    /// Medium complexity subdivides each line segment and interpolates the resolved widths at the
+    /// same parameter as the position.
+    /// </summary>
+    /// <remarks>
+    /// Complexity is hdSilk's own curve/point tessellation density; it does not change the page
+    /// wire format. A subdivided segment is still the same segment, so a per-vertex value has to
+    /// vary along it exactly as the position does. Copying the nearer endpoint instead turned an
+    /// authored width ramp into a step function: <c>VertexWidth</c> would publish
+    /// <c>0.03, 0.03, 0.06, 0.06, ...</c> rather than the midpoints asserted here. The constant
+    /// entry must stay a single CONSTANT element, because subdividing cannot make a per-mesh value
+    /// per-vertex.
+    /// </remarks>
+    [Test]
+    public async Task HdSilkMediumComplexityInterpolatesCurveWidthsAlongEachSegment()
+    {
+        Dictionary<string, CurveWidthRecord> low;
+        Dictionary<string, CurveWidthRecord> medium;
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            string stagePath = ResolveParityAsset("parity-curve-width-interpolation.usda");
+            string pluginPath = ResolvePluginPath();
+
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+            low = CaptureCurveWidthRecords(session, RenderComplexity.Low);
+            medium = CaptureCurveWidthRecords(session, RenderComplexity.Medium);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk curve width complexity", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        await Assert.That(low["/World/VertexWidth"].TriangleCount).IsEqualTo(2);
+        foreach (CurveWidthRecord record in medium.Values)
+        {
+            await Assert.That(record.TopologyKind).IsEqualTo(SilkTopologyKind.LineList);
+            await Assert.That(record.TriangleCount).IsEqualTo(4);
+            await Assert.That(record.PointCount).IsEqualTo(8);
+            await Assert.That(record.IndexCount).IsEqualTo(8);
+        }
+
+        await Assert.That(medium["/World/ConstantWidth"].WidthInterpolation)
+            .IsEqualTo(SilkAttributeInterpolation.Constant);
+        await Assert.That(medium["/World/ConstantWidth"].Widths)
+            .IsEquivalentTo(ExpectedConstantCurveWidths);
+        await AssertWidthsWithin(
+            medium["/World/UniformWidth"].Widths, ExpectedMediumUniformCurveWidths);
+        await AssertWidthsWithin(
+            medium["/World/VaryingWidth"].Widths, ExpectedMediumVaryingCurveWidths);
+        await AssertWidthsWithin(
+            medium["/World/VertexWidth"].Widths, ExpectedMediumVertexCurveWidths);
+    }
+
+    private static async Task AssertWidthsWithin(float[] actual, float[] expected)
+    {
+        await Assert.That(actual.Length).IsEqualTo(expected.Length);
+        for (int index = 0; index < expected.Length; index++)
+        {
+            await Assert.That(actual[index]).IsEqualTo(expected[index]).Within(1e-5f);
+        }
+    }
+
+    /// <summary>
+    /// D3D12 WARP and Vulkan draw the resolved curve widths identically, and the four width
+    /// interpolations produce the same rasterized shape as each other on both backends.
+    /// </summary>
+    /// <remarks>
+    /// This is the cross-backend half of the width claim. D3D12 has no line width state at all,
+    /// Vulkan needs the optional <c>wideLines</c> feature for anything but 1.0, and Metal has none,
+    /// so a line is exactly one pixel wide on every supported backend and no authored width can
+    /// change that portably. Comparing the four quadrants against each other is what makes this
+    /// non-vacuous: the scene authors constant, uniform, varying, and vertex widths spanning
+    /// 0.02 to 0.24, so a backend that started widening lines would break the quadrant comparison
+    /// even if both backends widened them the same way. The D3D12 half is required; the Vulkan
+    /// half runs wherever an ICD resolves and records why it did not otherwise, so a host without
+    /// SwiftShader reports a narrower claim rather than a red gate or a silent pass.
+    /// </remarks>
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task HdSilkCurveWidthsRasterizeIdenticallyOnD3D12AndVulkan()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        ParityImage direct3D;
+        ParityImage? vulkan = null;
+        string vulkanStatus = "ok";
+        try
+        {
+            using (D3D12SilkGraphicsDevice d3d12 = D3D12SilkGraphicsDevice.Create(useWarp: true))
+            {
+                direct3D = CaptureHdSilkCurveWidthScene(d3d12);
+            }
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk curve width cross-backend", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        try
+        {
+            using VulkanSilkGraphicsDevice vulkanDevice = VulkanSilkGraphicsDevice.Create();
+            vulkan = CaptureHdSilkCurveWidthScene(vulkanDevice);
+        }
+        catch (Exception exception) when (
+            exception is DllNotFoundException or DirectoryNotFoundException or InvalidOperationException
+                or PlatformNotSupportedException)
+        {
+            vulkanStatus = "unavailable:" + exception.GetType().Name;
+        }
+
+        int direct3DCoverage = CountCoveredPixels(direct3D);
+        int[] direct3DQuadrants = CountQuadrantPixels(direct3D);
+        int[] vulkanQuadrants = vulkan is { } vulkanImage
+            ? CountQuadrantPixels(vulkanImage)
+            : [];
+        ParityComparisonResult? backends = vulkan is { } comparable
+            ? ParityImageComparer.Compare(
+                direct3D,
+                comparable,
+                CurveWidthBackgroundRgba,
+                ParityTolerance.Geometry)
+            : null;
+        string line = "curve-width-cross-backend d3d12Coverage=" +
+            direct3DCoverage.ToString(CultureInfo.InvariantCulture) +
+            " vulkan=" + vulkanStatus +
+            " vulkanCoverage=" +
+            (vulkan is { } measured
+                ? CountCoveredPixels(measured).ToString(CultureInfo.InvariantCulture)
+                : "n/a") +
+            " adjustedIou=" +
+            (backends is { } compared
+                ? compared.AdjustedCoverageIntersectionOverUnion.ToString(
+                    "F6", CultureInfo.InvariantCulture)
+                : "n/a") +
+            " d3d12Quadrants=" +
+            string.Join(',', direct3DQuadrants) +
+            " vulkanQuadrants=" +
+            (vulkanQuadrants.Length == 0 ? "n/a" : string.Join(',', vulkanQuadrants));
+        Console.WriteLine(line);
+        WriteEvidence("curve-width-cross-backend.txt", [line]);
+
+        await Assert.That(direct3DCoverage).IsGreaterThan(0);
+        if (backends is { } result)
+        {
+            await Assert.That(result.Passed)
+                .IsTrue()
+                .Because($"D3D12 and Vulkan disagree on curve widths: {result.Diagnostics}");
+        }
+
+        // The four quadrants are the same shape drawn with authored widths spanning 0.02 to 0.24,
+        // so a width that reached the rasterizer would show up as a coverage difference between
+        // them. They are not required to match exactly: each quadrant lands on a different
+        // sub-pixel phase, which moves a one-pixel line by a pixel or two. A twelvefold width
+        // ratio expanded into ribbons cannot hide inside a factor of two, and the measured spread
+        // is 11..15 on D3D12 WARP and 11..16 on the packaged SwiftShader Vulkan ICD.
+        //
+        // World-space ribbons built from these widths covered 2093 pixels on this canvas size in
+        // parity-curve-width-probe.usda against Storm's 128, so a coverage cap well under that
+        // catches a regression that starts expanding widths into geometry.
+        int[][] measuredQuadrants = vulkanQuadrants.Length == 0
+            ? [direct3DQuadrants]
+            : [direct3DQuadrants, vulkanQuadrants];
+        foreach (int[] quadrants in measuredQuadrants)
+        {
+            await Assert.That(quadrants.Min()).IsGreaterThan(0);
+            await Assert.That(quadrants.Max()).IsLessThanOrEqualTo(2 * quadrants.Min());
+        }
+
+        await Assert.That(direct3DCoverage).IsLessThan(200);
+        if (vulkan is { } capped)
+        {
+            await Assert.That(CountCoveredPixels(capped)).IsLessThan(200);
+        }
+    }
+
+    /// <summary>
+    /// Publishing resolved widths leaves the two gated draw-mode curve scenes pixel-identical.
+    /// </summary>
+    /// <remarks>
+    /// <c>bounds-draw-mode</c> and <c>origin-draw-mode</c> are hard Storm parity gates. Both reach
+    /// hdSilk as linear segmented basis curves with the constant <c>widths = [1.0]</c> that
+    /// <c>UsdImagingGLDrawModeAdapter</c> authors, so they are the scenes a width change would
+    /// break first. The counts below are D3D12 WARP coverage under this class's page-level camera,
+    /// not the hosted parity capture camera that produced the gated 251 and 116, and they were
+    /// measured on both sides of the change: rebuilding hdSilk from the pre-width-resolution
+    /// source produced exactly the same 181 and 59. Locking them keeps that failure local and fast
+    /// instead of waiting for the hosted Storm capture.
+    /// </remarks>
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task HdSilkDrawModeCurveCoverageIsUnchangedByPublishedWidths()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        int boundsCoverage;
+        int originCoverage;
+        try
+        {
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            boundsCoverage = CountCoveredPixels(
+                CaptureHdSilkSceneOnDevice(device, "parity-bounds-draw-mode.usda"));
+            originCoverage = CountCoveredPixels(
+                CaptureHdSilkSceneOnDevice(device, "parity-origin-draw-mode.usda"));
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("hdSilk draw-mode curve coverage", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        string line = "draw-mode-curve-coverage bounds=" +
+            boundsCoverage.ToString(CultureInfo.InvariantCulture) +
+            " origin=" +
+            originCoverage.ToString(CultureInfo.InvariantCulture);
+        Console.WriteLine(line);
+        WriteEvidence("draw-mode-curve-coverage.txt", [line]);
+
+        await Assert.That(boundsCoverage).IsEqualTo(181);
+        await Assert.That(originCoverage).IsEqualTo(59);
     }
 
 
@@ -1503,6 +1880,60 @@ def Xform "World"
     }
 
     [Test]
+    public async Task MaterialXImageArithmeticFoldsToTextureScaleBiasOnVulkan()
+    {
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await AssertSyntheticImageArithmeticFold(device, "vulkan");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("image-arithmetic Vulkan self-consistency", exception.ToString());
+        }
+    }
+
+    [Test]
+    public async Task MaterialXImageArithmeticFoldsToTextureScaleBiasOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await AssertSyntheticImageArithmeticFold(device, "d3d12");
+    }
+
+    [Test]
+    public async Task MaterialXPlace2dUvTransformSelectsAnotherTexelOnVulkan()
+    {
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await AssertSyntheticFoldedUvTransform(device, "vulkan");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("uv-transform Vulkan self-consistency", exception.ToString());
+        }
+    }
+
+    [Test]
+    public async Task MaterialXPlace2dUvTransformSelectsAnotherTexelOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await AssertSyntheticFoldedUvTransform(device, "d3d12");
+    }
+
+    [Test]
     public async Task SparseUdimTilesAndFallbackRenderOnVulkan()
     {
         try
@@ -1845,6 +2276,216 @@ def Xform "World"
         Console.WriteLine(line);
         WriteEvidence("cull-style-back-divergence.txt", [line]);
         await Assert.That(maxChannelDelta).IsGreaterThan(MinimumCullDivergenceChannelDelta);
+    }
+
+    /// <summary>
+    /// <c>front</c> and <c>frontUnlessDoubleSided</c> cull the opposite faces of
+    /// <c>back</c>, identically on D3D12 WARP and Vulkan.
+    /// </summary>
+    /// <remarks>
+    /// This is a real defect gate, not a new-feature gate. The renderer's cull
+    /// mapping used to fall into a catch-all that culled *back* faces for both
+    /// front styles, so authoring <c>front</c> culled exactly the set of faces
+    /// it asks to keep, and <see cref="SilkCullMode"/> had no <c>Front</c> member
+    /// at all -- the pipeline descriptor rejected anything but None and Back.
+    /// The scene is two single-sided quads, one wound front-facing and one wound
+    /// back-facing, so the two cull styles must select disjoint halves of it.
+    /// Comparing the two passes against each other is what makes this
+    /// non-vacuous: an implementation that ignored the style, or that inverted
+    /// it consistently on both backends, would still produce two identical or
+    /// two swapped images, and both are caught here. The Vulkan half runs
+    /// wherever an ICD resolves and records why it did not otherwise, so a host
+    /// without SwiftShader reports a narrower claim rather than a silent pass.
+    /// </remarks>
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task CullStyleFrontCullsTheOppositeFacesOfBackOnD3D12AndVulkan()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        CullStyleFacingCapture direct3D;
+        CullStyleFacingCapture? vulkan = null;
+        string vulkanStatus = "ok";
+        try
+        {
+            using (D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true))
+            {
+                direct3D = CaptureCullStyleFacing(device);
+            }
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("cull-style front/back facing", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            vulkan = CaptureCullStyleFacing(device);
+        }
+        catch (Exception exception) when (
+            exception is DllNotFoundException or DirectoryNotFoundException or InvalidOperationException
+                or PlatformNotSupportedException)
+        {
+            vulkanStatus = "unavailable:" + exception.GetType().Name;
+        }
+
+        string line = "cull-style-facing d3d12Back=" +
+            FormatHalves(direct3D.Back) +
+            " d3d12Front=" + FormatHalves(direct3D.Front) +
+            " d3d12FrontDoubleSided=" + FormatHalves(direct3D.FrontDoubleSided) +
+            " vulkan=" + vulkanStatus +
+            " vulkanBack=" +
+            (vulkan is { } backMeasured ? FormatHalves(backMeasured.Back) : "n/a") +
+            " vulkanFront=" +
+            (vulkan is { } frontMeasured ? FormatHalves(frontMeasured.Front) : "n/a") +
+            " vulkanFrontDoubleSided=" +
+            (vulkan is { } doubleMeasured
+                ? FormatHalves(doubleMeasured.FrontDoubleSided)
+                : "n/a");
+        Console.WriteLine(line);
+        WriteEvidence("cull-style-facing.txt", [line]);
+
+        foreach (CullStyleFacingCapture capture in
+            vulkan is { } comparable ? [direct3D, comparable] : new[] { direct3D })
+        {
+            // back culls the back-facing quad and keeps the front-facing one.
+            await Assert.That(capture.Back.Left).IsGreaterThan(0);
+            await Assert.That(capture.Back.Right).IsEqualTo(0);
+
+            // front is the exact inverse: it keeps the back-facing quad only.
+            await Assert.That(capture.Front.Left).IsEqualTo(0);
+            await Assert.That(capture.Front.Right).IsGreaterThan(0);
+
+            // frontUnlessDoubleSided on a double-sided mesh culls nothing, so
+            // the "unless" clause is proven to apply to the front variant too
+            // and not only to the back one.
+            await Assert.That(capture.FrontDoubleSided.Left).IsGreaterThan(0);
+            await Assert.That(capture.FrontDoubleSided.Right).IsGreaterThan(0);
+        }
+
+        if (vulkan is { } cross)
+        {
+            await AssertBackendsAgree(direct3D.BackImage, cross.BackImage, "back");
+            await AssertBackendsAgree(direct3D.FrontImage, cross.FrontImage, "front");
+            await AssertBackendsAgree(
+                direct3D.FrontDoubleSidedImage,
+                cross.FrontDoubleSidedImage,
+                "frontUnlessDoubleSided");
+        }
+    }
+
+    private static async Task AssertBackendsAgree(ParityImage left, ParityImage right, string label)
+    {
+        ParityComparisonResult result = ParityImageComparer.Compare(
+            left,
+            right,
+            CurveWidthBackgroundRgba,
+            ParityTolerance.Geometry);
+        await Assert.That(result.Passed)
+            .IsTrue()
+            .Because($"D3D12 and Vulkan disagree on cull style '{label}': {result.Diagnostics}");
+    }
+
+    private static string FormatHalves((int Left, int Right) halves) =>
+        halves.Left.ToString(CultureInfo.InvariantCulture) + "/" +
+        halves.Right.ToString(CultureInfo.InvariantCulture);
+
+    private sealed record CullStyleFacingCapture(
+        ParityImage BackImage,
+        ParityImage FrontImage,
+        ParityImage FrontDoubleSidedImage)
+    {
+        internal (int Left, int Right) Back => CountHalfPixels(BackImage);
+
+        internal (int Left, int Right) Front => CountHalfPixels(FrontImage);
+
+        internal (int Left, int Right) FrontDoubleSided =>
+            CountHalfPixels(FrontDoubleSidedImage);
+    }
+
+    private static CullStyleFacingCapture CaptureCullStyleFacing(ISilkGraphicsDevice device) =>
+        new(
+            CaptureCullStyleFacingPass(device, SilkMeshCullStyle.Back, doubleSided: false),
+            CaptureCullStyleFacingPass(device, SilkMeshCullStyle.Front, doubleSided: false),
+            CaptureCullStyleFacingPass(
+                device,
+                SilkMeshCullStyle.FrontUnlessDoubleSided,
+                doubleSided: true));
+
+    /// <summary>
+    /// Renders one front-facing and one back-facing single-sided quad in the
+    /// left and right halves of the canvas under one cull style.
+    /// </summary>
+    private static ParityImage CaptureCullStyleFacingPass(
+        ISilkGraphicsDevice device,
+        SilkMeshCullStyle cullStyle,
+        bool doubleSided)
+    {
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                checked((uint)Width),
+                checked((uint)Height),
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(checked((uint)Width), checked((uint)Height)));
+        using var renderer = new SilkMeshRenderer(device);
+        SilkMeshRendererConformance.Apply(
+            renderer,
+            revision: 1,
+            SilkMeshRendererConformance.CreateFrameCommand(
+                checked((uint)Width),
+                checked((uint)Height),
+                IdentityMatrix()),
+            CreateDisplayMeshCommand(1, "/FrontFacing", -0.5f, cullStyle, doubleSided, backFacing: false),
+            CreateDisplayMeshCommand(2, "/BackFacing", 0.5f, cullStyle, doubleSided, backFacing: true));
+        var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
+        _ = renderer.Render(color, depth, options);
+        _ = renderer.Render(color, depth, options);
+        byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+        color.ReadbackForTesting(pixels);
+        return new ParityImage(Width, Height, pixels);
+    }
+
+    /// <summary>
+    /// Counts covered pixels in the left and right halves of the canvas. The
+    /// facing scene puts one quad in each half, so which half survives is what
+    /// distinguishes a cull style from its inverse.
+    /// </summary>
+    private static (int Left, int Right) CountHalfPixels(ParityImage image)
+    {
+        int left = 0;
+        int right = 0;
+        ReadOnlySpan<byte> pixels = image.Rgba.Span;
+        for (int y = 0; y < image.Height; y++)
+        {
+            for (int x = 0; x < image.Width; x++)
+            {
+                int offset = ((y * image.Width) + x) * ParityImage.BytesPerPixel;
+                if (BinaryPrimitives.ReadUInt32BigEndian(
+                        pixels.Slice(offset, ParityImage.BytesPerPixel)) ==
+                    CurveWidthBackgroundRgba)
+                {
+                    continue;
+                }
+                if (x < image.Width / 2)
+                {
+                    left++;
+                }
+                else
+                {
+                    right++;
+                }
+            }
+        }
+
+        return (left, right);
     }
 
     [Test]
@@ -2289,7 +2930,9 @@ def Xform "World"
         float[] Bias,
         float[] Fallback,
         string UvPrimvar,
-        SilkTextureChannel Channel = SilkTextureChannel.Rgb);
+        SilkTextureChannel Channel = SilkTextureChannel.Rgb,
+        SilkCompositeOperator CompositeOperator = SilkCompositeOperator.None,
+        float CompositeFactor = 0f);
 
     private sealed record ConstantMaterialInputCase(
         string Name,
@@ -2454,6 +3097,579 @@ def Xform "World"
                     MemoryMarshal.AsBytes(values.AsSpan()).ToArray(),
                     SilkTextureFormat.Rgba32Float);
             });
+    }
+
+    /// <summary>
+    /// Proves the folded MaterialX image arithmetic is pixel-observable and lands
+    /// on the arithmetically correct value.
+    /// </summary>
+    /// <remarks>
+    /// The chain <c>mix(0.2, image * 0.5, 0.75)</c> folds to
+    /// <c>image * 0.375 + 0.05</c>, so a texel of 0.4 must shade exactly like a
+    /// constant material of 0.2. Both values are exactly representable in eight
+    /// bits (102/255 and 51/255), so this asserts the transported arithmetic
+    /// rather than a rounding tolerance. Rendering the same image with the
+    /// identity scale and bias must not match, which is what separates a real
+    /// fold from an image the renderer merely bound untouched.
+    /// </remarks>
+    private static async Task AssertSyntheticImageArithmeticFold(
+        ISilkGraphicsDevice device,
+        string backend)
+    {
+        ParityImage folded = CaptureSyntheticImageArithmeticFold(
+            device,
+            [0.375f, 0.375f, 0.375f, 1f],
+            [0.05f, 0.05f, 0.05f, 0f]);
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(folded);
+        string line = FormatSelfConsistencyMetrics(
+            $"image-arithmetic-{backend}",
+            maxChannelDelta,
+            meanChannelDelta);
+        Console.WriteLine(line);
+        WriteEvidence($"image-arithmetic-{backend}-self-consistency.txt", [line]);
+        await Assert.That(CountNonBlackPixels(folded)).IsGreaterThan(100);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+
+        ParityImage unfolded = CaptureSyntheticImageArithmeticFold(
+            device,
+            [1f, 1f, 1f, 1f],
+            [0f, 0f, 0f, 0f]);
+        (byte identityMaxDelta, double identityMeanDelta) =
+            CompareTranslatedHalves(unfolded);
+        string divergence = FormatSelfConsistencyMetrics(
+            $"image-arithmetic-identity-{backend}",
+            identityMaxDelta,
+            identityMeanDelta);
+        Console.WriteLine(divergence);
+        WriteEvidence($"image-arithmetic-{backend}-divergence.txt", [divergence]);
+        await Assert.That(identityMaxDelta).IsGreaterThan((byte)32);
+    }
+
+    /// <summary>The value the folded arithmetic must produce from a 0.4 texel.</summary>
+    private static readonly float[] ImageArithmeticFoldedColor = [0.2f, 0.2f, 0.2f];
+
+    private static ParityImage CaptureSyntheticImageArithmeticFold(
+        ISilkGraphicsDevice device,
+        float[] scale,
+        float[] bias)
+    {
+        MaterialScalarSpec[] referenceScalars =
+        [
+            new(SilkMaterialParameter.DiffuseColor, ImageArithmeticFoldedColor),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] texturedScalars =
+        [
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialTextureSpec image = new(
+            "image-arithmetic",
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Clamp,
+            SilkColorSpace.Raw,
+            scale,
+            bias,
+            [1, 0, 1, 1],
+            "st",
+            SilkTextureChannel.Rgb);
+        return CaptureSyntheticMaterialPair(
+            device,
+            CreateMaterialCommandWithScalars(
+                "/Repeat",
+                SilkSurfaceKind.PreviewSurface,
+                referenceScalars),
+            CreateTexturedMaterialCommand("/Candidate", [image], texturedScalars),
+            requireImagePlugins: false,
+            // 102/255 is exactly 0.4, and the folded 0.4 * 0.375 + 0.05 is exactly
+            // 51/255, so the eight-bit upload path is bit-exact for this case.
+            imageDecoder: static (_, _) => new SilkDecodedImage(1, 1, [102, 102, 102, 255]));
+    }
+
+    /// <summary>
+    /// Proves the folded UV transform is pixel-observable, for a pure
+    /// translation and for a matrix with non-zero off-diagonal terms.
+    /// </summary>
+    /// <remarks>
+    /// Both meshes carry the same texture coordinate, so nothing but the
+    /// published UV transform can change which texel the candidate samples. Each
+    /// transformed capture must match a constant reference of the texel that
+    /// affine selects, and the same material with the identity transform must
+    /// not, which is what separates a real transform from one that is silently
+    /// dropped. The rotation case is not redundant: a translation-only affine
+    /// leaves m01 and m10 at zero, so it cannot tell a correctly transported
+    /// matrix from one whose off-diagonal terms never reach the shader.
+    /// </remarks>
+    private static async Task AssertSyntheticFoldedUvTransform(
+        ISilkGraphicsDevice device,
+        string backend)
+    {
+        ParityImage transformed = CaptureSyntheticFoldedUvTransform(
+            device,
+            // MaterialX place2d(offset = (-0.5, -0.5)) in SRT order folds to the
+            // identity rotation and scale with a +0.5 translation, moving the
+            // sampled coordinate from one texel of the 2x2 image to the
+            // diagonally opposite one.
+            [1f, 0f, 0f, 1f, 0.5f, 0.5f],
+            TranslatedTexel);
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(transformed);
+        string line = FormatSelfConsistencyMetrics(
+            $"uv-transform-translation-{backend}",
+            maxChannelDelta,
+            meanChannelDelta);
+        Console.WriteLine(line);
+        WriteEvidence($"uv-transform-{backend}-self-consistency.txt", [line]);
+        await Assert.That(CountNonBlackPixels(transformed)).IsGreaterThan(100);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+
+        ParityImage rotated = CaptureSyntheticFoldedUvTransform(
+            device,
+            // UsdTransform2d(rotation = 90, translation = (1, 0)) folds to a
+            // quarter turn whose off-diagonal terms are the only reason the
+            // sampled coordinate moves along one axis and not the other.
+            [0f, -1f, 1f, 0f, 1f, 0f],
+            RotatedTexel);
+        (byte rotatedMaxDelta, double rotatedMeanDelta) = CompareTranslatedHalves(rotated);
+        string rotation = FormatSelfConsistencyMetrics(
+            $"uv-transform-rotation-{backend}",
+            rotatedMaxDelta,
+            rotatedMeanDelta);
+        Console.WriteLine(rotation);
+        WriteEvidence($"uv-transform-{backend}-rotation.txt", [rotation]);
+        await Assert.That(CountNonBlackPixels(rotated)).IsGreaterThan(100);
+        await Assert.That(rotatedMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(rotatedMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        ParityImage untransformed = CaptureSyntheticFoldedUvTransform(
+            device,
+            [1f, 0f, 0f, 1f, 0f, 0f],
+            TranslatedTexel);
+        (byte identityMaxDelta, double identityMeanDelta) =
+            CompareTranslatedHalves(untransformed);
+        string divergence = FormatSelfConsistencyMetrics(
+            $"uv-transform-identity-{backend}",
+            identityMaxDelta,
+            identityMeanDelta);
+        Console.WriteLine(divergence);
+        WriteEvidence($"uv-transform-{backend}-divergence.txt", [divergence]);
+        await Assert.That(identityMaxDelta).IsGreaterThan((byte)32);
+    }
+
+    /// <summary>
+    /// The texel the +0.5 translation lands on. The authored 0.25 coordinate
+    /// reads one texel of the 2x2 image and the translation reads the diagonally
+    /// opposite one, so this constant is the only colour that capture can match.
+    /// </summary>
+    private static readonly float[] TranslatedTexel = [0.0f, 1.0f, 0.0f];
+
+    /// <summary>
+    /// The texel the quarter turn lands on: it moves the coordinate along one
+    /// axis only, so it selects a different texel than the translation does.
+    /// </summary>
+    private static readonly float[] RotatedTexel = [0.0f, 0.0f, 1.0f];
+
+    [Test]
+    public async Task MaterialXPeriodicAddressModeTilesOnVulkan()
+    {
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await AssertSyntheticMaterialXAddressModes(device, "vulkan");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("MaterialX address mode Vulkan tiling", exception.ToString());
+        }
+    }
+
+    [Test]
+    public async Task MaterialXPeriodicAddressModeTilesOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await AssertSyntheticMaterialXAddressModes(device, "d3d12");
+    }
+
+    /// <summary>
+    /// Pixel evidence that the wrap value hdSilk resolves from a MaterialX
+    /// address mode reaches the sampler and selects a different texel.
+    /// </summary>
+    /// <remarks>
+    /// MaterialX defaults <c>uaddressmode</c>/<c>vaddressmode</c> to
+    /// <c>periodic</c>, while UsdUVTexture's unauthored <c>wrap</c> resolves to
+    /// black. hdSilk read the UsdUVTexture names from MaterialX image nodes, found
+    /// nothing, and published black for every one of them, which the renderer
+    /// resolves to clamp-to-edge. A MaterialX texture the graph tiles was
+    /// therefore smeared from its edge column of texels.
+    ///
+    /// The captures use a coordinate of 1.25 on a 2x2 image, which is the smallest
+    /// case that separates the two: periodic wraps it to the 0.25 texel centre and
+    /// reads the first column, clamp-to-edge reads the last. Both land exactly on
+    /// a texel centre, so neither reads a filtered blend and the comparison is
+    /// against an exact constant colour rather than a tolerance band. The third
+    /// capture is what makes this non-vacuous: black matching the *clamped* texel
+    /// proves the divergence is clamping and not a dropped texture.
+    ///
+    /// The native half of the claim -- that an unauthored MaterialX image resolves
+    /// to periodic in the first place -- is
+    /// <c>VerifyMaterialXImageSamplingProjection</c> in <c>hdsilk_probe</c>.
+    /// </remarks>
+    private static async Task AssertSyntheticMaterialXAddressModes(
+        ISilkGraphicsDevice device,
+        string backend)
+    {
+        ParityImage tiled = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.Repeat,
+            WrappedTexel);
+        (byte tiledMaxDelta, double tiledMeanDelta) = CompareTranslatedHalves(tiled);
+        string tiling = FormatSelfConsistencyMetrics(
+            $"address-mode-periodic-{backend}",
+            tiledMaxDelta,
+            tiledMeanDelta);
+        Console.WriteLine(tiling);
+        WriteEvidence($"address-mode-{backend}-periodic.txt", [tiling]);
+        await Assert.That(CountNonBlackPixels(tiled)).IsGreaterThan(100);
+        await Assert.That(tiledMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(tiledMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        ParityImage clamped = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.Black,
+            ClampedTexel);
+        (byte clampedMaxDelta, double clampedMeanDelta) = CompareTranslatedHalves(clamped);
+        string clamping = FormatSelfConsistencyMetrics(
+            $"address-mode-constant-{backend}",
+            clampedMaxDelta,
+            clampedMeanDelta);
+        Console.WriteLine(clamping);
+        WriteEvidence($"address-mode-{backend}-constant.txt", [clamping]);
+        await Assert.That(CountNonBlackPixels(clamped)).IsGreaterThan(100);
+        await Assert.That(clampedMaxDelta).IsLessThanOrEqualTo((byte)3);
+
+        // The mode that hdSilk published for every MaterialX image before it read
+        // uaddressmode does not select the texel periodic addressing selects.
+        ParityImage divergent = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.Black,
+            WrappedTexel);
+        (byte divergentMaxDelta, double divergentMeanDelta) =
+            CompareTranslatedHalves(divergent);
+        string divergence = FormatSelfConsistencyMetrics(
+            $"address-mode-divergence-{backend}",
+            divergentMaxDelta,
+            divergentMeanDelta);
+        Console.WriteLine(divergence);
+        WriteEvidence($"address-mode-{backend}-divergence.txt", [divergence]);
+        await Assert.That(divergentMaxDelta)
+            .IsGreaterThan(MinimumTextureDivergenceChannelDelta);
+    }
+
+    [Test]
+    public async Task MaterialXTwoImageCompositeShadesPerPixelOnVulkan()
+    {
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await AssertSyntheticTwoImageComposite(device, "vulkan");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("two-image composite Vulkan self-consistency", exception.ToString());
+        }
+    }
+
+    [Test]
+    public async Task MaterialXTwoImageCompositeShadesPerPixelOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await AssertSyntheticTwoImageComposite(device, "d3d12");
+    }
+
+    /// <summary>
+    /// Pixel evidence that two images bound to one surface input are combined in
+    /// the shader rather than folded away or silently reduced to one.
+    /// </summary>
+    /// <remarks>
+    /// This is the one MaterialX shape no per-texel scale and bias can carry: the
+    /// product of two images is not affine in either one. The captures use
+    /// constants that are exactly representable in eight bits, so each is compared
+    /// against a constant reference rather than a tolerance band.
+    ///
+    /// Multiply of 0.8 by 0.502 is 0.4; add of the same pair is 1.3, which
+    /// saturates; and mix at 0.25 is 0.725. No single hard-coded operator produces
+    /// all three, so the operator id and the factor both have to reach the shader.
+    /// The primary-only capture, which binds the same first image with no
+    /// composite, is what makes the set non-vacuous: it is where a renderer that
+    /// ignored the composite image entirely would land, and it diverges.
+    /// </remarks>
+    private static async Task AssertSyntheticTwoImageComposite(
+        ISilkGraphicsDevice device,
+        string backend)
+    {
+        ParityImage multiplied = CaptureSyntheticTwoImageComposite(
+            device,
+            SilkCompositeOperator.Multiply,
+            0f,
+            CompositeMultipliedColor);
+        (byte multiplyMaxDelta, double multiplyMeanDelta) =
+            CompareTranslatedHalves(multiplied);
+        string multiply = FormatSelfConsistencyMetrics(
+            $"composite-multiply-{backend}",
+            multiplyMaxDelta,
+            multiplyMeanDelta);
+        Console.WriteLine(multiply);
+        WriteEvidence($"composite-{backend}-multiply.txt", [multiply]);
+        await Assert.That(CountNonBlackPixels(multiplied)).IsGreaterThan(100);
+        await Assert.That(multiplyMaxDelta).IsLessThanOrEqualTo((byte)3);
+
+        ParityImage blended = CaptureSyntheticTwoImageComposite(
+            device,
+            SilkCompositeOperator.Mix,
+            0.25f,
+            CompositeMixedColor);
+        (byte mixMaxDelta, double mixMeanDelta) = CompareTranslatedHalves(blended);
+        string mix = FormatSelfConsistencyMetrics(
+            $"composite-mix-{backend}",
+            mixMaxDelta,
+            mixMeanDelta);
+        Console.WriteLine(mix);
+        WriteEvidence($"composite-{backend}-mix.txt", [mix]);
+        await Assert.That(CountNonBlackPixels(blended)).IsGreaterThan(100);
+        await Assert.That(mixMaxDelta).IsLessThanOrEqualTo((byte)3);
+
+        // The same primary image with no composite bound shades its own 0.8, so a
+        // renderer that dropped the composite would land here instead of on the
+        // product. Comparing it against the *product* reference is the divergence.
+        ParityImage primaryOnly = CaptureSyntheticTwoImageComposite(
+            device,
+            SilkCompositeOperator.None,
+            0f,
+            CompositeMultipliedColor);
+        (byte divergentMaxDelta, double divergentMeanDelta) =
+            CompareTranslatedHalves(primaryOnly);
+        string divergence = FormatSelfConsistencyMetrics(
+            $"composite-divergence-{backend}",
+            divergentMaxDelta,
+            divergentMeanDelta);
+        Console.WriteLine(divergence);
+        WriteEvidence($"composite-{backend}-divergence.txt", [divergence]);
+        await Assert.That(divergentMaxDelta)
+            .IsGreaterThan(MinimumTextureDivergenceChannelDelta);
+    }
+
+    /// <summary>204/255 multiplied by 128/255, which eight bits carries exactly.</summary>
+    private static readonly float[] CompositeMultipliedColor = [0.4f, 0.4f, 0.4f];
+
+    /// <summary>The same pair mixed at 0.25: 0.8 * 0.75 + 0.502 * 0.25.</summary>
+    private static readonly float[] CompositeMixedColor = [0.7255f, 0.7255f, 0.7255f];
+
+    /// <summary>
+    /// Renders a quad whose base colour is one image combined with a second, and
+    /// compares it against a constant reference of the expected result.
+    /// </summary>
+    private static ParityImage CaptureSyntheticTwoImageComposite(
+        ISilkGraphicsDevice device,
+        SilkCompositeOperator compositeOperator,
+        float compositeFactor,
+        float[] expectedColor)
+    {
+        MaterialScalarSpec[] referenceScalars =
+        [
+            new(SilkMaterialParameter.DiffuseColor, expectedColor),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] texturedScalars =
+        [
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        float[] textureCoordinates =
+        [
+            0.5f, 0.5f,
+            0.5f, 0.5f,
+            0.5f, 0.5f,
+            0.5f, 0.5f,
+        ];
+        MaterialTextureSpec primary = new(
+            "composite-primary.png",
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Clamp,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st",
+            SilkTextureChannel.Rgb);
+        MaterialTextureSpec composite = new(
+            "composite-second.png",
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Clamp,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st",
+            SilkTextureChannel.Rgb,
+            compositeOperator,
+            compositeFactor);
+        MaterialTextureSpec[] textures = compositeOperator == SilkCompositeOperator.None
+            ? [primary]
+            : [primary, composite];
+        return CaptureSyntheticMaterialPair(
+            device,
+            CreateMaterialCommandWithScalars(
+                "/Repeat",
+                SilkSurfaceKind.PreviewSurface,
+                referenceScalars),
+            CreateTexturedMaterialCommand("/Candidate", textures, texturedScalars),
+            textureCoordinates,
+            requireImagePlugins: false,
+            imageDecoder: static (asset, _) => asset.Contains("second", StringComparison.Ordinal)
+                ? new SilkDecodedImage(1, 1, [128, 128, 128, 255])
+                : new SilkDecodedImage(1, 1, [204, 204, 204, 255]));
+    }
+
+    /// <summary>
+    /// The texel periodic addressing wraps a 1.25 coordinate onto: the first
+    /// column of the 2x2 image, at the row the 0.25 coordinate selects.
+    /// </summary>
+    private static readonly float[] WrappedTexel = [1.0f, 1.0f, 0.0f];
+
+    /// <summary>
+    /// The edge texel clamped addressing reads at the same coordinate: the last
+    /// column, which is a different colour from the wrapped one.
+    /// </summary>
+    private static readonly float[] ClampedTexel = [0.0f, 0.0f, 1.0f];
+
+    private static ParityImage CaptureSyntheticAddressModeTexel(
+        ISilkGraphicsDevice device,
+        SilkTextureWrap wrap,
+        float[] expectedColor)
+    {
+        MaterialScalarSpec[] referenceScalars =
+        [
+            new(SilkMaterialParameter.DiffuseColor, expectedColor),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] texturedScalars =
+        [
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        // One tile past the unit range, on the texel centre of a 2x2 image:
+        // periodic reads column 0 and clamp-to-edge reads column 1.
+        float[] textureCoordinates =
+        [
+            1.25f, 0.25f,
+            1.25f, 0.25f,
+            1.25f, 0.25f,
+            1.25f, 0.25f,
+        ];
+        MaterialTextureSpec addressed = new(
+            "address-mode-quadrants",
+            SilkMaterialParameter.DiffuseColor,
+            wrap,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st",
+            SilkTextureChannel.Rgb);
+        return CaptureSyntheticMaterialPair(
+            device,
+            CreateMaterialCommandWithScalars(
+                "/Repeat",
+                SilkSurfaceKind.PreviewSurface,
+                referenceScalars),
+            CreateTexturedMaterialCommand("/Candidate", [addressed], texturedScalars),
+            textureCoordinates,
+            requireImagePlugins: false,
+            imageDecoder: static (_, _) => new SilkDecodedImage(
+                2,
+                2,
+                [
+                    255, 0, 0, 255,
+                    0, 255, 0, 255,
+                    255, 255, 0, 255,
+                    0, 0, 255, 255,
+                ]));
+    }
+
+    private static ParityImage CaptureSyntheticFoldedUvTransform(
+        ISilkGraphicsDevice device,
+        float[] uvTransform,
+        float[] expectedColor)
+    {
+        MaterialScalarSpec[] referenceScalars =
+        [
+            new(SilkMaterialParameter.DiffuseColor, expectedColor),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] texturedScalars =
+        [
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        // The texel centres of a 2x2 image sit at 0.25 and 0.75, so an authored
+        // 0.25 samples one texel exactly and each folded transform lands on
+        // another texel centre exactly. Neither reads a filtered blend.
+        float[] textureCoordinates =
+        [
+            0.25f, 0.25f,
+            0.25f, 0.25f,
+            0.25f, 0.25f,
+            0.25f, 0.25f,
+        ];
+        MaterialTextureSpec placed = new(
+            "uv-transform-quadrants",
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Clamp,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st",
+            SilkTextureChannel.Rgb);
+        return CaptureSyntheticMaterialPair(
+            device,
+            CreateMaterialCommandWithScalars(
+                "/Repeat",
+                SilkSurfaceKind.PreviewSurface,
+                referenceScalars),
+            CreateTexturedMaterialCommand(
+                "/Candidate",
+                [placed],
+                texturedScalars,
+                uvTransform),
+            textureCoordinates,
+            requireImagePlugins: false,
+            imageDecoder: static (_, _) => new SilkDecodedImage(
+                2,
+                2,
+                [
+                    255, 0, 0, 255,
+                    0, 255, 0, 255,
+                    255, 255, 0, 255,
+                    0, 0, 255, 255,
+                ]));
     }
 
     private static async Task AssertSyntheticUdim(ISilkGraphicsDevice device)
@@ -3403,6 +4619,201 @@ def Xform "World"
         return new MeshPageStats(pointListPoints, pointListIndices, lineListPrimitives);
     }
 
+    private const uint CurveWidthBackgroundRgba = 0x000000FFU;
+
+    private static readonly float[] ExpectedConstantCurveWidths = [0.05f];
+
+    private static readonly float[] ExpectedUniformCurveWidths = [0.05f, 0.05f, 0.11f, 0.11f];
+
+    private static readonly float[] ExpectedVaryingCurveWidths = [0.02f, 0.04f, 0.08f, 0.16f];
+
+    private static readonly float[] ExpectedVertexCurveWidths = [0.03f, 0.06f, 0.12f, 0.24f];
+
+    /// <summary>
+    /// Medium complexity halves every emitted segment, so each authored width span becomes two
+    /// spans meeting at its midpoint. These are the interpolated ramps, not the authored
+    /// endpoints repeated.
+    /// </summary>
+    private static readonly float[] ExpectedMediumUniformCurveWidths =
+        [0.05f, 0.05f, 0.05f, 0.05f, 0.11f, 0.11f, 0.11f, 0.11f];
+
+    private static readonly float[] ExpectedMediumVaryingCurveWidths =
+        [0.02f, 0.03f, 0.03f, 0.04f, 0.08f, 0.12f, 0.12f, 0.16f];
+
+    private static readonly float[] ExpectedMediumVertexCurveWidths =
+        [0.03f, 0.045f, 0.045f, 0.06f, 0.12f, 0.18f, 0.18f, 0.24f];
+
+    /// <summary>One published basis-curves line list plus its resolved width attribute.</summary>
+    private sealed record CurveWidthRecord(
+        SilkTopologyKind TopologyKind,
+        int PointCount,
+        int IndexCount,
+        int TriangleCount,
+        float[] Points,
+        uint[] Indices,
+        string WidthName,
+        SilkAttributeSemantic WidthSemantic,
+        SilkAttributeInterpolation WidthInterpolation,
+        int WidthComponentCount,
+        float[] Widths);
+
+    private static Dictionary<string, CurveWidthRecord> CaptureCurveWidthRecords(
+        OpenUsdSilkSession session,
+        RenderComplexity? complexity = null)
+    {
+        using OpenUsdSilkPage page = complexity is { } requested
+            ? session.Sync(Width, Height, TimeCode, CameraState.Default, requested)
+            : session.Sync(Width, Height, TimeCode, CameraState.Default);
+        var records = new Dictionary<string, CurveWidthRecord>(StringComparer.Ordinal);
+        using SilkCommandEnumerator commands = page.GetEnumerator();
+        while (commands.MoveNext())
+        {
+            if (commands.Current.Type != SilkCommandType.MeshUpsert)
+            {
+                continue;
+            }
+
+            SilkMeshUpsertCommand mesh = commands.Current.AsMeshUpsert();
+            if (mesh.TopologyKind != SilkTopologyKind.LineList)
+            {
+                continue;
+            }
+
+            float[] points = new float[mesh.PointCount * 3];
+            for (int point = 0; point < mesh.PointCount; point++)
+            {
+                for (int component = 0; component < 3; component++)
+                {
+                    points[(point * 3) + component] = mesh.GetPointComponent(point, component);
+                }
+            }
+
+            uint[] indices = new uint[mesh.IndexCount];
+            for (int index = 0; index < mesh.IndexCount; index++)
+            {
+                indices[index] = mesh.GetIndex(index);
+            }
+
+            string widthName = string.Empty;
+            var widthSemantic = SilkAttributeSemantic.Custom;
+            var widthInterpolation = SilkAttributeInterpolation.Constant;
+            int widthComponentCount = 0;
+            float[] widths = [];
+            for (int attribute = 0; attribute < mesh.AttributeCount; attribute++)
+            {
+                SilkMeshAttributeEntry entry = mesh.GetAttribute(attribute);
+                if (entry.Semantic != SilkAttributeSemantic.Width)
+                {
+                    continue;
+                }
+
+                widthName = entry.Name;
+                widthSemantic = entry.Semantic;
+                widthInterpolation = entry.Interpolation;
+                widthComponentCount = entry.ComponentCount;
+                widths = new float[entry.ElementCount * entry.ComponentCount];
+                for (int element = 0; element < entry.ElementCount; element++)
+                {
+                    for (int component = 0; component < entry.ComponentCount; component++)
+                    {
+                        widths[(element * entry.ComponentCount) + component] =
+                            entry.GetComponent(element, component);
+                    }
+                }
+            }
+
+            records[mesh.Path] = new CurveWidthRecord(
+                mesh.TopologyKind,
+                mesh.PointCount,
+                mesh.IndexCount,
+                mesh.TriangleCount,
+                points,
+                indices,
+                widthName,
+                widthSemantic,
+                widthInterpolation,
+                widthComponentCount,
+                widths);
+        }
+
+        return records;
+    }
+
+    private static ParityImage CaptureHdSilkCurveWidthScene(ISilkGraphicsDevice device) =>
+        CaptureHdSilkSceneOnDevice(device, "parity-curve-width-interpolation.usda");
+
+    private static ParityImage CaptureHdSilkSceneOnDevice(
+        ISilkGraphicsDevice device,
+        string sceneFileName)
+    {
+        PrependHdSilkNativeSearchPath();
+        string stagePath = ResolveParityAsset(sceneFileName);
+        string pluginPath = ResolvePluginPath();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+        using OpenUsdSilkPage page = session.Sync(Width, Height, TimeCode, CameraState.Default);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            checked((uint)Width),
+            checked((uint)Height),
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(
+            checked((uint)Width),
+            checked((uint)Height)));
+        using var renderer = new SilkMeshRenderer(device);
+        _ = renderer.ApplyAndRender(
+            page,
+            color,
+            depth,
+            new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1));
+        byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+        color.ReadbackForTesting(pixels);
+        return new ParityImage(Width, Height, pixels);
+    }
+
+    private static int CountCoveredPixels(ParityImage image)
+    {
+        int covered = 0;
+        ReadOnlySpan<byte> pixels = image.Rgba.Span;
+        for (int offset = 0; offset < pixels.Length; offset += ParityImage.BytesPerPixel)
+        {
+            if (BinaryPrimitives.ReadUInt32BigEndian(pixels.Slice(offset, ParityImage.BytesPerPixel)) !=
+                CurveWidthBackgroundRgba)
+            {
+                covered++;
+            }
+        }
+
+        return covered;
+    }
+
+    /// <summary>
+    /// Counts covered pixels per screen quadrant, ordered bottom-left, bottom-right, top-left,
+    /// top-right. The curve width scene puts one width interpolation in each quadrant, so equal
+    /// counts are what proves the authored widths never reached the rasterizer.
+    /// </summary>
+    private static int[] CountQuadrantPixels(ParityImage image)
+    {
+        int[] quadrants = new int[4];
+        ReadOnlySpan<byte> pixels = image.Rgba.Span;
+        for (int y = 0; y < image.Height; y++)
+        {
+            for (int x = 0; x < image.Width; x++)
+            {
+                int offset = ((y * image.Width) + x) * ParityImage.BytesPerPixel;
+                if (BinaryPrimitives.ReadUInt32BigEndian(pixels.Slice(offset, ParityImage.BytesPerPixel)) ==
+                    CurveWidthBackgroundRgba)
+                {
+                    continue;
+                }
+
+                int quadrant = (x < image.Width / 2 ? 0 : 1) + (y < image.Height / 2 ? 0 : 2);
+                quadrants[quadrant]++;
+            }
+        }
+
+        return quadrants;
+    }
+
 
     [SupportedOSPlatform("windows")]
     private static ParityImage CaptureHdSilkDrawModeD3D12(RenderDrawMode drawMode)
@@ -3543,7 +4954,8 @@ def Xform "World"
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         var bytes = new byte[
-            32 + pathBytes.Length + GetScalarByteCount(scalars) + (2 * sizeof(uint))];
+            32 + pathBytes.Length + GetScalarByteCount(scalars) + (2 * sizeof(uint)) +
+            UvTransformByteCount];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(path));
@@ -3558,6 +4970,7 @@ def Xform "World"
         }
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + sizeof(uint)), 0);
+        WriteUvTransform(bytes.AsSpan(offset + (2 * sizeof(uint))), IdentityUvTransform);
         return bytes;
     }
 
@@ -3622,7 +5035,14 @@ def Xform "World"
     private static byte[] CreateTexturedMaterialCommand(
         string path,
         ReadOnlySpan<MaterialTextureSpec> textures,
-        ReadOnlySpan<MaterialScalarSpec> scalars)
+        ReadOnlySpan<MaterialScalarSpec> scalars) =>
+        CreateTexturedMaterialCommand(path, textures, scalars, IdentityUvTransform);
+
+    private static byte[] CreateTexturedMaterialCommand(
+        string path,
+        ReadOnlySpan<MaterialTextureSpec> textures,
+        ReadOnlySpan<MaterialScalarSpec> scalars,
+        ReadOnlySpan<float> uvTransform)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         int textureByteCount = 0;
@@ -3630,13 +5050,13 @@ def Xform "World"
         {
             textureByteCount = checked(
                 textureByteCount +
-                80 +
+                88 +
                 Encoding.UTF8.GetByteCount(texture.Asset) +
                 Encoding.UTF8.GetByteCount(texture.UvPrimvar));
         }
         var bytes = new byte[
             32 + pathBytes.Length + GetScalarByteCount(scalars) +
-            textureByteCount + (2 * sizeof(uint))];
+            textureByteCount + (2 * sizeof(uint)) + UvTransformByteCount];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(path));
@@ -3669,14 +5089,36 @@ def Xform "World"
             BinaryPrimitives.WriteUInt32LittleEndian(
                 bytes.AsSpan(offset + 76),
                 (uint)texture.Channel);
-            assetBytes.CopyTo(bytes.AsSpan(offset + 80));
-            uvBytes.CopyTo(bytes.AsSpan(offset + 80 + assetBytes.Length));
-            offset += 80 + assetBytes.Length + uvBytes.Length;
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(offset + 80),
+                (uint)texture.CompositeOperator);
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(offset + 84),
+                texture.CompositeFactor);
+            assetBytes.CopyTo(bytes.AsSpan(offset + 88));
+            uvBytes.CopyTo(bytes.AsSpan(offset + 88 + assetBytes.Length));
+            offset += 88 + assetBytes.Length + uvBytes.Length;
         }
         int generatedOffset = offset;
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset + sizeof(uint)), 0);
+        WriteUvTransform(bytes.AsSpan(generatedOffset + (2 * sizeof(uint))), uvTransform);
         return bytes;
+    }
+
+    /// <summary>The affine hdSilk publishes when no MaterialX place2d was folded.</summary>
+    private static ReadOnlySpan<float> IdentityUvTransform => [1f, 0f, 0f, 1f, 0f, 0f];
+
+    private const int UvTransformByteCount = 6 * sizeof(float);
+
+    private static void WriteUvTransform(Span<byte> bytes, ReadOnlySpan<float> uvTransform)
+    {
+        for (int index = 0; index < 6; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes[(index * sizeof(float))..],
+                uvTransform[index]);
+        }
     }
 
     private static void WriteVector4(Span<byte> bytes, ReadOnlySpan<float> values)
@@ -4860,6 +6302,15 @@ def Xform "World"
         // why ribbon tessellation was measured and rejected in favour of line
         // topology; see "Ribbon tessellation was tried and measured" in
         // docs/testing.md.
+        //
+        // parity-curve-width-interpolation.usda is likewise not a registered
+        // parity scene. Because Storm ignores authored widths at this
+        // refinement, its four width interpolations are indistinguishable to a
+        // coverage comparison against Storm, so a Storm gate could not tell a
+        // correct render from one that dropped three of the four prims. It is
+        // gated instead by the page-level and cross-backend tests above, which
+        // assert the published prim count and the resolved per-vertex widths
+        // directly.
     }
 
     private static bool IsMesaWglParityRuntime() =>
@@ -5005,6 +6456,7 @@ def Xform "World"
             "test-assets\\parity\\parity-cards-draw-mode.usda",
             "test-assets\\parity\\parity-bounds-draw-mode.usda",
             "test-assets\\parity\\parity-origin-draw-mode.usda",
+            "test-assets\\parity\\parity-curve-width-interpolation.usda",
             "test-assets\\parity\\parity-light-distant-exposure.usda",
             "test-assets\\parity\\parity-light-distant-exposure-double.usda",
             "test-assets\\parity\\parity-light-distant-specular.usda",

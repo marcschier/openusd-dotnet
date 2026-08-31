@@ -8,13 +8,17 @@
 #include "pxr/base/gf/vec3d.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/vec4f.h"
+#include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/vt/array.h"
 #include "pxr/imaging/hd/changeTracker.h"
 #include "pxr/imaging/hd/renderIndex.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
 #include "pxr/imaging/hd/tokens.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <limits>
+#include <stdexcept>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -156,8 +160,8 @@ HdSilkInstancer::_SyncPrimvars(HdSceneDelegate* delegate, HdDirtyBits dirtyBits)
     }
 }
 
-VtMatrix4dArray
-HdSilkInstancer::ComputeInstanceTransforms(SdfPath const& prototypeId)
+std::vector<HdSilkInstanceSample>
+HdSilkInstancer::ComputeInstanceSamples(SdfPath const& prototypeId)
 {
     std::unordered_map<TfToken, VtValue, TfToken::HashFunctor> primvars;
     {
@@ -180,10 +184,20 @@ HdSilkInstancer::ComputeInstanceTransforms(SdfPath const& prototypeId)
     const VtIntArray instanceIndices =
         GetDelegate()->GetInstanceIndices(GetId(), prototypeId);
 
-    VtMatrix4dArray transforms(instanceIndices.size());
+    std::vector<HdSilkInstanceSample> samples;
+    samples.reserve(instanceIndices.size());
     for (size_t i = 0; i < instanceIndices.size(); ++i)
     {
-        transforms[i] = instancerTransform;
+        // A negative index cannot address any instance primvar element, so it
+        // cannot be resolved into an instance at all.
+        if (instanceIndices[i] < 0)
+        {
+            continue;
+        }
+        HdSilkInstanceSample sample;
+        sample.transform = instancerTransform;
+        sample.index = static_cast<int64_t>(instanceIndices[i]);
+        samples.push_back(sample);
     }
 
     if (const VtValue* translations = FindPrimvar(
@@ -191,14 +205,17 @@ HdSilkInstancer::ComputeInstanceTransforms(SdfPath const& prototypeId)
             HdInstancerTokens->instanceTranslations,
             "translate"))
     {
-        for (size_t i = 0; i < instanceIndices.size(); ++i)
+        for (HdSilkInstanceSample& sample : samples)
         {
             GfVec3d translation;
-            if (SampleVector(*translations, instanceIndices[i], &translation))
+            if (SampleVector(
+                    *translations,
+                    static_cast<int>(sample.index),
+                    &translation))
             {
                 GfMatrix4d matrix(1.0);
                 matrix.SetTranslate(translation);
-                transforms[i] = matrix * transforms[i];
+                sample.transform = matrix * sample.transform;
             }
         }
     }
@@ -208,14 +225,17 @@ HdSilkInstancer::ComputeInstanceTransforms(SdfPath const& prototypeId)
             HdInstancerTokens->instanceRotations,
             "rotate"))
     {
-        for (size_t i = 0; i < instanceIndices.size(); ++i)
+        for (HdSilkInstanceSample& sample : samples)
         {
             GfQuatd rotation;
-            if (SampleRotation(*rotations, instanceIndices[i], &rotation))
+            if (SampleRotation(
+                    *rotations,
+                    static_cast<int>(sample.index),
+                    &rotation))
             {
                 GfMatrix4d matrix(1.0);
                 matrix.SetRotate(rotation);
-                transforms[i] = matrix * transforms[i];
+                sample.transform = matrix * sample.transform;
             }
         }
     }
@@ -225,14 +245,17 @@ HdSilkInstancer::ComputeInstanceTransforms(SdfPath const& prototypeId)
             HdInstancerTokens->instanceScales,
             "scale"))
     {
-        for (size_t i = 0; i < instanceIndices.size(); ++i)
+        for (HdSilkInstanceSample& sample : samples)
         {
             GfVec3d scale;
-            if (SampleVector(*scales, instanceIndices[i], &scale))
+            if (SampleVector(
+                    *scales,
+                    static_cast<int>(sample.index),
+                    &scale))
             {
                 GfMatrix4d matrix(1.0);
                 matrix.SetScale(scale);
-                transforms[i] = matrix * transforms[i];
+                sample.transform = matrix * sample.transform;
             }
         }
     }
@@ -242,46 +265,113 @@ HdSilkInstancer::ComputeInstanceTransforms(SdfPath const& prototypeId)
             HdInstancerTokens->instanceTransforms,
             "instanceTransform"))
     {
-        for (size_t i = 0; i < instanceIndices.size(); ++i)
+        for (HdSilkInstanceSample& sample : samples)
         {
             GfMatrix4d instanceTransform;
             if (SampleElement(
                     *instanceTransforms,
-                    instanceIndices[i],
+                    static_cast<int>(sample.index),
                     &instanceTransform))
             {
-                transforms[i] = instanceTransform * transforms[i];
+                sample.transform = instanceTransform * sample.transform;
             }
         }
     }
 
+    // Hydra does not promise an order for GetInstanceIndices, and the wire
+    // contract depends on ascending instance indices: the lowest index of a
+    // prototype carries the geometry payload every other record reuses.
+    std::sort(
+        samples.begin(),
+        samples.end(),
+        [](const HdSilkInstanceSample& left, const HdSilkInstanceSample& right)
+        {
+            return left.index < right.index;
+        });
+
     if (GetParentId().IsEmpty())
     {
-        return transforms;
+        return samples;
     }
 
     HdInstancer* parent =
         GetDelegate()->GetRenderIndex().GetInstancer(GetParentId());
     if (parent == nullptr)
     {
-        return transforms;
+        return samples;
     }
 
-    const VtMatrix4dArray parentTransforms =
-        static_cast<HdSilkInstancer*>(parent)->ComputeInstanceTransforms(
-            GetId());
-    VtMatrix4dArray nested(parentTransforms.size() * transforms.size());
-    for (size_t parentIndex = 0;
-         parentIndex < parentTransforms.size();
-         ++parentIndex)
+    const std::vector<HdSilkInstanceSample> parentSamples =
+        static_cast<HdSilkInstancer*>(parent)->ComputeInstanceSamples(GetId());
+
+    // The radix is this instancer's own instance count and nothing else. It
+    // must not be widened to fit the samples of the prototype being resolved:
+    // a per-prototype radix would give two prototypes of the same instancer two
+    // different index spaces, so the same nested instance would be numbered
+    // differently depending on which prototype asked, and adding or hiding an
+    // instance of one prototype would renumber the other. That is exactly the
+    // instability the authoritative index exists to avoid.
+    //
+    // If the authoritative count cannot explain an index this level published,
+    // the composition has no unique encoding to offer, so the sample is dropped
+    // with a diagnostic rather than silently folded into another instance's
+    // slot. A zero count -- an instancer that published no instance primvar
+    // array at all -- rejects every sample for the same reason.
+    const int64_t stride = _InstanceCount(primvars);
+
+    std::vector<HdSilkInstanceSample> composable;
+    composable.reserve(samples.size());
+    for (const HdSilkInstanceSample& sample : samples)
     {
-        for (size_t index = 0; index < transforms.size(); ++index)
+        if (sample.index >= stride)
         {
-            nested[(parentIndex * transforms.size()) + index] =
-                transforms[index] * parentTransforms[parentIndex];
+            TF_WARN(
+                "hdSilk dropped nested instance %lld of '%s': the instancer reports %lld instances, so the index has no unique nested encoding",
+                static_cast<long long>(sample.index),
+                GetId().GetText(),
+                static_cast<long long>(stride));
+            continue;
+        }
+        composable.push_back(sample);
+    }
+
+    std::vector<HdSilkInstanceSample> nested;
+    nested.reserve(parentSamples.size() * composable.size());
+    for (const HdSilkInstanceSample& parentSample : parentSamples)
+    {
+        for (const HdSilkInstanceSample& sample : composable)
+        {
+            constexpr int64_t maximum = std::numeric_limits<int64_t>::max();
+            if (parentSample.index > (maximum - sample.index) / stride)
+            {
+                throw std::overflow_error(
+                    "The hdSilk nested instance index overflows.");
+            }
+            HdSilkInstanceSample composed;
+            composed.transform = sample.transform * parentSample.transform;
+            composed.index = (parentSample.index * stride) + sample.index;
+            nested.push_back(composed);
         }
     }
     return nested;
+}
+
+int64_t
+HdSilkInstancer::_InstanceCount(
+    const std::unordered_map<TfToken, VtValue, TfToken::HashFunctor>& primvars)
+{
+    // Hydra publishes one element per instance in every instance primvar, so
+    // the longest array is this instancer's instance count.
+    int64_t count = 0;
+    for (const auto& entry : primvars)
+    {
+        if (!entry.second.IsArrayValued())
+        {
+            continue;
+        }
+        count = std::max(count, static_cast<int64_t>(entry.second.GetArraySize()));
+    }
+    return count;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

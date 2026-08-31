@@ -13,6 +13,12 @@ namespace OpenUsd.Rendering.Tests;
 /// </summary>
 public sealed class SilkMaterialCommandTests
 {
+    /// <summary>The affine hdSilk publishes when no place2d node was folded.</summary>
+    private static readonly float[] IdentityUvTransform = [1f, 0f, 0f, 1f, 0f, 0f];
+
+    /// <summary>A place2d fold that doubles the coordinate and shifts it.</summary>
+    private static readonly float[] PlacedUvTransform = [2f, 0f, 0f, 2f, -0.25f, 0.5f];
+
     [Test]
     public async Task ParsesScalarAndTextureParameters()
     {
@@ -299,6 +305,285 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(material.IsSupported).IsTrue();
         await Assert.That(material.GeneratedFragmentSpirV.ToArray()).IsEquivalentTo(spirv);
         await Assert.That(material.GeneratedFragmentMslSource.ToArray()).IsEquivalentTo(msl);
+    }
+
+    [Test]
+    public async Task RetainsTheTwoImageCompositeOperandAndItsOperator()
+    {
+        // A base colour driven by two images publishes two entries for one
+        // parameter: the primary and the composite operand the shader combines
+        // with it per pixel.
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/Composited",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "textures/first.png",
+                    UvPrimvar: "st"),
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 3,
+                    Scale: [0.5f, 0.5f, 0.5f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "textures/second.png",
+                    UvPrimvar: "st",
+                    CompositeOperator: SilkCompositeOperator.Mix,
+                    CompositeFactor: 0.25f),
+            ]);
+
+        SilkSceneState state = new();
+        _ = state.Apply(upsert, 1, 1);
+        SilkMaterialData material = state.Materials["/World/Materials/Composited"];
+
+        await Assert.That(material.Textures.Count).IsEqualTo(2);
+
+        // GetTexture must return the primary, not whichever entry it reaches
+        // first: the composite operand is the second half of one expression, and
+        // binding it into the primary slot would sample the wrong image.
+        SilkMaterialTexture primary =
+            material.GetTexture(SilkMaterialParameter.DiffuseColor)!;
+        await Assert.That(primary.Asset).IsEqualTo("textures/first.png");
+        await Assert.That(primary.CompositeOperator)
+            .IsEqualTo(SilkCompositeOperator.None);
+
+        SilkMaterialTexture composite = material.GetCompositeTexture()!;
+        await Assert.That(composite.Asset).IsEqualTo("textures/second.png");
+        await Assert.That(composite.CompositeOperator)
+            .IsEqualTo(SilkCompositeOperator.Mix);
+        await Assert.That(composite.CompositeFactor).IsEqualTo(0.25f);
+        await Assert.That(composite.Parameter)
+            .IsEqualTo(SilkMaterialParameter.DiffuseColor);
+
+        // Each operand keeps its own folded affine, which is the whole reason two
+        // entries exist rather than one entry and a constant.
+        await Assert.That(primary.Scale[0]).IsEqualTo(1f);
+        await Assert.That(composite.Scale[0]).IsEqualTo(0.5f);
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+
+        // The target is written as the same texture-mask bit the slot uses, so the
+        // shader compares one value instead of mapping a second identifier space.
+        await Assert.That(ReadSingle(constants, 176))
+            .IsEqualTo((float)(uint)SilkShaderFeatures.BaseColorMap);
+        await Assert.That(ReadSingle(constants, 180))
+            .IsEqualTo((float)(uint)SilkCompositeOperator.Mix);
+        await Assert.That(ReadSingle(constants, 184)).IsEqualTo(0.25f);
+    }
+
+    [Test]
+    public async Task CompositeOperandCarriesItsOwnUdimBitRatherThanTheDrivenSlots()
+    {
+        // The two operands of one surface input are independent assets, and either
+        // may be a UDIM set on its own. Reusing the driven slot's UDIM bit sampled
+        // a plain image through the atlas path -- which reads its first texel as
+        // tile metadata and returns one flat colour -- or sampled an atlas with raw
+        // coordinates. The primary here is plain and the composite is a UDIM set,
+        // which is exactly the case a shared bit gets wrong.
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/UdimComposite",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "textures/plain.png",
+                    UvPrimvar: "st"),
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "textures/tiles.<UDIM>.png",
+                    UvPrimvar: "st",
+                    CompositeOperator: SilkCompositeOperator.Multiply),
+            ]);
+
+        SilkMaterialData material = CopyMaterial(upsert);
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+
+        // The slot's own UDIM mask stays clear, because the primary is not a UDIM
+        // set, and the composite's bit is carried separately in compositeControls.w.
+        float udimMask = ReadSingle(constants, 132);
+        await Assert.That((uint)udimMask & (uint)SilkShaderFeatures.BaseColorMap).IsEqualTo(0u);
+        await Assert.That(ReadSingle(constants, 188)).IsEqualTo(1f);
+    }
+
+    [Test]
+    public async Task UncompositedMaterialsTargetNoTextureSlot()
+    {
+        // Zero matches no slot bit, so the shader's composite hook is inert for
+        // every material that binds no second image. Without this the hook would
+        // have to be permutation-gated, which is exactly what the single
+        // universal slot exists to avoid.
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Plain",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [(SilkMaterialParameter.Roughness, [0.25f])],
+            textures: []));
+
+        await Assert.That(material.GetCompositeTexture()).IsNull();
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+        await Assert.That(ReadSingle(constants, 176)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 180)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 184)).IsEqualTo(0f);
+    }
+
+    [Test]
+    public async Task RejectsAMaterialUpsertWithATruncatedCompositeOperand()
+    {
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/Truncated",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "textures/first.png",
+                    UvPrimvar: "st"),
+            ]);
+        // Removing the trailing composite floats of the one texture entry leaves a
+        // page a stale native library could plausibly produce.
+        byte[] truncated = upsert[..^sizeof(float)];
+        BinaryPrimitives.WriteUInt32LittleEndian(truncated.AsSpan(4), (uint)truncated.Length);
+
+        SilkSceneState state = new();
+        await Assert.That(() => state.Apply(truncated, 1, 1))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task RetainsTheFoldedMaterialXUvTransform()
+    {
+        // A place2d that halves the scale and offsets by a quarter, folded by
+        // hdSilk into the affine the shader applies once per fragment.
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/Placed",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.DiffuseColor,
+                    SilkTextureWrap.Repeat,
+                    SilkTextureWrap.Repeat,
+                    SilkColorSpace.Srgb,
+                    ComponentCount: 3,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "textures/placed.png",
+                    UvPrimvar: "st"),
+            ],
+            uvTransform: PlacedUvTransform);
+
+        SilkSceneState state = new();
+        _ = state.Apply(upsert, 1, 1);
+
+        SilkMaterialData material = state.Materials["/World/Materials/Placed"];
+        await Assert.That(material.UvTransform.ToArray())
+            .IsEquivalentTo(PlacedUvTransform);
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+
+        // Row 0 is (m00, m01, tx, 0) and row 1 is (m10, m11, ty, 0), which is the
+        // packing the mesh fragment shader reads before any texture sample.
+        await Assert.That(ReadSingle(constants, 144)).IsEqualTo(2f);
+        await Assert.That(ReadSingle(constants, 148)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 152)).IsEqualTo(-0.25f);
+        await Assert.That(ReadSingle(constants, 160)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 164)).IsEqualTo(2f);
+        await Assert.That(ReadSingle(constants, 168)).IsEqualTo(0.5f);
+    }
+
+    [Test]
+    public async Task WritesTheIdentityUvTransformForAnUntransformedMaterial()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Plain",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [(SilkMaterialParameter.Roughness, [0.25f])],
+            textures: []));
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+
+        await Assert.That(material.UvTransform.ToArray())
+            .IsEquivalentTo(IdentityUvTransform);
+        await Assert.That(ReadSingle(constants, 144)).IsEqualTo(1f);
+        await Assert.That(ReadSingle(constants, 148)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 152)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 160)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 164)).IsEqualTo(1f);
+        await Assert.That(ReadSingle(constants, 168)).IsEqualTo(0f);
+    }
+
+    [Test]
+    public async Task UnshadedMaterialsKeepTheIdentityUvTransform()
+    {
+        // The shared default block a mesh with no supported material bound uses
+        // must not rotate or scale texture coordinates that nothing authored.
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(null, RenderHeadlight.Deterministic, constants);
+
+        await Assert.That(ReadSingle(constants, 144)).IsEqualTo(1f);
+        await Assert.That(ReadSingle(constants, 164)).IsEqualTo(1f);
+        await Assert.That(ReadSingle(constants, 152)).IsEqualTo(0f);
+        await Assert.That(ReadSingle(constants, 168)).IsEqualTo(0f);
+    }
+
+    [Test]
+    public async Task RejectsAMaterialUpsertWithATruncatedUvTransform()
+    {
+        byte[] upsert = CreateMaterialUpsert(
+            "/World/Materials/Truncated",
+            SilkSurfaceKind.MaterialXProjected,
+            scalars: [],
+            textures: []);
+        byte[] truncated = upsert[..^sizeof(float)];
+        BinaryPrimitives.WriteUInt32LittleEndian(truncated.AsSpan(4), (uint)truncated.Length);
+
+        SilkSceneState state = new();
+        await Assert.That(() => state.Apply(truncated, 1, 1))
+            .Throws<InvalidDataException>();
     }
 
     [Test]
@@ -1430,6 +1715,62 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    public async Task SampledVolumeDepthIsWrittenAndTheExactIntegrationLimitIsEnforced()
+    {
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/Volume",
+            SilkSurfaceKind.VolumeDensity,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.VolumeDensity,
+                    SilkTextureWrap.Clamp,
+                    SilkTextureWrap.Clamp,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 1,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "density.raw",
+                    UvPrimvar: "4,4,96"),
+            ]));
+
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(
+            material,
+            RenderHeadlight.Deterministic,
+            constants,
+            supportsVolumeTextures: true);
+        await Assert.That(ReadSingle(constants, 136)).IsEqualTo(96f);
+
+        SilkMaterialData tooDeep = CopyMaterial(CreateMaterialUpsert(
+            "/World/Materials/TooDeep",
+            SilkSurfaceKind.VolumeDensity,
+            scalars: [],
+            textures:
+            [
+                new TextureSpec(
+                    SilkMaterialParameter.VolumeDensity,
+                    SilkTextureWrap.Clamp,
+                    SilkTextureWrap.Clamp,
+                    SilkColorSpace.Raw,
+                    ComponentCount: 1,
+                    Scale: [1f, 1f, 1f, 1f],
+                    Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f],
+                    Asset: "density.raw",
+                    UvPrimvar: "4,4,513"),
+            ]));
+
+        await Assert.That(() => SilkSurfaceUniformWriter.Write(
+            tooDeep,
+            RenderHeadlight.Deterministic,
+            constants,
+            supportsVolumeTextures: true)).Throws<InvalidDataException>();
+    }
+
+    [Test]
     public async Task ScalarTextureChannelsSwizzleIntoEveryComponentOfTheUpload()
     {
         // One multichannel image, four inputs, four different output channels. The
@@ -1734,7 +2075,9 @@ public sealed class SilkMaterialCommandTests
         float[] Fallback,
         string Asset,
         string UvPrimvar,
-        SilkTextureChannel? Channel = null)
+        SilkTextureChannel? Channel = null,
+        SilkCompositeOperator CompositeOperator = SilkCompositeOperator.None,
+        float CompositeFactor = 0f)
     {
         /// <summary>
         /// The channel a page must carry for this entry. Defaulted from the consumed
@@ -1752,7 +2095,8 @@ public sealed class SilkMaterialCommandTests
         (SilkMaterialParameter Parameter, float[] Values)[] scalars,
         TextureSpec[] textures,
         byte[]? generatedFragmentSpirV = null,
-        byte[]? generatedFragmentMslSource = null)
+        byte[]? generatedFragmentMslSource = null,
+        float[]? uvTransform = null)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         List<byte> payload = [];
@@ -1797,6 +2141,8 @@ public sealed class SilkMaterialCommandTests
                 payload.AddRange(BitConverter.GetBytes(value));
             }
             payload.AddRange(BitConverter.GetBytes((uint)texture.ResolvedChannel));
+            payload.AddRange(BitConverter.GetBytes((uint)texture.CompositeOperator));
+            payload.AddRange(BitConverter.GetBytes(texture.CompositeFactor));
             payload.AddRange(assetBytes);
             payload.AddRange(uvBytes);
         }
@@ -1807,6 +2153,11 @@ public sealed class SilkMaterialCommandTests
         generatedFragmentMslSource ??= [];
         payload.AddRange(BitConverter.GetBytes((uint)generatedFragmentMslSource.Length));
         payload.AddRange(generatedFragmentMslSource);
+        uvTransform ??= [1f, 0f, 0f, 1f, 0f, 0f];
+        foreach (float element in uvTransform)
+        {
+            payload.AddRange(BitConverter.GetBytes(element));
+        }
 
         return CreateCommand(4, payload);
     }

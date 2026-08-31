@@ -622,6 +622,16 @@ HdSilkMesh::Sync(
         _triangleIndices.reserve(triangleIndices.size() * 3);
         _triangleSubprims.clear();
         _triangleSubprims.reserve(primitiveParams.size());
+        // Authored winding is HdMeshUtil's job, not this delegate's. USD's
+        // "orientation" makes rightHanded faces counter-clockwise seen from the
+        // front and leftHanded clockwise, and ComputeTriangleIndices already
+        // emits a leftHanded face with its corners reversed, so the triangles
+        // that arrive here are always wound counter-clockwise-front. Every
+        // backend hdSilk targets rasterizes with counter-clockwise front faces,
+        // so the wire needs no orientation flag and no correction here.
+        // Reversing them again would invert facing for exactly the prims USD
+        // already handled, which is measured by the orientation case in
+        // hdsilk_probe.
         for (size_t triangleIndex = 0;
              triangleIndex < triangleIndices.size();
              ++triangleIndex)
@@ -762,6 +772,24 @@ HdSilkMesh::Sync(
         displayColorDirty || normalsDirty || primvarsDirty || instancerDirty ||
         materialDirty || cullDirty)
     {
+        // An empty mesh is retired rather than published. A record with no
+        // points and no indices is byte-identical on the wire to an ABI v8
+        // instance reference, so publishing one as a point-instanced prototype
+        // would make the payload record itself look like a record that reuses
+        // a payload, and every instance of the path would be unresolvable.
+        // Points and basisCurves already refuse to publish empty geometry.
+        if (_points.empty() || _triangleIndices.empty())
+        {
+            TF_WARN(
+                "hdSilk skipped mesh '%s': empty points or triangle indices",
+                id.GetText());
+            static_cast<HdSilkRenderParam*>(renderParam)
+                ->GetSceneState()
+                .RemoveMesh(id.GetString());
+            *dirtyBits = HdChangeTracker::Clean;
+            return;
+        }
+
         HdSilkMeshRecord record;
         record.path = id.GetString();
         record.primId = GetPrimId();
@@ -880,6 +908,9 @@ HdSilkMesh::_RefreshAttributes(HdSceneDelegate* sceneDelegate, SdfPath const& id
                 {
                     continue;
                 }
+                // Face-varying data is one element per triangulated corner in
+                // HdMeshUtil's order, which already reflects the authored
+                // orientation, so it lines up with _triangleIndices as-is.
                 _attributesRequireExpandedTopology = true;
             }
             else
@@ -993,9 +1024,10 @@ HdSilkMesh::_BuildInstanceRecords(
         return records;
     }
 
-    // ABI v8 carries prototype geometry once. Instance zero remains the full
-    // prototype record; later records retain only per-instance identity and
-    // transform and let consumers reuse instance zero's geometry and material.
+    // ABI v8 carries prototype geometry once. The lowest published instance
+    // index of a prototype remains the full prototype record; later records
+    // retain only per-instance identity and transform and let consumers reuse
+    // that record's geometry and material.
     HdInstancer* instancer =
         sceneDelegate->GetRenderIndex().GetInstancer(instancerId);
     if (instancer == nullptr)
@@ -1003,31 +1035,38 @@ HdSilkMesh::_BuildInstanceRecords(
         return {};
     }
 
-    const VtMatrix4dArray instanceTransforms =
-        static_cast<HdSilkInstancer*>(instancer)->ComputeInstanceTransforms(
+    // The published index is the instance's own index inside the instancer,
+    // not its position in the resolved array. Those differ whenever the
+    // instancer has several prototypes, whenever proto indices vary, and
+    // whenever invisibleIds removes an instance, and only the former survives
+    // those edits as a stable identity that USD can decode back to a scene
+    // instance.
+    const std::vector<HdSilkInstanceSample> samples =
+        static_cast<HdSilkInstancer*>(instancer)->ComputeInstanceSamples(
             GetId());
-    if (instanceTransforms.size() >
-        static_cast<size_t>(std::numeric_limits<int32_t>::max()))
-    {
-        throw std::overflow_error(
-            "The hdSilk instance count exceeds the 32-bit instance index.");
-    }
 
     const int32_t instanceId = HdSilkStableInstanceId(instancerId.GetString());
     std::vector<HdSilkMeshRecord> records;
-    records.reserve(instanceTransforms.size());
-    for (size_t index = 0; index < instanceTransforms.size(); ++index)
+    records.reserve(samples.size());
+    for (size_t position = 0; position < samples.size(); ++position)
     {
+        const HdSilkInstanceSample& sample = samples[position];
+        if (sample.index > static_cast<int64_t>(
+                std::numeric_limits<int32_t>::max()))
+        {
+            throw std::overflow_error(
+                "The hdSilk instance index exceeds the 32-bit instance index.");
+        }
         HdSilkMeshRecord instanceRecord = record;
         instanceRecord.instanceId = instanceId;
-        instanceRecord.instanceIndex = static_cast<int32_t>(index);
+        instanceRecord.instanceIndex = static_cast<int32_t>(sample.index);
         // The prototype's own transform applies first, then the instance
         // transform carries it into world space. USD composes row vectors, so
         // that is "_transform * instance", matching hdEmbree.
         HdSilkFlattenMatrix(
-            _transform * instanceTransforms[index],
+            _transform * sample.transform,
             instanceRecord.transform);
-        if (index != 0)
+        if (position != 0)
         {
             instanceRecord.points.clear();
             instanceRecord.indices.clear();

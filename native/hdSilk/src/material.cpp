@@ -20,6 +20,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -37,6 +38,10 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((MtlxSurfaceUnlit, "ND_surface_unlit"))
     ((MtlxNormalMap, "ND_normalmap"))
     ((MtlxPlace2d, "ND_place2d_vector2"))
+    ((MtlxGeomPropValue2, "ND_geompropvalue_vector2"))
+    ((MtlxTexCoord2, "ND_texcoord_vector2"))
+    ((UsdTransform2d, "UsdTransform2d"))
+    ((UsdPrimvarReaderFloat2, "UsdPrimvarReader_float2"))
     ((diffuseColor, "diffuseColor"))
     ((base_color, "base_color"))
     ((emissiveColor, "emissiveColor"))
@@ -62,6 +67,8 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((geomprop, "geomprop"))
     ((pivot, "pivot"))
     ((rotate, "rotate"))
+    ((rotation, "rotation"))
+    ((translation, "translation"))
     ((offset, "offset"))
     ((operationorder, "operationorder"))
     ((in, "in"))
@@ -72,8 +79,13 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((bg, "bg"))
     ((fg, "fg"))
     ((mix, "mix"))
+    ((value, "value"))
+    ((index, "index"))
     ((wrapS, "wrapS"))
     ((wrapT, "wrapT"))
+    ((uaddressmode, "uaddressmode"))
+    ((vaddressmode, "vaddressmode"))
+    ((defaultValue, "default"))
     ((scale, "scale"))
     ((bias, "bias"))
     ((fallback, "fallback"))
@@ -81,6 +93,8 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((clamp, "clamp"))
     ((repeat, "repeat"))
     ((mirror, "mirror"))
+    ((constant, "constant"))
+    ((periodic, "periodic"))
     ((raw, "raw"))
     ((sRGB, "sRGB"))
     ((r, "r"))
@@ -193,13 +207,19 @@ uint32_t _ReadFloats(const VtValue& value, float (&out)[4])
     return 0;
 }
 
+/// Reads one UsdUVTexture wrap token onto the wire enum.
+///
+/// OPENUSD_SILK_WRAP_BLACK is the value for `black` and for the unauthored
+/// `useMetadata`. It records the authored intent; the current renderer resolves
+/// it to clamp-to-edge, because the wire carries no border colour to hand a
+/// backend. See OPENUSD_SILK_WRAP_BLACK in openusd_hdsilk.h.
 uint32_t _ReadWrap(const std::map<TfToken, VtValue>& parameters, const TfToken& name)
 {
     const auto entry = parameters.find(name);
     if (entry == parameters.end() || !entry->second.IsHolding<TfToken>())
     {
-        // UsdUVTexture leaves wrap at useMetadata, whose practical fallback in
-        // the absence of texture metadata is black.
+        // UsdUVTexture leaves wrap at useMetadata, and this delegate reads no
+        // texture metadata, so the documented fallback is the black mode.
         return OPENUSD_SILK_WRAP_BLACK;
     }
     const TfToken wrap = entry->second.UncheckedGet<TfToken>();
@@ -216,6 +236,87 @@ uint32_t _ReadWrap(const std::map<TfToken, VtValue>& parameters, const TfToken& 
         return OPENUSD_SILK_WRAP_MIRROR;
     }
     return OPENUSD_SILK_WRAP_BLACK;
+}
+
+/// Reads a string-valued MaterialX parameter. usdMtlx carries MaterialX
+/// `string` inputs as either std::string or TfToken depending on how the layer
+/// was authored, so both are accepted rather than one being silently ignored.
+bool _TryReadStringParameter(
+    const std::map<TfToken, VtValue>& parameters,
+    const TfToken& name,
+    std::string* out)
+{
+    const auto entry = parameters.find(name);
+    if (entry == parameters.end())
+    {
+        return false;
+    }
+    if (entry->second.IsHolding<TfToken>())
+    {
+        *out = entry->second.UncheckedGet<TfToken>().GetString();
+        return true;
+    }
+    if (entry->second.IsHolding<std::string>())
+    {
+        *out = entry->second.UncheckedGet<std::string>();
+        return true;
+    }
+    return false;
+}
+
+/// Maps one MaterialX `uaddressmode`/`vaddressmode` value onto the wire wrap
+/// enum.
+///
+/// The MaterialX default is `periodic`, not the `black` that UsdUVTexture's
+/// unauthored `wrap` resolves to, so an image node with no authored address
+/// mode tiles. Reading the UsdUVTexture token names here instead published
+/// `black` for every MaterialX image, which clamped a tiled texture to its edge
+/// row of texels.
+///
+/// `constant` is carried as OPENUSD_SILK_WRAP_BLACK, and that is an
+/// approximation rather than an exact transport. MaterialX returns the node's
+/// `default` value outside the unit range; the wire carries no border colour and
+/// the current renderer resolves the black mode to clamp-to-edge, so an authored
+/// `constant` renders the edge texel instead. It is still the right value to
+/// publish: it is the only mode that records "the author did not ask for
+/// periodic or mirrored addressing", which is what a consumer implementing
+/// border sampling would need. Anything else is reported so the caller can
+/// refuse the entry rather than tile a texture the graph asked to clamp.
+bool _TryReadMaterialXAddressMode(
+    const std::map<TfToken, VtValue>& parameters,
+    const TfToken& name,
+    uint32_t* wrap,
+    std::string* unsupportedValue)
+{
+    std::string mode;
+    if (!_TryReadStringParameter(parameters, name, &mode) || mode.empty())
+    {
+        // MaterialX defaults both address modes to periodic.
+        *wrap = OPENUSD_SILK_WRAP_REPEAT;
+        return true;
+    }
+    if (mode == _tokens->periodic.GetString())
+    {
+        *wrap = OPENUSD_SILK_WRAP_REPEAT;
+        return true;
+    }
+    if (mode == _tokens->clamp.GetString())
+    {
+        *wrap = OPENUSD_SILK_WRAP_CLAMP;
+        return true;
+    }
+    if (mode == _tokens->mirror.GetString())
+    {
+        *wrap = OPENUSD_SILK_WRAP_MIRROR;
+        return true;
+    }
+    if (mode == _tokens->constant.GetString())
+    {
+        *wrap = OPENUSD_SILK_WRAP_BLACK;
+        return true;
+    }
+    *unsupportedValue = mode;
+    return false;
 }
 
 uint32_t _ReadColorSpace(const std::map<TfToken, VtValue>& parameters)
@@ -281,18 +382,6 @@ const HdMaterialRelationship* _FindInputConnection(
         }
     }
     return nullptr;
-}
-
-const HdMaterialNode* _FindInputNode(
-    const HdMaterialNetwork& network,
-    const SdfPath& nodePath,
-    const TfToken& inputName)
-{
-    const HdMaterialRelationship* relationship =
-        _FindInputConnection(network, nodePath, inputName);
-    return relationship == nullptr
-        ? nullptr
-        : _FindNode(network, relationship->inputId);
 }
 
 bool _IsMaterialXImage(const HdMaterialNode& node)
@@ -470,9 +559,6 @@ bool _ReadParameterFloats(
     return true;
 }
 
-/// The identity affine, stored row-major as (m00, m01, m10, m11, tx, ty).
-const float _identityUvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
-
 /// How a texture reads its coordinates: which primvar supplies them and the
 /// constant affine applied to them. `supported` is false when the graph does
 /// state a UV transform but one this projection cannot fold, which the caller
@@ -485,11 +571,32 @@ struct _UvBinding
     std::string unsupportedReason;
 };
 
+/// Whether two folded UV affines are the same transform.
+///
+/// Comparison is tolerant rather than exact because these values are *computed*,
+/// not copied: a quarter turn folds through std::sin/std::cos and a chain folds
+/// through a matrix product, so two nodes that state the same transform by
+/// different routes differ in the last bits. Exact equality made
+/// `_ReconcileUvBindings` drop a texture whose transform agreed with the
+/// material's to within a rounding step -- a 360-degree rotation whose cosine is
+/// 0.99999994 is the same transform as the identity, and was treated as a
+/// divergent one. The tolerance is relative for the linear terms so a large
+/// scale is not held to an absolute epsilon it can never meet.
 bool _UvTransformsEqual(const float (&left)[6], const float (&right)[6])
 {
+    constexpr float absoluteTolerance = 1e-6f;
+    constexpr float relativeTolerance = 1e-6f;
     for (size_t index = 0; index < 6; ++index)
     {
-        if (left[index] != right[index])
+        if (!std::isfinite(left[index]) || !std::isfinite(right[index]))
+        {
+            return false;
+        }
+        const float magnitude =
+            std::max(std::fabs(left[index]), std::fabs(right[index]));
+        const float tolerance =
+            std::max(absoluteTolerance, relativeTolerance * magnitude);
+        if (std::fabs(left[index] - right[index]) > tolerance)
         {
             return false;
         }
@@ -497,15 +604,10 @@ bool _UvTransformsEqual(const float (&left)[6], const float (&right)[6])
     return true;
 }
 
-bool _IsIdentityUvTransform(const float (&transform)[6])
-{
-    return _UvTransformsEqual(transform, _identityUvTransform);
-}
-
-/// Reads one constant place2d input. A connected input is rejected rather than
-/// read from the node's authored fallback, because that fallback is not what the
-/// graph asks to be rendered.
-bool _ReadPlace2dInput(
+/// Reads one constant UV transform input. A connected input is rejected rather
+/// than read from the node's authored fallback, because that fallback is not
+/// what the graph asks to be rendered.
+bool _ReadConstantTransformInput(
     const HdMaterialNetwork& network,
     const HdMaterialNode& node,
     const TfToken& name,
@@ -547,18 +649,19 @@ bool _TryFoldPlace2d(
     float rotate[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     float offset[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     float order[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    if (!_ReadPlace2dInput(network, node, _tokens->pivot, 2, zero, pivot) ||
-        !_ReadPlace2dInput(network, node, _tokens->scale, 2, one, scale) ||
-        !_ReadPlace2dInput(network, node, _tokens->rotate, 1, zero, rotate) ||
-        !_ReadPlace2dInput(network, node, _tokens->offset, 2, zero, offset) ||
-        !_ReadPlace2dInput(network, node, _tokens->operationorder, 1, zero, order))
+    if (!_ReadConstantTransformInput(network, node, _tokens->pivot, 2, zero, pivot) ||
+        !_ReadConstantTransformInput(network, node, _tokens->scale, 2, one, scale) ||
+        !_ReadConstantTransformInput(network, node, _tokens->rotate, 1, zero, rotate) ||
+        !_ReadConstantTransformInput(network, node, _tokens->offset, 2, zero, offset) ||
+        !_ReadConstantTransformInput(
+            network, node, _tokens->operationorder, 1, zero, order))
     {
-        *reason = "one of its inputs is connected rather than constant";
+        *reason = "one of its place2d inputs is connected rather than constant";
         return false;
     }
     if (scale[0] == 0.0f || scale[1] == 0.0f)
     {
-        *reason = "its scale has a zero component";
+        *reason = "its place2d scale has a zero component";
         return false;
     }
     if (order[0] != 0.0f && order[0] != 1.0f)
@@ -611,54 +714,230 @@ bool _TryFoldPlace2d(
     return true;
 }
 
-/// Resolves how one texture reads its coordinates, following the texcoord/st
-/// connection through an optional MaterialX place2d node to the coordinate node
-/// that names the primvar.
+/// Folds a UsdPreviewSurface UsdTransform2d node with constant inputs into one
+/// affine.
+///
+/// UsdPreviewSurface defines the node as translation + rotate(rotation) applied
+/// to (scale * in), with rotation counter-clockwise in degrees. That is the
+/// opposite rotation sense to MaterialX rotate2d, so the two nodes are folded
+/// separately rather than sharing one matrix builder.
+bool _TryFoldTransform2d(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& node,
+    float (&out)[6],
+    std::string* reason)
+{
+    const float zero[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    const float one[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    float rotation[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float scale[4] = {1.0f, 1.0f, 0.0f, 0.0f};
+    float translation[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (!_ReadConstantTransformInput(
+            network, node, _tokens->rotation, 1, zero, rotation) ||
+        !_ReadConstantTransformInput(network, node, _tokens->scale, 2, one, scale) ||
+        !_ReadConstantTransformInput(
+            network, node, _tokens->translation, 2, zero, translation))
+    {
+        *reason = "one of its UsdTransform2d inputs is connected rather than constant";
+        return false;
+    }
+
+    const float radians = rotation[0] * 0.01745329251994329577f;
+    const float sine = std::sin(radians);
+    const float cosine = std::cos(radians);
+    // Counter-clockwise: (ca*x - sa*y, sa*x + ca*y), then scale before rotation.
+    out[0] = cosine * scale[0];
+    out[1] = -sine * scale[1];
+    out[2] = sine * scale[0];
+    out[3] = cosine * scale[1];
+    out[4] = translation[0];
+    out[5] = translation[1];
+    return true;
+}
+
+/// Composes two affines so the result applies "inner" first and then "outer",
+/// which is the order a coordinate travels a node chain: the node nearest the
+/// image is applied last.
+void _ComposeUvTransforms(
+    const float (&outer)[6],
+    const float (&inner)[6],
+    float (&out)[6])
+{
+    const float composed[6] = {
+        (outer[0] * inner[0]) + (outer[1] * inner[2]),
+        (outer[0] * inner[1]) + (outer[1] * inner[3]),
+        (outer[2] * inner[0]) + (outer[3] * inner[2]),
+        (outer[2] * inner[1]) + (outer[3] * inner[3]),
+        (outer[0] * inner[4]) + (outer[1] * inner[5]) + outer[4],
+        (outer[2] * inner[4]) + (outer[3] * inner[5]) + outer[5]};
+    for (size_t index = 0; index < 6; ++index)
+    {
+        out[index] = composed[index];
+    }
+}
+
+bool _IsCoordinateNode(const HdMaterialNode& node)
+{
+    return node.identifier == _tokens->UsdPrimvarReaderFloat2 ||
+        node.identifier == _tokens->MtlxGeomPropValue2 ||
+        node.identifier == _tokens->MtlxTexCoord2;
+}
+
+/// Accepts only the first texture-coordinate set of a MaterialX texcoord node.
+///
+/// `ND_texcoord_vector2` carries a uniform integer `index` naming which UV set
+/// to read, defaulting to zero. hdSilk publishes one coordinate stream per
+/// material and names it from the primvar the coordinate node states, and a
+/// texcoord node states no primvar name at all, so index 0 is the only value
+/// that resolves to the documented default primvar. A non-zero index used to
+/// fall through to that same default and silently sample the first UV set.
+bool _TryValidateTexCoordIndex(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& node,
+    std::string* reason)
+{
+    if (_FindInputConnection(network, node.path, _tokens->index) != nullptr)
+    {
+        *reason = "its texture-coordinate node has a connected 'index', which "
+                  "selects a UV set per pixel";
+        return false;
+    }
+    const auto entry = node.parameters.find(_tokens->index);
+    if (entry == node.parameters.end())
+    {
+        return true;
+    }
+    float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (_ReadFloats(entry->second, values) == 0)
+    {
+        *reason = "its texture-coordinate node has an 'index' this projection "
+                  "cannot read";
+        return false;
+    }
+    if (values[0] != 0.0f)
+    {
+        *reason = "its texture-coordinate node reads UV set " +
+            std::to_string(static_cast<int>(values[0])) +
+            ", and hdSilk carries one texture-coordinate stream per material";
+        return false;
+    }
+    return true;
+}
+
+/// The longest texture-coordinate node chain this projection walks. A bound is
+/// required rather than nice: the network is authored data and may contain a
+/// cycle, and an unbounded walk would hang the render delegate on one.
+constexpr uint32_t _maxUvChainDepth = 8;
+
+/// Resolves how one texture reads its coordinates, walking the texcoord/st
+/// connection through a bounded chain of constant UV transform nodes to the
+/// coordinate node that names the primvar.
+///
+/// Every node on the chain must be one this projection models. A chain that
+/// passes through anything else is reported unsupported rather than resolved to
+/// the outermost transform over the default primvar, because applying only part
+/// of an authored chain renders coordinates the graph never asked for.
 _UvBinding _ResolveUvBinding(
     const HdMaterialNetwork& network,
     const SdfPath& texturePath)
 {
     _UvBinding binding;
-    for (const HdMaterialRelationship& relationship : network.relationships)
+    const HdMaterialRelationship* connection =
+        _FindInputConnection(network, texturePath, _tokens->st);
+    if (connection == nullptr)
     {
-        if (relationship.outputId != texturePath ||
-            (relationship.outputName != _tokens->st &&
-                relationship.outputName != _tokens->texcoord))
+        connection = _FindInputConnection(network, texturePath, _tokens->texcoord);
+    }
+    if (connection == nullptr)
+    {
+        // No coordinate connection at all is the documented default, not a
+        // dropped chain: the texture reads the default primvar untransformed.
+        return binding;
+    }
+
+    SdfPath current = connection->inputId;
+    for (uint32_t depth = 0; depth <= _maxUvChainDepth; ++depth)
+    {
+        const HdMaterialNode* node = _FindNode(network, current);
+        if (node == nullptr)
         {
-            continue;
+            binding.supported = false;
+            binding.unsupportedReason =
+                "its texture-coordinate connection names a node the network does "
+                "not contain";
+            return binding;
         }
-        const HdMaterialNode* reader = _FindNode(network, relationship.inputId);
-        if (reader == nullptr)
+        if (_IsCoordinateNode(*node))
         {
-            continue;
+            if (node->identifier == _tokens->MtlxTexCoord2 &&
+                !_TryValidateTexCoordIndex(network, *node, &binding.unsupportedReason))
+            {
+                // A non-zero texcoord index names a second UV set. hdSilk carries
+                // one texture-coordinate stream per material and its name comes
+                // from the primvar the coordinate node states, so resolving a
+                // non-zero index to "st" would sample the first UV set while the
+                // graph asked for another.
+                binding.supported = false;
+                return binding;
+            }
+            const std::string name = _ReadPrimvarName(*node);
+            if (!name.empty())
+            {
+                binding.primvar = name;
+            }
+            return binding;
         }
-        if (reader->identifier == _tokens->MtlxPlace2d)
+
+        float folded[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+        TfToken upstreamInput;
+        if (node->identifier == _tokens->MtlxPlace2d)
         {
-            if (!_TryFoldPlace2d(
-                    network, *reader, binding.transform, &binding.unsupportedReason))
+            if (!_TryFoldPlace2d(network, *node, folded, &binding.unsupportedReason))
             {
                 binding.supported = false;
                 return binding;
             }
-            const HdMaterialNode* coordinate =
-                _FindInputNode(network, reader->path, _tokens->texcoord);
-            if (coordinate != nullptr)
-            {
-                const std::string name = _ReadPrimvarName(*coordinate);
-                if (!name.empty())
-                {
-                    binding.primvar = name;
-                }
-            }
-            return binding;
+            upstreamInput = _tokens->texcoord;
         }
-        const std::string name = _ReadPrimvarName(*reader);
-        if (!name.empty())
+        else if (node->identifier == _tokens->UsdTransform2d)
         {
-            binding.primvar = name;
+            if (!_TryFoldTransform2d(network, *node, folded, &binding.unsupportedReason))
+            {
+                binding.supported = false;
+                return binding;
+            }
+            upstreamInput = _tokens->in;
+        }
+        else
+        {
+            binding.supported = false;
+            binding.unsupportedReason =
+                "its texture-coordinate chain passes through unsupported node '" +
+                node->identifier.GetString() + "'";
             return binding;
         }
+
+        _ComposeUvTransforms(binding.transform, folded, binding.transform);
+        const HdMaterialRelationship* upstream =
+            _FindInputConnection(network, node->path, upstreamInput);
+        if (upstream == nullptr)
+        {
+            // The transform's own coordinate input is an authored constant, so
+            // the chain never reaches a primvar and the folded affine has
+            // nothing to transform.
+            binding.supported = false;
+            binding.unsupportedReason =
+                "its texture-coordinate chain ends at node '" +
+                node->identifier.GetString() +
+                "' without reaching a coordinate node";
+            return binding;
+        }
+        current = upstream->inputId;
     }
+
+    binding.supported = false;
+    binding.unsupportedReason = "its texture-coordinate chain is longer than the "
+                                "bounded depth this projection walks";
     return binding;
 }
 
@@ -669,6 +948,14 @@ bool _EvaluateMaterialXConstant(
     float (&out)[4],
     uint32_t depth);
 
+/// Evaluates one input of a node that this projection is folding to a constant.
+///
+/// A *connected* input is never read from the node's authored parameter. Hydra
+/// leaves the nodedef's authored value in `parameters` even when the input is
+/// connected, so falling back to it silently folds the graph to a value the
+/// author replaced with a connection. The connection is followed instead, and a
+/// connection this projection cannot evaluate -- including one whose upstream
+/// node is missing from the network -- fails the fold so the caller diagnoses it.
 bool _EvaluateMaterialXInput(
     const HdMaterialNetwork& network,
     const HdMaterialNode& node,
@@ -678,12 +965,14 @@ bool _EvaluateMaterialXInput(
     float (&out)[4],
     uint32_t depth)
 {
-    const HdMaterialNode* upstream =
-        _FindInputNode(network, node.path, inputName);
-    if (upstream != nullptr)
+    const HdMaterialRelationship* connection =
+        _FindInputConnection(network, node.path, inputName);
+    if (connection != nullptr)
     {
-        return _EvaluateMaterialXConstant(
-            network, *upstream, componentCount, out, depth + 1);
+        const HdMaterialNode* upstream = _FindNode(network, connection->inputId);
+        return upstream != nullptr &&
+            _EvaluateMaterialXConstant(
+                network, *upstream, componentCount, out, depth + 1);
     }
     if (_ReadParameterFloats(node, inputName, componentCount, out))
     {
@@ -694,6 +983,22 @@ bool _EvaluateMaterialXInput(
         out[index] = fallback[index];
     }
     return true;
+}
+
+/// Reads a node input that must be an authored constant, refusing a connection.
+///
+/// Used for the pass-through `in` shortcut and for `ND_constant_*`: both would
+/// otherwise read the nodedef value Hydra leaves behind a connection and report
+/// the whole sub-graph as that constant.
+bool _ReadUnconnectedParameter(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& node,
+    const TfToken& inputName,
+    uint32_t componentCount,
+    float (&out)[4])
+{
+    return _FindInputConnection(network, node.path, inputName) == nullptr &&
+        _ReadParameterFloats(node, inputName, componentCount, out);
 }
 
 bool _EvaluateMaterialXConstant(
@@ -708,9 +1013,13 @@ bool _EvaluateMaterialXConstant(
     {
         return false;
     }
-    if (_ReadParameterFloats(node, _tokens->in, componentCount, out))
+    if (_IdentifierHasPrefix(node, "ND_constant_"))
     {
-        return true;
+        // ND_constant_* states its value on `value`, not on `in`, so without this
+        // the node fell through every operator branch and was reported as an
+        // unsupported upstream node.
+        return _ReadUnconnectedParameter(
+            network, node, _tokens->value, componentCount, out);
     }
 
     float zero[4] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -720,6 +1029,20 @@ bool _EvaluateMaterialXConstant(
     const bool multiply = _IdentifierHasPrefix(node, "ND_multiply_");
     const bool add = _IdentifierHasPrefix(node, "ND_add_");
     const bool subtract = _IdentifierHasPrefix(node, "ND_subtract_");
+    const bool clampNode = _IdentifierHasPrefix(node, "ND_clamp_");
+    const bool mixNode = _IdentifierHasPrefix(node, "ND_mix_");
+
+    // The pass-through shortcut is for nodes that carry `in` and that this
+    // projection does not otherwise model, such as `dot`. It must not pre-empt a
+    // modelled operator: `ND_clamp_*` also declares `in`, so taking the shortcut
+    // first returned the *unclamped* value and made the operator's meaning depend
+    // on whether its input happened to be a connection.
+    if (!multiply && !add && !subtract && !clampNode && !mixNode &&
+        _ReadUnconnectedParameter(network, node, _tokens->in, componentCount, out))
+    {
+        return true;
+    }
+
     if (multiply || add || subtract)
     {
         if (!_EvaluateMaterialXInput(
@@ -737,7 +1060,7 @@ bool _EvaluateMaterialXConstant(
         }
         return true;
     }
-    if (_IdentifierHasPrefix(node, "ND_clamp_"))
+    if (clampNode)
     {
         if (!_EvaluateMaterialXInput(
                 network, node, _tokens->in, componentCount, zero, a, depth) ||
@@ -758,15 +1081,21 @@ bool _EvaluateMaterialXConstant(
         }
         return true;
     }
-    if (_IdentifierHasPrefix(node, "ND_mix_"))
+    if (mixNode)
     {
-        float mix[4] = {0.5f, 0.5f, 0.5f, 0.5f};
+        // The MaterialX nodedef defaults `mix` to 0, which returns `bg`
+        // unchanged. Defaulting it to 0.5 here folded an unauthored mix to the
+        // midpoint of two operands the graph never asked to blend. The result
+        // array is separate from the fallback array on purpose: passing one
+        // array as both arguments aliases a const reference onto the output.
+        const float mixFallback[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        float mix[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         if (!_EvaluateMaterialXInput(
                 network, node, _tokens->bg, componentCount, zero, a, depth) ||
             !_EvaluateMaterialXInput(
                 network, node, _tokens->fg, componentCount, zero, b, depth) ||
             !_EvaluateMaterialXInput(
-                network, node, _tokens->mix, componentCount, mix, mix, depth))
+                network, node, _tokens->mix, componentCount, mixFallback, mix, depth))
         {
             return false;
         }
@@ -779,13 +1108,431 @@ bool _EvaluateMaterialXConstant(
     return false;
 }
 
+/// One image reached through a chain of constant arithmetic, together with the
+/// affine that chain applies to the sampled value.
+///
+/// The renderer already carries a per-texture scale and bias that it applies per
+/// texel in linear space after decode, so an authored chain that is affine in the
+/// image is transported exactly by folding it there instead of inventing a new
+/// per-pixel shader path. Affine operations commute with bilinear filtering, so
+/// folding before the sample and folding after it are the same picture.
+struct _AffineOverImage
+{
+    const HdMaterialNode* image = nullptr;
+    TfToken outputName;
+    float scale[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    float bias[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    std::string unsupportedReason;
+};
+
+bool _TryFoldAffineOverImage(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& node,
+    const TfToken& outputName,
+    uint32_t componentCount,
+    uint32_t depth,
+    _AffineOverImage* result);
+
+/// Descends one operand of an arithmetic node. Returns true when that operand
+/// resolves to the image sub-chain, false when it is a constant this projection
+/// can evaluate, and reports an unsupported reason for anything else.
+///
+/// *isImage distinguishes the two success cases; *constant carries the folded
+/// value when the operand is constant.
+bool _TryClassifyAffineOperand(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& node,
+    const TfToken& inputName,
+    uint32_t componentCount,
+    const float (&fallback)[4],
+    uint32_t depth,
+    bool* isImage,
+    float (&constant)[4],
+    _AffineOverImage* result)
+{
+    const HdMaterialRelationship* connection =
+        _FindInputConnection(network, node.path, inputName);
+    if (connection == nullptr)
+    {
+        *isImage = false;
+        if (_ReadParameterFloats(node, inputName, componentCount, constant))
+        {
+            return true;
+        }
+        for (uint32_t index = 0; index < 4; ++index)
+        {
+            constant[index] = fallback[index];
+        }
+        return true;
+    }
+
+    const HdMaterialNode* upstream = _FindNode(network, connection->inputId);
+    if (upstream == nullptr)
+    {
+        result->unsupportedReason = "an operand names a node the network does not contain";
+        return false;
+    }
+    if (_EvaluateMaterialXConstant(network, *upstream, componentCount, constant, depth))
+    {
+        *isImage = false;
+        return true;
+    }
+    *isImage = true;
+    return _TryFoldAffineOverImage(
+        network, *upstream, connection->inputName, componentCount, depth + 1, result);
+}
+
+/// Folds a chain of constant multiply/add/subtract/mix nodes over exactly one
+/// image into a single per-component affine.
+///
+/// Only affine operators are walked, and only one operand of each may reach the
+/// image: two images cannot be combined here, because the renderer binds one
+/// texture per surface input. Everything else is reported so the caller can
+/// diagnose it rather than approximate the graph.
+bool _TryFoldAffineOverImage(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& node,
+    const TfToken& outputName,
+    uint32_t componentCount,
+    uint32_t depth,
+    _AffineOverImage* result)
+{
+    if (depth > 8)
+    {
+        result->unsupportedReason = "the arithmetic chain above the image is deeper "
+                                    "than the bounded depth this projection folds";
+        return false;
+    }
+    if (_IsMaterialXImage(node))
+    {
+        result->image = &node;
+        result->outputName = outputName;
+        return true;
+    }
+
+    const float zero[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    const float one[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    const bool multiply = _IdentifierHasPrefix(node, "ND_multiply_");
+    const bool add = _IdentifierHasPrefix(node, "ND_add_");
+    const bool subtract = _IdentifierHasPrefix(node, "ND_subtract_");
+    const bool mix = _IdentifierHasPrefix(node, "ND_mix_");
+    if (!multiply && !add && !subtract && !mix)
+    {
+        result->unsupportedReason = "node '" + node.identifier.GetString() +
+            "' above the image is not one of the affine multiply, add, subtract, "
+            "or mix operators this projection folds";
+        return false;
+    }
+
+    // The operator's own affine in the image branch: value = branch * k + c.
+    float k[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    float c[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (mix)
+    {
+        float background[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        float foreground[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        // The MaterialX nodedef defaults `mix` to 0, which selects `bg`.
+        float factor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        const float factorFallback[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        bool backgroundIsImage = false;
+        bool foregroundIsImage = false;
+        bool factorIsImage = false;
+        if (!_TryClassifyAffineOperand(
+                network, node, _tokens->mix, componentCount, factorFallback, depth,
+                &factorIsImage, factor, result))
+        {
+            return false;
+        }
+        if (factorIsImage)
+        {
+            result->unsupportedReason =
+                "the mix factor is driven by an image, which is a per-pixel blend "
+                "this projection cannot fold into a constant";
+            return false;
+        }
+        if (!_TryClassifyAffineOperand(
+                network, node, _tokens->bg, componentCount, zero, depth,
+                &backgroundIsImage, background, result))
+        {
+            return false;
+        }
+        if (!_TryClassifyAffineOperand(
+                network, node, _tokens->fg, componentCount, zero, depth,
+                &foregroundIsImage, foreground, result))
+        {
+            return false;
+        }
+        if (backgroundIsImage == foregroundIsImage)
+        {
+            result->unsupportedReason = backgroundIsImage
+                ? "it mixes two images, and the renderer binds one texture per "
+                  "surface input"
+                : "neither mix operand resolves to an image";
+            return false;
+        }
+        for (uint32_t index = 0; index < componentCount; ++index)
+        {
+            k[index] = foregroundIsImage ? factor[index] : 1.0f - factor[index];
+            c[index] = foregroundIsImage
+                ? background[index] * (1.0f - factor[index])
+                : foreground[index] * factor[index];
+        }
+    }
+    else
+    {
+        float first[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        float second[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        bool firstIsImage = false;
+        bool secondIsImage = false;
+        if (!_TryClassifyAffineOperand(
+                network, node, _tokens->in1, componentCount, zero, depth,
+                &firstIsImage, first, result))
+        {
+            return false;
+        }
+        if (!_TryClassifyAffineOperand(
+                network, node, _tokens->in2, componentCount, multiply ? one : zero,
+                depth, &secondIsImage, second, result))
+        {
+            return false;
+        }
+        if (firstIsImage == secondIsImage)
+        {
+            result->unsupportedReason = firstIsImage
+                ? "it combines two images, and the renderer binds one texture per "
+                  "surface input"
+                : "neither operand resolves to an image";
+            return false;
+        }
+        const float* constant = firstIsImage ? second : first;
+        for (uint32_t index = 0; index < componentCount; ++index)
+        {
+            if (multiply)
+            {
+                k[index] = constant[index];
+                c[index] = 0.0f;
+            }
+            else if (add)
+            {
+                k[index] = 1.0f;
+                c[index] = constant[index];
+            }
+            else
+            {
+                // subtract: the image may be either operand, and "constant minus
+                // image" is affine with a negative slope rather than unsupported.
+                k[index] = firstIsImage ? 1.0f : -1.0f;
+                c[index] = firstIsImage ? -constant[index] : constant[index];
+            }
+        }
+    }
+
+    // Compose inner-first: the recursion has already folded the branch below this
+    // node into scale/bias, so this node's own affine is applied to that result.
+    for (uint32_t index = 0; index < componentCount; ++index)
+    {
+        result->bias[index] = (result->bias[index] * k[index]) + c[index];
+        result->scale[index] = result->scale[index] * k[index];
+    }
+    return true;
+}
+
+/// Composes the folded arithmetic onto the entry's own authored scale and bias:
+/// the entry maps the texel with entryScale/entryBias, then the graph applies
+/// its affine to that result.
+void _ComposeTextureAffine(
+    HdSilkMaterialTexture& entry,
+    const _AffineOverImage& affine)
+{
+    for (uint32_t index = 0; index < 4; ++index)
+    {
+        entry.bias[index] = (entry.bias[index] * affine.scale[index]) + affine.bias[index];
+        entry.scale[index] = entry.scale[index] * affine.scale[index];
+    }
+}
+
+/// Whether the composed affine keeps a unit-range texel inside the unit range.
+///
+/// The consumer applies scale and bias per texel in linear space and stores the
+/// result back in the decoded image's format, so an eight-bit source clamps
+/// anything the affine pushes outside [0, 1]. A clamped base colour is not a
+/// rounding difference: it changes the lit result at every light intensity below
+/// saturation. Folding is therefore restricted to the range where the transport
+/// is exact, and a brighten or darken that leaves the range is reported instead.
+bool _AffineKeepsUnitRange(
+    const HdSilkMaterialTexture& entry,
+    uint32_t componentCount)
+{
+    constexpr float tolerance = 1e-6f;
+    for (uint32_t index = 0; index < componentCount && index < 4; ++index)
+    {
+        const float low = std::min(entry.bias[index], entry.scale[index] + entry.bias[index]);
+        const float high = std::max(entry.bias[index], entry.scale[index] + entry.bias[index]);
+        if (!std::isfinite(low) || !std::isfinite(high) ||
+            low < -tolerance || high > 1.0f + tolerance)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// Two images combined per pixel by one constant operator, each reached through
+/// its own chain of constant arithmetic.
+///
+/// This is the one shape that genuinely cannot fold into a single texture entry:
+/// the product, sum, difference or blend of two images is not affine in either
+/// one, so no per-texel scale and bias can carry it. The renderer therefore binds
+/// a second image and evaluates the operator in the fragment shader, in floating
+/// point after both decodes.
+///
+/// Each branch is still folded independently, so constant arithmetic *inside* a
+/// branch keeps its exact per-texel transport and only the one operator that
+/// joins them costs a shader sample.
+struct _TwoImageComposite
+{
+    _AffineOverImage primary;
+    _AffineOverImage composite;
+    uint32_t op = OPENUSD_SILK_COMPOSITE_NONE;
+    float factor = 0.0f;
+    std::string unsupportedReason;
+};
+
+/// Resolves one operand of an arithmetic node to an image sub-chain.
+///
+/// Returns false when the operand is absent, is a constant this projection can
+/// evaluate, or is a chain this projection cannot fold. Only the last of those is
+/// an error, so the caller distinguishes them through *branch->unsupportedReason.
+bool _TryResolveImageBranch(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& node,
+    const TfToken& inputName,
+    uint32_t componentCount,
+    _AffineOverImage* branch)
+{
+    const HdMaterialRelationship* connection =
+        _FindInputConnection(network, node.path, inputName);
+    if (connection == nullptr)
+    {
+        return false;
+    }
+    const HdMaterialNode* upstream = _FindNode(network, connection->inputId);
+    if (upstream == nullptr)
+    {
+        branch->unsupportedReason =
+            "an operand names a node the network does not contain";
+        return false;
+    }
+    float constant[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (_EvaluateMaterialXConstant(network, *upstream, componentCount, constant, 0))
+    {
+        return false;
+    }
+    return _TryFoldAffineOverImage(
+               network,
+               *upstream,
+               connection->inputName,
+               componentCount,
+               0,
+               branch) &&
+        branch->image != nullptr;
+}
+
+/// Folds one arithmetic node whose *both* operands reach images into a pair of
+/// texture entries joined by a per-pixel operator.
+///
+/// Operand order is preserved because it is observable: `subtract` is not
+/// commutative, and `mix` selects the background at factor zero. `mix` requires a
+/// constant scalar factor -- an image-driven factor is a third sampled input the
+/// renderer has no slot for, and MaterialX types the input as a float, so a
+/// per-component factor cannot be authored in the first place.
+bool _TryFoldTwoImageComposite(
+    const HdMaterialNetwork& network,
+    const HdMaterialNode& node,
+    uint32_t componentCount,
+    _TwoImageComposite* result)
+{
+    const bool multiply = _IdentifierHasPrefix(node, "ND_multiply_");
+    const bool add = _IdentifierHasPrefix(node, "ND_add_");
+    const bool subtract = _IdentifierHasPrefix(node, "ND_subtract_");
+    const bool mix = _IdentifierHasPrefix(node, "ND_mix_");
+    if (!multiply && !add && !subtract && !mix)
+    {
+        return false;
+    }
+
+    const TfToken& primaryInput = mix ? _tokens->bg : _tokens->in1;
+    const TfToken& compositeInput = mix ? _tokens->fg : _tokens->in2;
+    if (!_TryResolveImageBranch(
+            network, node, primaryInput, componentCount, &result->primary) ||
+        !_TryResolveImageBranch(
+            network, node, compositeInput, componentCount, &result->composite))
+    {
+        // Not a two-image node at all, or a branch this projection cannot fold.
+        // Either way the single-image path has already reported what it found.
+        result->unsupportedReason = result->primary.unsupportedReason.empty()
+            ? result->composite.unsupportedReason
+            : result->primary.unsupportedReason;
+        return false;
+    }
+    if (result->primary.image == result->composite.image)
+    {
+        // One image wired to both operands is affine in that image after all, so
+        // the single-image fold owns it and would be exact where this is not.
+        result->unsupportedReason =
+            "both operands resolve to the same image, which the affine fold "
+            "already carries exactly";
+        return false;
+    }
+
+    if (mix)
+    {
+        if (_FindInputConnection(network, node.path, _tokens->mix) != nullptr)
+        {
+            result->unsupportedReason =
+                "the mix factor is connected, and the renderer has no slot for a "
+                "third sampled input";
+            return false;
+        }
+        float factor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        // MaterialX defaults the factor to 0, which selects the background.
+        if (!_ReadParameterFloats(node, _tokens->mix, 1, factor))
+        {
+            factor[0] = 0.0f;
+        }
+        if (!std::isfinite(factor[0]))
+        {
+            result->unsupportedReason = "the mix factor is not finite";
+            return false;
+        }
+        result->op = OPENUSD_SILK_COMPOSITE_MIX;
+        result->factor = factor[0];
+        return true;
+    }
+
+    result->op = multiply ? OPENUSD_SILK_COMPOSITE_MULTIPLY
+        : add             ? OPENUSD_SILK_COMPOSITE_ADD
+                          : OPENUSD_SILK_COMPOSITE_SUBTRACT;
+    result->factor = 0.0f;
+    return true;
+}
+
+/// Builds the texture entry for one MaterialX input.
+///
+/// *diagnosed is set when this function already reported why it refused the
+/// entry. The caller must then stop rather than fall through to its generic
+/// "connected to unsupported node" warning, which would name the image node
+/// even when the image is fine and its coordinate chain is what failed.
 bool _TryCreateTextureEntry(
     const HdMaterialNetwork& network,
+    const std::string& materialPath,
     const HdMaterialNode& texture,
     const TfToken& outputName,
     const _InputBinding& input,
-    HdSilkMaterialTexture& entry)
+    HdSilkMaterialTexture& entry,
+    bool* diagnosed)
 {
+    *diagnosed = false;
     if (!_IsMaterialXImage(texture) && texture.identifier != _tokens->UsdUVTexture)
     {
         return false;
@@ -793,39 +1540,106 @@ bool _TryCreateTextureEntry(
     const std::string asset = _ResolveAssetPath(texture.parameters);
     if (asset.empty())
     {
+        TF_WARN(
+            "hdSilk material '%s' input '%s' is connected to image '%s', which has "
+            "no resolvable file; leaving the input at its default.",
+            materialPath.c_str(),
+            input.name.GetText(),
+            texture.path.GetText());
+        *diagnosed = true;
         return false;
     }
     uint32_t channel = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
     if (!_TryResolveOutputChannel(texture, outputName, input.componentCount, &channel))
     {
         TF_WARN(
-            "hdSilk material input '%s' is connected to texture output '%s', which "
-            "cannot drive a %u-component input; leaving the input at its default.",
+            "hdSilk material '%s' input '%s' is connected to texture output '%s', "
+            "which cannot drive a %u-component input; leaving the input at its "
+            "default.",
+            materialPath.c_str(),
             input.name.GetText(),
             outputName.GetText(),
             input.componentCount);
+        *diagnosed = true;
         return false;
     }
     entry.parameter = input.parameter;
     entry.componentCount = input.componentCount;
     entry.outputChannel = channel;
-    entry.wrapS = _ReadWrap(texture.parameters, _tokens->wrapS);
-    entry.wrapT = _ReadWrap(texture.parameters, _tokens->wrapT);
+    if (_IsMaterialXImage(texture))
+    {
+        // MaterialX states addressing on uaddressmode/vaddressmode, defaulting to
+        // periodic; UsdUVTexture states it on wrapS/wrapT, defaulting to black.
+        // Reading the UsdUVTexture names from a MaterialX image found nothing and
+        // published black, so a MaterialX texture that the graph tiles was clamped
+        // to its edge texels instead.
+        std::string unsupportedMode;
+        if (!_TryReadMaterialXAddressMode(
+                texture.parameters, _tokens->uaddressmode, &entry.wrapS,
+                &unsupportedMode) ||
+            !_TryReadMaterialXAddressMode(
+                texture.parameters, _tokens->vaddressmode, &entry.wrapT,
+                &unsupportedMode))
+        {
+            TF_WARN(
+                "hdSilk material '%s' input '%s' reads a MaterialX image whose "
+                "address mode '%s' this projection does not model; leaving the "
+                "input at its default.",
+                materialPath.c_str(),
+                input.name.GetText(),
+                unsupportedMode.c_str());
+            *diagnosed = true;
+            return false;
+        }
+    }
+    else
+    {
+        entry.wrapS = _ReadWrap(texture.parameters, _tokens->wrapS);
+        entry.wrapT = _ReadWrap(texture.parameters, _tokens->wrapT);
+    }
     entry.sourceColorSpace = _ReadColorSpace(texture.parameters);
+    // A connected scale, bias, or fallback is a per-pixel value the wire's four
+    // constant floats cannot carry, and Hydra leaves the nodedef value in
+    // `parameters` behind the connection, so reading it would publish a constant
+    // the author replaced.
+    const TfToken fallbackName = _IsMaterialXImage(texture)
+        ? _tokens->defaultValue
+        : _tokens->fallback;
+    for (const TfToken& constantInput :
+         {_tokens->scale, _tokens->bias, fallbackName})
+    {
+        if (_FindInputConnection(network, texture.path, constantInput) != nullptr)
+        {
+            TF_WARN(
+                "hdSilk material '%s' input '%s' reads an image whose '%s' is "
+                "connected rather than constant, which the texture entry cannot "
+                "carry; leaving the input at its default.",
+                materialPath.c_str(),
+                input.name.GetText(),
+                constantInput.GetText());
+            *diagnosed = true;
+            return false;
+        }
+    }
     entry.scale[0] = entry.scale[1] = entry.scale[2] = entry.scale[3] = 1.0f;
     _ReadVector4(texture.parameters, _tokens->scale, entry.scale);
     _ReadVector4(texture.parameters, _tokens->bias, entry.bias);
-    _ReadVector4(texture.parameters, _tokens->fallback, entry.fallback);
+    // The value the node produces when the file cannot be read: UsdUVTexture
+    // calls it `fallback`, MaterialX calls it `default`. Only the components the
+    // node authors are overwritten, so a color3 default keeps the opaque alpha.
+    _ReadVector4(texture.parameters, fallbackName, entry.fallback);
     entry.asset = asset;
     const _UvBinding uv = _ResolveUvBinding(network, texture.path);
     if (!uv.supported)
     {
         TF_WARN(
-            "hdSilk material input '%s' reads a MaterialX place2d UV transform "
-            "this projection cannot fold because %s; leaving the input at its "
-            "default.",
+            "hdSilk material '%s' input '%s' reads its texture coordinates through "
+            "a chain this projection cannot fold because %s; leaving the input at "
+            "its default.",
+            materialPath.c_str(),
             input.name.GetText(),
             uv.unsupportedReason.c_str());
+        *diagnosed = true;
         return false;
     }
     entry.uvPrimvar = uv.primvar;
@@ -836,45 +1650,151 @@ bool _TryCreateTextureEntry(
     return true;
 }
 
-/// Settles the one UV transform this material publishes.
+/// Builds and publishes the two entries of a per-pixel two-image input.
 ///
-/// The renderer samples every texture of a material through a single coordinate
-/// stream -- one primvar and one transform -- so a material whose images ask for
-/// different transforms is outside the projection. The first texture in the
-/// fixed input order states the material transform; a later texture that asks
-/// for a different one is dropped with a diagnostic rather than sampled with a
-/// transform it did not author or silently stripped of the one it did.
-void _ReconcileUvTransforms(HdSilkMaterialRecord& record)
+/// Both entries are appended, or neither is: the composite operand is the second
+/// half of one authored expression, so a lone primary would render one of two
+/// images and look like an ordinary single-texture input. Each entry carries its
+/// own branch's folded affine, which must still keep the unit range because that
+/// affine is applied per texel when the image is decoded into its own storage
+/// format. The joining operator is not subject to that restriction: the consumer
+/// evaluates it in the shader in floating point, after both decodes.
+bool _TryPublishCompositeEntries(
+    const HdMaterialNetwork& network,
+    const _InputBinding& input,
+    const _TwoImageComposite& composite,
+    HdSilkMaterialRecord& record)
+{
+    HdSilkMaterialTexture primaryEntry;
+    HdSilkMaterialTexture compositeEntry;
+    bool primaryDiagnosed = false;
+    bool compositeDiagnosed = false;
+    if (!_TryCreateTextureEntry(
+            network,
+            record.path,
+            *composite.primary.image,
+            composite.primary.outputName,
+            input,
+            primaryEntry,
+            &primaryDiagnosed) ||
+        !_TryCreateTextureEntry(
+            network,
+            record.path,
+            *composite.composite.image,
+            composite.composite.outputName,
+            input,
+            compositeEntry,
+            &compositeDiagnosed))
+    {
+        if (!primaryDiagnosed && !compositeDiagnosed)
+        {
+            TF_WARN(
+                "hdSilk material '%s' MaterialX input '%s' combines two images "
+                "this projection cannot bind; leaving the input at its default.",
+                record.path.c_str(),
+                input.name.GetText());
+        }
+        return true;
+    }
+
+    _ComposeTextureAffine(primaryEntry, composite.primary);
+    _ComposeTextureAffine(compositeEntry, composite.composite);
+    if (!_AffineKeepsUnitRange(primaryEntry, input.componentCount) ||
+        !_AffineKeepsUnitRange(compositeEntry, input.componentCount))
+    {
+        TF_WARN(
+            "hdSilk material '%s' MaterialX input '%s' combines two images where "
+            "one branch folds to a texture scale/bias that leaves the unit range, "
+            "which the eight-bit upload path would clamp; leaving the input at its "
+            "default.",
+            record.path.c_str(),
+            input.name.GetText());
+        return true;
+    }
+
+    compositeEntry.compositeOp = composite.op;
+    compositeEntry.compositeFactor = composite.factor;
+    record.textures.push_back(std::move(primaryEntry));
+    record.textures.push_back(std::move(compositeEntry));
+    return true;
+}
+
+/// Settles the one texture-coordinate stream this material publishes.
+///
+/// The renderer builds exactly one coordinate stream per material: it takes the
+/// material's UV transform from the wire's per-material affine, and its primvar
+/// from the first texture entry that names one, then samples every texture of the
+/// material through that pair. A material whose images ask for different
+/// transforms, or for different primvars, is therefore outside the projection.
+///
+/// The first texture in the fixed input order states both. A texture that asks
+/// for a different transform or a different primvar is dropped with a diagnostic
+/// naming which of the two diverged, rather than sampled through coordinates it
+/// did not author. The primvar half matters as much as the transform half and was
+/// previously unreconciled: a base colour on `uvSet0` beside a normal map on
+/// `uvSet1` published both entries, and the consumer sampled both through
+/// `uvSet0` with nothing reported.
+///
+/// Entries are dropped a whole parameter at a time. Since ABI v15 one surface
+/// input may carry two entries -- a primary and a composite operand -- and those
+/// are two halves of one authored expression: keeping the primary of a pair whose
+/// composite diverged would render one of two authored images, which is a
+/// plausible picture the author never asked for.
+///
+/// Returns whether anything was dropped, so the caller can re-settle the stream
+/// against the survivors.
+bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
 {
     if (record.textures.empty())
     {
-        return;
+        return false;
     }
     for (size_t index = 0; index < 6; ++index)
     {
         record.uvTransform[index] = record.textures.front().uvTransform[index];
     }
-    if (_IsIdentityUvTransform(record.uvTransform))
+
+    // The material primvar is the first non-empty one, which is exactly how the
+    // consumer derives its single stream. An entry that names no primvar asks
+    // for nothing and is sampled through that stream either way.
+    std::string primvar;
+    for (const HdSilkMaterialTexture& texture : record.textures)
     {
-        // Nothing to reconcile against unless some texture asks for a transform.
-        bool anyTransform = false;
-        for (const HdSilkMaterialTexture& texture : record.textures)
+        if (!texture.uvPrimvar.empty())
         {
-            anyTransform = anyTransform || !_IsIdentityUvTransform(texture.uvTransform);
-        }
-        if (!anyTransform)
-        {
-            return;
+            primvar = texture.uvPrimvar;
+            break;
         }
     }
 
-    std::vector<HdSilkMaterialTexture> kept;
-    kept.reserve(record.textures.size());
-    for (HdSilkMaterialTexture& texture : record.textures)
+    std::vector<uint32_t> divergent;
+    for (const HdSilkMaterialTexture& texture : record.textures)
     {
-        if (_UvTransformsEqual(texture.uvTransform, record.uvTransform))
+        const bool transformAgrees =
+            _UvTransformsEqual(texture.uvTransform, record.uvTransform);
+        const bool primvarAgrees =
+            texture.uvPrimvar.empty() || texture.uvPrimvar == primvar;
+        if (transformAgrees && primvarAgrees)
         {
-            kept.push_back(std::move(texture));
+            continue;
+        }
+        if (std::find(divergent.begin(), divergent.end(), texture.parameter) !=
+            divergent.end())
+        {
+            continue;
+        }
+        divergent.push_back(texture.parameter);
+        if (!primvarAgrees)
+        {
+            TF_WARN(
+                "hdSilk material '%s' texture for parameter %u reads primvar '%s' "
+                "while the material's coordinate stream is '%s'; hdSilk carries "
+                "one texture-coordinate stream per material, so this input is "
+                "left at its default.",
+                record.path.c_str(),
+                texture.parameter,
+                texture.uvPrimvar.c_str(),
+                primvar.c_str());
             continue;
         }
         TF_WARN(
@@ -884,6 +1804,94 @@ void _ReconcileUvTransforms(HdSilkMaterialRecord& record)
             "default.",
             record.path.c_str(),
             texture.parameter);
+    }
+    if (divergent.empty())
+    {
+        return false;
+    }
+
+    std::vector<HdSilkMaterialTexture> kept;
+    kept.reserve(record.textures.size());
+    for (HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (std::find(divergent.begin(), divergent.end(), texture.parameter) ==
+            divergent.end())
+        {
+            kept.push_back(std::move(texture));
+        }
+    }
+    record.textures = std::move(kept);
+    return true;
+}
+
+/// Runs the stream reconciliation to a fixed point.
+///
+/// One pass is not enough once entries are dropped a parameter at a time: the
+/// dropped parameter can be the one that stated the stream, in which case the
+/// survivors were measured against a stream the material no longer publishes.
+/// The loop is bounded by the number of parameters because every pass that
+/// changes anything removes at least one whole parameter.
+void _ReconcileUvBindings(HdSilkMaterialRecord& record)
+{
+    const size_t bound = record.textures.size() + 1;
+    for (size_t pass = 0; pass < bound; ++pass)
+    {
+        if (!_ReconcileUvBindingsOnce(record))
+        {
+            return;
+        }
+    }
+}
+
+/// Settles the one composite texture this material publishes.
+///
+/// The renderer binds a single composite image per material rather than one per
+/// surface input, because a per-input composite would need a second sampler and
+/// texture for each of the eleven material slots. A graph that composites a
+/// second parameter therefore has *both* entries of that parameter dropped:
+/// publishing only its primary would render one of two authored images and look
+/// like an ordinary single-texture input.
+///
+/// The first composited parameter in the fixed input order wins, which makes the
+/// choice deterministic rather than dependent on table order.
+void _ReconcileComposites(HdSilkMaterialRecord& record)
+{
+    bool haveComposite = false;
+    std::vector<uint32_t> dropped;
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (texture.compositeOp == OPENUSD_SILK_COMPOSITE_NONE)
+        {
+            continue;
+        }
+        if (!haveComposite)
+        {
+            haveComposite = true;
+            continue;
+        }
+        dropped.push_back(texture.parameter);
+        TF_WARN(
+            "hdSilk material '%s' composites two images into parameter %u as well "
+            "as into an earlier input; hdSilk binds one composite texture per "
+            "material, so this input is left at its default rather than rendering "
+            "one of its two authored images.",
+            record.path.c_str(),
+            texture.parameter);
+    }
+    if (dropped.empty())
+    {
+        return;
+    }
+
+    std::vector<HdSilkMaterialTexture> kept;
+    kept.reserve(record.textures.size());
+    for (HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (std::find(dropped.begin(), dropped.end(), texture.parameter) ==
+            dropped.end())
+        {
+            kept.push_back(std::move(texture));
+        }
     }
     record.textures = std::move(kept);
 }
@@ -938,6 +1946,20 @@ HdSilkMaterial::Resolve(
             const HdMaterialNode* upstream = connection == nullptr
                 ? nullptr
                 : _FindNode(network, connection->inputId);
+            if (connection != nullptr && upstream == nullptr)
+            {
+                // The input is connected to a node the network does not carry.
+                // Falling through would publish the authored value Hydra leaves
+                // in `parameters` behind the connection, which is the value the
+                // author replaced.
+                TF_WARN(
+                    "hdSilk material '%s' MaterialX input '%s' is connected to a "
+                    "node the network does not contain; leaving the input at its "
+                    "default.",
+                    record.path.c_str(),
+                    input.name.GetText());
+                continue;
+            }
             if (upstream != nullptr)
             {
                 const HdMaterialNode* texture = upstream;
@@ -955,11 +1977,25 @@ HdSilkMaterial::Resolve(
                     }
                 }
                 HdSilkMaterialTexture textureEntry;
+                bool diagnosed = false;
                 if (texture != nullptr &&
                     _TryCreateTextureEntry(
-                        network, *texture, outputName, input, textureEntry))
+                        network,
+                        record.path,
+                        *texture,
+                        outputName,
+                        input,
+                        textureEntry,
+                        &diagnosed))
                 {
                     record.textures.push_back(std::move(textureEntry));
+                    continue;
+                }
+                if (diagnosed)
+                {
+                    // The image itself is understood and the refusal has already
+                    // been reported against the real cause, so naming the image
+                    // node again as "unsupported" would misdirect the reader.
                     continue;
                 }
 
@@ -976,6 +2012,93 @@ HdSilkMaterial::Resolve(
                     }
                     record.scalars.push_back(scalar);
                     continue;
+                }
+
+                // A chain of constant arithmetic over exactly one image is affine
+                // in the sampled value, so it folds into the texture entry's own
+                // scale and bias instead of needing a per-pixel shader path. The
+                // normal input is excluded on purpose: scaling a tangent-space
+                // normal is not the colour operation this fold models.
+                if (input.name != _tokens->normal)
+                {
+                    _AffineOverImage affine;
+                    if (_TryFoldAffineOverImage(
+                            network,
+                            *upstream,
+                            connection->inputName,
+                            input.componentCount,
+                            0,
+                            &affine) &&
+                        affine.image != nullptr)
+                    {
+                        HdSilkMaterialTexture folded;
+                        bool foldDiagnosed = false;
+                        if (_TryCreateTextureEntry(
+                                network,
+                                record.path,
+                                *affine.image,
+                                affine.outputName,
+                                input,
+                                folded,
+                                &foldDiagnosed))
+                        {
+                            _ComposeTextureAffine(folded, affine);
+                            if (!_AffineKeepsUnitRange(folded, input.componentCount))
+                            {
+                                TF_WARN(
+                                    "hdSilk material '%s' MaterialX input '%s' folds to a "
+                                    "texture scale/bias that leaves the unit range, which "
+                                    "the eight-bit upload path would clamp; leaving the "
+                                    "input at its default.",
+                                    record.path.c_str(),
+                                    input.name.GetText());
+                                continue;
+                            }
+                            record.textures.push_back(std::move(folded));
+                            continue;
+                        }
+                        if (foldDiagnosed)
+                        {
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        // Two images joined by one constant operator is the one
+                        // shape no per-texel scale and bias can carry, because the
+                        // result is not affine in either image. The renderer binds
+                        // the second image and evaluates the operator per pixel.
+                        _TwoImageComposite composite;
+                        if (_TryFoldTwoImageComposite(
+                                network, *upstream, input.componentCount, &composite))
+                        {
+                            _TryPublishCompositeEntries(
+                                network, input, composite, record);
+                            continue;
+                        }
+                        if (!composite.unsupportedReason.empty())
+                        {
+                            TF_WARN(
+                                "hdSilk material '%s' MaterialX input '%s' combines "
+                                "two images in a way this projection cannot bind "
+                                "because %s; leaving the input at its default.",
+                                record.path.c_str(),
+                                input.name.GetText(),
+                                composite.unsupportedReason.c_str());
+                            continue;
+                        }
+                        if (!affine.unsupportedReason.empty())
+                        {
+                            TF_WARN(
+                                "hdSilk material '%s' MaterialX input '%s' is driven by "
+                                "arithmetic over an image that this projection cannot "
+                                "fold because %s; leaving the input at its default.",
+                                record.path.c_str(),
+                                input.name.GetText(),
+                                affine.unsupportedReason.c_str());
+                            continue;
+                        }
+                    }
                 }
 
                 TF_WARN(
@@ -1013,7 +2136,8 @@ HdSilkMaterial::Resolve(
             }
             record.scalars.push_back(scalar);
         }
-        _ReconcileUvTransforms(record);
+        _ReconcileUvBindings(record);
+        _ReconcileComposites(record);
         return record;
     }
 
@@ -1043,6 +2167,7 @@ HdSilkMaterial::Resolve(
         // carries, so it must not also appear as a scalar.
         const HdMaterialNode* texture = nullptr;
         TfToken outputName;
+        bool danglingConnection = false;
         for (const HdMaterialRelationship& relationship : network.relationships)
         {
             if (relationship.outputId != surface->path ||
@@ -1052,6 +2177,7 @@ HdSilkMaterial::Resolve(
             }
             const HdMaterialNode* upstream =
                 _FindNode(network, relationship.inputId);
+            danglingConnection = upstream == nullptr;
             if (upstream != nullptr &&
                 upstream->identifier == _tokens->UsdUVTexture)
             {
@@ -1063,62 +2189,32 @@ HdSilkMaterial::Resolve(
             break;
         }
 
+        if (danglingConnection)
+        {
+            // A connection to a node the network does not carry is still a
+            // connection, so the authored value Hydra leaves in `parameters`
+            // behind it is not what the graph asks to be rendered.
+            TF_WARN(
+                "hdSilk material '%s' input '%s' is connected to a node the "
+                "network does not contain; leaving the input at its default.",
+                record.path.c_str(),
+                input.name.GetText());
+            continue;
+        }
+
         if (texture != nullptr)
         {
-            const std::string asset = _ResolveAssetPath(texture->parameters);
-            if (asset.empty())
-            {
-                TF_WARN(
-                    "hdSilk material '%s' input '%s' has a texture with no "
-                    "resolvable file; leaving the input at its default.",
-                    record.path.c_str(),
-                    input.name.GetText());
-                continue;
-            }
-            uint32_t outputChannel = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
-            if (!_TryResolveOutputChannel(
-                    *texture, outputName, input.componentCount, &outputChannel))
-            {
-                TF_WARN(
-                    "hdSilk material '%s' input '%s' is connected to UsdUVTexture "
-                    "output '%s', which is not one of r, g, b, a, rgb or cannot "
-                    "drive a %u-component input; leaving the input at its default.",
-                    record.path.c_str(),
-                    input.name.GetText(),
-                    outputName.GetText(),
-                    input.componentCount);
-                continue;
-            }
+            // Built by the shared helper rather than inline. The duplicate that
+            // used to live here drifted: it read scale, bias and fallback without
+            // checking whether the author had replaced them with a connection,
+            // which published a constant the graph does not ask for.
             HdSilkMaterialTexture entry;
-            entry.parameter = input.parameter;
-            entry.componentCount = input.componentCount;
-            entry.outputChannel = outputChannel;
-            entry.wrapS = _ReadWrap(texture->parameters, _tokens->wrapS);
-            entry.wrapT = _ReadWrap(texture->parameters, _tokens->wrapT);
-            entry.sourceColorSpace = _ReadColorSpace(texture->parameters);
-            entry.scale[0] = entry.scale[1] = entry.scale[2] = entry.scale[3] = 1.0f;
-            _ReadVector4(texture->parameters, _tokens->scale, entry.scale);
-            _ReadVector4(texture->parameters, _tokens->bias, entry.bias);
-            _ReadVector4(texture->parameters, _tokens->fallback, entry.fallback);
-            entry.asset = asset;
-            const _UvBinding uv = _ResolveUvBinding(network, texture->path);
-            if (!uv.supported)
+            bool diagnosed = false;
+            if (_TryCreateTextureEntry(
+                    network, record.path, *texture, outputName, input, entry, &diagnosed))
             {
-                TF_WARN(
-                    "hdSilk material '%s' input '%s' reads a MaterialX place2d UV "
-                    "transform this projection cannot fold because %s; leaving the "
-                    "input at its default.",
-                    record.path.c_str(),
-                    input.name.GetText(),
-                    uv.unsupportedReason.c_str());
-                continue;
+                record.textures.push_back(std::move(entry));
             }
-            entry.uvPrimvar = uv.primvar;
-            for (size_t index = 0; index < 6; ++index)
-            {
-                entry.uvTransform[index] = uv.transform[index];
-            }
-            record.textures.push_back(std::move(entry));
             continue;
         }
 
@@ -1148,7 +2244,8 @@ HdSilkMaterial::Resolve(
         record.scalars.push_back(scalar);
     }
 
-    _ReconcileUvTransforms(record);
+    _ReconcileUvBindings(record);
+    _ReconcileComposites(record);
     return record;
 }
 

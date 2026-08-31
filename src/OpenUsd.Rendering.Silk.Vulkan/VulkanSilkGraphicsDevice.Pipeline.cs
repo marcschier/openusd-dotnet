@@ -648,6 +648,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         {
             SilkCullMode.None => CullModeFlags.None,
             SilkCullMode.Back => CullModeFlags.BackBit,
+            SilkCullMode.Front => CullModeFlags.FrontBit,
             _ => throw new ArgumentOutOfRangeException(nameof(cullMode))
         };
 

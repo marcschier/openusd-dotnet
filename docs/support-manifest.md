@@ -50,6 +50,7 @@ Each entry maps a C macro from native/openusd_dotnet/include/openusd_dotnet.h to
 | `ocio-display-transform` | Implemented |
 | `image-decode-rgba32f` | Implemented |
 | `udim-tile-resolution` | Implemented |
+| `resolver-context-inspection` | Implemented |
 
 ## Distribution and stability
 
@@ -121,8 +122,11 @@ Storm and hdSilk rendering paths, shader features, and hosted execution limits.
 | `preview-surface-transparency` | Workflow-gated |
 | `materialx-projection` | Workflow-gated |
 | `udim-textures` | Workflow-gated |
-| `usdvol-vulkan` | Workflow-gated |
+| `usdvol-density` | Workflow-gated |
 | `cpu-skinning` | Workflow-gated |
+| `basis-curve-width-interpolation` | Workflow-gated |
+| `point-instancer-instance-identity` | Workflow-gated |
+| `mesh-facing-cull-styles` | Workflow-gated |
 | `cpu-ocio-export` | Implemented |
 | `texture-residency-budgets` | Implemented |
 | `gpu-ocio-presentation` | Not supported |

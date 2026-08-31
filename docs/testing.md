@@ -285,22 +285,177 @@ managed CI, deterministic performance safety, shader reproducibility, verified n
 archive production, package-only consumers, and platform render evidence on the same
 commit and artifact set.
 
+## Third-party resolver plugin gate
+
+`native/tests/resolver_plugin` proves the third-party resolver contract with a real out-of-tree
+plugin instead of a linked stub. `testResolver.cpp` implements an `ArResolver` with its own
+context type and the `openusdtest` URI scheme; CMake builds it as a `MODULE` into
+`plugins/openusdTestResolver` under the build tree with its own unflattened
+`resources/plugInfo.json`. It is never linked into the shim and never installed, so passing this
+gate means the plugin was found only through `PlugRegistry`.
+
+`openusd_native_probe` receives that `plugInfo.json` path as an argument and, before it resolves
+its first asset, registers the tree and asserts the new plugin appears in the enumeration and the
+`openusdtest` scheme becomes a registered URI scheme. It also asserts the opposite for the type
+list: `ArGetAvailableResolvers` reports *primary-resolver candidates*, and upstream marks a
+resolver that declares URI/IRI schemes as never eligible to be primary, so `OpenUsdTestResolver`
+must **not** appear among the available type names while `ArDefaultResolver` must. That asymmetry
+is the point of the assertion - the scheme list, not the type list, is what proves a vendor URI
+resolver is live.
+
+The probe then creates a context that carries a string for both the primary resolver and the URI
+scheme, binds it for one bulk `openusd_resolver_resolve` call covering resolved, unresolved, and
+absolute paths, and unbinds it. Binding semantics are gated in the same pass: a cross-thread
+release is rejected with `OPENUSD_STATUS_WRONG_THREAD` and an out-of-order release is rejected as
+an invalid argument, and both rejections leave the binding still owned and still bound so the owner
+thread can retry it in order. An explicitly empty context is bound like any other, both as a
+`resolve` argument and as a nested binding, so it shadows the ambient binding rather than silently
+inheriting it, and the outer binding is proven to come back once the nested one is released. Both a
+missing asset and a malformed context-string list are contract results rather than crashes.
+
+Two further asymmetries are gated because a weaker implementation passes without them:
+
+- **Refresh is scoped by context identity, process-wide.** With the context bound, refreshing *it*
+  is rejected from the binding thread *and* from another thread, while an unrelated context still
+  refreshes freely, and the rejected refresh succeeds once the binding is released. A thread-local
+  "is anything bound here" check passes the first assertion and fails the other three.
+- **An empty identifier is unresolved.** `testResolver.cpp` deliberately returns an empty
+  `CreateIdentifier` for an asset whose file exists and whose `_Resolve` would find it. The record
+  must be unresolved with an empty identifier, and `openusd_stage_open_with_context` must fail for
+  the same path, proving the batch agrees with composition instead of falling back to resolving the
+  raw asset path.
+
+Nothing in this gate invokes a managed callback. The resolver ABI is bulk and handle based on
+purpose: the shim binds the caller's context once for a whole batch and returns one record per
+requested path, so a third-party resolver can never re-enter the runtime that called it. The
+managed mirrors of the same contract are
+`tests/OpenUsd.NativeCoverage.Tests/ResolverPluginNativeCoverageTests.cs`, the NativeAOT
+`tests/OpenUsd.NativeProbe`, and the packaged vendor-tree assertions in the
+[package-only execution gate](packaging.md#package-only-execution-gate). The packaged gate stages a
+*resource* plugin rather than a second `ArResolver`, because a package consumer cannot compile a
+native plugin: it covers the packaging half of the contract, and this CTest covers the executable
+half.
+
+The managed mirror is `[NotInParallel]` as a whole class. Every test in it touches process-global
+OpenUSD state — the plugin registry, the thread-local binding stack, and the process-wide registry
+of bound contexts that gates `Refresh` — so running two at once would let one test's binding decide
+another test's refresh result. Managed tests also never hold a binding across an `await`. A binding
+is a thread-local `ArResolverContextBinder`, so a continuation resuming on another thread would
+both resolve without the binding and fail to release it; the tests capture results inside the bound
+scope and assert them after it.
+
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 13 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 15 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 Instance identity has dedicated coverage. One case serializes a point-instanced scene and
 requires one record per resolved instance, each with the shared prototype path, its own
-zero-based `instance_index`, a stable non-zero `instance_id`, and its own resolved transform.
-ABI 8 also requires only instance zero to carry prototype geometry; later records are lightweight.
+`instance_index`, a stable non-zero `instance_id`, and its own resolved transform.
+ABI 8 also requires only the payload record to carry prototype geometry; later records are
+lightweight. Since ABI 14 that payload record is the lowest `instance_index` a path publishes
+rather than index zero.
 Another replaces a single mesh and requires that only the affected `(path, instance_index)`
 identities are retired, so a shrinking instancer emits exactly one removal per dropped instance.
+`VerifySparsePrototypeInstanceSerialization` pins the sparse case at the serializer:
+a prototype publishing only instances 1 and 3 must put the payload on index 1, and nothing on the
+wire may depend on an index-zero record existing.
+
+`test-assets/hdsilk-pointinstancer-probe.usda` drives the point-instancer subset hdSilk claims:
+two prototypes under one instancer, `protoIndices` that change between frames, `invisibleIds`
+hiding an instance, two levels of nesting with one and with two prototypes, and an empty instanced
+mesh. It is the negative control for the identity rule.
+Frame 1 authors proto indices `[0, 1, 0, 1]`, so the second prototype publishes instances 1 and 3
+and its payload rides on index 1 -- an implementation that published the resolved-array ordinal
+would publish 0 and 1 instead. Frame 2 swaps the assignment and requires the old identities to
+retire and the new ones to appear rather than the old ones silently changing meaning. Frame 3
+hides instancer instance 0 and requires the surviving instance to keep index 2 instead of being
+renumbered down to zero.
+
+The nested instancers require the composed index `outer * inner_instance_count + inner`, and
+`/World/NestedMulti` is what makes the radix claim testable: its inner instancer has four instances
+and two prototypes, so both must be numbered against 4 and share one interleaved index space
+(`TwigA` at 0, 2, 4, 6 and `TwigB` at 1, 3, 5, 7 on frame 1). That was measured rather than
+assumed -- deriving the radix from the samples of the prototype being resolved instead of from the
+instancer's own instance count was reintroduced behind a temporary edit, and `TwigA` then numbered
+against 3 and published `0, 2, 3, 5`, failing with
+`prototype 'TwigA' record 2 published index 3 ... expected index 4`. The same inner instancer
+repeats the proto-index swap and the `invisibleIds` hide, so frames 2 and 3 require the prototypes
+to trade whole index sets and require hiding inner instance 0 to retire exactly the composed
+indices 0 and 4 without renumbering anything that survived. An index the authoritative instance
+count cannot explain has no unique composition and is dropped with a diagnostic instead.
+
+`/World/HollowInstancer` instances a mesh with no points and no faces and requires that it publish
+nothing at all. This is not cosmetic: an empty record is byte-identical on the wire to an ABI 8
+instance reference, so without the removal guard the payload record of the empty prototype looks
+like a record reusing a payload. Removing the guard publishes two such records and fails the case
+with `prototype 'Hollow' published 2 instances, expected 0`.
+
+`/World/CurveInstancer` and `/World/PointsInstancer` prove the ABI 8 elision is topology neutral.
+Each instances two prototypes with proto indices `[0, 1, 0]`, so the first prototype publishes a
+payload on index 0 and a reference on index 2 while the second publishes its payload on index 1
+alone -- a non-triangle payload that never publishes an index-zero record. Publishing the full
+payload per instance instead, as `BasisCurves` and `Points` did before, fails with
+`prototype 'StrandA' record 1 published index 2 geometry 2 ... expected geometry no`. The managed
+half is `ANonTriangleInstancedPrototypeElidesItsPayloadAfterTheLowestIndex`, which requires the
+reconstructed line-list and point-list references to match their payload record's points, indices,
+subprim count, and topology fingerprint exactly.
+
+`VerifyMalformedRecordIsRejectedBeforeTransforms` covers the order of validation. `ApplyDrawMode`
+and `ApplyComplexity` both dereference `record.indices` into `record.points` and into vertex
+attribute data: wireframe draw mode carries the authored index values through into a line list
+unchanged, and medium complexity then reads both endpoints of every line and interpolates every
+`VERTEX` attribute at the subdivision parameter. A three-point triangle whose third index is 4096
+therefore reads past the end of both arrays, and the *transformed* record then validates cleanly
+because the transforms rebuild the topology with fresh sequential indices -- so the page would
+publish garbage geometry rather than reject anything. Validating the record as published closes
+that; the case runs all three converting draw modes at medium complexity and requires a page
+carrying only the healthy sibling path.
+
+`VerifyComplexityDirtiesConvertedTriangles` covers the other half of that interaction. Complexity is
+applied after the draw mode, so a triangle-list record becomes lines or points on the way to the
+wire, and a complexity change has to republish it. The case renders one triangle under each
+converting draw mode, requires the primitive count to double at medium complexity and to come back
+down at low, and fails when only the records already stored as lines or points are dirtied.
+
+`VerifyCurveWidthResolution` covers the width resolver and
+the line builder directly, without a render index, because UsdImaging never authors
+`HdBasisCurvesTopology` curve indices and an indexed topology cannot otherwise be reached from a
+stage.
+
+`VerifyOrientationWinding` pins the winding hdSilk emits for each authored USD `orientation`, and it
+exists because the obvious reading of the code is wrong. `rightHanded` faces are counter-clockwise seen
+from the front and `leftHanded` clockwise; every backend rasterizes counter-clockwise-front; and
+`HdMeshUtil::ComputeTriangleIndices` looks like it triangulates in authored index order and leaves the
+convention to the renderer. It does not -- it already reverses a `leftHanded` face's corners. Adding a
+reversal in the delegate on that assumption made the `leftHanded` quad publish `2,0,1,2,3,0`, the
+double-reversed order, which inverts facing for exactly the prims USD had already handled; the reversal
+was then removed. The case authors two quads that are byte-identical apart from that one token and pins
+`0,1,2,0,2,3` against `2,1,0,2,0,3`, so both a dropped and a duplicated correction are red.
+
+A third quad, `/World/ProbeLeftHandedFaceVaryingMesh`, carries a face-varying `primvars:cornerId`. That
+data is one element per triangulated corner in the same `HdMeshUtil` order, and the same orientation
+handling reorders those corners, so the two stay aligned only while neither is permuted alone. The
+face-varying primvar forces the expanded-topology path, so the winding shows up in the emitted point
+order rather than in the indices, and the case cross-checks each of the six emitted vertices against the
+corner value authored for the point it was expanded from -- a relation no permutation of one array alone
+can satisfy. Permuting only the corner array fails it at
+`expanded vertex 1 at (1, 0) carries corner 10, expected 11`.
+
+All three are authored in `test-assets/hdsilk-probe-stage.usda` rather than through the probe's C ABI,
+because primvar interpolation is attribute metadata and the C ABI exposes prim metadata only: authoring
+`primvars:cornerId` without it made the primvar resolve as `constant` with four elements, which the
+record validator correctly rejected and the per-path atomic rollback correctly dropped.
 
 Per-prim isolation is asserted as a skip rather than a throw: a record that fails validation must
 be omitted from the page and counted by the rejected-mesh counter while every valid sibling still
 serializes. This is what stops one malformed prim in a production asset from blanking a frame.
+Isolation is per path, not per record, because ABI 8 makes the records of one path interdependent:
+`VerifyRejectedPayloadDropsWholePath` publishes a path whose payload record is one subprim index
+short alongside a healthy sibling path, and requires the page to carry the sibling and *none* of
+the broken path's records. Rolling back only the failing record instead publishes instance
+references that no consumer can resolve, and the case fails when that is reinstated.
 
 Material connections are pinned by the same probe. Its stage wires `diffuseColor` to the
 `UsdUVTexture`'s `outputs:rgb` and `metallic` to that same prim's `outputs:b`, then requires two
@@ -309,6 +464,102 @@ published texture entries naming one asset with `OPENUSD_SILK_TEXTURE_CHANNEL_RG
 tell those two entries apart, so the case fails if the authored output token is dropped, guessed,
 or reconstructed from the asset path. The probe also enforces the channel/width pairing on every
 entry it parses.
+
+`VerifyMaterialXUvChainProjection` in the same probe resolves material networks directly through
+`HdSilkMaterial::Resolve`, without a render index, and pins the constant texture-coordinate fold. It
+requires the exact `NG_place2d_vector2` result for an SRT scale/offset, for a quarter turn about the tile
+centre, and for the TRS operation order, which no approximated rotation or operation order can satisfy. It
+requires two chained `place2d` nodes to compose into the single affine neither node produces alone, and it
+requires `UsdTransform2d` to fold with UsdPreviewSurface's opposite, counter-clockwise rotation sense while
+preserving the `UsdPrimvarReader_float2` primvar behind it -- a shared matrix builder would transpose the
+off-diagonal terms, and a fallback to the default `st` would sample a primvar nothing authored. It also
+requires four rejections: a `place2d` whose `offset` is connected, a `place2d` sitting behind a per-pixel
+`ND_multiply_vector2`, a `UsdTransform2d` with no upstream reader, and -- for the one-stream-per-material
+limit -- a transformed base colour beside an untransformed normal map, where exactly one texture and one
+transform survive. It then pins the primvar half of that same limit, which the transform cases cannot reach because
+every entry there already agrees: a base colour on `uvSet0` beside a normal map on `uvSet1`, both carrying the
+identity affine, must keep exactly the base colour, and the reversed authoring must keep the base colour on `uvSet1`
+so the surviving stream is proven to follow the first texture in the fixed input order rather than whichever primvar
+name sorts first. The same two-image shape on one shared primvar must keep **both** entries, which is what stops the
+two divergence cases from being satisfied by a projection that simply drops every normal map. Finally it serializes
+the folded record through `HdSilkSceneState::BuildPage` and reads
+the ABI 14 `uv_transform` back out of the page bytes, because the renderer only ever sees the page.
+
+`StormSilkParityCaptureDriverTests.MaterialXPlace2dUvTransformSelectsAnotherTexelOnVulkan` and its
+D3D12 WARP counterpart supply the pixel evidence. Both meshes carry the same authored texture
+coordinate, so only the published UV transform can change which texel of a 2x2 image the candidate
+samples. Each backend runs three captures: the folded `(1, 0, 0, 1, 0.5, 0.5)` translation and the
+`(0, -1, 1, 0, 1, 0)` quarter turn a `UsdTransform2d` produces both match a constant reference of the texel
+they select at `maxChannelDelta=2` / `meanChannelDelta=0.017`, and the identity transform fails the same
+comparison at `maxChannelDelta=244`. The rotation capture is what proves the off-diagonal matrix terms reach
+the shader; a translation-only capture leaves them at zero and cannot. The three are written to
+`uv-transform-<backend>-self-consistency.txt`, `uv-transform-<backend>-rotation.txt`, and
+`uv-transform-<backend>-divergence.txt`.
+
+`VerifyMaterialXImageArithmeticProjection` pins the fold of constant arithmetic over exactly one image
+into the texture entry's scale and bias. `mix(0.2, image * 0.5, 0.75)` must fold to
+`image * 0.375 + 0.05`, which neither the multiply nor the mix produces alone, and the same shape on a
+scalar input must fold only the red channel because the consumer replicates the connected output channel
+after scale and bias. It also requires five rejections: an affine that leaves the unit range, two images
+multiplied into one input, a non-affine `clamp` over an image, arithmetic on the `normal` input, and a
+regression guard that the direct-image path still publishes its texture.
+`StormSilkParityCaptureDriverTests.MaterialXImageArithmeticFoldsToTextureScaleBiasOnVulkan` and its D3D12
+WARP counterpart supply the pixel evidence. A 0.4 texel folded by `image * 0.375 + 0.05` must shade like a
+constant material of 0.2; both are exactly representable in eight bits (102/255 and 51/255), so the gate
+asserts transported arithmetic at `maxChannelDelta=0` rather than a rounding tolerance, and the same image
+bound with the identity scale and bias diverges at `maxChannelDelta=49`. The pair is written to
+`image-arithmetic-<backend>-self-consistency.txt` and `image-arithmetic-<backend>-divergence.txt`.
+`SilkTextureResidencyTests.ChangingTheFoldedScaleAndBiasReDecodesTheSameAsset` proves the folded constants
+are part of the decoded texture's effective identity: re-authoring the same asset with a different constant
+disposes the entry and creates a new device texture instead of serving the previously folded pixels.
+
+`VerifyMaterialXImageSamplingProjection` pins MaterialX image sampling to MaterialX's own names and defaults. It
+requires an image with no authored address mode to publish periodic on both axes, requires each of `constant`,
+`clamp`, `periodic`, and `mirror` to map to its own wire mode with the two axes read independently and with one axis
+authored as a `TfToken` and the other as a `std::string`, requires an address mode outside that enumeration to be
+rejected, requires the MaterialX `default` colour to become the entry fallback while the unauthored alpha stays
+opaque, and requires a `ND_texcoord_vector2` with `index = 1` to be rejected where `index = 0` resolves to `st`.
+
+`VerifyMaterialXConstantFoldProjection` pins the constant folds to the MaterialX nodedefs. It requires
+`ND_constant_color3` to fold from `value`, requires an unauthored `mix` factor to default to `0` and therefore select
+`bg` rather than the midpoint, and requires four separate cases where an input the author replaced with a connection is
+*not* folded from the value Hydra leaves behind it: a connected `ND_constant_color3` value, a connected mix factor, a
+`ND_clamp_color3` whose `in` is an image, and a relationship naming a node the network does not carry. The
+unconnected `in` case is asserted alongside them so the pass-through shortcut is proven still to work rather than
+merely disabled.
+
+`StormSilkParityCaptureDriverTests.MaterialXPeriodicAddressModeTilesOnVulkan` and its D3D12 WARP counterpart supply
+the pixel evidence for that address-mode change. A coordinate of 1.25 on a 2x2 image is the smallest case that
+separates the two candidate modes: periodic wraps it onto the first column and clamp-to-edge reads the last, and both
+land exactly on a texel centre so the comparison is against an exact constant colour. Periodic matches the wrapped
+texel and the black mode matches the clamped one, each at `maxChannelDelta=2`, while the black mode compared
+against the wrapped texel diverges at `maxChannelDelta=244`. The three are written to
+`address-mode-<backend>-periodic.txt`, `address-mode-<backend>-constant.txt`, and
+`address-mode-<backend>-divergence.txt`.
+
+`MaterialCompositeSlotContractTests` pins the material's single two-image composite slot to the five places that
+independently state it and that no compiler relates: the shader manifest, the checked SPIR-V/DXIL reflections, the
+checked Metal source, the managed binding layout, and the permutation budget. It requires the slot to appear in the two
+`MAP_MATERIAL` reflections and in **neither** of the UV-only ones nor in `mesh.volume.fragment`, and it requires the
+mesh fragment budget to stay at eight, which is the statement that one universal slot cost no shader variants. The
+Metal case reads the `[[texture(15)]]` and `[[sampler(12)]]` indices straight out of the shipped MSL, because that is
+the only check that runs on a non-macOS host and can still catch a Metal index that disagrees with the managed mapping.
+
+`StormSilkParityCaptureDriverTests.MaterialXTwoImageCompositeShadesPerPixelOnVulkan` and its D3D12 WARP counterpart
+supply the pixel evidence. Both images are one texel of a constant colour chosen so every asserted result is exactly
+representable in eight bits: `204/255 * 128/255` is `0.4` and the same pair mixed at `0.25` is `0.7255`. Multiply and
+mix each match a constant reference at `maxChannelDelta=2`, and the same primary image bound with **no** composite --
+which is where a renderer that ignored the second image would land -- diverges from the product reference at
+`maxChannelDelta=99`. Mix is not redundant with multiply: no single hard-coded operator produces both, so the operator
+id and the blend factor must both reach the shader. The four captures are written to
+`composite-<backend>-multiply.txt`, `composite-<backend>-mix.txt` and `composite-<backend>-divergence.txt`.
+
+`SurfaceConstantsSizeContractTests` is the surface-block counterpart of `FrameConstantsSizeContractTests`. Page ABI 14
+grew the block from 144 to 176 bytes, and a hand-written copy that stops at 144 hands the shader an all-zero UV affine
+that collapses every texture coordinate onto one texel, which renders as a plausible flat image rather than as an
+obvious failure. The test derives the size from `SurfaceParameters` in `mesh.slang` and requires both hand-written
+copies to write that many floats, not merely to allocate that many bytes: the offscreen RHI conformance harness
+allocated the right size and filled two rows fewer.
 
 ## Physics package gates
 
@@ -448,6 +699,123 @@ format; otherwise it records `artifacts/render-capability/macos-cgl.json` and do
 Storm/Metal parity as observed. The hosted macOS evidence outside that conditional path is Metal
 pipeline/composition, MaterialX self-consistency, lifecycle, and Storm/Metal switching.
 
+### Sampled OpenVDB density
+
+`VolumeRenderingConformanceTests` runs in three render jobs and writes its deltas to
+`TestResults/volumes/*.txt`, uploaded as `render-volume-evidence-win-x64-<run>`,
+`render-volume-evidence-linux-x64-<run>`, and `render-volume-evidence-osx-arm64-<run>`.
+Each backend gate renders the same VDB three
+ways -- sampled, uniform at the grid's mean density, and sampled from a translated grid --
+and requires the sampled render to differ from both.
+
+The split between the jobs is a platform fact, not a coverage gap. `windows-wgl` runs the
+whole class: the D3D12 WARP gate, the Vulkan SwiftShader gate, and the cross-backend
+comparison. `linux-presentation` runs the two Vulkan legs against lavapipe, reusing the
+runtime the GLX parity capture already staged in that job, because Direct3D 12 exists only
+on Windows and the D3D12 legs report a platform skip there. `macos-arm64` runs the two Metal
+legs, because Metal exists only on macOS.
+
+Self-divergence alone was not sufficient evidence. D3D12 passed its own sampled-versus-uniform
+check for a while by rendering a flat authored density of `1.0` against a uniform proxy at the
+grid mean `0.033835`: its checked DXIL mesh fragment declared no density texture at all, so its
+images were byte-identical under a translated grid (`maxChannelDelta=0`).
+`SampledOpenVdbDensityAgreesBetweenD3D12AndVulkan`
+closes that hole by comparing the two backends' sampled images directly; they now agree at
+`maxChannelDelta=0` / `meanChannelDelta=0.000000` with identical footprint variance `890.508958`.
+Storm is still not a usable reference here: it renders the sampled, uniform, and translated stages
+identically, so `SampledOpenVdbDensityUsesStormReferenceWhenAvailable` records that in
+`volume-vdb-storm-reference.txt` and reports a capability skip rather than a pass.
+
+`VolumePipelineSelectionConformanceTests` gates the other half of the same failure mode in
+both jobs and needs no native runtime. There is exactly one checked fragment program that
+samples the density grid, so a volume mesh that also binds 2D material maps has no correct
+pipeline at all. The test drives a real device and requires that combination to raise an
+`InvalidDataException` naming the prim and the features, and its companion case requires the
+ordinary volume mesh to still draw, so the rejection cannot pass by refusing everything. The
+contract is renderer-neutral but still needs a device, because the selection only happens on
+the draw path; Vulkan is used because it is the one backend present in every render job, and
+a host without it reports a capability skip rather than a failure that would look exactly
+like hdSilk having stopped rejecting the combination.
+
+`VolumeDepthSamplingConformanceTests` gates the density integration against the grid's own
+Z resolution, on real D3D12 WARP and Vulkan SwiftShader devices. It authors its scene
+commands directly through `VolumeCommandAuthoring` instead of reading a `.vdb`, for two
+reasons: the grid has to be chosen, because no checked-in asset has the resolution that
+exposes the defect, and the gate then needs no native runtime, so it keeps proving the
+integration while the hdSilk delegate is between ABI revisions.
+
+The exact layer-centre integration contract is bounded to 512 layers. Deeper grids are rejected explicitly instead of
+falling back to a lower sample count that could step over thin density features.
+
+The measured numbers are the point. Over a 96-deep grid holding a two-layer slab, the
+retired fixed-32 lattice integrates the column to exactly `0.0`, so the volume renders
+identically to an empty one; one sample per layer returns the exact mean `2/96`. The gate
+requires the slab to reach the image at all -- measured `maxChannelDelta=9`,
+`meanChannelDelta=1.166667` against an empty proxy, where the retired integrator gives
+`0` -- and then requires the integration to be *exact*, not merely close: the sampled slab
+and a uniform proxy authored at `0.020833` render bit-identically, `maxChannelDelta=0` and
+`meanChannelDelta=0.000000`. D3D12 and Vulkan agree at `maxChannelDelta=0`. A 32-deep
+control reproduces the old result exactly, which is what keeps the recorded deltas in the
+VDB gates above valid rather than silently re-baselined.
+
+`MetalArgumentBufferContractTests` guards the Metal binding path that carries the volume
+texture, and runs on every host because none of what it checks is observable from a Metal
+API result. Metal does not report a fragment argument buffer no shader reads, does not
+report a direct texture argument left unbound, and accepts a `Type2D` argument descriptor
+for a slot the shader declares as `texture3d`. A Tier 2 device would therefore have encoded
+the density grid into a buffer nobody reads and still produced a plausible image. The tests
+require the sampled-volume layout to be refused for the type mismatch specifically -- with a
+layout carrying only the volume texture, so the refusal cannot be an accident of the blanket
+rule -- require every texture-bearing layout to be refused while no checked program declares
+an argument buffer, require a buffer-only layout *not* to be refused so the predicate is not
+vacuously rejecting everything, and read the checked `*.metal` sources to prove the switch
+still matches them.
+
+`MetalSampledVolumeConformanceTests` covers the Metal half, which has no executed pixel
+evidence at all: a Metal volume image can only be rendered on macOS and no render job
+captures one. It therefore runs on every host that runs the conformance assembly and proves
+only what a file can prove -- that `MetalSilkGraphicsDevice` still implements
+`ISilkVolumeTextureGraphicsDevice` with the expected `CreateTexture3D` shape, that
+`MetalSilkGraphicsCommandList` still implements `ISilkVolumeTextureCommandList`, that the
+checked `mesh.volume.fragment.metal` binds its `texture3d` and sampler at the argument
+indices `MetalShaderResourceIndices` encodes, and that no other checked mesh Metal source
+declares a `texture3d`. Losing the two implementations is silent rather than loud:
+`SilkMeshRenderer` selects the sampled-volume pipeline only for a device that implements
+them, so a Metal backend without them renders the proxy at the authored uniform density.
+Passing these does not make Metal sampled volumes supported; it only keeps the wiring from
+disappearing between macOS runs.
+
+#### The executed Metal gate and its promotion step
+
+`UniformDensityVolumeGatesOnMetal` and `SampledOpenVdbDensityGatesOnMetal` are the real
+pixel gates. They call the same `RunUniformDensityVolumeGate` and
+`RunSampledOpenVdbDensityGate` helpers the Vulkan and D3D12 legs call, with the same stages,
+crops, and thresholds, so a Metal backend that ignored the density grid would fail the
+shifted-grid assertion exactly as D3D12 did. Writing Metal-shaped assertions instead would
+only prove Metal agrees with itself.
+
+`macos-arm64` stages their runtime with `eng/stage-hdsilk-runtime.ps1 -Rid osx-arm64`, which
+merges OpenUSD's plugin tree and the hdSilk delegate's into the single directory
+`OPENUSD_PLUGIN_PATH` can name, and reports the `DYLD_LIBRARY_PATH` the step exports before
+launching the test host -- dyld reads it once at process start, so setting it from inside
+the host would do nothing. The staging is separate from `eng/run-parity-capture.ps1` on
+purpose: that script also performs the Storm capture and runs only when hosted CGL works, so
+reusing it would make a Metal-only gate disappear whenever hosted OpenGL regressed.
+
+A skipped gate exits zero, and an artifact of skip notes reads exactly like an artifact of
+measured deltas, so `eng/assert-volume-evidence.ps1` classifies the result into
+`volume-evidence-metal-status.json` and keeps two failure classes apart. Missing or malformed
+evidence is a wiring fault and always fails the job. A capability skip -- no native runtime,
+or no `hioOpenVDB` reader in the profile -- is a documented outcome that `-AllowCapabilitySkip`
+downgrades to a warning while still recording `status=capability-skip`.
+
+That switch is the promotion gate, and it is the only thing to change. osx-arm64 is
+deliberately absent from the sampled-volume evidence platforms until a run uploads
+`volume-evidence-metal-status.json` with `status=executed`; at that point the switch is
+removed, the Metal gate becomes required evidence on that runner the way the D3D12 WARP gate
+already is on Windows, and osx-arm64 joins the claim. Until then the Metal legs are wired and
+executed but their result is unobserved, which is not the same as passing.
+
 ## Windows native Storm child
 
 The native child-host CTest proves the application-owned `WS_CHILD`, parent/process/creator-thread
@@ -583,7 +951,7 @@ evidence uses NSEvent/NSView injection, never user32. macOS exposes OpenGL 4.1 c
 compatibility profile. The probe requires `openusd_hydra` itself to report exactly `Storm / Metal`;
 the child preserves that name and appends only `OpenGL 4.1 core presentation`.
 
-The `macos-15` Apple Silicon render job selects Xcode 16.4, validates the ten-entry metallib and sidecar,
+The `macos-15` Apple Silicon render job selects Xcode 16.4, validates the manifest-derived metallib and sidecar,
 runs the same native first/edit/preserved-capture probe for build or archive input, runs the signed
 package-only launch and real `IOSurfaceRef`/`MetalSharedEvent` tests, then performs 100 Storm/Metal
 switches in one Avalonia process:
@@ -594,7 +962,7 @@ switches in one Avalonia process:
 ```
 
 The shader workflow is also the required hosted Metal picking gate. After staging the real
-ten-entry library, it runs Metal conformance for nearest-depth overlap, physical top-left coordinate
+the combined library, it runs Metal conformance for nearest-depth overlap, physical top-left coordinate
 mapping, token-zero miss, stale resize and simulated command-failure generation, nullable hit
 geometry, persistent three-slot ring saturation/reuse, and warm zero-churn resource counts. Windows
 runs the same multi-TFM source and contract tests, but cannot satisfy this execution gate because it
@@ -1013,6 +1381,64 @@ Correct is 875 against 875, adjusted IoU 1.000000, weakest margin **0.549837**
 by deliberately forcing `GetCullMode` to `None` and confirming the gate went
 red, then reverting.
 
+#### The front cull styles were inverted, not merely ungated
+
+That scene, and the `cull-style-back` self-consistency pair beside it, only ever
+exercised `back` and `backUnlessDoubleSided`. `front` and `frontUnlessDoubleSided`
+had no rasterizer state at all: `SilkCullMode` declared only `None` and `Back`,
+and `SilkGraphicsPipelineDescriptor.Validate` rejected anything else, so the
+renderer's cull mapping resolved both front styles through a catch-all that
+returned **`Back`** -- culling exactly the set of faces they ask to keep. Because
+the inversion was consistent across backends, nothing that compared two backends
+against each other could have caught it.
+
+`CullStyleFrontCullsTheOppositeFacesOfBackOnD3D12AndVulkan` renders one
+front-facing and one back-facing single-sided quad, one per half of the canvas,
+under three cull styles, and requires the halves they select to be disjoint:
+
+| cull style | left (front-facing) | right (back-facing) |
+| --- | ---: | ---: |
+| `back` | 2323 | 0 |
+| `front` | 0 | 2323 |
+| `frontUnlessDoubleSided`, `doubleSided = 1` | 2323 | 2323 |
+
+Identical on D3D12 WARP and Vulkan SwiftShader, adjusted IoU passing for all
+three passes, recorded in `cull-style-facing.txt`. Reinstating the catch-all
+produces `front = 2323/0` on both backends -- byte-identical to `back` -- and
+fails on the first assertion. The third row is what proves the "unless" clause
+reaches the front variant too rather than only the back one, and
+`PipelineDescriptorAcceptsEveryResolvableCullMode` is the contract half that
+keeps a future backend from dropping `Front` into its own catch-all, and
+`EveryCullStyleRoutesToItsOwnRasterizerCullMode` is the routing half: it drives
+all five styles against both sidedness values through a recording device and
+requires the bound pipeline state to carry the matching `SilkCullMode`.
+`LineAndPointBatchesAreNeverCulled` pins the companion invariant that a
+screen-space line or point resolves to `None` whatever style the wire carries.
+
+Those two exist because the renderer used to carry an eager fast path that
+bypassed the pipeline cache and resolved the cull mode as
+`cullMode == Back ? backCull : none`, mapping `Front` to `None`. The path was
+unreachable -- `SilkVertexLayoutDescriptor` is a record struct whose
+`Attributes` is an `IReadOnlyList`, and `PositionNormal` allocates a fresh array
+per access, so its equality check was reference-based and never true -- so it
+was a latent trap rather than a live bug, and making that equality structural
+would have re-armed it. The path and its four eager pipelines are removed. That
+was measured, not assumed: `ColdStartLoadsOnlyCheckedShaderArtifacts`
+recorded five pipelines and four shader modules for a single one-triangle draw,
+of which four and two were never bound; it now records one and two.
+
+There is no Storm parity scene for the front cull styles, and the reason is worth
+stating rather than leaving as an omission. USD gprims author `doubleSided`, not
+a Hydra cull style; the cull style comes from `UsdImagingGLRenderParams`, and the
+hosted hdSilk session pins that to `CULL_STYLE_BACK_UNLESS_DOUBLE_SIDED` so
+authored `doubleSided` is honoured against the Storm reference. So a `.usda`
+scene cannot ask either renderer for a front cull style at all: on the current
+stage path the front styles are unreachable, and they are reachable only through
+the page, which is exactly where this gate drives them. That also bounds the
+claim -- the fix is that a consumer authoring `front` on the wire now gets front
+culling instead of back culling; it is not a claim about stage-authored content.
+`cullStyle=nothing` remains ungated.
+
 ### Draw modes: cards already worked; origin and bounds are now gated
 
 `UsdImagingGLDrawModeAdapter` inserts the `cards` draw mode as an ordinary
@@ -1088,6 +1514,135 @@ pixels, adjusted IoU 1.000000, against a 0.229167 worst perturbation -- a
 Matching by construction is what made that possible. Because none of the three
 backends has a line width state to get wrong, there was no constant left to
 tune, and the agreement is exact rather than approximate.
+
+#### Curve widths: every interpolation is resolved; none of them widen a line
+
+Line topology closed the draw-mode gap, but it left a real defect behind. hdSilk
+accepted only a scalar or single-element `widths` array. Anything else -- a
+per-curve `uniform` array, or the per-control-point `varying`/`vertex` array
+that `UsdGeomCurves` defaults to -- failed extraction, and the delegate removed
+the whole Rprim from the scene state. Storm renders those curves. hdSilk drew
+nothing.
+
+`parity-curve-width-interpolation.usda` is that defect made measurable. It
+authors the same two-segment asymmetric shape four times, one per screen
+quadrant, with byte-identical `points` and `curveVertexCounts`, differing only in
+the authored widths interpolation: `constant [0.05]`, `uniform [0.05, 0.11]`,
+`varying [0.02, 0.04, 0.08, 0.16]`, and `vertex [0.03, 0.06, 0.12, 0.24]`.
+
+| | published curve prims | D3D12 WARP coverage | quadrants |
+| --- | ---: | ---: | --- |
+| Before | 1 of 4 | 11 | 0, 0, 11, 0 |
+| After | 4 of 4 | 50 | 11, 15, 11, 13 |
+
+The "before" row is not a recollection: the drop was reintroduced by requiring a
+constant interpolation again, measured, and reverted. On the packaged
+SwiftShader Vulkan ICD the same experiment measures 11 and `0, 0, 11, 0` broken
+against 56 and `14, 15, 11, 16` correct, and the two backends compare at
+adjusted IoU **1.000000** either way -- which is exactly why a cross-backend gate
+alone could not have caught this and the published prim count is asserted
+directly. The per-quadrant counts are ICD- and driver-dependent, so the gate
+asserts a factor-of-two spread and a total coverage cap rather than these exact
+numbers; only the D3D12 WARP draw-mode counts are pinned exactly.
+
+hdSilk now resolves all four interpolations onto the emitted line vertices and
+publishes them as an `OPENUSD_SILK_ATTRIBUTE_WIDTH` vertex attribute named
+`widths`. A constant width still collapses to one `CONSTANT` wire element, so a
+constant-width scene keeps the payload it always had; the other three publish one
+`VERTEX` element per emitted vertex, with `uniform` expanded from its per-curve
+value onto both endpoints of every segment that curve emits. The two gated
+draw-mode curve scenes are the ones that had to stay still, because
+`UsdImagingGLDrawModeAdapter` authors constant `widths = [1.0]` for them: on
+D3D12 WARP under the page-level test camera they cover **181** and **59** pixels,
+and rebuilding hdSilk from the pre-change source produced exactly the same two
+numbers.
+
+Complexity subdivides those segments, and a subdivided segment is still the same
+segment, so every `VERTEX` attribute is interpolated at the same parameter as the
+position. At `RenderComplexity.Medium` each segment is halved, and the authored
+`vertex` ramp `0.03, 0.06, 0.12, 0.24` publishes
+`0.03, 0.045, 0.045, 0.06, 0.12, 0.18, 0.18, 0.24`. Copying the nearer endpoint
+instead -- which is what the complexity path originally did for attributes, while
+already interpolating the position -- turns that ramp into a step function and
+publishes `0.03, 0.03, 0.06, 0.06, ...`. That was measured rather than assumed:
+reinstating endpoint selection behind a temporary switch failed
+`VerifyMediumComplexityInterpolatesWidths` in `hdsilk_probe` with
+`mediumTriangles=4 lowTriangles=2`, and removing it passed. The constant entry
+stays a single `CONSTANT` element through subdivision, because halving a segment
+cannot make a per-mesh value per-vertex.
+
+The native probe covers what a stage cannot reach.
+`VerifyUniformWidthCurves` authors two curves with one width each and requires
+`0.25, 0.25, 0.75, 0.75` on the emitted vertices, which no
+first-value-wins shortcut produces. `VerifyCurveWidthResolution` calls
+`HdSilkResolveCurveWidths` and `HdSilkBuildLinearSegmentedCurveLines` directly,
+without a render index, because `UsdImaging` never authors
+`HdBasisCurvesTopology` curve indices and an indexed topology therefore cannot be
+reached from a stage. It is still a topology Hydra may hand a delegate, and
+vertex widths are parallel to the points array, so the lookup has to follow the
+resolved point index exactly as the position does: with `curveIndices =
+[3, 2, 1, 0]` the emitted widths are the reversed authored order. The same case
+pins the expected element counts (an indexed topology expects one width per
+authored point, an unindexed one expects one per flattened control point), the
+uniform inference that overrides a mismatched declared interpolation, double
+arrays, negative clamping, the empty-value default, and the two rejections --
+an unexplainable element count and a non-finite width.
+
+Acceptance is slightly wider than that canonical count in one direction only.
+An unindexed curve resolves a point by its flattened control-point ordinal, so a
+widths array parallel to a points array longer than the curves consume -- which
+USD permits -- indexes identically and is accepted alongside the control-point
+count. `VerifyCurveWidthResolution` runs that case end to end: six points, two
+curves consuming four of them, six authored widths, and the emitted line vertices
+must carry `0.1, 0.2, 0.3, 0.4`. Before the points-sized count was accepted this
+fell through to the fallback and published a flat `1.0`. A *shorter* array is
+still rejected, because the line builder would read past it, and an indexed
+topology still requires exactly one width per authored point.
+
+Value types are covered in the same case. Widths are read from `float`,
+`double`, and `GfHalf` scalars and from `VtFloatArray`, `VtDoubleArray`, and
+`VtHalfArray`. `UsdGeomCurves` declares `widths` as `float[]`, so the half forms
+are unreachable from a stage, but a scene index or a delegate is free to hand
+Hydra the half-precision primvar it authored and `GfHalf` converts to `float`
+exactly. The half array is authored with a negative first element so it exercises
+the same clamp the float path does, and the half scalar resolves as constant
+because one element can only be that for a two-curve topology.
+
+**The widths do not widen anything, and that is the correct behaviour, not a
+shortcut.** Storm rasterizes linear basis curves as one-pixel screen-space lines
+at the harness refinement and ignores authored world-space widths entirely --
+`parity-curve-width-probe.usda` measured Storm at 128 pixels for two segments
+authored 0.24 units wide, against 2093 for world-space ribbons. Expanding widths
+into geometry would therefore be a parity regression, not parity progress. It is
+also not portable: D3D12 has no line width state, Vulkan needs the optional
+`wideLines` feature for anything but 1.0, and Metal has none.
+
+So the honest scope of this capability is exact: **authored width
+interpolation is resolved and published; authored width does not change which
+pixels are covered.** The quadrant coverages above are the assertion that keeps
+it honest -- four shapes whose authored widths span a twelvefold range stay
+within a factor of two of each other, and the whole scene stays under 200 covered
+pixels, so a regression that started expanding widths into geometry is red
+rather than silently prettier. Ribbons and half-tubes at higher refinement
+remain unimplemented and unclaimed; Storm at the harness complexity does not
+draw them either, so there is currently no reference to gate them against.
+
+These are executed gates, not files that merely exist.
+`HdSilkResolvesEveryCurveWidthInterpolationOntoLineVertices`,
+`HdSilkCurveWidthsDoNotMoveEmittedLineVertices`, and
+`HdSilkMediumComplexityInterpolatesCurveWidthsAlongEachSegment` need only the
+hdSilk native runtime, so `eng/run-parity-capture.ps1` runs them on all three
+platform jobs of `render.yml`, and `-MinimumExpectedTests` counts them.
+`HdSilkCurveWidthsRasterizeIdenticallyOnD3D12AndVulkan` and
+`HdSilkDrawModeCurveCoverageIsUnchangedByPublishedWidths` need a device and run
+on `windows-wgl`, where both software backends are present: D3D12 WARP and the
+packaged SwiftShader ICD that `run-managed-tests.ps1` selects. The D3D12 half of
+the cross-backend gate is required; the Vulkan half runs wherever an ICD resolves
+and otherwise records `vulkan=unavailable:<reason>` in
+`curve-width-cross-backend.txt`, so a host without SwiftShader narrows the claim
+instead of turning the gate red or passing silently. `hdsilk_probe` carries the
+native half and is executed by the `coverage` job of `ci.yml` and by the `build`
+job of `native.yml` on all three platforms.
 
 ### Points: default width is world-space; one-pixel points are gated
 

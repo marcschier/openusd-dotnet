@@ -47,7 +47,7 @@ def map_parameter(declaration: str) -> tuple[str, str]:
     managed_name = camel_case(native_name)
 
     nullable_names = {"type_name", "target_prim_path", "variant_selection", "string_value",
-                      "display", "view", "looks"}
+                      "display", "view", "looks", "anchor_asset_path"}
     if native_type == "const char*":
         nullable = "?" if native_name in nullable_names else ""
         return f"string{nullable}", managed_name
@@ -62,6 +62,10 @@ def map_parameter(declaration: str) -> tuple[str, str]:
                        "const openusd_ts_spline*",
                        "openusd_validation_metadata_list*",
                        "openusd_validation_error_list*",
+                       "openusd_resolved_asset_list*",
+                       "openusd_resolver_context*", "const openusd_resolver_context*",
+                       "openusd_resolver_context* const",
+                       "openusd_resolver_binding*", "openusd_resolver_binding* const",
                        "const openusd_ocio_processor*", "openusd_ocio_processor*"}:
         return "nint", managed_name
     if native_type in {"openusd_stage**", "openusd_stage_access**",
@@ -71,6 +75,9 @@ def map_parameter(declaration: str) -> tuple[str, str]:
                        "openusd_ts_spline**",
                        "openusd_validation_metadata_list**",
                        "openusd_validation_error_list**",
+                       "openusd_resolved_asset_list**",
+                       "openusd_resolver_context**",
+                       "openusd_resolver_binding**",
                        "openusd_ocio_processor**"}:
         return "out nint", managed_name
     if native_type == "openusd_error_buffer*":
@@ -91,6 +98,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return "ref NativeValidationMetadataView", managed_name
     if native_type == "openusd_validation_error_view*":
         return "ref NativeValidationErrorView", managed_name
+    if native_type == "openusd_resolved_asset_view*":
+        return "ref NativeResolvedAssetView", managed_name
     if native_type == "const openusd_vec2f*":
         return ("OpenUsdNativeVec2f*" if native_name == "values"
                 else "ref OpenUsdNativeVec2f"), managed_name
@@ -364,6 +373,21 @@ public static unsafe partial class OpenUsdNativeRuntime
         internal OpenUsdNativeValidationErrorRecord* Records;
         internal nuint RecordsSize;
         internal nuint Count;
+        internal byte* Data;
+        internal nuint DataSize;
+        internal nuint* Offsets;
+        internal nuint OffsetsSize;
+        internal nuint StringCount;
+    }}
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeResolvedAssetView
+    {{
+        internal uint StructSize;
+        internal uint Version;
+        internal OpenUsdNativeResolvedAssetRecord* Records;
+        internal nuint RecordsSize;
+        internal nuint RecordCount;
         internal byte* Data;
         internal nuint DataSize;
         internal nuint* Offsets;

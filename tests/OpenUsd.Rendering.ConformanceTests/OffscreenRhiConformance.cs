@@ -1209,6 +1209,14 @@ internal static class OffscreenRhiConformance
     /// Creates the default surface constants: no material, so the shaded flag is
     /// zero and the scene tint drives diffuse, lit by the deterministic headlight.
     /// </summary>
+    /// <remarks>
+    /// The last two rows are the ABI 14 folded UV transform, written as the
+    /// identity because a probe with no material transforms no coordinates. They
+    /// are not optional padding: the buffer is allocated at
+    /// <see cref="SilkSurfaceUniformWriter.ByteSize"/>, so leaving them unwritten
+    /// hands the shader an all-zero affine that collapses every texture
+    /// coordinate onto one texel.
+    /// </remarks>
     private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
     {
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
@@ -1224,6 +1232,9 @@ internal static class OffscreenRhiConformance
             0, 0, 1, 1,
             1, 1, 1, 1,
             0, 0, 0, 0,
+            0, 0, 0, 0,
+            1, 0, 0, 0,
+            0, 1, 0, 0,
             0, 0, 0, 0
         ]));
         return buffer;

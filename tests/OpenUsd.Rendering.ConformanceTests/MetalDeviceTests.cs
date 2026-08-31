@@ -30,9 +30,18 @@ public sealed class MetalDeviceTests
 
         await Assert.That(device.Backend).IsEqualTo(SilkGraphicsBackend.Metal);
         await Assert.That(device.Capabilities.SupportsCompute).IsTrue();
+        // Not the hardware tier. Tier 2 is necessary but not sufficient: while every
+        // checked Metal program takes its textures and samplers as direct entry-point
+        // arguments, MetalArgumentBufferCompatibility declines every texture-bearing
+        // layout, so no draw can take the table path and advertising it would be false.
         await Assert.That(device.Capabilities.SupportsDescriptorIndexedTextureTables)
             .IsEqualTo(
-                device.ArgumentBuffersSupportForTesting == MTLArgumentBuffersTier.Tier2);
+                device.ArgumentBuffersSupportForTesting == MTLArgumentBuffersTier.Tier2 &&
+                !MetalArgumentBufferCompatibility.TryGetCapabilityRejectionReason(out _));
+        await Assert.That(device.Capabilities.SupportsDescriptorIndexedTextureTables)
+            .IsFalse();
+        await Assert.That(device.Capabilities.DescriptorIndexedTextureTablesDiagnostic)
+            .IsNotNull();
         await Assert.That(buffer.Size).IsEqualTo((nuint)4096);
     }
 
@@ -297,8 +306,14 @@ public sealed class MetalDeviceTests
 
     [Test]
     [SupportedOSPlatform("macos")]
-    public async Task UsesArgumentBufferMaterialTextureTablesWhenAvailableOnMacOS()
+    public async Task BindsMaterialTexturesDirectlyOnTier2HardwareOnMacOS()
     {
+        // Formerly a Tier 2 argument-buffer gate. The path it exercised is now declined
+        // for every texture-bearing layout, because no checked Metal program declares an
+        // argument buffer, so what this must prove is the opposite: on Tier 2 hardware the
+        // encoder still falls through to direct SetFragmentTexture/SetFragmentSamplerState
+        // and the draw is unperturbed. Deleting it instead would remove the only macOS
+        // coverage of the fallback that Tier 2 devices now always take.
         if (!OperatingSystem.IsMacOS())
         {
             Skip.Test("This test is only applicable on macOS.");
@@ -306,11 +321,14 @@ public sealed class MetalDeviceTests
         }
 
         using MetalSilkGraphicsDevice device = MetalSilkGraphicsDevice.Create();
-        if (!device.Capabilities.SupportsDescriptorIndexedTextureTables)
+        if (device.ArgumentBuffersSupportForTesting != MTLArgumentBuffersTier.Tier2)
         {
             Skip.Test("Metal reported no Tier 2 argument-buffer support.");
             return;
         }
+
+        await Assert.That(device.Capabilities.SupportsDescriptorIndexedTextureTables)
+            .IsFalse();
 
         await OffscreenRhiConformance.MaterialResourcesBindToADrawWithoutPerturbingIt(
             device,

@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -16,6 +17,13 @@ public sealed class SilkSceneState
         [];
     private readonly Dictionary<ulong, string> _pathsByHash = [];
     private readonly Dictionary<string, List<SilkMeshData>> _instancesByPath =
+        new(StringComparer.Ordinal);
+
+    // The instance index that currently carries the ABI v8 prototype payload for a path. hdSilk
+    // publishes it on the lowest instance index of a prototype, which is not index zero once an
+    // instancer has several prototypes or hides instances: with proto indices [0, 1, 0, 1] the
+    // second prototype owns instancer instances 1 and 3 and never publishes an index-zero record.
+    private readonly Dictionary<string, int> _prototypeInstanceByPath =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, SilkMaterialData> _materials =
         new(StringComparer.Ordinal);
@@ -250,10 +258,18 @@ public sealed class SilkSceneState
                         Frame.Update(commands.Current.AsFrame());
                         break;
                     case SilkCommandType.MeshUpsert:
-                        SilkMeshData mesh = CopyMeshFrom(commands.Current.AsMeshUpsert());
+                        SilkMeshUpsertCommand upsert = commands.Current.AsMeshUpsert();
+                        SilkMeshData mesh = CopyMeshFrom(upsert);
                         if (UpsertMesh(mesh) is { } replacedId)
                         {
                             (removals ??= []).Add(replacedId);
+                        }
+
+                        // Registering only after the record is retained keeps the pointer from
+                        // naming a record a validation failure rejected.
+                        if (!upsert.IsInstanceReference)
+                        {
+                            _prototypeInstanceByPath[mesh.Path] = mesh.InstanceIndex;
                         }
 
                         (upserts ??= []).Add(mesh.Id);
@@ -303,13 +319,34 @@ public sealed class SilkSceneState
             return SilkMeshData.CopyFrom(command);
         }
 
-        if (!_meshesByPath.TryGetValue((command.Path, 0), out SilkMeshData? prototype))
+        if (!TryGetPrototype(command.Path, out SilkMeshData? prototype))
         {
             throw new InvalidDataException(
                 $"hdSilk instance '{command.Path}' index {command.InstanceIndex} " +
                 "arrived before its prototype geometry.");
         }
         return SilkMeshData.CopyInstanceFrom(command, prototype);
+    }
+
+    /// <summary>
+    /// Resolves the retained record that carries the prototype payload of one
+    /// authoritative path.
+    /// </summary>
+    /// <remarks>
+    /// hdSilk publishes the payload on the lowest instance index a prototype
+    /// owns, so the fallback to index zero only covers a page whose payload
+    /// record was retained before this session started tracking the pointer.
+    /// </remarks>
+    private bool TryGetPrototype(
+        string path,
+        [NotNullWhen(true)] out SilkMeshData? prototype)
+    {
+        if (_prototypeInstanceByPath.TryGetValue(path, out int prototypeIndex) &&
+            _meshesByPath.TryGetValue((path, prototypeIndex), out prototype))
+        {
+            return true;
+        }
+        return _meshesByPath.TryGetValue((path, 0), out prototype);
     }
 
     /// <summary>
@@ -463,6 +500,16 @@ public sealed class SilkSceneState
         // Pick identity is per instance, so it retires with this record. The path hash index
         // is shared by every instance of a prototype, so it survives until the last one goes.
         PickIdentities.Remove(mesh.Path, mesh.InstanceIndex);
+        if (_prototypeInstanceByPath.TryGetValue(
+                removal.Path,
+                out int prototypeIndex) &&
+            prototypeIndex == removal.InstanceIndex)
+        {
+            // The payload record is gone. A page always republishes the payload on the
+            // prototype's new lowest index before retiring the old one, so this only clears
+            // a pointer the page already replaced or the last instance of the path.
+            _prototypeInstanceByPath.Remove(removal.Path);
+        }
         if (_instancesByPath.TryGetValue(removal.Path, out List<SilkMeshData>? instances))
         {
             int instanceIndex = removal.InstanceIndex;
@@ -471,6 +518,7 @@ public sealed class SilkSceneState
             if (instances.Count == 0)
             {
                 _instancesByPath.Remove(removal.Path);
+                _prototypeInstanceByPath.Remove(removal.Path);
                 _pathsByHash.Remove(mesh.StableHash);
             }
         }
@@ -1121,8 +1169,11 @@ public sealed class SilkMeshData
     public int InstanceId { get; }
 
     /// <summary>
-    /// Gets the zero-based instance ordinal. A prim with no instancer always
-    /// reports zero.
+    /// Gets the instance's own index inside its owning instancer, which is the
+    /// index UsdImaging decodes back to a scene instance. A prototype that
+    /// covers only part of an instancer therefore publishes a sparse set of
+    /// indices rather than a dense zero-based range. A prim with no instancer
+    /// always reports zero.
     /// </summary>
     public int InstanceIndex { get; }
 
@@ -1593,8 +1644,6 @@ public sealed class SilkSceneGpuResources : IDisposable
         string? VolumeKey,
         TextureCacheEntry Entry);
 
-    private readonly record struct VolumeTextureInfo(uint Width, uint Height, uint Depth);
-
     private readonly record struct TextureDependency(
         string Asset,
         long Length,
@@ -1605,7 +1654,8 @@ public sealed class SilkSceneGpuResources : IDisposable
         string Asset,
         SilkColorSpace ColorSpace,
         SilkMaterialParameter Parameter,
-        SilkTextureChannel Channel);
+        SilkTextureChannel Channel,
+        SilkCompositeOperator CompositeOperator);
 
     /// <summary>Initializes GPU resource retention for one backend device.</summary>
     public SilkSceneGpuResources(ISilkGraphicsDevice device)
@@ -1991,6 +2041,53 @@ public sealed class SilkSceneGpuResources : IDisposable
         SilkMaterialParameter parameter) =>
         BindMaterialTexture(commands, material, parameter, parameter);
 
+    /// <summary>
+    /// Binds the material's single composite image, or the supplied stand-in when
+    /// the material has none.
+    /// </summary>
+    /// <remarks>
+    /// The slot is declared by every MAP_MATERIAL pipeline because the checked
+    /// binary references it in every one of them, and a D3D12 root signature
+    /// requires every declared descriptor to be populated. A material with no
+    /// composite therefore binds the same stand-in the unused material slots bind;
+    /// the shader never samples it, because the composite target written into the
+    /// surface constants matches no slot bit.
+    /// </remarks>
+    internal void BindCompositeTexture(
+        ISilkGraphicsCommandList commands,
+        SilkMaterialData material,
+        SilkMaterialParameter standInParameter)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(material);
+        SilkMaterialTexture texture = material.GetCompositeTexture() ??
+            material.GetTexture(standInParameter) ??
+            throw new InvalidDataException(
+                $"Material '{material.Path}' has no texture for {standInParameter}.");
+        BindTextureEntry(
+            commands,
+            material.Path,
+            texture,
+            SilkBindingLayoutDescriptor.CompositeSamplerBinding,
+            SilkBindingLayoutDescriptor.CompositeTextureBinding);
+    }
+
+    /// <summary>Uploads the material's composite image when it has one.</summary>
+    internal void UploadCompositeTexture(
+        ISilkGraphicsCommandList commands,
+        SilkMaterialData material)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(material);
+        if (material.GetCompositeTexture() is not { } texture)
+        {
+            return;
+        }
+        UploadTextureEntry(commands, RequireTexture(material.Path, texture));
+    }
+
     internal void BindMaterialTexture(
         ISilkGraphicsCommandList commands,
         SilkMaterialData material,
@@ -2005,7 +2102,17 @@ public sealed class SilkSceneGpuResources : IDisposable
                 $"Material '{material.Path}' has no texture for {parameter}.");
         (uint samplerBinding, uint textureBinding) =
             SilkBindingLayoutDescriptor.GetMaterialTextureBindings(bindingParameter);
-        TextureCacheEntry entry = RequireTexture(material.Path, texture);
+        BindTextureEntry(commands, material.Path, texture, samplerBinding, textureBinding);
+    }
+
+    private void BindTextureEntry(
+        ISilkGraphicsCommandList commands,
+        string materialPath,
+        SilkMaterialTexture texture,
+        uint samplerBinding,
+        uint textureBinding)
+    {
+        TextureCacheEntry entry = RequireTexture(materialPath, texture);
         if (!entry.Uploaded)
         {
             commands.UploadTexture(entry.Texture, entry.Pixels);
@@ -2089,13 +2196,20 @@ public sealed class SilkSceneGpuResources : IDisposable
         SilkMaterialTexture texture = material.GetTexture(parameter) ??
             throw new InvalidDataException(
                 $"Material '{material.Path}' has no texture for {parameter}.");
-        TextureCacheEntry entry = RequireTexture(material.Path, texture);
-        if (!entry.Uploaded)
+        UploadTextureEntry(commands, RequireTexture(material.Path, texture));
+    }
+
+    private void UploadTextureEntry(
+        ISilkGraphicsCommandList commands,
+        TextureCacheEntry entry)
+    {
+        if (entry.Uploaded)
         {
-            commands.UploadTexture(entry.Texture, entry.Pixels);
-            _textureUploadBytes += checked((ulong)entry.Pixels.Length);
-            entry.Uploaded = true;
+            return;
         }
+        commands.UploadTexture(entry.Texture, entry.Pixels);
+        _textureUploadBytes += checked((ulong)entry.Pixels.Length);
+        entry.Uploaded = true;
     }
 
     private TextureCacheEntry RequireTexture(
@@ -2107,12 +2221,18 @@ public sealed class SilkSceneGpuResources : IDisposable
         // metallic file feeds two inputs from two different channels, and each
         // needs its own swizzled copy. Two entries for one asset is the honest
         // cost of that, and it never silently merges two different channels.
+        // The composite operator is part of the identity as well as the channel:
+        // a two-image input publishes two entries for one parameter, and the two
+        // may name the same asset with the same channel while carrying different
+        // folded affines. Without it the second entry would serve the first's
+        // decoded pixels.
         var key = new TextureCacheKey(
             materialPath,
             texture.Asset,
             effectiveColorSpace,
             texture.Parameter,
-            texture.Channel);
+            texture.Channel,
+            texture.CompositeOperator);
         if (_textures.TryGetValue(key, out TextureCacheEntry? entry))
         {
             if (!DependenciesChanged(entry.Dependencies))
@@ -2489,7 +2609,7 @@ public sealed class SilkSceneGpuResources : IDisposable
             throw new NotSupportedException(
                 "The current backend does not support sampled volume textures.");
         }
-        VolumeTextureInfo info = ParseVolumeTextureInfo(texture.UvPrimvar);
+        SilkVolumeTextureExtent info = SilkVolumeTextureExtent.Parse(texture.UvPrimvar);
         byte[] pixels = File.ReadAllBytes(texture.Asset);
         int requiredLength =
             checked((int)(info.Width * info.Height * info.Depth * sizeof(float)));
@@ -2516,22 +2636,6 @@ public sealed class SilkSceneGpuResources : IDisposable
             gpuTexture?.Dispose();
             throw;
         }
-    }
-
-    private static VolumeTextureInfo ParseVolumeTextureInfo(string value)
-    {
-        string[] parts = value.Split(',');
-        if (parts.Length != 3 ||
-            !uint.TryParse(parts[0], out uint width) ||
-            !uint.TryParse(parts[1], out uint height) ||
-            !uint.TryParse(parts[2], out uint depth) ||
-            width == 0 ||
-            height == 0 ||
-            depth == 0)
-        {
-            throw new InvalidDataException($"Invalid volume texture dimensions '{value}'.");
-        }
-        return new VolumeTextureInfo(width, height, depth);
     }
 
     private static SilkDecodedImage CreateFallbackImage(SilkMaterialTexture texture)
@@ -2748,6 +2852,17 @@ public sealed class SilkSceneGpuResources : IDisposable
         return sampler;
     }
 
+    /// <summary>
+    /// Maps a wire wrap mode onto a sampler address mode.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SilkTextureWrap.Black"/> resolves to clamp-to-edge rather than
+    /// to a border colour: the wire carries no border colour, so there is nothing
+    /// to hand a backend that supports one. It therefore renders identically to
+    /// <see cref="SilkTextureWrap.Clamp"/>, and a sample outside the unit range
+    /// returns the edge texel. This is the documented approximation for
+    /// UsdUVTexture's <c>black</c> wrap and MaterialX <c>constant</c> addressing.
+    /// </remarks>
     private static SilkSamplerAddressMode GetAddressMode(SilkTextureWrap wrap) =>
         wrap switch
         {

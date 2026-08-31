@@ -307,10 +307,51 @@ double? value = spline.Evaluate(0.5);
 
 The first surface covers authored knots, optional pre-values, pre/post tangent widths and slopes,
 interpolation modes, tangent algorithms, Bezier/Hermite curve type, held/linear/sloped/looping
-extrapolation records, and evaluation at a time. It intentionally leaves half/float storage, sampled
+extrapolation records, and evaluation at a time. It intentionally leaves sampled
 polyline generation, custom knot data, loop baking, anti-regression controls, and authoring breakdowns
 for later; the Viewer spline plot can already copy knots once and evaluate interactively without
 per-knot P/Invoke.
+
+`GetKnots` returns only the knots. `GetData` returns the same knots together with the curve family,
+both extrapolation records, and the time-valued flag as a single `TsSplineData`, and
+`SetData(TsSplineData)` authors that same snapshot back:
+
+```csharp
+TsSplineData data = spline.GetData();
+TsExtrapMode after = data.PostExtrapolation.Mode;
+copy.SetData(data);
+```
+
+`TsSplineData` is a detached result: unlike `TsSpline`, it holds no native handle, so it can be
+returned from a `UsdStageScheduler` callback, and two snapshots of an unchanged spline compare
+equal. `GetKnots` now projects `GetData`, so both surfaces read the spline once. The
+[Viewer Value tab](viewer.md#ts-splines-in-the-value-tab) displays that snapshot.
+
+Authoring is double-valued: `TsSpline` creates a double spline, and the C ABI carries knot values,
+pre-values, and tangent slopes as doubles. Reading is not restricted to doubles. A layer may author
+a `float` or `half` spline, and OpenUSD's typed knot accessors refuse a mismatched type rather than
+converting, so the native readback reads each knot field in its own type and widens it to double.
+A float or half spline therefore reports its authored values rather than zeros; evaluation was
+never type-restricted, because Ts evaluates in double internally. A knot field that cannot be
+widened fails the whole read with a message naming the field and the spline's value type, rather
+than being reported as a zero no one authored.
+
+Widening is one-way. `TsSplineData` carries doubles and has no record of the spline's original
+value type, so re-authoring a float or half spline through this surface produces a **double**
+spline: the values are the widened ones, and the result may no longer be compatible with the
+attribute the spline was read from. Reading a float or half spline for display is supported;
+copying one back is a type change, not a copy.
+
+`TsKnot.PreValue` is null unless the knot is dual valued. `TsKnot.GetPreValue` in OpenUSD returns
+the ordinary value for a knot that is not dual valued, so the readback tests `IsDualValued` first;
+otherwise every knot would come back carrying a pre-value and `SetData(GetData())` would author a
+dual value onto knots that never had one.
+
+`SetData(GetData())` is an identity for a **double-valued** spline whose knot times, values,
+pre-values, and tangent slopes are all finite, including the authored pre-value of the knots that
+are dual valued. That is the whole scope of the claim. A float or half spline changes value type as
+described above, and the ABI rejects non-finite knot fields on the way in, so a spline carrying one
+cannot be round-tripped through this surface at all.
 
 ### UsdValidation
 
@@ -909,14 +950,17 @@ without invoking managed callbacks from OpenUSD threads.
 Data ABI v15 preserves every v14 export and capability and adds explicit `color3f[]`,
 `bool[]`, `token[]`, and `string[]` attribute array accessors through
 `OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). The managed required mask is
-`0xFFFFFF`.
+`0x1FFFFFF`.
 
 The additive `OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION` capability (`0x40000`)
 adds allocation-free prim-count and total-path-byte preflight before packed path
 materialization. `OPENUSD_CAPABILITY_SESSION_OVERLAY` (`0x80000`) adds the removable
 strongest-opinion session sublayer, and `OPENUSD_CAPABILITY_PHYSICS_BAKE` (`0x100000`)
 adds batched preview and transactional bake page authoring.
-Current managed startup requires the v15 `0xFFFFFF` mask and rejects
+Data ABI v16 preserves every v15 export and capability and adds
+`OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION` (`0x1000000`) for resolver contexts, bulk asset
+resolution, and plugin enumeration.
+Current managed startup requires the v16 `0x1FFFFFF` mask and rejects
 older runtimes or runtimes missing required exports. Every status-returning
 export executes its complete body inside the common exception/TfError guard, so C++ exceptions and
 unconsumed OpenUSD diagnostics never cross C. Access-end alone performs its already-validated
@@ -949,6 +993,109 @@ Float3, vector3f, normal3f, point3f, color3f, and their arrays are role-exact on
 Matrix4d extended the tagged scalar struct append-only; older scalar payload sizes remain valid for
 the pre-existing kinds.
 
+## Asset resolution and plugin trees
+
+`UsdResolver`, `UsdResolverContext`, and `UsdPluginRegistry` expose the upstream `ArResolver` and
+`PlugRegistry` without letting OpenUSD call back into managed code. A vendor resolver is a native
+OpenUSD plugin discovered from its own plugin tree; the managed surface only creates contexts,
+scopes them, and reads results.
+
+```csharp
+UsdPluginRegistry.Register(Path.Combine(AppContext.BaseDirectory, "plugins"));
+
+using UsdResolverContext context = UsdResolverContext.Create(
+[
+    new UsdResolverContextString(string.Empty, assetRoot),
+    new UsdResolverContextString("vendor", "vendor-context-string")
+]);
+
+IReadOnlyList<UsdResolvedAsset> resolved = UsdResolver.Resolve(
+    ["kitchen.usda", "vendor://props/chair.usdc"],
+    context);
+
+using UsdStage stage = UsdStage.Open("kitchen.usda", context);
+```
+
+Resolution is bulk by contract. `UsdResolver.Resolve` packs every requested path into one
+string-list view, binds the supplied context once for the whole batch, and returns one
+`UsdResolvedAsset` per input in request order, so a scene-sized dependency list costs one P/Invoke
+rather than one per asset. Each record carries the resolver identifier, resolved path, extension,
+asset version and name, whether the path resolved, whether it is context dependent, and the
+resolver-reported modification timestamp when the resolver has one. An unresolved path is reported
+as a record with `IsResolved` false and an empty resolved path rather than as an exception, so a
+batch containing missing assets still returns every sibling result.
+
+A record only ever reports a resolved path for an asset the resolver also gave an identifier.
+When `ArResolver::CreateIdentifier` returns nothing, the resolver has declined to identify the
+asset at all, and upstream composition treats that as unusable — `SdfLayer` and `UsdStage` will not
+open it. The record is therefore reported unresolved rather than falling back to resolving the raw
+asset path, because that fallback would claim a resolved path for an asset a stage opened with the
+same context cannot load.
+
+A `UsdResolverContext` is an immutable copy of the native `ArResolverContext` and can be shared
+between threads. A *binding* is not: `UsdResolverContext.Bind` installs a thread-local
+`ArResolverContextBinder`, so the returned `UsdResolverContextBinding` must be disposed on the
+thread that created it and before any binding created after it. Both violations throw
+`InvalidOperationException` — they describe a caller that used the binding wrongly, not a native
+failure — and both leave the binding intact and still bound, so the owner thread can still release
+it in the right order. A binding is only marked disposed after the native release actually
+succeeds. Never hold a binding across an `await`: a continuation that resumes on another thread
+would resolve without the binding and would fail to release it. Callers that only need a context
+for one batch or one stage should pass it to `UsdResolver.Resolve` or
+`UsdStage.Open(path, context)` instead of binding it, because both bind and unbind internally
+around the whole operation.
+
+Passing a context to `Resolve` always binds it, including an empty one. An empty context is not
+"no context": binding it shadows whatever the calling thread already has bound, which is the only
+way to ask for resolution that ignores the ambient context. Passing `null` is what means "use
+whatever is already bound".
+
+```csharp
+using UsdResolverContext ambient = UsdResolverContext.Create(
+    [new UsdResolverContextString(string.Empty, assetRoot)]);
+using UsdResolverContext none = UsdResolverContext.CreateDefault();
+
+using (ambient.Bind())
+{
+    UsdResolver.Resolve(["kitchen.usda"]);        // uses the ambient binding
+    UsdResolver.Resolve(["kitchen.usda"], none);  // shadows it for this batch only
+}
+```
+
+`UsdResolver.PrimaryTypeName` and `GetRegisteredUriSchemes` report what the loaded plugin set
+actually selected. `GetAvailableResolverTypeNames` is narrower than its name suggests: it lists the
+*primary-resolver candidates*, and upstream marks any resolver that declares URI/IRI schemes as
+never eligible to be primary, so a live vendor URI resolver never appears there. Use
+`GetRegisteredUriSchemes` to discover those. `ArDefaultResolver` is always a candidate, because it
+is the fallback OpenUSD uses when no plugin resolver claims the primary role.
+
+OpenUSD selects and constructs its one primary resolver on first use, and upstream documents
+resolver discovery as unsafe concurrently with that construction. The shim serializes its own calls
+under a single mutex, but a first use that originates anywhere else - a plain `UsdStage.Open`, a
+layer read, or any upstream code - cannot be serialized from managed code. The first-use contract
+therefore stands: register every plugin tree, then touch resolution once from a single thread,
+before the process goes concurrent.
+
+`UsdResolverContext.Refresh` is process-wide despite hanging off one context. It invalidates
+previously resolved paths for every thread and every open stage and sends OpenUSD's
+`ArNotice::ResolverChanged`, whose listeners mutate their own state while handling it. Upstream
+documents concurrent refreshes of the same context as unsafe, so call it from one thread at a
+quiescent point - not from a worker while other threads resolve or compose. Refreshing a context
+that currently has a live binding *anywhere in the process* is rejected with an
+`OpenUsdNativeException`. The rejection is matched by `ArResolverContext` value identity, so an
+unrelated bound context never causes it and this context bound on another thread always does, and
+it is retryable: the same call succeeds once the binding is released.
+
+`UsdPluginRegistry.Register` takes a `plugInfo.json` file or a directory containing one and returns
+the number of newly registered plugins. `GetRegisteredPlugins` enumerates every discovered plugin,
+ordered by name, with its kind, load state, library path, and resource path. The tree is read
+exactly as it is laid out on disk: nothing is merged or rewritten, so a third-party resolver keeps
+its own `plugInfo.json`, its own resources directory, and its own library path. A monolithic
+runtime build reports an empty library path for plugins aggregated into the monolith, and the
+registry value is passed through verbatim rather than guessed at. See
+[Packaging](packaging.md#third-party-resolver-plugin-contract) for the packaged layout that
+contract requires.
+
 ## Pure managed helpers
 
 `OpenUsd.UsdPath.IsAbsolutePrimPath`/`ValidateAbsolutePrimPath` validate prim paths in managed code
@@ -970,7 +1117,7 @@ P/Invoke on authoring paths.
 
 The data API now includes focused schema views for volume assets, render settings, spatial media,
 generative procedurals, and selected UI metadata. The locked native profile includes OpenVDB runtime
-support for referenced `.vdb` assets. Rendering support is limited to the Vulkan single-density
+support for referenced `.vdb` assets. Rendering support is limited to the Vulkan and D3D12 single-density
 OpenVDB gate described in the support matrix; it is not part of Storm cross-renderer parity.
 
 ```csharp

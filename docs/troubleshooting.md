@@ -120,7 +120,7 @@ The current contracts are:
 - direct Storm ABI 8;
 - Storm child ABI 8;
 - hdSilk session ABI 5;
-- hdSilk command-page ABI 13;
+- hdSilk command-page ABI 15;
 - retained physics world ABI 7; and
 - physics extraction page ABI 1.
 

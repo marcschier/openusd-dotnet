@@ -266,7 +266,7 @@ struct openusd_payload_arc_list
 
 namespace
 {
-constexpr uint32_t DataAbiVersion = 15;
+constexpr uint32_t DataAbiVersion = 16;
 constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_STRING_LIST_V2 |
     OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -291,7 +291,8 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_PHYSICS_BAKE |
     OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM |
     OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F |
-    OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION;
+    OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION |
+    OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));
@@ -324,6 +325,21 @@ static_assert(offsetof(openusd_image_info, struct_size) == 0);
 static_assert(offsetof(openusd_image_info, version) == sizeof(uint32_t));
 static_assert(offsetof(openusd_image_info, width) == sizeof(uint32_t) * 2);
 static_assert(offsetof(openusd_image_info, height) == sizeof(uint32_t) * 3);
+static_assert(
+    sizeof(openusd_resolved_asset_record) ==
+    sizeof(int32_t) * 4 + sizeof(double) + sizeof(size_t) * 5);
+static_assert(offsetof(openusd_resolved_asset_record, resolved) == 0);
+static_assert(offsetof(openusd_resolved_asset_record, context_dependent) == sizeof(int32_t));
+static_assert(offsetof(openusd_resolved_asset_record, timestamp_valid) == sizeof(int32_t) * 2);
+static_assert(offsetof(openusd_resolved_asset_record, reserved) == sizeof(int32_t) * 3);
+static_assert(offsetof(openusd_resolved_asset_record, modification_time) == sizeof(int32_t) * 4);
+static_assert(
+    offsetof(openusd_resolved_asset_record, identifier_offset) ==
+    sizeof(int32_t) * 4 + sizeof(double));
+static_assert(sizeof(openusd_resolved_asset_view) == sizeof(uint32_t) * 2 + sizeof(void*) * 8);
+static_assert(offsetof(openusd_resolved_asset_view, struct_size) == 0);
+static_assert(offsetof(openusd_resolved_asset_view, version) == sizeof(uint32_t));
+static_assert(offsetof(openusd_resolved_asset_view, records) == sizeof(uint32_t) * 2);
 static_assert(sizeof(openusd_vec2f) == sizeof(float) * 2);
 static_assert(offsetof(openusd_vec2f, x) == 0);
 static_assert(offsetof(openusd_vec2f, y) == sizeof(float));

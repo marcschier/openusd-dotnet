@@ -1,0 +1,24 @@
+{
+    "Plugins": [
+        {
+            "Info": {
+                "Types": {
+                    "OpenUsdTestResolver": {
+                        "bases": [
+                            "ArResolver"
+                        ],
+                        "implementsContexts": true,
+                        "uriSchemes": [
+                            "openusdtest"
+                        ]
+                    }
+                }
+            },
+            "LibraryPath": "$<TARGET_FILE_NAME:openusd_test_resolver>",
+            "Name": "openusdTestResolver",
+            "ResourcePath": "resources",
+            "Root": "..",
+            "Type": "library"
+        }
+    ]
+}

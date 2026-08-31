@@ -151,6 +151,72 @@ public sealed class SilkPageAbiVersionContractTests
             .IsEqualTo(locked);
     }
 
+    /// <summary>
+    /// Pins the prose that states the *current* page ABI to the lock.
+    /// </summary>
+    /// <remarks>
+    /// Documentation states the current version in several places, and those
+    /// sentences drifted through two bumps: the architecture overview, the
+    /// renderer overview, the troubleshooting contract list, and the packaging
+    /// runtime-identity line each named a version the runtime no longer speaks.
+    /// A reader following any of them reaches the wrong conclusion about which
+    /// native library a build can load. Sentences describing what an *older*
+    /// version introduced are deliberately not matched: those stay true forever.
+    /// </remarks>
+    [Test]
+    public async Task DocumentedCurrentPageAbiMatchesTheLockedRenderCommandAbi()
+    {
+        string root = FindRepositoryRoot();
+        using JsonDocument lockFile = JsonDocument.Parse(
+            await File.ReadAllTextAsync(
+                Path.Combine(root, "eng", "openusd.lock.json")));
+        uint locked = lockFile.RootElement
+            .GetProperty("abi")
+            .GetProperty("renderCommands")
+            .GetUInt32();
+
+        (string Path, string Pattern)[] statements =
+        [
+            (Path.Combine("docs", "architecture.md"),
+                @"Managed code validates page ABI (?<version>\d+)"),
+            (Path.Combine("docs", "rendering.md"),
+                @"the hdSilk page ABI is v(?<version>\d+)"),
+            (Path.Combine("docs", "troubleshooting.md"),
+                @"hdSilk command-page ABI (?<version>\d+)"),
+            (Path.Combine("docs", "packaging.md"),
+                @"hdSilk session/page ABI \d+/(?<version>\d+)"),
+        ];
+
+        List<string> drifted = [];
+        foreach ((string relative, string pattern) in statements)
+        {
+            string text = await File.ReadAllTextAsync(Path.Combine(root, relative));
+            Match match = Regex.Match(
+                text,
+                pattern,
+                RegexOptions.None,
+                TimeSpan.FromSeconds(5));
+            if (!match.Success)
+            {
+                drifted.Add($"{relative} no longer states the current page ABI");
+                continue;
+            }
+            uint stated = uint.Parse(
+                match.Groups["version"].Value,
+                CultureInfo.InvariantCulture);
+            if (stated != locked)
+            {
+                drifted.Add($"{relative} states {stated}, the lock records {locked}");
+            }
+        }
+
+        await Assert.That(drifted)
+            .IsEmpty()
+            .Because(
+                "Documentation names a command-page ABI the runtime no longer " +
+                "speaks. " + string.Join("; ", drifted));
+    }
+
     private static string FindRepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

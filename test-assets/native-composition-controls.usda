@@ -25,14 +25,14 @@ def "World"
     }
 
     def Xform "Payload" (
-        prepend payload = @C:/git/marcschier/openusd/native/../test-assets\native-composition-source.usda@</Model>
+        prepend payload = @C:/git/marcschier/openusd2/native/../test-assets\native-composition-source.usda@</Model>
     )
     {
     }
 
     def Xform "Instance" (
         instanceable = true
-        prepend references = @C:/git/marcschier/openusd/native/../test-assets\native-composition-source.usda@</Model>
+        prepend references = @C:/git/marcschier/openusd2/native/../test-assets\native-composition-source.usda@</Model>
     )
     {
     }

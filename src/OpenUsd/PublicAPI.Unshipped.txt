@@ -2068,3 +2068,111 @@ OpenUsd.UsdScalarValue.BoolArrayValue.get -> bool[]!
 OpenUsd.UsdScalarValue.Color3fArrayValue.get -> OpenUsd.UsdVec3f[]!
 OpenUsd.UsdScalarValue.StringArrayValue.get -> string![]!
 OpenUsd.UsdScalarValue.TokenArrayValue.get -> string![]!
+OpenUsd.TsSpline.GetData() -> OpenUsd.TsSplineData!
+OpenUsd.TsSpline.SetData(OpenUsd.TsSplineData! data) -> void
+OpenUsd.TsSplineData
+OpenUsd.TsSplineData.<Clone>$() -> OpenUsd.TsSplineData!
+OpenUsd.TsSplineData.CurveType.get -> OpenUsd.TsCurveType
+OpenUsd.TsSplineData.CurveType.init -> void
+OpenUsd.TsSplineData.Deconstruct(out OpenUsd.TsCurveType CurveType, out bool IsTimeValued, out OpenUsd.TsExtrapolation PreExtrapolation, out OpenUsd.TsExtrapolation PostExtrapolation, out System.Collections.Generic.IReadOnlyList<OpenUsd.TsKnot>! Knots) -> void
+OpenUsd.TsSplineData.Equals(OpenUsd.TsSplineData? other) -> bool
+OpenUsd.TsSplineData.IsTimeValued.get -> bool
+OpenUsd.TsSplineData.IsTimeValued.init -> void
+OpenUsd.TsSplineData.Knots.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.TsKnot>!
+OpenUsd.TsSplineData.Knots.init -> void
+OpenUsd.TsSplineData.PostExtrapolation.get -> OpenUsd.TsExtrapolation
+OpenUsd.TsSplineData.PostExtrapolation.init -> void
+OpenUsd.TsSplineData.PreExtrapolation.get -> OpenUsd.TsExtrapolation
+OpenUsd.TsSplineData.PreExtrapolation.init -> void
+OpenUsd.TsSplineData.TsSplineData(OpenUsd.TsCurveType CurveType, bool IsTimeValued, OpenUsd.TsExtrapolation PreExtrapolation, OpenUsd.TsExtrapolation PostExtrapolation, System.Collections.Generic.IReadOnlyList<OpenUsd.TsKnot>! Knots) -> void
+OpenUsd.UsdPluginInfo
+OpenUsd.UsdPluginInfo.Deconstruct(out string! Name, out OpenUsd.UsdPluginKind Kind, out bool IsLoaded, out string! Path, out string! ResourcePath) -> void
+OpenUsd.UsdPluginInfo.Equals(OpenUsd.UsdPluginInfo other) -> bool
+OpenUsd.UsdPluginInfo.IsLoaded.get -> bool
+OpenUsd.UsdPluginInfo.IsLoaded.init -> void
+OpenUsd.UsdPluginInfo.Kind.get -> OpenUsd.UsdPluginKind
+OpenUsd.UsdPluginInfo.Kind.init -> void
+OpenUsd.UsdPluginInfo.Name.get -> string!
+OpenUsd.UsdPluginInfo.Name.init -> void
+OpenUsd.UsdPluginInfo.Path.get -> string!
+OpenUsd.UsdPluginInfo.Path.init -> void
+OpenUsd.UsdPluginInfo.ResourcePath.get -> string!
+OpenUsd.UsdPluginInfo.ResourcePath.init -> void
+OpenUsd.UsdPluginInfo.UsdPluginInfo() -> void
+OpenUsd.UsdPluginInfo.UsdPluginInfo(string! Name, OpenUsd.UsdPluginKind Kind, bool IsLoaded, string! Path, string! ResourcePath) -> void
+OpenUsd.UsdPluginKind
+OpenUsd.UsdPluginKind.Library = 0 -> OpenUsd.UsdPluginKind
+OpenUsd.UsdPluginKind.Python = 2 -> OpenUsd.UsdPluginKind
+OpenUsd.UsdPluginKind.Resource = 1 -> OpenUsd.UsdPluginKind
+OpenUsd.UsdPluginRegistry
+OpenUsd.UsdResolvedAsset
+OpenUsd.UsdResolvedAsset.AssetName.get -> string!
+OpenUsd.UsdResolvedAsset.AssetName.init -> void
+OpenUsd.UsdResolvedAsset.AssetPath.get -> string!
+OpenUsd.UsdResolvedAsset.AssetPath.init -> void
+OpenUsd.UsdResolvedAsset.AssetVersion.get -> string!
+OpenUsd.UsdResolvedAsset.AssetVersion.init -> void
+OpenUsd.UsdResolvedAsset.Deconstruct(out string! AssetPath, out string! Identifier, out string! ResolvedPath, out string! Extension, out string! AssetVersion, out string! AssetName, out bool IsResolved, out bool IsContextDependent, out double? ModificationTime) -> void
+OpenUsd.UsdResolvedAsset.Equals(OpenUsd.UsdResolvedAsset other) -> bool
+OpenUsd.UsdResolvedAsset.Extension.get -> string!
+OpenUsd.UsdResolvedAsset.Extension.init -> void
+OpenUsd.UsdResolvedAsset.Identifier.get -> string!
+OpenUsd.UsdResolvedAsset.Identifier.init -> void
+OpenUsd.UsdResolvedAsset.IsContextDependent.get -> bool
+OpenUsd.UsdResolvedAsset.IsContextDependent.init -> void
+OpenUsd.UsdResolvedAsset.IsResolved.get -> bool
+OpenUsd.UsdResolvedAsset.IsResolved.init -> void
+OpenUsd.UsdResolvedAsset.ModificationTime.get -> double?
+OpenUsd.UsdResolvedAsset.ModificationTime.init -> void
+OpenUsd.UsdResolvedAsset.ResolvedPath.get -> string!
+OpenUsd.UsdResolvedAsset.ResolvedPath.init -> void
+OpenUsd.UsdResolvedAsset.UsdResolvedAsset() -> void
+OpenUsd.UsdResolvedAsset.UsdResolvedAsset(string! AssetPath, string! Identifier, string! ResolvedPath, string! Extension, string! AssetVersion, string! AssetName, bool IsResolved, bool IsContextDependent, double? ModificationTime) -> void
+OpenUsd.UsdResolver
+OpenUsd.UsdResolverContext
+OpenUsd.UsdResolverContext.Bind() -> OpenUsd.UsdResolverContextBinding!
+OpenUsd.UsdResolverContext.DebugString.get -> string!
+OpenUsd.UsdResolverContext.Dispose() -> void
+OpenUsd.UsdResolverContext.IsEmpty.get -> bool
+OpenUsd.UsdResolverContext.Refresh() -> void
+OpenUsd.UsdResolverContextBinding
+OpenUsd.UsdResolverContextBinding.Dispose() -> void
+OpenUsd.UsdResolverContextString
+OpenUsd.UsdResolverContextString.ContextString.get -> string!
+OpenUsd.UsdResolverContextString.ContextString.init -> void
+OpenUsd.UsdResolverContextString.Deconstruct(out string! UriScheme, out string! ContextString) -> void
+OpenUsd.UsdResolverContextString.Equals(OpenUsd.UsdResolverContextString other) -> bool
+OpenUsd.UsdResolverContextString.UriScheme.get -> string!
+OpenUsd.UsdResolverContextString.UriScheme.init -> void
+OpenUsd.UsdResolverContextString.UsdResolverContextString() -> void
+OpenUsd.UsdResolverContextString.UsdResolverContextString(string! UriScheme, string! ContextString) -> void
+override OpenUsd.TsSplineData.Equals(object? obj) -> bool
+override OpenUsd.TsSplineData.GetHashCode() -> int
+override OpenUsd.TsSplineData.ToString() -> string!
+override OpenUsd.UsdPluginInfo.GetHashCode() -> int
+override OpenUsd.UsdResolvedAsset.GetHashCode() -> int
+override OpenUsd.UsdResolverContextString.GetHashCode() -> int
+static OpenUsd.TsSplineData.operator !=(OpenUsd.TsSplineData? left, OpenUsd.TsSplineData? right) -> bool
+static OpenUsd.TsSplineData.operator ==(OpenUsd.TsSplineData? left, OpenUsd.TsSplineData? right) -> bool
+static OpenUsd.UsdPluginInfo.operator !=(OpenUsd.UsdPluginInfo left, OpenUsd.UsdPluginInfo right) -> bool
+static OpenUsd.UsdPluginInfo.operator ==(OpenUsd.UsdPluginInfo left, OpenUsd.UsdPluginInfo right) -> bool
+static OpenUsd.UsdPluginRegistry.GetRegisteredPlugins() -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdPluginInfo>!
+static OpenUsd.UsdPluginRegistry.Register(string! plugInfoPath) -> int
+static OpenUsd.UsdResolvedAsset.operator !=(OpenUsd.UsdResolvedAsset left, OpenUsd.UsdResolvedAsset right) -> bool
+static OpenUsd.UsdResolvedAsset.operator ==(OpenUsd.UsdResolvedAsset left, OpenUsd.UsdResolvedAsset right) -> bool
+static OpenUsd.UsdResolver.GetAvailableResolverTypeNames() -> System.Collections.Generic.IReadOnlyList<string!>!
+static OpenUsd.UsdResolver.GetRegisteredUriSchemes() -> System.Collections.Generic.IReadOnlyList<string!>!
+static OpenUsd.UsdResolver.PrimaryTypeName.get -> string!
+static OpenUsd.UsdResolver.Resolve(System.Collections.Generic.IReadOnlyList<string!>! assetPaths, OpenUsd.UsdResolverContext? context = null, string? anchorAssetPath = null) -> System.Collections.Generic.IReadOnlyList<OpenUsd.UsdResolvedAsset>!
+static OpenUsd.UsdResolverContext.Create(System.Collections.Generic.IReadOnlyList<OpenUsd.UsdResolverContextString>! contextStrings) -> OpenUsd.UsdResolverContext!
+static OpenUsd.UsdResolverContext.CreateDefault() -> OpenUsd.UsdResolverContext!
+static OpenUsd.UsdResolverContext.CreateForAsset(string! assetPath) -> OpenUsd.UsdResolverContext!
+static OpenUsd.UsdResolverContextString.operator !=(OpenUsd.UsdResolverContextString left, OpenUsd.UsdResolverContextString right) -> bool
+static OpenUsd.UsdResolverContextString.operator ==(OpenUsd.UsdResolverContextString left, OpenUsd.UsdResolverContextString right) -> bool
+static OpenUsd.UsdStage.Open(string! path, OpenUsd.UsdResolverContext! context) -> OpenUsd.UsdStage!
+~override OpenUsd.UsdPluginInfo.Equals(object obj) -> bool
+~override OpenUsd.UsdPluginInfo.ToString() -> string
+~override OpenUsd.UsdResolvedAsset.Equals(object obj) -> bool
+~override OpenUsd.UsdResolvedAsset.ToString() -> string
+~override OpenUsd.UsdResolverContextString.Equals(object obj) -> bool
+~override OpenUsd.UsdResolverContextString.ToString() -> string

@@ -75,6 +75,51 @@ public readonly record struct TsKnot(
     TsTangentAlgorithm PreTangentAlgorithm,
     TsTangentAlgorithm PostTangentAlgorithm);
 
+/// <summary>A detached snapshot of one double-valued Ts spline.</summary>
+/// <param name="CurveType">The curve family used by curved segments.</param>
+/// <param name="IsTimeValued">Whether the spline values are themselves time codes.</param>
+/// <param name="PreExtrapolation">The extrapolation applied before the first knot.</param>
+/// <param name="PostExtrapolation">The extrapolation applied after the last knot.</param>
+/// <param name="Knots">The authored knots, ordered by time.</param>
+/// <remarks>
+/// <see cref="TsSpline"/> owns a native handle, so it can never leave a stage
+/// scheduler callback. This record carries the same authored data with no
+/// native ownership, which is what a UI needs in order to poll and diff.
+/// </remarks>
+public sealed record TsSplineData(
+    TsCurveType CurveType,
+    bool IsTimeValued,
+    TsExtrapolation PreExtrapolation,
+    TsExtrapolation PostExtrapolation,
+    IReadOnlyList<TsKnot> Knots) : IUsdDetachedResult
+{
+    /// <inheritdoc />
+    public bool Equals(TsSplineData? other) =>
+        other is not null &&
+        CurveType == other.CurveType &&
+        IsTimeValued == other.IsTimeValued &&
+        PreExtrapolation == other.PreExtrapolation &&
+        PostExtrapolation == other.PostExtrapolation &&
+        Knots.SequenceEqual(other.Knots);
+
+    /// <inheritdoc />
+    public override int GetHashCode() =>
+        HashCode.Combine(
+            CurveType,
+            IsTimeValued,
+            PreExtrapolation,
+            PostExtrapolation,
+            RecordCollectionFormatting.SequenceHashCode(Knots));
+
+    /// <inheritdoc />
+    public override string ToString() =>
+        $"{nameof(TsSplineData)} {{ {nameof(CurveType)} = {CurveType}, " +
+        $"{nameof(IsTimeValued)} = {IsTimeValued}, " +
+        $"{nameof(PreExtrapolation)} = {PreExtrapolation}, " +
+        $"{nameof(PostExtrapolation)} = {PostExtrapolation}, " +
+        $"{nameof(Knots)} = {RecordCollectionFormatting.FormatSequence(Knots)} }}";
+}
+
 /// <summary>Owns a double-valued OpenUSD Ts spline and evaluates it.</summary>
 public sealed class TsSpline : IDisposable
 {
@@ -156,8 +201,31 @@ public sealed class TsSpline : IDisposable
                 nativeKnots));
     }
 
+    /// <summary>Replaces the spline contents with a detached snapshot.</summary>
+    /// <remarks>
+    /// This is the inverse of <see cref="GetData"/>: a snapshot read from one
+    /// spline can be authored onto another without the caller having to
+    /// re-supply the curve family, both extrapolations, and the time-valued
+    /// flag as separate arguments and drop one of them by accident.
+    /// </remarks>
+    public void SetData(TsSplineData data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        SetData(
+            data.Knots,
+            data.CurveType,
+            data.PreExtrapolation,
+            data.PostExtrapolation,
+            data.IsTimeValued);
+    }
+
     /// <summary>Returns all authored knots as a detached snapshot.</summary>
-    public IReadOnlyList<TsKnot> GetKnots()
+    public IReadOnlyList<TsKnot> GetKnots() => GetData().Knots;
+
+    /// <summary>
+    /// Returns the curve type, extrapolation, and knots as one detached snapshot.
+    /// </summary>
+    public TsSplineData GetData()
     {
         OpenUsdNativeTsSplineData data = OpenUsdNativeRuntime.GetTsSplineData(_handle.DangerousGetHandle());
         var knots = new TsKnot[data.Knots.Length];
@@ -176,7 +244,16 @@ public sealed class TsSpline : IDisposable
                 (TsTangentAlgorithm)knot.PreTangentAlgorithm,
                 (TsTangentAlgorithm)knot.PostTangentAlgorithm);
         }
-        return Array.AsReadOnly(knots);
+        return new TsSplineData(
+            (TsCurveType)data.CurveType,
+            data.IsTimeValued,
+            new TsExtrapolation(
+                (TsExtrapMode)data.PreExtrapolation.Mode,
+                data.PreExtrapolation.Slope),
+            new TsExtrapolation(
+                (TsExtrapMode)data.PostExtrapolation.Mode,
+                data.PostExtrapolation.Slope),
+            Array.AsReadOnly(knots));
     }
 
     /// <summary>Evaluates the spline at the given time, or returns null for a value block.</summary>

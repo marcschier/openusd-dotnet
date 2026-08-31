@@ -87,6 +87,7 @@ $stagedImageFixtures = @(
 }
 
 $nativeProbe = $null
+$testResolverPlugInfo = $null
 if (-not $SkipNativeAbiProbe)
 {
     $nativeProbeSource = Join-Path $repoRoot "native/build/shim/$Rid/tests/openusd_native_probe"
@@ -100,6 +101,23 @@ if (-not $SkipNativeAbiProbe)
     }
     $nativeProbe = Join-Path $publishRoot ([System.IO.Path]::GetFileName($nativeProbeSource))
     Copy-Item $nativeProbeSource $nativeProbe -Force
+
+    # The third-party resolver plugin is never installed. It is staged as the tree it was built as,
+    # beside the packaged plugin path rather than inside it, so the probe can only find it by
+    # registering its own plugInfo.json.
+    $testResolverSource = Join-Path $repoRoot "native/build/shim/$Rid/tests/plugins/openusdTestResolver"
+    if (-not (Test-Path $testResolverSource))
+    {
+        throw "Third-party resolver plugin tree was not found at $testResolverSource."
+    }
+    $vendorPluginRoot = Join-Path $publishRoot 'vendor-plugins'
+    New-Item -ItemType Directory -Force -Path $vendorPluginRoot | Out-Null
+    Copy-Item $testResolverSource $vendorPluginRoot -Recurse -Force
+    $testResolverPlugInfo = Join-Path $vendorPluginRoot 'openusdTestResolver/resources/plugInfo.json'
+    if (-not (Test-Path $testResolverPlugInfo))
+    {
+        throw "Third-party resolver plugInfo.json was not staged at $testResolverPlugInfo."
+    }
 }
 
 $oldPath = $env:PATH
@@ -117,7 +135,7 @@ try
 
     if ($null -ne $nativeProbe)
     {
-        & $nativeProbe $pluginPath $stagedStage @stagedImageFixtures
+        & $nativeProbe $pluginPath $stagedStage @stagedImageFixtures $testResolverPlugInfo
         if ($LASTEXITCODE -ne 0)
         {
             exit $LASTEXITCODE

@@ -15,6 +15,15 @@ REGISTER_CLASSES = {"b", "s", "t", "u"}
 RESOURCE_ACCESS = {"constant", "read", "readWrite", "write"}
 PERMUTATION_TOKEN_PATTERN = re.compile(r"[a-z][a-z0-9]*")
 PERMUTATION_ENTRY_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+DEFINE_NAME_PATTERN = re.compile(r"[A-Z][A-Z0-9_]*")
+# Preprocessor switches every program is compiled with, so a program that does
+# not opt in still declares the switch explicitly rather than relying on an
+# undefined macro evaluating to zero. A program overrides one by declaring it in
+# its manifest "defines" object; the value is identical for every target, so a
+# resource can never exist in one backend's binary and be absent from another's.
+DEFAULT_DEFINES = {
+    "VOLUME_DENSITY_TEXTURES": 0,
+}
 BASE_METAL_LIBRARY_ENTRIES = (
     ("mesh.vertex", "vertexMain", "vertex"),
     ("mesh.fragment", "fragmentMain", "fragment"),
@@ -463,9 +472,33 @@ def validate_manifest(
             if resource["name"] in resource_names:
                 raise ValueError(f"{name} has duplicate resource {resource['name']}")
             resource_names.add(resource["name"])
+        program_defines(program)
     if not names:
         raise ValueError("The shader manifest has no programs")
     return validated
+
+
+def program_defines(program: dict[str, Any]) -> dict[str, int]:
+    """Resolves the complete preprocessor switch set a program compiles with."""
+    declared = program.get("defines", {})
+    if not isinstance(declared, dict):
+        raise ValueError(f"{program.get('name')!r} has invalid defines")
+    resolved = dict(DEFAULT_DEFINES)
+    for key, value in declared.items():
+        if (
+            not isinstance(key, str)
+            or not DEFINE_NAME_PATTERN.fullmatch(key)
+            or key not in DEFAULT_DEFINES
+        ):
+            raise ValueError(
+                f"{program.get('name')!r} declares an unknown define {key!r}"
+            )
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(
+                f"{program.get('name')!r} define {key} must be an integer"
+            )
+        resolved[key] = value
+    return resolved
 
 
 def required_checked_inputs(manifest: dict[str, Any]) -> tuple[str, ...]:
@@ -586,12 +619,17 @@ def generate_plan(
                 f"-D{feature}=1"
                 for feature in permutation_bits
             )
+        switches = program_defines(program)
         common = [
             program["source"],
             "-entry",
             program["entryPoint"],
             *defines,
             *common_options,
+            *(
+                f"-D{name}={value}"
+                for name, value in sorted(switches.items())
+            ),
         ]
         spirv_reflection_options = (
             []
@@ -610,7 +648,6 @@ def generate_plan(
                         "executable": "slangc",
                         "arguments": [
                             *common,
-                            "-DVOLUME_DENSITY_TEXTURES=0",
                             "-target",
                             "dxil",
                             "-profile",
@@ -625,7 +662,6 @@ def generate_plan(
                         "executable": "slangc",
                         "arguments": [
                             *common,
-                            "-DVOLUME_DENSITY_TEXTURES=1",
                             "-target",
                             "spirv",
                             "-profile",
@@ -642,7 +678,6 @@ def generate_plan(
                         "executable": "slangc",
                         "arguments": [
                             *common,
-                            "-DVOLUME_DENSITY_TEXTURES=0",
                             "-target",
                             "metal",
                             "-profile",

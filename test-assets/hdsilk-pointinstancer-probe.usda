@@ -1,0 +1,256 @@
+#usda 1.0
+(
+    doc = """Point-instancer probe stage for hdSilk.
+
+    Frame 1 authors proto indices [0, 1, 0, 1]; frame 2 swaps them to
+    [1, 0, 1, 0]; frame 3 keeps frame 2's assignment and hides instance 0
+    through invisibleIds. Positions vary per frame so a resolved instance
+    transform can only match if the correct authored element was sampled.
+
+    /World/Nested is a two-level point instancer: an outer instancer with two
+    instances of an inner instancer that itself has three instances of one
+    mesh prototype.
+
+    /World/NestedMulti is the same shape with two prototypes under the inner
+    instancer, and with the same proto-index variation and invisibleIds hiding
+    over frames 1 to 3. The nested radix is the inner instancer's own instance
+    count, so both prototypes share one index space and neither one's set of
+    instances renumbers the other's when proto indices change or an instance
+    is hidden.
+
+    /World/HollowInstancer instances a mesh with no points and no faces, which
+    must publish nothing at all.
+
+    /World/CurveInstancer and /World/PointsInstancer instance BasisCurves and
+    Points prototypes with proto indices [0, 1, 0], so each second prototype
+    publishes only instance 1. ABI v8 payload elision is topology neutral, so
+    these must carry their payload once on the lowest published index exactly
+    as a triangle-list prototype does.
+    """
+    defaultPrim = "World"
+    startTimeCode = 1
+    endTimeCode = 3
+    framesPerSecond = 24
+    timeCodesPerSecond = 24
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "World"
+{
+    def PointInstancer "Instancer"
+    {
+        rel prototypes = [
+            </World/Instancer/Protos/Alpha>,
+            </World/Instancer/Protos/Beta>,
+        ]
+
+        int[] protoIndices.timeSamples = {
+            1: [0, 1, 0, 1],
+            2: [1, 0, 1, 0],
+            3: [1, 0, 1, 0],
+        }
+
+        int64[] invisibleIds.timeSamples = {
+            1: [],
+            2: [],
+            3: [0],
+        }
+
+        point3f[] positions.timeSamples = {
+            1: [(10, 0, 0), (11, 0, 0), (12, 0, 0), (13, 0, 0)],
+            2: [(20, 0, 0), (21, 0, 0), (22, 0, 0), (23, 0, 0)],
+            3: [(30, 0, 0), (31, 0, 0), (32, 0, 0), (33, 0, 0)],
+        }
+
+        def Scope "Protos"
+        {
+            token visibility = "invisible"
+
+            def Mesh "Alpha"
+            {
+                uniform bool doubleSided = 1
+                uniform token subdivisionScheme = "none"
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+            }
+
+            def Mesh "Beta"
+            {
+                uniform bool doubleSided = 1
+                uniform token subdivisionScheme = "none"
+                point3f[] points = [(0, 0, 0), (2, 0, 0), (0, 2, 0), (2, 2, 0)]
+                int[] faceVertexCounts = [3, 3]
+                int[] faceVertexIndices = [0, 1, 2, 1, 3, 2]
+            }
+        }
+    }
+
+    def PointInstancer "Nested"
+    {
+        rel prototypes = [</World/Nested/Inner>]
+        int[] protoIndices = [0, 0]
+        point3f[] positions = [(0, 0, 0), (100, 0, 0)]
+
+        def PointInstancer "Inner"
+        {
+            rel prototypes = [</World/Nested/Inner/Leaf>]
+            int[] protoIndices = [0, 0, 0]
+            point3f[] positions = [(0, 0, 0), (1, 0, 0), (2, 0, 0)]
+
+            def Mesh "Leaf"
+            {
+                uniform bool doubleSided = 1
+                uniform token subdivisionScheme = "none"
+                point3f[] points = [(0, 0, 0), (0.5, 0, 0), (0, 0.5, 0)]
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+            }
+        }
+    }
+
+    def PointInstancer "NestedMulti"
+    {
+        rel prototypes = [</World/NestedMulti/Branch>]
+        int[] protoIndices = [0, 0]
+        point3f[] positions = [(0, 0, 0), (200, 0, 0)]
+
+        def PointInstancer "Branch"
+        {
+            rel prototypes = [
+                </World/NestedMulti/Branch/Protos/TwigA>,
+                </World/NestedMulti/Branch/Protos/TwigB>,
+            ]
+
+            int[] protoIndices.timeSamples = {
+                1: [0, 1, 0, 1],
+                2: [1, 0, 1, 0],
+                3: [1, 0, 1, 0],
+            }
+
+            int64[] invisibleIds.timeSamples = {
+                1: [],
+                2: [],
+                3: [0],
+            }
+
+            point3f[] positions = [(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0)]
+
+            def Scope "Protos"
+            {
+                token visibility = "invisible"
+
+                def Mesh "TwigA"
+                {
+                    uniform bool doubleSided = 1
+                    uniform token subdivisionScheme = "none"
+                    point3f[] points = [(0, 0, 0), (0.5, 0, 0), (0, 0.5, 0)]
+                    int[] faceVertexCounts = [3]
+                    int[] faceVertexIndices = [0, 1, 2]
+                }
+
+                def Mesh "TwigB"
+                {
+                    uniform bool doubleSided = 1
+                    uniform token subdivisionScheme = "none"
+                    point3f[] points = [(0, 0, 0), (0.25, 0, 0), (0, 0.25, 0)]
+                    int[] faceVertexCounts = [3]
+                    int[] faceVertexIndices = [0, 1, 2]
+                }
+            }
+        }
+    }
+
+    # An empty mesh must be retired rather than published. A record with no
+    # points and no indices is byte-identical on the wire to an ABI v8 instance
+    # reference, so an empty instanced prototype would publish a payload record
+    # that looks like a record reusing a payload.
+    def PointInstancer "HollowInstancer"
+    {
+        rel prototypes = [</World/HollowInstancer/Hollow>]
+        int[] protoIndices = [0, 0]
+        point3f[] positions = [(0, 300, 0), (1, 300, 0)]
+
+        def Mesh "Hollow"
+        {
+            uniform bool doubleSided = 1
+            uniform token subdivisionScheme = "none"
+            point3f[] points = []
+            int[] faceVertexCounts = []
+            int[] faceVertexIndices = []
+        }
+    }
+
+    # Instanced non-triangle prototypes. ABI v8 payload elision is topology
+    # neutral, so a line list and a point list must carry their payload once on
+    # the lowest published index exactly as a triangle list does. Both use two
+    # prototypes with proto indices [0, 1, 0] so the second prototype's payload
+    # rides a non-zero index.
+    def PointInstancer "CurveInstancer"
+    {
+        rel prototypes = [
+            </World/CurveInstancer/Protos/StrandA>,
+            </World/CurveInstancer/Protos/StrandB>,
+        ]
+
+        int[] protoIndices = [0, 1, 0]
+        point3f[] positions = [(0, 400, 0), (1, 400, 0), (2, 400, 0)]
+
+        def Scope "Protos"
+        {
+            token visibility = "invisible"
+
+            def BasisCurves "StrandA"
+            {
+                uniform token type = "linear"
+                uniform token basis = "bezier"
+                uniform token wrap = "segmented"
+                int[] curveVertexCounts = [2]
+                point3f[] points = [(0, 0, 0), (0.5, 0, 0)]
+                float[] widths = [0.2]
+            }
+
+            def BasisCurves "StrandB"
+            {
+                uniform token type = "linear"
+                uniform token basis = "bezier"
+                uniform token wrap = "segmented"
+                int[] curveVertexCounts = [2, 2]
+                point3f[] points = [
+                    (0, 0, 0), (0.5, 0, 0),
+                    (0, 0.5, 0), (0.5, 0.5, 0)
+                ]
+                float[] widths = [0.1, 0.2, 0.3, 0.4]
+            }
+        }
+    }
+
+    def PointInstancer "PointsInstancer"
+    {
+        rel prototypes = [
+            </World/PointsInstancer/Protos/SpeckA>,
+            </World/PointsInstancer/Protos/SpeckB>,
+        ]
+
+        int[] protoIndices = [0, 1, 0]
+        point3f[] positions = [(0, 500, 0), (1, 500, 0), (2, 500, 0)]
+
+        def Scope "Protos"
+        {
+            token visibility = "invisible"
+
+            def Points "SpeckA"
+            {
+                point3f[] points = [(0, 0, 0), (0.5, 0, 0)]
+                float[] widths = [0.2, 0.2]
+            }
+
+            def Points "SpeckB"
+            {
+                point3f[] points = [(0, 0, 0), (0.5, 0, 0), (0, 0.5, 0)]
+                float[] widths = [0.2, 0.2, 0.2]
+            }
+        }
+    }
+}

@@ -32,6 +32,11 @@
       "family": "mesh",
       "stage": "vertex",
       "maxPermutations": 8
+    },
+    {
+      "family": "meshVolume",
+      "stage": "fragment",
+      "maxPermutations": 1
     }
   ],
   "programs": [
@@ -101,38 +106,6 @@
         "MAP_NORMAL"
       ],
       "resources": [
-        {
-          "name": "volumeDensitySampler",
-          "targets": [
-            "spirv"
-          ],
-          "access": "read",
-          "d3d": {
-            "registerClass": "s",
-            "register": 4,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 13,
-            "set": 0
-          }
-        },
-        {
-          "name": "volumeDensityTexture",
-          "targets": [
-            "spirv"
-          ],
-          "access": "read",
-          "d3d": {
-            "registerClass": "t",
-            "register": 9,
-            "space": 0
-          },
-          "vulkan": {
-            "binding": 9,
-            "set": 0
-          }
-        },
         {
           "name": "SceneParameters",
           "access": "constant",
@@ -479,6 +452,113 @@
           },
           "vulkan": {
             "binding": 5,
+            "set": 0
+          }
+        },
+        {
+          "name": "compositeSampler",
+          "feature": "MAP_MATERIAL",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 12,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 28,
+            "set": 0
+          }
+        },
+        {
+          "name": "compositeTexture",
+          "feature": "MAP_MATERIAL",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 15,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 29,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "mesh.volume.fragment",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "volumeFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "permutationFamily": "meshVolume",
+      "permutationFeatures": [],
+      "defines": {
+        "VOLUME_DENSITY_TEXTURES": 1
+      },
+      "resources": [
+        {
+          "name": "SceneParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "surfaceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 7,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 7,
+            "set": 0
+          }
+        },
+        {
+          "name": "frameParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 8,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 8,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensitySampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 4,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 13,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeDensityTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
             "set": 0
           }
         }

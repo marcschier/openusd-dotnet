@@ -352,6 +352,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         {
             SilkCullMode.None => CullMode.None,
             SilkCullMode.Back => CullMode.Back,
+            SilkCullMode.Front => CullMode.Front,
             _ => throw new ArgumentOutOfRangeException(nameof(cullMode))
         };
 

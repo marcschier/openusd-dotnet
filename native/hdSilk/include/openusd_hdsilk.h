@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 13u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 15u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 5u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -119,12 +119,48 @@ extern "C" {
 /// ABI v7 extends FRAME with camera clip planes. Mesh and material command
 /// layouts are unchanged.
 ///
-/// ABI v8 stops duplicating point-instancer prototype geometry. Instance index
-/// zero still carries the full mesh payload and per-instance transform. Later
-/// records for the same path carry instance_id, instance_index, render state,
-/// display_color and transform, with point_count, index_count, triangle_count,
-/// material_path_byte_count and attribute_count all zero; consumers reuse the
-/// instance-zero prototype geometry, material path and attributes.
+/// ABI v8 stops duplicating point-instancer prototype geometry. The first
+/// record a path publishes in a page carries the full mesh payload and its own
+/// per-instance transform. Later records for the same path carry instance_id,
+/// instance_index, render state, display_color and transform, with point_count,
+/// index_count, triangle_count, material_path_byte_count and attribute_count
+/// all zero; consumers reuse the payload record's geometry, material path and
+/// attributes. The elision is topology neutral: a line list emitted from
+/// instanced BasisCurves and a point list emitted from instanced Points carry
+/// their payload once in exactly the same way a triangle list does.
+///
+/// Since ABI v14 that payload record is the lowest instance_index the path
+/// publishes, which is not necessarily zero: instance_index is the instance's
+/// own index inside its instancer, so a prototype that covers only part of an
+/// instancer publishes a sparse set of indices. With authored proto indices
+/// [0, 1, 0, 1] the second prototype owns instancer instances 1 and 3 and never
+/// publishes an index-zero record at all. A consumer must therefore key the
+/// prototype payload by the first record a path publishes rather than by index
+/// zero. Records of one path arrive in ascending instance_index order, and a
+/// page that moves the payload to a new index publishes the new payload record
+/// before retiring the old identity.
+///
+/// Because a payload record is what every later record of its path refers to,
+/// the records of one path are all-or-nothing within a page. hdSilk serializes
+/// them atomically: if any record of a path cannot be serialized, every record
+/// of that path is rolled back out of the page, so an instance reference is
+/// never published without the payload record it reuses. Other paths are
+/// independent and still serialize, and consumers keep whatever they already
+/// retained for the dropped path.
+///
+/// A record whose geometry is empty is therefore never published at all. An
+/// empty record is byte-identical to an instance reference on the wire, so a
+/// prim with no points or no indices is retired with RemoveMesh rather than
+/// emitted; otherwise the payload record of an empty point-instanced prototype
+/// would itself look like a record reusing a payload.
+///
+/// Every record is validated as hdSilk holds it, before the draw mode and
+/// complexity transforms index into its points and vertex attributes, and then
+/// again after those transforms rebuild the topology. Validating only the
+/// transformed record would let a malformed index -- one that the wireframe
+/// draw mode carries through unchanged and complexity then dereferences at both
+/// endpoints of every subdivided line -- read out of bounds on its way to being
+/// rejected.
 ///
 /// ABI v9 extends FRAME with a fixed light table. hdSilk currently publishes
 /// direct DistantLight, SphereLight, RectLight, DiskLight and CylinderLight
@@ -168,15 +204,44 @@ extern "C" {
 /// corresponding emitted line. topology_revision starts at 1 and changes only
 /// when Hydra reports dirty topology.
 ///
+/// A line list emitted from linear segmented basis curves carries the authored
+/// widths in the attribute table under the name "widths" with semantic
+/// OPENUSD_SILK_ATTRIBUTE_WIDTH and one component. Constant widths publish one
+/// CONSTANT element; uniform, varying, and vertex widths are resolved onto the
+/// emitted line vertices and publish one VERTEX element each. Vertex widths are
+/// parallel to the points array and are indexed by the resolved point index, so
+/// an indexed topology reads the same slot for the width as for the position;
+/// an unindexed topology resolves a point by its flattened control-point
+/// ordinal, so it accepts a widths array sized either to that control-point
+/// count or to a longer points array, both of which index identically.
+/// Every VERTEX attribute, widths included, is interpolated at the subdivision
+/// parameter when complexity splits a segment, so an authored ramp stays a ramp.
+/// The widths do not change the emitted line geometry: every supported backend
+/// rasterizes a line at exactly one pixel, which is what Storm does for linear
+/// curves at this refinement, so a consumer that wants ribbons must build them
+/// itself from these values.
+///
 /// In ABI v3 instance identity is meaningful. A prim with no instancer
 /// publishes exactly one full record with instance_id and instance_index both
 /// zero. A point-instanced prototype publishes one record per resolved
-/// instance: path stays the authoritative prototype path, instance_index is the
-/// zero-based instance ordinal, and instance_id is a stable non-zero diagnostic
+/// instance: path stays the authoritative prototype path, instance_index
+/// identifies the instance, and instance_id is a stable non-zero diagnostic
 /// identifier for the owning instancer. Consumers must therefore key retained
 /// meshes by (path, instance_index) rather than by path alone. Since ABI v8,
-/// only instance zero carries geometry; later records carry their own fully
-/// resolved transform and reuse instance zero's geometry.
+/// only the payload record carries geometry; later records carry their own
+/// fully resolved transform and reuse that record's geometry.
+///
+/// Since ABI v14 instance_index is the instance's own index inside its
+/// instancer -- the index into the point instancer's protoIndices and positions
+/// arrays, which is what UsdImaging decodes back to a scene instance -- rather
+/// than the ordinal of the instance in the resolved array. The two differ
+/// whenever an instancer has several prototypes, whenever proto indices change
+/// over time, and whenever invisibleIds hides an instance; only the former
+/// survives those edits, so a retained pick identity keeps naming the same
+/// scene instance instead of silently re-pointing at another one. Nested
+/// instancers have no such USD index, so hdSilk composes one as
+/// parent_index * inner_instance_count + inner_index, which is unique and
+/// equally stable but is an hdSilk encoding rather than a USD instance index.
 ///
 /// MESH_REMOVE (type = 3):
 ///   uint64 stable_id_hash
@@ -201,6 +266,7 @@ extern "C" {
 ///        *    * uint8    generated_fragment_spirv_bytes
 ///        *    4 uint32   generated_fragment_msl_source_byte_count
 ///        *    * uint8    generated_fragment_msl_source_bytes
+///        *   24 float    uv_transform[6]
 ///
 /// Each scalar entry is:
 ///        0    4 uint32   parameter (OPENUSD_SILK_MATERIAL_*)
@@ -219,7 +285,9 @@ extern "C" {
 ///       44   16 float    bias[4]
 ///       60   16 float    fallback[4]
 ///       76    4 uint32   output_channel (OPENUSD_SILK_TEXTURE_CHANNEL_*)
-///       80    * uint8    asset[asset_byte_count] (UTF-8, resolved, no NUL)
+///       80    4 uint32   composite_op (OPENUSD_SILK_COMPOSITE_*)
+///       84    4 float    composite_factor
+///       88    * uint8    asset[asset_byte_count] (UTF-8, resolved, no NUL)
 ///        *    * uint8    uv_primvar[uv_primvar_byte_count] (UTF-8, no NUL)
 ///
 /// ABI v13 adds output_channel. It is the resolved output port of the connected
@@ -234,6 +302,40 @@ extern "C" {
 /// rather than guessed at. Every other field keeps its ABI v5 offset, so only the
 /// variable section moved.
 ///
+/// wrap_s, wrap_t, and fallback are resolved from whichever schema the connected
+/// image node belongs to, not from one fixed set of names. A UsdUVTexture states
+/// them as wrapS/wrapT and fallback, and an unauthored wrap resolves to
+/// OPENUSD_SILK_WRAP_BLACK. A MaterialX ND_image_* states them as uaddressmode,
+/// vaddressmode, and default, and an unauthored address mode resolves to
+/// OPENUSD_SILK_WRAP_REPEAT because MaterialX defaults both axes to periodic.
+/// MaterialX "constant" addressing is carried as OPENUSD_SILK_WRAP_BLACK, which
+/// is the wire's "neither periodic nor mirrored" mode. That is an approximation
+/// and is documented as one: see OPENUSD_SILK_WRAP_BLACK below. An address mode
+/// outside the four MaterialX names is rejected with a diagnostic and the input
+/// keeps its documented default.
+///
+/// ABI v14 appends uv_transform, the one constant texture-coordinate transform
+/// every texture of this material samples through, as the row-major affine
+/// (m00, m01, m10, m11, tx, ty) applied as u' = m00*u + m01*v + tx and
+/// v' = m10*u + m11*v + ty. It is the identity (1, 0, 0, 1, 0, 0) unless the
+/// graph routes texture coordinates through a chain of MaterialX place2d or
+/// UsdPreviewSurface UsdTransform2d nodes whose inputs are all constant, in
+/// which case that chain is folded exactly and composed into one affine,
+/// including place2d's SRT and TRS operation orders and UsdTransform2d's
+/// opposite, counter-clockwise rotation sense. hdSilk carries one transform per
+/// material because the renderer samples every texture of a material from one
+/// coordinate stream, and it reconciles both halves of that stream: a texture
+/// asking for a different transform, or naming a different uv_primvar, than the
+/// material's first texture is dropped with a diagnostic rather than sampled
+/// with coordinates it did not author. Every uv_primvar surviving in one
+/// MATERIAL_UPSERT is therefore either equal to the material's stream or empty,
+/// which is what lets a consumer take the stream from the first entry that names
+/// one. A chain with a non-constant input, a
+/// chain passing through any other node, and a chain that never reaches a
+/// coordinate node are likewise rejected with a diagnostic and leave the input
+/// at the documented default, because folding part of an authored chain would
+/// render coordinates the graph never produced.
+///
 /// Like the vertex attribute table, both tables are keyed by an explicit
 /// parameter id, so supporting a further UsdPreviewSurface input needs a new
 /// id rather than another ABI bump. A parameter appears in at most one table:
@@ -242,6 +344,36 @@ extern "C" {
 /// the consumer's documented UsdPreviewSurface default. Two inputs may name the
 /// same asset with different output_channel values, which is exactly how a packed
 /// occlusion/roughness/metallic file is authored.
+///
+/// ABI v15 appends composite_op and composite_factor, which is how one surface
+/// input is driven by *two* images combined per pixel.
+///
+/// composite_op is OPENUSD_SILK_COMPOSITE_NONE on an ordinary entry. An entry
+/// whose composite_op is anything else is the *second* operand of the parameter
+/// it names, and the texture table must also carry exactly one entry for that
+/// same parameter with OPENUSD_SILK_COMPOSITE_NONE, which is the first operand.
+/// The consumer combines them per pixel, after each entry's own scale and bias:
+///
+///   MULTIPLY  primary * composite
+///   ADD       primary + composite
+///   SUBTRACT  primary - composite
+///   MIX       primary * (1 - composite_factor) + composite * composite_factor
+///
+/// composite_factor is meaningful only for MIX and is zero otherwise. The
+/// combination is evaluated in the shader in floating point, so unlike the
+/// per-entry scale and bias -- which are applied per texel when the image is
+/// decoded into its own storage format -- it is not clamped by an eight-bit
+/// source and no unit-range restriction applies to it.
+///
+/// A texture table therefore holds at most two entries per parameter: one
+/// primary and one composite. It holds at most one composite entry in total,
+/// because the consumer binds exactly one composite texture per material rather
+/// than one per surface input. A material whose graph asks to composite a second
+/// parameter has *both* entries of that second parameter dropped with a
+/// diagnostic, leaving that input at its documented default; publishing only its
+/// first operand would render one of two authored images and look plausible.
+/// Both operands read the material's single texture-coordinate stream, which the
+/// uv_primvar reconciliation above already guarantees.
 ///
 /// surface_kind is OPENUSD_SILK_SURFACE_UNSUPPORTED when the bound network is
 /// not a UsdPreviewSurface. Such a material is still published, with empty
@@ -303,7 +435,20 @@ extern "C" {
 #define OPENUSD_SILK_MATERIAL_USE_SPECULAR_WORKFLOW 14u
 #define OPENUSD_SILK_MATERIAL_VOLUME_DENSITY 15u
 
-/// UsdUVTexture wrap modes.
+/// Texture wrap modes.
+///
+/// OPENUSD_SILK_WRAP_BLACK is the value published for UsdUVTexture's
+/// "black"/unauthored wrap and for MaterialX "constant" addressing. Its name
+/// describes what those schemas ask for, not what this renderer currently does:
+/// no supported backend is given a border colour, and every consumer in this
+/// repository resolves BLACK to clamp-to-edge, so it renders identically to
+/// OPENUSD_SILK_WRAP_CLAMP. A sample outside the unit range therefore returns
+/// the edge texel rather than black or the MaterialX node's `default` value.
+/// The wire carries no border colour at all, so a consumer that wants true
+/// border sampling needs a new field and an ABI bump rather than a different
+/// reading of this one. The two values stay distinct because they record
+/// different authored intent, which a consumer that does implement border
+/// sampling must be able to tell apart.
 #define OPENUSD_SILK_WRAP_BLACK 0u
 #define OPENUSD_SILK_WRAP_CLAMP 1u
 #define OPENUSD_SILK_WRAP_REPEAT 2u
@@ -326,6 +471,17 @@ extern "C" {
 #define OPENUSD_SILK_TEXTURE_CHANNEL_A 3u
 #define OPENUSD_SILK_TEXTURE_CHANNEL_RGB 4u
 
+/// How a texture entry combines with the primary entry of the same parameter.
+///
+/// NONE marks the primary entry itself. Any other value marks the second operand
+/// of a two-image surface input; see the MATERIAL_UPSERT layout above for the
+/// exact per-pixel expression and for the one-composite-per-material limit.
+#define OPENUSD_SILK_COMPOSITE_NONE 0u
+#define OPENUSD_SILK_COMPOSITE_MULTIPLY 1u
+#define OPENUSD_SILK_COMPOSITE_ADD 2u
+#define OPENUSD_SILK_COMPOSITE_SUBTRACT 3u
+#define OPENUSD_SILK_COMPOSITE_MIX 4u
+
 /// Vertex attribute semantics carried by the ABI v4 attribute table. CUSTOM
 /// means the entry is identified by its authored primvar name alone.
 #define OPENUSD_SILK_ATTRIBUTE_CUSTOM 0u
@@ -333,6 +489,7 @@ extern "C" {
 #define OPENUSD_SILK_ATTRIBUTE_TEXCOORD 2u
 #define OPENUSD_SILK_ATTRIBUTE_COLOR 3u
 #define OPENUSD_SILK_ATTRIBUTE_TANGENT 4u
+#define OPENUSD_SILK_ATTRIBUTE_WIDTH 5u
 
 /// Interpolation of an attribute, already resolved onto emitted triangle-list
 /// vertices. CONSTANT carries exactly one element for the whole mesh.
@@ -340,7 +497,11 @@ extern "C" {
 #define OPENUSD_SILK_INTERPOLATION_VERTEX 1u
 
 /// Renderer-neutral complexity levels. The page wire format is unchanged:
-/// complexity only changes how hdSilk emits curve and point records.
+/// complexity only changes how hdSilk emits curve and point records. It applies
+/// after the draw mode, so it also subdivides a triangle-list record that the
+/// wireframe, hidden-surface-wireframe, or points draw mode converted into
+/// lines or points, and changing complexity while one of those draw modes is
+/// active republishes those records too.
 #define OPENUSD_SILK_COMPLEXITY_LOW 0u
 #define OPENUSD_SILK_COMPLEXITY_MEDIUM 1u
 #define OPENUSD_SILK_COMPLEXITY_HIGH 2u

@@ -15,7 +15,9 @@ synthetic package tests execute the failure and replacement cases. See
 **On this page:** [Package resolution](#package-resolution) ·
 [MCP distribution](#mcp-tool-package-and-rid-bundles) ·
 [Physics packages](#physics-packages) ·
-[Package layout](#package-layout) · [Pack](#pack) · [Release SBOM](#release-sbom) ·
+[Package layout](#package-layout) ·
+[Resolver plugins](#third-party-resolver-plugin-contract) ·
+[Pack](#pack) · [Release SBOM](#release-sbom) ·
 [Publish](#publish) · [Symbols](#symbol-packages-for-nugetorg) ·
 [Core execution](#package-only-execution-gate) ·
 [Imaging execution](#package-only-imaging-execution-gate) ·
@@ -273,6 +275,48 @@ Each Imaging package has an exact dependency on its matching Core version, for e
 `[0.12.0-alpha]`. Its dependency includes build assets, so Core native files and `buildTransitive`
 resource staging arrive when a consumer references only Imaging.
 
+### Third-party resolver plugin contract
+
+A third-party asset resolver is an OpenUSD plugin, not a managed extension point. The runtime never
+invokes a managed callback from a native asset path, so a vendor resolver ships as its own native
+plugin tree and is discovered through `PlugRegistry` exactly as OpenUSD discovers its own plugins.
+
+A vendor tree is self-contained and lives beside the packaged trees rather than inside them:
+
+```text
+<publish>/vendor-plugins/<pluginName>/<library>
+<publish>/vendor-plugins/<pluginName>/resources/plugInfo.json
+```
+
+The `plugInfo.json` keeps `"Root": ".."`, `"ResourcePath": "resources"`, and a `LibraryPath`
+relative to that root, exactly as the vendor authored it. `UsdPluginRegistry.Register` takes that
+file (or a directory containing one) and returns the number of newly registered plugins; the tree is
+read where it lies. Nothing is copied into `usd/**` or `plugin/usd/**`, and neither packaged
+`plugInfo.json` is rewritten, so the packaged layout stays byte-identical to what was packed and the
+vendor plugin keeps resolving its resources from its own directory.
+
+Order matters, and it is a single-threaded ordering. OpenUSD selects and constructs its one primary
+resolver the first time the process resolves an asset, and upstream documents resolver discovery as
+unsafe concurrently with that construction. Register every tree, then touch resolution once from a
+single thread, before the process goes concurrent; the shim serializes its own calls but cannot
+serialize a first use that comes from a plain `UsdStage.Open` or any other upstream code.
+`UsdResolver.PrimaryTypeName`, `GetRegisteredUriSchemes`, and
+`UsdPluginRegistry.GetRegisteredPlugins` report what was actually selected, which is what a
+deployment check should assert. Do not assert on `GetAvailableResolverTypeNames` for a URI
+resolver: that list holds primary-resolver candidates, and a resolver declaring URI/IRI schemes is
+never one.
+
+The contract is proved at both ends. `native/tests/resolver_plugin` builds a real out-of-tree
+`ArResolver` with its own unflattened `plugInfo.json`, is never linked into the shim and never
+installed, and the CTest native probe registers that tree and resolves through its URI scheme. That
+gate covers executable resolver behaviour. The NativeAOT package-only gate below covers the
+packaging half: it stages a vendor tree next to the packaged trees, registers it, and asserts it is
+discovered with its own resource path while the packaged `plugInfo.json` is unchanged. The staged
+tree is a *resource* plugin rather than a second `ArResolver`, because a package consumer cannot
+compile a native plugin, and the layout contract being proved there is identical either way. See
+[Asset resolution and plugin trees](data-api.md#asset-resolution-and-plugin-trees) for the
+managed API.
+
 ## Pack
 
 Build the locked native inputs first, then pack the runtime projects for the current RID:
@@ -506,6 +550,9 @@ When the locked native and shim install for the current host is present,
    `PATH`.
 6. Register the staged `usd` plugin tree, open the input stage, create and save a second stage, then
    reopen it and verify an authored value.
+7. Register a third-party resolver tree staged at `vendor-plugins/openusdVendorResolver`, then bulk
+   resolve a context-only asset under `assets/`, a missing asset, and the round-trip asset through a
+   `UsdResolverContext`, and confirm a scoped binding stops resolving once it is disposed.
 
 The test asserts that all three OpenUsd dependencies have `package` entries in
 `project.assets.json`, no project dependency exists, the process runs with the publish directory as
@@ -513,20 +560,31 @@ its working directory, and successful output contains:
 
 ```text
 PACKAGE_EXECUTION_OK
-ABI=15
-CAPABILITIES=0xFFFFFF
+ABI=16
+CAPABILITIES=0x1FFFFFF
 INPUT_OPENED=true
 CAMERA_STATE_QUERY=true
 ROUNDTRIP_SAVED=true
 ROUNDTRIP_VALUE=42.5
+RESOLVER_PRIMARY=ArDefaultResolver
+RESOLVER_BULK=true
+RESOLVER_SCOPED=true
+VENDOR_PLUGINS=1
+VENDOR_PLUGIN_TREE=true
+PACKAGED_PLUGIN_TREE_INTACT=true
 CWD_IS_PUBLISH=true
 ```
+
+The vendor assertions are layout assertions, not just API assertions: the registered plugin has to
+report a resource path inside its own tree and not inside `usd/**`, and the packaged
+`usd/plugInfo.json` has to be byte-identical before and after registration and must never mention
+the vendor plugin.
 
 The process output and generated consumer project must not contain repository source paths,
 `ProjectReference`, or `native/install`.
 A separate clean-feed managed consumer loads only `OpenUsd.Interop` from its
-nupkg and invokes the compatibility validator. Data ABI 14 with the complete
-v15 mask and Data ABI 15 with the previous `0x3FFFF` mask must both throw the typed
+nupkg and invokes the compatibility validator. Data ABI 15 with the complete
+v16 mask and Data ABI 16 with the previous `0xFFFFFF` mask must both throw the typed
 `OpenUsdNativeException`.
 
 ## Package-only Imaging execution gate
@@ -699,7 +757,7 @@ native source and header files. Generated `native/build`, `native/install`,
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
 the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 15 and
-capabilities `0xFFFFFF`, Storm ABI 8, hdSilk session/page ABI 5/13, and Storm child
+capabilities `0xFFFFFF`, Storm ABI 8, hdSilk session/page ABI 5/15, and Storm child
 ABI 8. Metadata schema 3 records camera-state version 1, Storm-child navigation
 input version 2, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their

@@ -88,6 +88,81 @@ public sealed partial class MetalSilkGraphicsDevice
             _ => throw new ArgumentOutOfRangeException(nameof(format))
         };
 
+    /// <summary>Allocates the single R32Float 3D texture a sampled density volume samples.</summary>
+    /// <remarks>
+    /// Explicit, and restricted to <see cref="SilkTextureFormat.R32Float"/> with exactly one
+    /// mip level, because the only consumer is the sampled-density-volume path: the native
+    /// shim publishes one bulk R32 density cache per <c>UsdVolOpenVDBAsset</c>, and the
+    /// checked <c>mesh.volume.fragment</c> program is the only mesh fragment binary that
+    /// declares a <c>texture3d&lt;float&gt;</c>. Accepting any other format here would
+    /// allocate a texture no checked program can sample. <see cref="MTLStorageMode.Shared"/>
+    /// matches <see cref="CreateTexture2D(SilkTextureDescriptor)"/>, so the density grid
+    /// obeys the same storage rules as every other texture this device hands out.
+    /// </remarks>
+    ISilkGraphicsTexture ISilkVolumeTextureGraphicsDevice.CreateTexture3D(
+        uint width,
+        uint height,
+        uint depth,
+        SilkTextureFormat format)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentOutOfRangeException.ThrowIfZero(width);
+        ArgumentOutOfRangeException.ThrowIfZero(height);
+        ArgumentOutOfRangeException.ThrowIfZero(depth);
+        if (format != SilkTextureFormat.R32Float)
+        {
+            throw new ArgumentException("Volume textures currently require R32Float.", nameof(format));
+        }
+        RegisterDependentObject();
+
+        var descriptor = new SilkTextureDescriptor(
+            width,
+            height,
+            format,
+            SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination);
+        MTLTextureDescriptor nativeDescriptor = default;
+        MTLTexture texture = default;
+        bool success = false;
+        try
+        {
+            nativeDescriptor = new MTLTextureDescriptor
+            {
+                TextureType = MTLTextureType.Type3D,
+                PixelFormat = MTLPixelFormat.R32Float,
+                Width = width,
+                Height = height,
+                Depth = depth,
+                MipmapLevelCount = 1,
+                SampleCount = 1,
+                ArrayLength = 1,
+                StorageMode = MTLStorageMode.Shared,
+                Usage = MTLTextureUsage.ShaderRead
+            };
+            texture = _device.NewTexture(nativeDescriptor);
+            if (texture.NativePtr == 0)
+            {
+                throw new InvalidOperationException("Could not create a Metal 3D texture.");
+            }
+            success = true;
+            return new MetalSilkGraphicsTexture(this, texture, descriptor, depth, isVolume: true);
+        }
+        finally
+        {
+            if (nativeDescriptor.NativePtr != 0)
+            {
+                nativeDescriptor.Dispose();
+            }
+            if (!success)
+            {
+                if (texture.NativePtr != 0)
+                {
+                    texture.Dispose();
+                }
+                ReleaseDependentObject();
+            }
+        }
+    }
+
     /// <inheritdoc/>
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
     {
@@ -468,6 +543,42 @@ public sealed partial class MetalSilkGraphicsDevice
                         }
                         blitEncoder.EndEncoding();
                         blitEncoder.Dispose();
+                        break;
+                    case SilkGraphicsCommandKind.UploadTexture3D:
+                        MetalSilkGraphicsTexture uploadVolume = command.Texture!;
+                        uploadVolume.ThrowIfDisposed();
+                        MTLBuffer volumeUpload = CreateTextureUpload(command.Data!);
+                        uploadBuffers.Add(volumeUpload);
+                        MTLBlitCommandEncoder volumeEncoder =
+                            commandBuffer.BlitCommandEncoder();
+                        if (volumeEncoder.NativePtr == 0)
+                        {
+                            throw new InvalidOperationException(
+                                "Could not create a Metal blit command encoder.");
+                        }
+                        // One copy for the whole grid: the density cache the native shim
+                        // publishes is a single tightly packed R32 block with no mip chain,
+                        // so bytes-per-image is the full slice stride and the destination
+                        // extent is the entire volume.
+                        ulong volumeBytesPerRow = checked(
+                            (ulong)uploadVolume.Width * sizeof(float));
+                        volumeEncoder.CopyFromBuffer(
+                            volumeUpload,
+                            0,
+                            volumeBytesPerRow,
+                            checked(volumeBytesPerRow * uploadVolume.Height),
+                            new MTLSize
+                            {
+                                width = uploadVolume.Width,
+                                height = uploadVolume.Height,
+                                depth = uploadVolume.Depth
+                            },
+                            uploadVolume.Texture,
+                            0,
+                            0,
+                            new MTLOrigin());
+                        volumeEncoder.EndEncoding();
+                        volumeEncoder.Dispose();
                         break;
                     case SilkGraphicsCommandKind.ClearColor:
                         MetalSilkGraphicsTexture colorTexture = command.Texture!;
@@ -1003,6 +1114,7 @@ public sealed partial class MetalSilkGraphicsDevice
         {
             SilkCullMode.None => MTLCullMode.None,
             SilkCullMode.Back => MTLCullMode.Back,
+            SilkCullMode.Front => MTLCullMode.Front,
             _ => throw new ArgumentOutOfRangeException(nameof(cullMode))
         };
 
@@ -1120,19 +1232,46 @@ internal sealed unsafe class MetalSilkGraphicsTexture : SilkGraphicsTextureBase
         MetalSilkGraphicsDevice device,
         MTLTexture texture,
         SilkTextureDescriptor descriptor)
+        : this(device, texture, descriptor, depth: 1, isVolume: false)
+    {
+    }
+
+    internal MetalSilkGraphicsTexture(
+        MetalSilkGraphicsDevice device,
+        MTLTexture texture,
+        SilkTextureDescriptor descriptor,
+        uint depth,
+        bool isVolume)
         : base(descriptor)
     {
         _device = device;
         _texture = texture;
+        Depth = depth;
+        IsVolume = isVolume;
     }
 
     internal MetalSilkGraphicsDevice Device => _device;
+
+    /// <summary>Gets the slice count; only a sampled density volume has more than one.</summary>
+    internal uint Depth { get; }
+
+    /// <summary>
+    /// Gets whether the native texture was created as <see cref="MTLTextureType.Type3D"/>.
+    /// </summary>
+    /// <remarks>
+    /// Tracked separately from <see cref="Depth"/> because a density grid may legitimately
+    /// be one slice deep, and a one-slice 3D texture is still not interchangeable with a 2D
+    /// one: <c>texture3d&lt;float&gt;</c> and <c>texture2d&lt;float&gt;</c> are distinct
+    /// Metal argument types, so binding one where the other is declared is undefined.
+    /// </remarks>
+    internal bool IsVolume { get; }
 
     internal MTLTexture Texture => _texture;
 
     public override void ReadbackForTesting(Span<byte> destination)
     {
         ThrowIfDisposed();
+        ThrowIfVolume();
         ValidateReadback(destination.Length);
         Readback(MemoryMarshal.AsBytes(destination));
     }
@@ -1140,8 +1279,25 @@ internal sealed unsafe class MetalSilkGraphicsTexture : SilkGraphicsTextureBase
     public override void ReadbackForTesting(Span<float> destination)
     {
         ThrowIfDisposed();
+        ThrowIfVolume();
         ValidateDepthReadback(destination.Length);
         Readback(MemoryMarshal.AsBytes(destination));
+    }
+
+    /// <summary>Rejects a readback of a sampled density volume.</summary>
+    /// <remarks>
+    /// The shared readback validation sizes the destination as <c>Width * Height</c>, and the
+    /// copy below reads a single slice, so a 3D texture would quietly hand back its first
+    /// slice as though it were the whole grid. Rejecting it before the length check keeps the
+    /// diagnostic on the real reason rather than on a byte count.
+    /// </remarks>
+    private void ThrowIfVolume()
+    {
+        if (IsVolume)
+        {
+            throw new InvalidOperationException(
+                "Readback of a 3D texture is not supported; the destination covers one slice only.");
+        }
     }
 
     private void Readback(Span<byte> destination)
@@ -1226,7 +1382,8 @@ internal sealed class MetalSilkGraphicsSampler(
 internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice device)
     : ISilkGraphicsCommandList,
       ISilkPickGraphicsCommandList,
-      ISilkSelectionOutlineGraphicsCommandList
+      ISilkSelectionOutlineGraphicsCommandList,
+      ISilkVolumeTextureCommandList
 {
     private readonly List<MetalGraphicsCommand> _commands = [];
     private MetalSilkGraphicsTexture? _colorAttachment;
@@ -1282,6 +1439,31 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
                 nameof(source));
         }
         _commands.Add(MetalGraphicsCommand.Upload(metalTexture, source.ToArray()));
+    }
+
+    public void UploadTexture3D(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
+    {
+        ThrowIfOutsideRendering();
+        MetalSilkGraphicsTexture metalTexture = ValidateTexture(texture);
+        if (!metalTexture.IsVolume ||
+            metalTexture.Format != SilkTextureFormat.R32Float ||
+            !metalTexture.Usage.HasFlag(SilkTextureUsage.CopyDestination))
+        {
+            throw new InvalidOperationException(
+                "UploadTexture3D requires an R32Float 3D texture with CopyDestination usage.");
+        }
+        int requiredLength = checked(
+            (int)(metalTexture.Width *
+            metalTexture.Height *
+            metalTexture.Depth *
+            sizeof(float)));
+        if (source.Length != requiredLength)
+        {
+            throw new ArgumentException(
+                $"The source must contain exactly {requiredLength} bytes.",
+                nameof(source));
+        }
+        _commands.Add(MetalGraphicsCommand.Upload3D(metalTexture, source.ToArray()));
     }
 
     public void ClearColor(ISilkGraphicsTexture texture, SilkColor color)
@@ -1954,6 +2136,14 @@ internal readonly record struct MetalGraphicsCommand(
         byte[] data) =>
         Create(
             SilkGraphicsCommandKind.UploadTexture,
+            texture: texture,
+            data: data);
+
+    internal static MetalGraphicsCommand Upload3D(
+        MetalSilkGraphicsTexture texture,
+        byte[] data) =>
+        Create(
+            SilkGraphicsCommandKind.UploadTexture3D,
             texture: texture,
             data: data);
 

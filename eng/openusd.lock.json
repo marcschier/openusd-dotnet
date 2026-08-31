@@ -48,10 +48,10 @@
     "license": "Apache-2.0"
   },
   "abi": {
-    "data": 15,
-    "dataCapabilities": 16777215,
+    "data": 16,
+    "dataCapabilities": 33554431,
     "storm": 8,
-    "renderCommands": 13,
+    "renderCommands": 15,
     "physics": 7,
     "physicsExtract": 1
   },

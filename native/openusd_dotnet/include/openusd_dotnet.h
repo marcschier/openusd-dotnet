@@ -260,7 +260,7 @@ typedef struct openusd_image_info
     uint32_t height;
 } openusd_image_info;
 
-#define OPENUSD_DATA_ABI_VERSION 15
+#define OPENUSD_DATA_ABI_VERSION 16
 #define OPENUSD_CAPABILITY_STRING_LIST_V2 (UINT64_C(1) << 0)
 #define OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS (UINT64_C(1) << 1)
 #define OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES (UINT64_C(1) << 2)
@@ -286,8 +286,73 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_OCIO_DISPLAY_TRANSFORM (UINT64_C(1) << 21)
 #define OPENUSD_CAPABILITY_IMAGE_DECODE_RGBA32F (UINT64_C(1) << 22)
 #define OPENUSD_CAPABILITY_UDIM_TILE_RESOLUTION (UINT64_C(1) << 23)
+#define OPENUSD_CAPABILITY_RESOLVER_CONTEXT_INSPECTION (UINT64_C(1) << 24)
 
 typedef struct openusd_ocio_processor openusd_ocio_processor;
+
+/*
+ * Asset-resolution inspection over the upstream ArResolver.
+ *
+ * The resolver ABI is deliberately bulk and handle based: a caller packs every asset path it
+ * cares about into one string-list view, the shim binds the supplied ArResolverContext once for
+ * the whole batch, and one record per input carries the resolved state. No managed callback is
+ * ever invoked from a native asset path, so a third-party resolver plugin never re-enters the
+ * runtime it was called from.
+ *
+ * Resolver context handles are immutable value copies of ArResolverContext and are safe to share
+ * between threads. Bindings are not: ArResolverContextBinder installs a thread-local binding, so a
+ * binding must be released on the thread that created it and in reverse creation order. A release
+ * that violates either rule is rejected and leaves the binding owned and retryable rather than
+ * consumed.
+ *
+ * OpenUSD selects and constructs its one primary resolver on first use, and upstream documents
+ * resolver discovery as unsafe concurrently with that construction. The shim serializes its own
+ * calls, but it cannot serialize a first use that originates anywhere else in the process, so the
+ * first-use contract stands: register every plugin tree and touch resolution once from a single
+ * thread before going concurrent.
+ */
+typedef struct openusd_resolver_context openusd_resolver_context;
+typedef struct openusd_resolver_binding openusd_resolver_binding;
+typedef struct openusd_resolved_asset_list openusd_resolved_asset_list;
+
+#define OPENUSD_RESOLVED_ASSET_VIEW_VERSION 1u
+
+/*
+ * One record per requested asset path. String offsets index the packed string table of the owning
+ * view; every record always contributes exactly five strings, so an offset is never absent, only
+ * empty. Timestamps are ArTimestamp values and are only meaningful when timestamp_valid is set.
+ *
+ * An asset the resolver declines to identify - an empty ArResolver::CreateIdentifier result - is
+ * reported unresolved and is never resolved from its raw asset path instead, so a record agrees
+ * with what a stage opened against the same context can actually load.
+ */
+typedef struct openusd_resolved_asset_record
+{
+    int32_t resolved;
+    int32_t context_dependent;
+    int32_t timestamp_valid;
+    int32_t reserved;
+    double modification_time;
+    size_t identifier_offset;
+    size_t resolved_path_offset;
+    size_t extension_offset;
+    size_t asset_version_offset;
+    size_t asset_name_offset;
+} openusd_resolved_asset_record;
+
+typedef struct openusd_resolved_asset_view
+{
+    uint32_t struct_size;
+    uint32_t version;
+    const openusd_resolved_asset_record* records;
+    size_t records_size;
+    size_t record_count;
+    const char* data;
+    size_t data_size;
+    const size_t* offsets;
+    size_t offsets_size;
+    size_t string_count;
+} openusd_resolved_asset_view;
 
 typedef struct openusd_vec3f
 {
@@ -849,6 +914,120 @@ OPENUSD_DOTNET_API openusd_status openusd_resolve_udim_tiles(
     openusd_string_list_view* view,
     openusd_error_buffer* error);
 
+/*
+ * Packs one deterministic record per registered plugin as five consecutive strings: name, kind
+ * ("library", "resource" or "python"), load state ("loaded" or "unloaded"), plugin path, and
+ * resource path. Records are sorted by name. The enumeration reports the tree that OpenUSD's
+ * PlugRegistry actually discovered, so a packaged third-party resolver tree can be validated
+ * without merging or rewriting any plugInfo.json.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_get_registered_plugins(
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
+/* Type name of the primary ArResolver selected by the loaded plugin set. */
+OPENUSD_DOTNET_API openusd_status openusd_resolver_get_primary_type_name(
+    char* buffer,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+/* Lower-cased URI/IRI schemes with a registered ArResolver, in upstream sorted order. */
+OPENUSD_DOTNET_API openusd_status openusd_resolver_get_uri_schemes(
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
+/*
+ * Type names of the primary-resolver candidates discovered in the registered plugin trees. This
+ * is narrower than "every registered ArResolver": upstream excludes any resolver that declares
+ * URI/IRI schemes, because such a resolver is selected per scheme and can never be the primary
+ * resolver. ArDefaultResolver is always reported as the final fallback candidate. Use
+ * openusd_resolver_get_uri_schemes to discover URI resolvers.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_resolver_get_available_type_names(
+    openusd_string_list** list,
+    openusd_string_list_view* view,
+    openusd_error_buffer* error);
+
+/*
+ * Creates a resolver context from pairs of packed strings. Each pair is a URI/IRI scheme followed
+ * by the resolver-defined context string; an empty scheme selects the primary resolver. An empty
+ * list creates the default context.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_resolver_context_create(
+    const openusd_string_list_view* context_strings,
+    openusd_resolver_context** context,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_resolver_context_create_for_asset(
+    const char* asset_path,
+    openusd_resolver_context** context,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_resolver_context_get_debug_string(
+    const openusd_resolver_context* context,
+    char* buffer,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API openusd_status openusd_resolver_context_is_empty(
+    const openusd_resolver_context* context,
+    int32_t* value,
+    openusd_error_buffer* error);
+
+/*
+ * Refreshes resolver caches for the context. This is process-wide: it invalidates previously
+ * resolved paths for every thread and stage and sends ArNotice::ResolverChanged, whose listeners
+ * mutate their own state. Upstream documents concurrent refreshes of one context as unsafe, so
+ * call this from one thread at a quiescent point.
+ *
+ * Rejected with OPENUSD_STATUS_INVALID_ARGUMENT while this same context has a live binding on any
+ * thread, matched by ArResolverContext value identity. An unrelated bound context never blocks a
+ * refresh, and a rejected refresh can be retried once the binding is released.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_resolver_context_refresh(
+    openusd_resolver_context* const context,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API void openusd_resolver_context_release(openusd_resolver_context* context);
+
+/* Binds the context on the calling thread. Bindings must be released in reverse order. */
+OPENUSD_DOTNET_API openusd_status openusd_resolver_context_bind(
+    openusd_resolver_context* const context,
+    openusd_resolver_binding** binding,
+    openusd_error_buffer* error);
+
+/*
+ * Releases a binding. Rejects a release from a thread other than the one that created it
+ * (OPENUSD_STATUS_WRONG_THREAD) and a release that is not the newest binding on the calling
+ * thread. Both rejections leave the binding owned by the caller and still bound, so it can be
+ * retried from the owner thread in the correct order.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_resolver_context_unbind(
+    openusd_resolver_binding* const binding,
+    openusd_error_buffer* error);
+
+/*
+ * Resolves every packed asset path in one call. When context is not null it is bound for the
+ * whole batch and unbound before returning, including when it is empty: binding an empty context
+ * shadows whatever context the calling thread already has bound, so an empty context means
+ * "ignore the ambient context" rather than "no context". Pass null to resolve with whatever is
+ * already bound. anchor_asset_path may be null and otherwise anchors relative identifiers the way
+ * upstream composition anchors them to a layer.
+ */
+OPENUSD_DOTNET_API openusd_status openusd_resolver_resolve(
+    const openusd_string_list_view* asset_paths,
+    const openusd_resolver_context* context,
+    const char* anchor_asset_path,
+    openusd_resolved_asset_list** list,
+    openusd_resolved_asset_view* view,
+    openusd_error_buffer* error);
+
+OPENUSD_DOTNET_API void openusd_resolved_asset_list_release(openusd_resolved_asset_list* list);
+
 OPENUSD_DOTNET_API openusd_status openusd_stage_open(
     const char* path,
     openusd_stage** stage,
@@ -857,6 +1036,13 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_open(
 OPENUSD_DOTNET_API openusd_status openusd_stage_open_masked(
     const char* path,
     const openusd_string_list_view* mask_paths,
+    openusd_stage** stage,
+    openusd_error_buffer* error);
+
+/* Opens a stage whose composition and asset resolution use the supplied resolver context. */
+OPENUSD_DOTNET_API openusd_status openusd_stage_open_with_context(
+    const char* path,
+    const openusd_resolver_context* context,
     openusd_stage** stage,
     openusd_error_buffer* error);
 

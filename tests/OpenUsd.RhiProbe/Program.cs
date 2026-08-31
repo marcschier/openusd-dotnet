@@ -1208,9 +1208,20 @@ internal static class Program
     /// Creates the default surface constants: no material, so the shaded flag is
     /// zero and the scene tint drives diffuse, lit by the deterministic headlight.
     /// </summary>
+    /// <remarks>
+    /// Mirrors <c>SurfaceParameters</c> in <c>eng/shaders/sources/mesh.slang</c>
+    /// and the block <c>SilkSurfaceUniformWriter</c> writes. That writer is
+    /// internal to <c>OpenUsd.Rendering.Silk</c> and this probe is not one of its
+    /// friend assemblies, so the size is restated here and pinned to the shader by
+    /// <c>SurfaceConstantsSizeContractTests</c> rather than left to drift. The
+    /// last two rows are the ABI 14 folded UV transform, written as the identity
+    /// because a probe with no material transforms no coordinates; a buffer that
+    /// stopped short of them left the shader reading an all-zero affine, which
+    /// collapses every texture coordinate onto one texel.
+    /// </remarks>
     private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
     {
-        const int surfaceConstantsByteSize = 9 * 4 * sizeof(float);
+        const int surfaceConstantsByteSize = 12 * 4 * sizeof(float);
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
             surfaceConstantsByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
@@ -1224,6 +1235,9 @@ internal static class Program
             0, 0, 1, 1,
             1, 1, 1, 1,
             0, 0, 0, 0,
+            0, 0, 0, 0,
+            1, 0, 0, 0,
+            0, 1, 0, 0,
             0, 0, 0, 0
         ]));
         return buffer;

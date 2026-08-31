@@ -27,4 +27,3 @@ struct KernelContext_0
     }
     return;
 }
-
